@@ -1,0 +1,4 @@
+# Set up port forwarding for slime to the Trubanc.com server
+echo "Forwarding port 4008 to \$HUBTB"
+echo "screen -ls; screen -dr  OR  screen; start-qres"
+ssh -A -L4008:localhost:4008 $HUBTB

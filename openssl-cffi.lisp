@@ -135,7 +135,7 @@
 (defparameter $d2i-RSAPrivateKey
   (foreign-symbol-pointer "d2i_RSAPrivateKey"))
 
-(defun %pem-read-rsa-private-key (fp x &optional (cb $null) (u $null))
+(defun %pem-read-rsa-private-key (fp &optional (x $null) (cb $null) (u $null))
   (with-foreign-strings ((namep $pem-string-rsa))
     (%pem-asn1-read $d2i-RSAPrivateKey namep fp x cb u)))
 
@@ -209,6 +209,138 @@
         (error "Couldn't load public key from ~s" filename))
       res)))
 
+(defcfun ("BIO_new" %bio-new) :pointer
+  (type :pointer))
+
+(defcfun ("BIO_s_mem" %bio-s-mem) :pointer
+  )
+
+(defcfun ("BIO_puts" %bio-puts) :int
+  (bp :pointer)
+  (buf :pointer))
+
+(defun bio-new-s-mem (&optional string)
+  (let ((res (%bio-new (%bio-s-mem))))
+    (when (null-pointer-p res)
+      (error "Can't allocate io-mem-buf"))
+    (when string
+      (with-foreign-strings ((sp string))
+        (%bio-puts res sp)))
+    res))
+
+(defmacro with-bio-new-s-mem ((bio &optional string) &body body)
+  (let ((thunk (gensym)))
+    `(let ((,thunk (lambda (,bio) ,@body)))
+       (declare (dynamic-extent ,thunk))
+       (call-with-bio-new-s-mem ,string ,thunk))))
+
+(defun call-with-bio-new-s-mem (string thunk)
+  (let ((bio (bio-new-s-mem string)))
+    (unwind-protect
+         (funcall thunk bio)
+      (bio-free bio))))
+
+(defcfun ("BIO_ctrl" %bio-ctrl) :long
+  (bp :pointer)
+  (cmd :long)
+  (larg :long)
+  (parg :pointer))
+
+(defconstant $BIO-CTRL-INFO 3)
+
+(defun %bio-get-mem-data (bio ptr)
+  (%bio-ctrl bio $BIO-CTRL-INFO 0 ptr))  
+
+(defun bio-get-string (bio)
+  (with-foreign-object (p :pointer)
+    (let ((len (%bio-get-mem-data bio p)))
+      (foreign-string-to-lisp
+       (mem-ref p :pointer) :count len :encoding :ascii))))
+
+(defcfun ("BIO_free" %bio-free) :int
+  (a :pointer))
+
+(defun bio-free (bio)
+  (when (eql 0 (%bio-free bio))
+    (error "Error freeing bio instance")))
+
+(defcfun ("PEM_ASN1_read_bio" %pem-asn1-read-bio) :pointer
+  (d2i :pointer)
+  (name (:pointer :char))
+  (bio :pointer)
+  (x (:pointer (:pointer :char)))
+  (cb :pointer)
+  (u :pointer))
+
+(defcfun ("PEM_ASN1_write_bio" %pem-asn1-write-bio) :int
+  (i2d (:pointer :int))
+  (name (:pointer :char))
+  (bio :pointer)
+  (x (:pointer :char))
+  (enc :pointer)
+  (kstr (:pointer :char))
+  (klen :int)
+  (callback :pointer)
+  (u :pointer))
+
+(defun %pem-read-bio-rsa-private-key (bio &optional (x $null) (cb $null) (u $null))
+  (with-foreign-strings ((namep $pem-string-rsa))
+    (%pem-asn1-read-bio $d2i-RSAPrivateKey namep bio x cb u)))
+
+(defun decode-rsa-private-key (string &optional (password ""))
+  "Converts a PEM string to an RSA structure. Free it with rsa-free.
+   Will prompt for the password if it needs it and you provide nil."
+  (with-bio-new-s-mem (bio string)
+    (let ((res (if password
+                   (with-foreign-strings ((passp password))
+                     (%pem-read-bio-rsa-private-key bio $null $null passp))
+                   (%pem-read-bio-rsa-private-key bio))))
+      (when (null-pointer-p res)
+        (error "Couldn't encode private key from string"))
+      res)))
+
+(defun %pem-write-bio-rsa-private-key
+    (bio x &optional (enc $null) (kstr $null) (klen 0) (cb $null) (u $null))
+  (with-foreign-strings ((namep $pem-string-rsa))
+    (%pem-asn1-write-bio $i2d-RSAPrivateKey namep bio x enc kstr klen cb u)))
+
+;; Could switch to PEM_write_PKCS8PrivateKey, if PHP compatibility is
+;; no longer necessary. It's supposed to be more secure.
+(defun encode-rsa-private-key (rsa &optional password)
+  "Encode an rsa private key as a PEM-encoded string."
+  (with-bio-new-s-mem (bio)
+    (let ((res (if password
+                   (with-foreign-strings ((passp password))
+                     (%pem-write-bio-rsa-private-key
+                      bio rsa (evp-des-ede3-cbc) passp (length password)))
+                   (%pem-write-bio-rsa-private-key bio rsa))))
+      (when (eql res 0)
+        (error "Can't encode private key."))
+      (bio-get-string bio))))
+
+(defun %pem-read-bio-rsa-public-key (bio &optional (x $null))
+  (with-foreign-strings ((namep $pem-string-rsa-public))
+    (%pem-asn1-read-bio $d2i-RSAPublicKey namep bio x $null $null)))
+
+(defun decode-rsa-public-key (string)
+  "Convert a PEM-encoded string to an RSA public key.
+   You must rsa-free the result when you're done with it."
+  (with-bio-new-s-mem (bio string)
+    (let ((res (%pem-read-bio-rsa-public-key bio)))
+      (when (null-pointer-p res)
+        (error "Couldn't decode public key"))
+      res)))
+
+(defun %pem-write-bio-rsa-public-key (bio x)
+  (with-foreign-strings ((namep $pem-string-rsa-public))
+    (%pem-asn1-write-bio $i2d-RSAPublicKey namep bio x $null $null 0 $null $null)))
+
+(defun encode-rsa-public-key (rsa)
+  (with-bio-new-s-mem (bio)
+    (when (eql 0 (%pem-write-bio-rsa-public-key bio rsa))
+      (error "Can't encode RSA public key"))
+    (bio-get-string bio)))
+
 (defcfun ("RSA_generate_key" %rsa-generate-key) :pointer
   (num :int)
   (e :unsigned-long)
@@ -220,3 +352,29 @@
     (when (null-pointer-p res)
       (error "Couldn't generate RSA key"))
     res))
+
+(defcfun ("SHA1" %sha1) :pointer
+  (d :pointer)
+  (n :long)
+  (md :pointer))
+
+(defun sha1 (string &optional (res-type :hex))
+  "Return the sha1 hash of STRING.
+   Return a string of hex chars if res-type is :hex, the default,
+   a byte-array if res-type is :bytes,
+   or a string with 8-bit character values if res-type is :string."
+  (check-type res-type (member :hex :bytes :string))
+  (with-foreign-pointer (md 20)
+    (with-foreign-strings ((d string))
+      (%sha1 d (length string) md))
+    (let* ((bytes (or (eq res-type :hex) (eq res-type :bytes)))
+           (res (if bytes
+                    (make-array 20 :element-type '(unsigned-byte 8))
+                    (make-string 20))))
+      (dotimes (i 20)
+        (let ((byte (mem-ref md :unsigned-char i)))
+          (setf (aref res i)
+                (if bytes byte (code-char byte)))))
+      (if (eq res-type :hex)
+          (bin2hex res)
+          res))))

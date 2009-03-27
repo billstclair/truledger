@@ -12,11 +12,6 @@
       (subseq string pos)
       string)))
 
-(defparameter *whitespace* '(#\newline #\return #\tab #\space))
-
-(defun trim (string)
-  (string-left-trim *whitespace* (string-right-trim *whitespace* string)))
-
 (defmacro run-program-with-streams (program args &key input-string output-p)
   (let ((ins (gensym "INS"))
         (outs (gensym "OUTS")))
@@ -51,7 +46,7 @@
                              :input-string string
                              :output-p t)))
 
-(defun sha1 (string &optional (as-hex-p t))
+(defun sha1-crypto (string &optional (as-hex-p t))
   (let* ((octets (crypto:ascii-string-to-byte-array string))
          (digest (crypto:digest-sequence :sha1 octets)))
     (if as-hex-p
@@ -59,7 +54,7 @@
       (map 'string 'code-char digest))))
 
 (defun sign (string private-key-path)
-  (let* ((hash (sha1 string nil))
+  (let* ((hash (sha1-crypto string nil))
          (res (run-program-with-streams
                "openssl"
                `("rsautl"
@@ -70,7 +65,7 @@
     (cl-base64:string-to-base64-string res :columns 64)))
 
 (defun verify (string signature public-key-path)
-  (let* ((hash (sha1 string nil))
+  (let* ((hash (sha1-crypto string nil))
          (sig (cl-base64:base64-string-to-string signature))
          (res (run-program-with-streams
                "openssl"
@@ -86,17 +81,6 @@
 (defparameter *private-key-end*   "-----END RSA PRIVATE KEY-----")
 (defparameter *public-key-start*  "-----BEGIN PUBLIC KEY-----")
 (defparameter *public-key-end*    "-----END PUBLIC KEY-----")
-
-(defun file-get-contents (file)
-  (with-open-file (stream file)
-    (let* ((len (file-length stream))
-           (s (make-string len)))
-      (read-sequence s stream)
-      s)))
-
-(defun hex (integer)
-  "Return a string encoding integer as hex"
-  (format nil "~x" integer))
 
 ;; http://luca.ntop.org/Teaching/Appunti/asn1.html
 ;; Need to do bit strings, tag 3: <unused bits> <byte 0> <byte 1> ...
