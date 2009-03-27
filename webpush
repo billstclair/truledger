@@ -1,0 +1,2 @@
+#!/bin/bash
+rsyncit -av --exclude=_darcs --exclude="*.dx64fsl" ./
