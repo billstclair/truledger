@@ -1,0 +1,6 @@
+;;;; tests from RFC 2104
+
+(:hmac-test :md5 "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b" "4869205468657265" "9294727A3638BB1C13F48EF8158BFC9D")
+(:hmac-test :md5 "4a656665" "7768617420646f2079612077616e7420666f72206e6f7468696e673f" "750c783e6ab0b503eaa86e310a5db738")
+(:hmac-test :md5 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" "56be34521d144c88dbb8c733f0e8b3f6")
+

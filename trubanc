@@ -1,0 +1,3 @@
+ccl -e '(load "trubanc-loader.lisp")' \
+    -e '(when (find-package :trubanc) (in-package :trubanc))' \
+    -e '(load "load-swank.lisp")'
