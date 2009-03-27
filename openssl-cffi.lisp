@@ -17,7 +17,6 @@
   (sk :pointer)
   (dummy :int))
 
-
 ;; From openssl/rsa.h
 ;; Doesn't save to a fasl file because of the included structure.
 (defcstruct (rsa :conc-name "RSA-")
@@ -42,7 +41,7 @@
   (references :int)
   (flags :int)
 
-  ;; Used to cache montgomery values */
+  ;; Used to cache montgomery values
   (_method_mod_n :pointer)
   (_method_mod_p :pointer)
   (_method_mod_q :pointer)
