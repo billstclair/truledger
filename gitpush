@@ -1,5 +1,7 @@
 #!/bin/bash
 # Push the HEAD to the shared repository
 # assumes the following remotes:
-#  git remote add trubanc git+ssh://$HUBTB/usr/local/www/trubanc.com/trubanc-lisp.git
+# git remote add trubanc git+ssh://$HUBTB/usr/local/www/trubanc.com/trubanc-lisp.git
+# git remote add github git@github.com:billstclair/trubanc-lisp.git
 git push trubanc
+git push github
