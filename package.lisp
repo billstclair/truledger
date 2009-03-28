@@ -1,5 +1,5 @@
 (defpackage #:trubanc
-  (:use :cl :cffi :trubanc-loader)
+  (:use :cl :cffi :cl-base64 :trubanc-loader)
   (:export
    #:fopen
    #:fclose

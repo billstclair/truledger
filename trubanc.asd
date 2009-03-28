@@ -2,7 +2,7 @@
 (in-package #:cl-user)
 
 (asdf:defsystem :trubanc
-  :depends-on (cffi)
+  :depends-on (cffi cl-base64)
   :version "0.1"
   :author "Bill St. Clair <bill@billstclair.com>"
   :maintainer "Bill St. Clair <bill@billstclair.com>"
