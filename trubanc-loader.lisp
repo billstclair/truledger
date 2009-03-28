@@ -1,3 +1,5 @@
+; -*- mode: lisp -*-
+
 (cl:defpackage #:trubanc-loader
     (:use #:cl :ccl)
   (:export #:add-to-registry
@@ -21,13 +23,13 @@
 (defun loadsys (system)
   (asdf:oos 'asdf:load-op system))
 
-(add-to-registry "./cl-base64"
-                 "./ironclad"
-                 "./cffi"
-                 "./trivial-features"
-                 "./babel"
-                 "./alexandria"
-                 *source-directory*)
+(let ((systems-wildcard
+       (merge-pathnames
+        (make-pathname :directory "systems" :name :wild :type :wild)
+        *source-directory*)))
+  (apply 'add-to-registry
+         (directory systems-wildcard :directories t :files nil))
+  (add-to-registry *source-directory*))
 
 (asdf:oos 'asdf:load-op :trubanc)
 

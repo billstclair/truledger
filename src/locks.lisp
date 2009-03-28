@@ -1,37 +1,11 @@
-(defpackage #:trubanc
-  (:use :cl :cffi :cl-base64 :trubanc-loader)
-  (:export
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Read-write locks
+;;;
 
-   ;; openssl-cffi.lisp
-   #:fopen
-   #:fclose
-   #:with-fopen-file
-   #:fread-string
+(in-package #:trubanc)
 
-   #:read-rsa-private-key
-   #:write-rsa-private-key
-   #:read-rsa-public-key
-   #:write-rsa-public-key
-   #:decode-rsa-private-key
-   #:encode-rsa-private-key
-   #:decode-rsa-public-key
-   #:encode-rsa-public-key
-   #:rsa-generate-key
-   #:rsa-free
-   #:sha1
-   #:sign
-   #:verify
 
-   ;; utilities.lisp
-   #:file-get-contents
-   #:hex
-   #:trim
-   #:bin2hex
-   #:hex2bin
-   #:copy-memory-to-lisp
-   #:base64-encode
-   #:base64-decode
-   ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

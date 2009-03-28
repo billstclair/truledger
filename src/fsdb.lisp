@@ -1,7 +1,11 @@
+; -*- mode: lisp -*-
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; File System Database for Trubanc
 ;;;
+
+(in-package :trubanc)
 
 (defclass fsdb ()
   ((dir :type string

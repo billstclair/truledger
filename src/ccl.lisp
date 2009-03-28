@@ -1,3 +1,5 @@
+; -*- mode: lisp -*-
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; CCL interface functions 
@@ -15,6 +17,46 @@
 
 (defun add-startup-function (f)
   (pushnew f ccl:*lisp-startup-functions*))
+
+;;;
+;;; Locking. A read-write-lock may NOT be locked recursively.
+;;;
+
+(defun make-read-write-lock ()
+  (ccl:make-read-write-lock))
+
+(defun read-lock-rwlock (rwlock)
+  (ccl::read-lock-rwlock rwlock))
+
+(defun write-lock-rwlock (rwlock)
+  (ccl::write-lock-rwlock rwlock))
+
+(defun unlock-rwlock (rwlock)
+  (ccl::unlock-rwlock rwlock))
+
+(defmacro with-read-lock ((lock) &body body)
+  `(ccl:with-read-lock (,lock) ,@body))
+
+(defmacro with-write-lock ((lock) &body body)
+  `(ccl:with-write-lock (,lock) ,@body))
+
+;;;
+;;; Processes
+;;;
+
+(defun current-process ()
+  ccl:*current-process*)
+
+(defun all-processes ()
+  (ccl:all-processes))
+
+(defun process-run-function (name function &rest args)
+  (declare (dynamic-extent args))
+  (apply #'ccl:process-run-function name function args))
+
+(defun process-wait (whostate function &rest args)
+  (declare (dynamic-extent args))
+  (apply #'ccl:process-wait whostate function args))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

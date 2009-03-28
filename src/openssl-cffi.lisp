@@ -1,3 +1,10 @@
+; -*- mode: lisp -*-
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Interface to the cryptographic functions in the OpenSSL library
+;;;
+
 (in-package :trubanc)
 
 (defcfun ("fopen" %fopen) :pointer      ;returns a FILE stream
@@ -31,7 +38,7 @@
   "Execute BODY with FP bound to the FILE pointer for (FOPEN FILE MODE)"
   (let ((thunk (gensym)))
     `(let ((,thunk (lambda (,fp) ,@body)))
-       (declare (dynamic-extent #',thunk))
+       (declare (dynamic-extent ,thunk))
        (call-with-fopen-file ,file ,mode ,thunk))))
 
 (defun call-with-fopen-file (file mode thunk)
@@ -373,77 +380,101 @@
 (defcfun ("EVP_MD_CTX_cleanup" %evp-md-ctx-cleanup) :int
   (ctx :pointer))
 
+(defmacro with-rsa-public-key ((keyvar key) &body body)
+  (let ((thunk (gensym)))
+    `(flet ((,thunk (,keyvar) ,@body))
+       (declare (dynamic-extent #',thunk))
+       (call-with-rsa-public-key #',thunk ,key))))
+             
+(defun call-with-rsa-public-key (thunk key)
+  (if (stringp key)
+      (let ((key (decode-rsa-public-key key)))
+        (unwind-protect
+             (funcall thunk key)
+          (rsa-free key)))
+      (funcall thunk key)))
+
+(defmacro with-rsa-private-key ((keyvar key) &body body)
+  (let ((thunk (gensym)))
+    `(flet ((,thunk (,keyvar) ,@body))
+       (declare (dynamic-extent #',thunk))
+       (call-with-rsa-private-key #',thunk ,key))))
+             
+(defun call-with-rsa-private-key (thunk key)
+  (if (stringp key)
+      (let ((key (decode-rsa-private-key key)))
+        (unwind-protect
+             (funcall thunk key)
+          (rsa-free key)))
+      (funcall thunk key)))
+
 (defun sign (data rsa-private-key)
   "Sign the string in DATA with the RSA-PRIVATE-KEY.
    Return the signature BASE64-encoded."
   (check-type data string)
-  (let ((rsa (if (stringp rsa-private-key)
-                 (decode-rsa-private-key rsa-private-key)
-                 rsa-private-key))          
-        (pkey (%evp-pkey-new))
-        (type (%evp-sha1)))
-    (unwind-protect
-         (progn
-           (when (null-pointer-p pkey)
-             (error "Can't allocate private key storage"))
-           (when (null-pointer-p type)
-             (error "Can't get SHA1 type structure"))
-           (when (eql 0 (%evp-pkey-set1-rsa pkey rsa))
-             (error "Can't initialize private key storage"))
-           (with-foreign-pointer (ctx $EVP-MD-CTX-size)
-             (with-foreign-pointer (sig (%evp-pkey-size pkey))
-               (with-foreign-pointer (siglen (foreign-type-size :unsigned-long))
-                 (with-foreign-strings ((datap data :encoding :latin-1))
-                   (when (or (eql 0 (%evp-sign-init ctx type))
-                             (unwind-protect
-                                  (or (eql 0 (%evp-sign-update
-                                              ctx datap (length data)))
-                                      (eql 0 (%evp-sign-final ctx sig siglen pkey)))
-                               (%evp-md-ctx-cleanup ctx)))
-                     (error "Error while signing"))
-                   ;; Here's the result
-                   (base64-encode
-                    (copy-memory-to-lisp
-                     sig (mem-ref siglen :unsigned-long) nil)))))))
-      (unless (null-pointer-p pkey)
-        (%evp-pkey-free pkey)))))
+  (with-rsa-private-key (rsa rsa-private-key)
+    (let ((pkey (%evp-pkey-new))
+          (type (%evp-sha1)))
+      (unwind-protect
+           (progn
+             (when (null-pointer-p pkey)
+               (error "Can't allocate private key storage"))
+             (when (null-pointer-p type)
+               (error "Can't get SHA1 type structure"))
+             (when (eql 0 (%evp-pkey-set1-rsa pkey rsa))
+               (error "Can't initialize private key storage"))
+             (with-foreign-pointer (ctx $EVP-MD-CTX-size)
+               (with-foreign-pointer (sig (%evp-pkey-size pkey))
+                 (with-foreign-pointer (siglen (foreign-type-size :unsigned-long))
+                   (with-foreign-strings ((datap data :encoding :latin-1))
+                     (when (or (eql 0 (%evp-sign-init ctx type))
+                               (unwind-protect
+                                    (or (eql 0 (%evp-sign-update
+                                                ctx datap (length data)))
+                                        (eql 0 (%evp-sign-final ctx sig siglen pkey)))
+                                 (%evp-md-ctx-cleanup ctx)))
+                       (error "Error while signing"))
+                     ;; Here's the result
+                     (base64-encode
+                      (copy-memory-to-lisp
+                       sig (mem-ref siglen :unsigned-long) nil)))))))
+        (unless (null-pointer-p pkey)
+          (%evp-pkey-free pkey))))))
 
 (defun verify (data signature rsa-public-key)
   "Verify the SIGNATURE for DATA created by SIGN, using the given RSA-PUBLIC-KEY.
    The private key will work, too."
   (check-type data string)
   (check-type signature string)
-  (let* ((rsa (if (stringp rsa-public-key)
-                  (decode-rsa-public-key rsa-public-key)
-                  rsa-public-key))          
-         (pkey (%evp-pkey-new))
-         (type (%evp-sha1))
-         (sig (base64-decode signature))
-         (siglen (length sig)))
-    (unwind-protect
-         (progn
-           (when (null-pointer-p pkey)
-             (error "Can't allocate public key storage"))
-           (when (null-pointer-p type)
-             (error "Can't get SHA1 type structure"))
-           (when (eql 0 (%evp-pkey-set1-rsa pkey rsa))
-             (error "Can't initialize public key storage"))
-           (with-foreign-pointer (ctx $EVP-MD-CTX-size)
-             (with-foreign-strings ((datap data :encoding :latin-1)
-                                    (sigp sig :encoding :latin-1))
-               (when (eql 0 (%evp-sign-init ctx type))
-                 (error "Can't init ctx for verify"))
-               (unwind-protect
-                    (progn
-                      (when (eql 0 (%evp-sign-update ctx datap (length data)))
-                        (error "Can't update ctx for signing"))
-                      (let ((res (%evp-verify-final ctx sigp siglen pkey)))
-                        (when (eql -1 res)
-                          (error "Error in verify"))
-                        (not (eql 0 res)))) ; Here's the result
-                 (%evp-md-ctx-cleanup ctx)))))
-      (unless (null-pointer-p pkey)
-        (%evp-pkey-free pkey)))))
+  (with-rsa-public-key (rsa rsa-public-key)
+    (let* ((pkey (%evp-pkey-new))
+           (type (%evp-sha1))
+           (sig (base64-decode signature))
+           (siglen (length sig)))
+      (unwind-protect
+           (progn
+             (when (null-pointer-p pkey)
+               (error "Can't allocate public key storage"))
+             (when (null-pointer-p type)
+               (error "Can't get SHA1 type structure"))
+             (when (eql 0 (%evp-pkey-set1-rsa pkey rsa))
+               (error "Can't initialize public key storage"))
+             (with-foreign-pointer (ctx $EVP-MD-CTX-size)
+               (with-foreign-strings ((datap data :encoding :latin-1)
+                                      (sigp sig :encoding :latin-1))
+                 (when (eql 0 (%evp-sign-init ctx type))
+                   (error "Can't init ctx for verify"))
+                 (unwind-protect
+                      (progn
+                        (when (eql 0 (%evp-sign-update ctx datap (length data)))
+                          (error "Can't update ctx for signing"))
+                        (let ((res (%evp-verify-final ctx sigp siglen pkey)))
+                          (when (eql -1 res)
+                            (error "Error in verify"))
+                          (not (eql 0 res)))) ; Here's the result
+                   (%evp-md-ctx-cleanup ctx)))))
+        (unless (null-pointer-p pkey)
+          (%evp-pkey-free pkey))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

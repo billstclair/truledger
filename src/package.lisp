@@ -1,11 +1,39 @@
 ; -*- mode: lisp -*-
 
-(load "slime/swank-loader.lisp")
-(push `(*package* . ,*package*) swank::*default-worker-thread-bindings*)
+(defpackage #:trubanc
+  (:use :cl :cffi :cl-base64 :trubanc-loader)
+  (:export
 
-;;(swank-loader::load-swank)
+   ;; openssl-cffi.lisp
+   #:fopen
+   #:fclose
+   #:with-fopen-file
+   #:fread-string
 
-(swank:create-server :port 4006 :dont-close t)
+   #:read-rsa-private-key
+   #:write-rsa-private-key
+   #:read-rsa-public-key
+   #:write-rsa-public-key
+   #:decode-rsa-private-key
+   #:encode-rsa-private-key
+   #:decode-rsa-public-key
+   #:encode-rsa-public-key
+   #:rsa-generate-key
+   #:rsa-free
+   #:sha1
+   #:sign
+   #:verify
+
+   ;; utilities.lisp
+   #:file-get-contents
+   #:hex
+   #:trim
+   #:bin2hex
+   #:hex2bin
+   #:copy-memory-to-lisp
+   #:base64-encode
+   #:base64-decode
+   ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
