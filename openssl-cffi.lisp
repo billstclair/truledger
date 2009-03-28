@@ -1,58 +1,5 @@
 (in-package :trubanc)
 
-;; We don't need any of these structures
-#||
-
-;; From openssl/evp.h
-(defcstruct (evp-pkey :conc-name "EVP-PKEY-")
-  (type :int)
-  (save-type :int)
-  (references :int)
-  (rsa :pointer)
-  (save-parameters :int)
-  (attributes :pointer))
-  
-;; From openssl/crypto.h
-(defcstruct (crypto-ex-data :conc-name "CRYPT-EX-DATA-")
-  (sk :pointer)
-  (dummy :int))
-
-;; From openssl/rsa.h
-;; Doesn't save to a fasl file because of the included structure.
-(defcstruct (rsa :conc-name "RSA-")
-  (pad :int)
-  (version :long)
-  (rsa-method :pointer)
-  (engine :pointer)
-  (n :pointer)
-  (e :pointer)
-  (d :pointer)
-  (p :pointer)
-  (q :pointer)
-  (dmp1 :pointer)
-  (dmq1 :pointer)
-  (iqmp :pointer)
-
-  ;; be careful using this if the RSA structure is shared 
-  ;; (ex-data crypto-ex-data)
-  (sk :pointer)
-  (dummy-int)
-
-  (references :int)
-  (flags :int)
-
-  ;; Used to cache montgomery values
-  (_method_mod_n :pointer)
-  (_method_mod_p :pointer)
-  (_method_mod_q :pointer)
-
-  ;; all BIGNUM values are actually in the following data, if it is not NULL
-  (bignum_data :pointer)
-  (blinding :pointer)
-)
-
-||#
-
 (defcfun ("fopen" %fopen) :pointer      ;returns a FILE stream
   (file :pointer)                       ;string
   (mode :pointer))                      ;string
@@ -67,6 +14,8 @@
   (stream :pointer))
 
 (defun fopen (file mode)
+  "Open a file with a FILE pointer.
+  Mode is r r+ w w+ a a+"
   (with-foreign-strings ((filep (cffi::native-namestring file) :encoding :latin-1)
                          (modep mode))
     (let ((res (%fopen filep modep)))
@@ -78,6 +27,7 @@
   (eql (%fclose fp) 0))
 
 (defmacro with-fopen-file ((fp file &optional mode) &body body)
+  "Execute BODY with FP bound to the FILE pointer for (FOPEN FILE MODE)"
   (let ((thunk (gensym)))
     `(let ((,thunk (lambda (,fp) ,@body)))
        (declare (dynamic-extent #',thunk))
@@ -89,6 +39,7 @@
        (fclose fp))))
 
 (defun fread-string (fp max-len)
+  "Read a string from a FILE pointer"
   (with-foreign-pointer (p max-len)
     (let ((cnt (%fread p 1 max-len fp)))
       (foreign-string-to-lisp p :count cnt))))
@@ -188,6 +139,7 @@
     (%pem-asn1-write $i2d-RSAPublicKey namep fp x $null $null 0 $null $null)))
 
 (defun write-rsa-public-key (rsa filename)
+  "Write an RSA public key to a file, PEM-encoded"
   (with-fopen-file (fp filename "w")
     (when (eql 0 (%pem-write-rsa-public-key fp rsa))
       (error "Can't write public key to ~s" filename))))
@@ -287,7 +239,7 @@
     (%pem-asn1-read-bio $d2i-RSAPrivateKey namep bio x cb u)))
 
 (defun decode-rsa-private-key (string &optional (password ""))
-  "Converts a PEM string to an RSA structure. Free it with rsa-free.
+  "Convert a PEM string to an RSA structure. Free it with RSA-FREE.
    Will prompt for the password if it needs it and you provide nil."
   (with-bio-new-s-mem (bio string)
     (let ((res (if password
@@ -323,7 +275,7 @@
 
 (defun decode-rsa-public-key (string)
   "Convert a PEM-encoded string to an RSA public key.
-   You must rsa-free the result when you're done with it."
+   You must RSA-FREE the result when you're done with it."
   (with-bio-new-s-mem (bio string)
     (let ((res (%pem-read-bio-rsa-public-key bio)))
       (when (null-pointer-p res)
@@ -335,6 +287,7 @@
     (%pem-asn1-write-bio $i2d-RSAPublicKey namep bio x $null $null 0 $null $null)))
 
 (defun encode-rsa-public-key (rsa)
+  "Encode an RSA public or private key to a PEM-encoded public key."
   (with-bio-new-s-mem (bio)
     (when (eql 0 (%pem-write-bio-rsa-public-key bio rsa))
       (error "Can't encode RSA public key"))
@@ -352,8 +305,9 @@
   (callback :pointer)
   (cb-arg :pointer))
 
-(defun rsa-generate-key (keylen &optional (e 65537))
-  (let ((res (%rsa-generate-key keylen e $null $null)))
+(defun rsa-generate-key (keylen &optional (exponent 65537))
+  "Generate an RSA private key with the given KEYLEN and exponent."
+  (let ((res (%rsa-generate-key keylen exponent $null $null)))
     (when (null-pointer-p res)
       (error "Couldn't generate RSA key"))
     res))
@@ -362,16 +316,6 @@
   (d :pointer)
   (n :long)
   (md :pointer))
-
-(defun copy-memory-to-lisp (pointer len byte-array-p)
-  (let ((res (if byte-array-p
-                 (make-array len :element-type '(unsigned-byte 8))
-                 (make-string len))))
-    (dotimes (i len)
-      (let ((byte (mem-ref pointer :unsigned-char i)))
-        (setf (aref res i)
-              (if byte-array-p byte (code-char byte)))))
-    res))
 
 (defun sha1 (string &optional (res-type :hex))
   "Return the sha1 hash of STRING.
@@ -387,12 +331,6 @@
       (if (eq res-type :hex)
           (bin2hex res)
           res))))
-
-(defun base64-encode (string)
-  (string-to-base64-string string :columns 64))
-
-(defun base64-decode (string)
-  (base64-string-to-string string))
 
 ;; Sign and verify
 (defcfun ("EVP_PKEY_new" %evp-pkey-new) :pointer)
@@ -435,6 +373,8 @@
   (ctx :pointer))
 
 (defun sign (data rsa-private-key)
+  "Sign the string in DATA with the RSA-PRIVATE-KEY.
+   Return the signature BASE64-encoded."
   (check-type data string)
   (let ((rsa (if (stringp rsa-private-key)
                  (decode-rsa-private-key rsa-private-key)
@@ -460,6 +400,7 @@
                                       (eql 0 (%evp-sign-final ctx sig siglen pkey)))
                                (%evp-md-ctx-cleanup ctx)))
                      (error "Error while signing"))
+                   ;; Here's the result
                    (base64-encode
                     (copy-memory-to-lisp
                      sig (mem-ref siglen :unsigned-long) nil)))))))
@@ -467,6 +408,8 @@
         (%evp-pkey-free pkey)))))
 
 (defun verify (data signature rsa-public-key)
+  "Verify the SIGNATURE for DATA created by SIGN, using the given RSA-PUBLIC-KEY.
+   The private key will work, too."
   (check-type data string)
   (check-type signature string)
   (let* ((rsa (if (stringp rsa-public-key)
@@ -496,7 +439,7 @@
                       (let ((res (%evp-verify-final ctx sigp siglen pkey)))
                         (when (eql -1 res)
                           (error "Error in verify"))
-                        (not (eql 0 res))))
+                        (not (eql 0 res)))) ; Here's the result
                  (%evp-md-ctx-cleanup ctx)))))
       (unless (null-pointer-p pkey)
         (%evp-pkey-free pkey)))))

@@ -2,6 +2,10 @@
 ;;;
 ;;; OpenSSL functions
 ;;;
+;;; This is an aborted attempt to do the SSL stuff in Lisp, with
+;;; some help from the openssl command line.
+;;; Replaced by openssl-cffi.lisp, which uses libssl directly.
+;;;
 
 (in-package #:trubanc)
 

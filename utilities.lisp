@@ -75,3 +75,19 @@
         (setq accum 0
               cnt 2)))
     (or res accum)))
+
+(defun copy-memory-to-lisp (pointer len byte-array-p)
+  (let ((res (if byte-array-p
+                 (make-array len :element-type '(unsigned-byte 8))
+                 (make-string len))))
+    (dotimes (i len)
+      (let ((byte (mem-ref pointer :unsigned-char i)))
+        (setf (aref res i)
+              (if byte-array-p byte (code-char byte)))))
+    res))
+
+(defun base64-encode (string)
+  (string-to-base64-string string :columns 64))
+
+(defun base64-decode (string)
+  (base64-string-to-string string))
