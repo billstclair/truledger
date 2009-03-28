@@ -19,8 +19,23 @@
   (pushnew f ccl:*lisp-startup-functions*))
 
 ;;;
-;;; Locking. A read-write-lock may NOT be locked recursively.
+;;; Locking.
 ;;;
+;;; A read-write-lock may NOT be locked recursively.
+;;; A regular lock MAY be locked recursively.
+;;;
+
+(defun make-lock (&optional name)
+  (ccl:make-lock name))
+
+(defun grab-lock (lock)
+  (ccl:grab-lock lock))
+
+(defun release-lock (lock)
+  (ccl:release-lock lock))
+
+(defmacro with-lock-grabbed ((lock &optional (whostate "Lock")) &body body)
+  `(ccl:with-lock-grabbed (,lock ,whostate) ,@body))
 
 (defun make-read-write-lock ()
   (ccl:make-read-write-lock))
