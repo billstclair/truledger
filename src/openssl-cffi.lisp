@@ -7,74 +7,10 @@
 
 (in-package :trubanc)
 
-(defcfun ("fopen" %fopen) :pointer      ;returns a FILE stream
-  (file :pointer)                       ;string
-  (mode :pointer))                      ;string
-
-(defcfun ("fclose" %fclose) :int         ;returns 0 on success
-  (stream :pointer))                    ;a FILE stream
-
-(defcfun ("fread" %fread) :long
-  (ptr :pointer)
-  (size :long)
-  (nitems :long)
-  (stream :pointer))
-
-(defun fopen (file mode)
-  "Open a file with a FILE pointer.
-  Mode is r r+ w w+ a a+"
-  (with-foreign-strings ((filep (cffi-sys:native-namestring file) :encoding :latin-1)
-                         (modep mode))
-    (let ((res (%fopen filep modep)))
-      (when (null-pointer-p res)
-        (error "Failed to open ~s for ~s" file mode))
-      res)))
-
-(defun fclose (fp)
-  ;; Close a FILE pointer opened by FOPEN.
-  (eql (%fclose fp) 0))
-
-(defmacro with-fopen-file ((fp file &optional mode) &body body)
-  "Execute BODY with FP bound to the FILE pointer for (FOPEN FILE MODE)"
-  (let ((thunk (gensym)))
-    `(let ((,thunk (lambda (,fp) ,@body)))
-       (declare (dynamic-extent ,thunk))
-       (call-with-fopen-file ,file ,mode ,thunk))))
-
-(defun call-with-fopen-file (file mode thunk)
-  (let ((fp (fopen file (or mode "r"))))
-     (unwind-protect (funcall thunk fp)
-       (fclose fp))))
-
-(defun fread-string (fp max-len)
-  "Read a string from a FILE pointer"
-  (with-foreign-pointer (p max-len)
-    (let ((cnt (%fread p 1 max-len fp)))
-      (foreign-string-to-lisp p :count cnt))))
-
 (defparameter $null (null-pointer))
 
 (defcfun ("OPENSSL_add_all_algorithms_conf" open-ssl-add-all-algorithms) :void
   )
-
-(defcfun ("PEM_ASN1_read" %pem-asn1-read) :pointer
-  (d2i :pointer)
-  (name (:pointer :char))
-  (fp :pointer)                         ;to a FILE stream
-  (x (:pointer (:pointer :char)))
-  (cb :pointer)
-  (u :pointer))
-
-(defcfun ("PEM_ASN1_write" %pem-asn1-write) :int
-  (i2d (:pointer :int))
-  (name (:pointer :char))
-  (fp :pointer)                         ;to a FILE stream
-  (x (:pointer :char))
-  (enc :pointer)
-  (kstr (:pointer :char))
-  (klen :int)
-  (callback :pointer)
-  (u :pointer))
 
 (defparameter *libssl*
   (load-foreign-library '(:default "libssl")))
@@ -93,22 +29,6 @@
 (defparameter $d2i-RSAPrivateKey
   (foreign-symbol-pointer "d2i_RSAPrivateKey"))
 
-(defun %pem-read-rsa-private-key (fp &optional (x $null) (cb $null) (u $null))
-  (with-foreign-strings ((namep $pem-string-rsa :encoding :latin-1))
-    (%pem-asn1-read $d2i-RSAPrivateKey namep fp x cb u)))
-
-(defun read-rsa-private-key (filename &optional password)
-  "Read an RSA private key from a file. Return a pointer to an RSA structure,
-   or signal an error. You must rsa-free the result when you're done with it."
-  (with-fopen-file (fp filename)
-    (let ((res (if password
-                   (with-foreign-strings ((passp password :encoding :latin-1))
-                     (%pem-read-rsa-private-key fp $null $null passp))
-                   (%pem-read-rsa-private-key fp))))
-      (when (null-pointer-p res)
-        (error "Couldn't load private key from ~s" filename))
-      res)))
-
 (defcfun ("RSA_free" rsa-free) :void
   (r :pointer))
 
@@ -118,55 +38,19 @@
 (defcfun ("EVP_des_ede3_cbc" evp-des-ede3-cbc) :pointer
   )
 
-(defun %pem-write-rsa-private-key
-    (fp x &optional (enc $null) (kstr $null) (klen 0) (cb $null) (u $null))
-  (with-foreign-strings ((namep $pem-string-rsa :encoding :latin-1))
-    (%pem-asn1-write $i2d-RSAPrivateKey namep fp x enc kstr klen cb u)))
-
-;; Could switch to PEM_write_PKCS8PrivateKey, if PHP compatibility is
-;; no longer necessary. It's supposed to be more secure.
-(defun write-rsa-private-key (rsa filename &optional password)
-  "Write RSA to FILE, encrypted with PASSWORD. Returns NIL or
-   signals an error."
-  (with-fopen-file (fp filename "w")
-    (let ((res (if password
-                   (with-foreign-strings ((passp password :encoding :latin-1))
-                     (%pem-write-rsa-private-key
-                      fp rsa (evp-des-ede3-cbc) passp (length password)))
-                   (%pem-write-rsa-private-key fp rsa))))
-      (when (eql res 0)
-        (error "Can't write private key to ~s" filename)))))
-
 (defconstant $pem-string-rsa-public "RSA PUBLIC KEY")
 
 (defparameter $i2d-RSAPublicKey
   (foreign-symbol-pointer "i2d_RSAPublicKey"))
 
-(defun %pem-write-rsa-public-key (fp x)
-  (with-foreign-strings ((namep $pem-string-rsa-public :encoding :latin-1))
-    (%pem-asn1-write $i2d-RSAPublicKey namep fp x $null $null 0 $null $null)))
+(defparameter $i2d-PublicKey
+  (foreign-symbol-pointer "i2d_PublicKey"))
 
-(defun write-rsa-public-key (rsa filename)
-  "Write an RSA public key to a file, PEM-encoded"
-  (with-fopen-file (fp filename "w")
-    (when (eql 0 (%pem-write-rsa-public-key fp rsa))
-      (error "Can't write public key to ~s" filename))))
+(defparameter $i2d-PublicKey
+  (foreign-symbol-pointer "i2d_PublicKey"))
 
 (defparameter $d2i-RSAPublicKey
   (foreign-symbol-pointer "d2i_RSAPublicKey"))
-
-(defun %pem-read-rsa-public-key (fp &optional (x $null))
-  (with-foreign-strings ((namep $pem-string-rsa-public :encoding :latin-1))
-    (%pem-asn1-read $d2i-RSAPublicKey namep fp x $null $null)))
-
-(defun read-rsa-public-key (filename)
-  "Read an RSA public key from a file. Return a pointer to an RSA structure,
-   or signal an error. You must rsa-free the result when you're done with it."
-  (with-fopen-file (fp filename)
-    (let ((res (%pem-read-rsa-public-key fp)))
-      (when (null-pointer-p res)
-        (error "Couldn't load public key from ~s" filename))
-      res)))
 
 (defcfun ("BIO_new" %bio-new) :pointer
   (type :pointer))
@@ -277,27 +161,29 @@
         (error "Can't encode private key."))
       (bio-get-string bio))))
 
-(defun %pem-read-bio-rsa-public-key (bio &optional (x $null))
-  (with-foreign-strings ((namep $pem-string-rsa-public :encoding :latin-1))
-    (%pem-asn1-read-bio $d2i-RSAPublicKey namep bio x $null $null)))
+(defcfun ("PEM_read_bio_RSA_PUBKEY" %pem-read-bio-rsa-pubkey) :pointer
+  (bp :pointer)
+  (x :pointer)
+  (cb :pointer)
+  (u :pointer))
 
 (defun decode-rsa-public-key (string)
   "Convert a PEM-encoded string to an RSA public key.
    You must RSA-FREE the result when you're done with it."
   (with-bio-new-s-mem (bio string)
-    (let ((res (%pem-read-bio-rsa-public-key bio)))
+    (let ((res (%pem-read-bio-rsa-pubkey bio $null $null $null)))
       (when (null-pointer-p res)
         (error "Couldn't decode public key"))
       res)))
 
-(defun %pem-write-bio-rsa-public-key (bio x)
-  (with-foreign-strings ((namep $pem-string-rsa-public :encoding :latin-1))
-    (%pem-asn1-write-bio $i2d-RSAPublicKey namep bio x $null $null 0 $null $null)))
+(defcfun ("PEM_write_bio_RSA_PUBKEY" %pem-write-bio-rsa-pubkey) :int
+  (bp :pointer)
+  (rsa :pointer))
 
 (defun encode-rsa-public-key (rsa)
   "Encode an RSA public or private key to a PEM-encoded public key."
   (with-bio-new-s-mem (bio)
-    (when (eql 0 (%pem-write-bio-rsa-public-key bio rsa))
+    (when (eql 0 (%pem-write-bio-rsa-pubkey bio rsa))
       (error "Can't encode RSA public key"))
     (bio-get-string bio)))
 
@@ -408,73 +294,76 @@
           (rsa-free key)))
       (funcall thunk key)))
 
+(defmacro with-evp-pkey ((pkey rsa-key &optional public-p) &body body)
+  (let ((thunk (gensym)))
+    `(flet ((,thunk (,pkey) ,@body))
+       (call-with-evp-pkey #',thunk ,rsa-key ,public-p))))
+
+(defun call-with-evp-pkey (thunk rsa-key public-p)
+  (flet ((doit (thunk rsa)
+           (let ((pkey (%evp-pkey-new)))
+             (unwind-protect
+                  (progn
+                    (when (null-pointer-p pkey)
+                      (error "Can't allocate private key storage"))
+                    (when (eql 0 (%evp-pkey-set1-rsa pkey rsa))
+                      (error "Can't initialize private key storage"))
+                    (funcall thunk pkey))
+               (unless (null-pointer-p pkey)
+                 (%evp-pkey-free pkey))))))
+    (if public-p
+        (with-rsa-public-key (rsa rsa-key) (doit thunk rsa))
+        (with-rsa-private-key (rsa rsa-key) (doit thunk rsa)))))
+
 (defun sign (data rsa-private-key)
   "Sign the string in DATA with the RSA-PRIVATE-KEY.
    Return the signature BASE64-encoded."
   (check-type data string)
-  (with-rsa-private-key (rsa rsa-private-key)
-    (let ((pkey (%evp-pkey-new))
-          (type (%evp-sha1)))
-      (unwind-protect
-           (progn
-             (when (null-pointer-p pkey)
-               (error "Can't allocate private key storage"))
-             (when (null-pointer-p type)
-               (error "Can't get SHA1 type structure"))
-             (when (eql 0 (%evp-pkey-set1-rsa pkey rsa))
-               (error "Can't initialize private key storage"))
-             (with-foreign-pointer (ctx $EVP-MD-CTX-size)
-               (with-foreign-pointer (sig (%evp-pkey-size pkey))
-                 (with-foreign-pointer (siglen (foreign-type-size :unsigned-long))
-                   (with-foreign-strings ((datap data :encoding :latin-1))
-                     (when (or (eql 0 (%evp-sign-init ctx type))
-                               (unwind-protect
-                                    (or (eql 0 (%evp-sign-update
-                                                ctx datap (length data)))
-                                        (eql 0 (%evp-sign-final ctx sig siglen pkey)))
-                                 (%evp-md-ctx-cleanup ctx)))
-                       (error "Error while signing"))
-                     ;; Here's the result
-                     (base64-encode
-                      (copy-memory-to-lisp
-                       sig (mem-ref siglen :unsigned-long) nil)))))))
-        (unless (null-pointer-p pkey)
-          (%evp-pkey-free pkey))))))
+  (with-evp-pkey (pkey rsa-private-key)
+    (let ((type (%evp-sha1)))
+      (when (null-pointer-p type)
+        (error "Can't get SHA1 type structure"))
+      (with-foreign-pointer (ctx $EVP-MD-CTX-size)
+        (with-foreign-pointer (sig (%evp-pkey-size pkey))
+          (with-foreign-pointer (siglen (foreign-type-size :unsigned-long))
+            (with-foreign-strings ((datap data :encoding :latin-1))
+              (when (or (eql 0 (%evp-sign-init ctx type))
+                        (unwind-protect
+                             (or (eql 0 (%evp-sign-update
+                                         ctx datap (length data)))
+                                 (eql 0 (%evp-sign-final ctx sig siglen pkey)))
+                          (%evp-md-ctx-cleanup ctx)))
+                (error "Error while signing"))
+              ;; Here's the result
+              (base64-encode
+               (copy-memory-to-lisp
+                sig (mem-ref siglen :unsigned-long) nil)))))))))
 
 (defun verify (data signature rsa-public-key)
   "Verify the SIGNATURE for DATA created by SIGN, using the given RSA-PUBLIC-KEY.
    The private key will work, too."
   (check-type data string)
   (check-type signature string)
-  (with-rsa-public-key (rsa rsa-public-key)
-    (let* ((pkey (%evp-pkey-new))
-           (type (%evp-sha1))
+  (with-evp-pkey (pkey rsa-public-key t)
+    (let* ((type (%evp-sha1))
            (sig (base64-decode signature))
            (siglen (length sig)))
-      (unwind-protect
-           (progn
-             (when (null-pointer-p pkey)
-               (error "Can't allocate public key storage"))
-             (when (null-pointer-p type)
-               (error "Can't get SHA1 type structure"))
-             (when (eql 0 (%evp-pkey-set1-rsa pkey rsa))
-               (error "Can't initialize public key storage"))
-             (with-foreign-pointer (ctx $EVP-MD-CTX-size)
-               (with-foreign-strings ((datap data :encoding :latin-1)
-                                      (sigp sig :encoding :latin-1))
-                 (when (eql 0 (%evp-sign-init ctx type))
-                   (error "Can't init ctx for verify"))
-                 (unwind-protect
-                      (progn
-                        (when (eql 0 (%evp-sign-update ctx datap (length data)))
-                          (error "Can't update ctx for signing"))
-                        (let ((res (%evp-verify-final ctx sigp siglen pkey)))
-                          (when (eql -1 res)
-                            (error "Error in verify"))
-                          (not (eql 0 res)))) ; Here's the result
-                   (%evp-md-ctx-cleanup ctx)))))
-        (unless (null-pointer-p pkey)
-          (%evp-pkey-free pkey))))))
+      (when (null-pointer-p type)
+        (error "Can't get SHA1 type structure"))
+      (with-foreign-pointer (ctx $EVP-MD-CTX-size)
+        (with-foreign-strings ((datap data :encoding :latin-1)
+                               (sigp sig :encoding :latin-1))
+          (when (eql 0 (%evp-sign-init ctx type))
+            (error "Can't init ctx for verify"))
+          (unwind-protect
+               (progn
+                 (when (eql 0 (%evp-sign-update ctx datap (length data)))
+                   (error "Can't update ctx for signing"))
+                 (let ((res (%evp-verify-final ctx sigp siglen pkey)))
+                   (when (eql -1 res)
+                     (error "Error in verify"))
+                   (not (eql 0 res))))  ; Here's the result
+            (%evp-md-ctx-cleanup ctx)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

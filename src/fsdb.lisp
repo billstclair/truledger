@@ -12,6 +12,10 @@
         :initarg :dir
         :accessor fsdb-dir)))
 
+(defmethod print-object ((db fsdb) stream)
+  (print-unreadable-object (db stream :type t)
+    (format stream "~s" (fsdb-dir db))))
+
 (defmethod initialize-instance :after ((db fsdb) &rest ignore)
   (declare (ignore ignore))
   (let* ((dir (namestring (truename (fsdb-dir db))))
