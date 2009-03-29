@@ -10,84 +10,72 @@
 (defclass fsdb ()
   ((dir :type string
         :initarg :dir
-        :accessor fsdb-dir)
-   (locks :type hash-table
-          :initform (make-hash-table :test 'equal)
-          :accessor fsdb-locks)))
+        :accessor fsdb-dir)))
+
+(defmethod initialize-instance :after ((db fsdb) &rest ignore)
+  (declare (ignore ignore))
+  (let* ((dir (namestring (truename (fsdb-dir db))))
+         (idx (1- (length dir))))
+    (when (and (>= idx 0) (eql #\/ (aref dir idx)))
+      (setq dir (subseq dir 0 idx)))
+    (setf (fsdb-dir db) dir)))
 
 (defun normalize-key (key)
   (if (eql (aref key 0) #\/)
       (subseq key 1)
       key))
 
-(defmethod filename ((db fsdb) key)
+(defmethod db-filename ((db fsdb) key)
   (let ((key (normalize-key key)))
-    (values (strcat (fsdb-dir db) key)
+    (values (strcat (fsdb-dir db) "/" key)
             key)))
 
-(defmacro with-global-lock ((key) &body body)
-  (let ((thunk (gensym)))
-    `(flet ((,thunk () ,@body))
-       (declare (dynamic-extent #',thunk))
-       (call-with-global-lock #',thunk ,key))))
-
-(defun call-with-global-lock (thunk key)
-  (let ((lock (global-lock key)))
-    (unwind-protect
-         (funcall thunk)
-      (global-unlock lock))))
-
-;; To do
-(defun global-lock (key)
-  key)
-
-;; To do
-(defun global-unlock (lock)
-  lock)
-
-;; To do
-(defun lock-global-lock (lock)
-  lock)
-
-;; To do
-(defun lock-exclusive-p (lock)
-  lock)
-
-;; To do
-(defun upgrade-to-exclusive (lock)
-  lock)
-
-(defmacro with-fsdb-filename ((db filename key &optional exclusive-p) &body body)
+(defmacro with-fsdb-filename ((db filename key) &body body)
   (let ((thunk (gensym)))
     `(flet ((,thunk (,filename ,key)
               (declare (ignorable ,key))
               ,@body))
        (declare (dynamic-extent #',thunk))
-       (call-with-fsdb-filename #',thunk ,db ,key ,exclusive-p))))
+       (call-with-fsdb-filename #',thunk ,db ,key))))
 
-(defun call-with-fsdb-filename (thunk db key exclusive-p)
-  (multiple-value-bind (filename key) (filename db key)
-    (if (getlock db key exclusive-p)
-        (funcall thunk filename key)
-        (with-global-lock (key)
-          (funcall thunk filename key)))))
+(defun call-with-fsdb-filename (thunk db key)
+  (multiple-value-bind (filename key) (db-filename db key)
+    (with-file-locked (filename)
+      (funcall thunk filename key))))
 
-(defmethod getlock ((db fsdb) key &optional exclusive-p)
-  (let ((lock (gethash key (fsdb-locks db))))
-    (and lock
-         (progn
-           (when (and exclusive-p
-                      (not (lock-exclusive-p (lock-global-lock lock))))
-             (upgrade-to-exclusive (lock-global-lock lock)))
-           lock))))
-
-(defmethod dbput ((db fsdb) key value)
-  (with-fsdb-filename (db filename key t)
-    (file-put-contents filename value)))
-
-(defmethod dbget ((db fsdb) key)
+(defmethod db-put ((db fsdb) key value)
   (with-fsdb-filename (db filename key)
-    (file-get-contents filename)))
+    (if (or (null value) (equal value ""))
+        (delete-file filename)
+        (file-put-contents filename value))))
+
+(defmethod db-get ((db fsdb) key)
+  (with-fsdb-filename (db filename key)
+    (let ((res (file-get-contents filename)))
+      (and (not (equal "" res))
+           res))))
+
+(defmethod db-lock ((db fsdb) key)
+  (grab-file-lock (db-filename db key)))
+
+(defun db-unlock (lock)
+  (release-file-lock lock))
+
+(defun file-namestring-or-last-directory (path)
+  (if (or (pathname-name path) (pathname-type path))
+      (file-namestring path)
+      (car (last (pathname-directory path)))))
+
+;; This doesn't work. Directories come with "/" at the end, so
+;; file-namestring returns "".
+(defmethod db-contents ((db fsdb) &optional key)
+  (let ((dir (directory (db-filename db (strcat key "/*.*"))
+                        :directories t
+                        :all nil)))
+    (mapcar 'file-namestring-or-last-directory dir)))
+
+(defmethod db-subdir ((db fsdb) key)
+  (make-instance 'fsdb :dir (strcat (fsdb-dir db) "/" key)))
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

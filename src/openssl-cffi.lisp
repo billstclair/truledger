@@ -23,7 +23,7 @@
 (defun fopen (file mode)
   "Open a file with a FILE pointer.
   Mode is r r+ w w+ a a+"
-  (with-foreign-strings ((filep (cffi::native-namestring file) :encoding :latin-1)
+  (with-foreign-strings ((filep (cffi-sys:native-namestring file) :encoding :latin-1)
                          (modep mode))
     (let ((res (%fopen filep modep)))
       (when (null-pointer-p res)

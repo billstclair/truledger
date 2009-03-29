@@ -59,7 +59,7 @@
       (release-lock (lock-syslock lock)))
     t))      
 
-(defmacro with-file-lock-grabbed ((filename) &body body)
+(defmacro with-file-locked ((filename) &body body)
   (let ((lock (gensym)))
     `(let ((,lock (grab-file-lock ,filename)))
        (unwind-protect
