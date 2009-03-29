@@ -33,6 +33,11 @@
 
 (asdf:oos 'asdf:load-op :trubanc)
 
+;; This is not in the :trubanc package def, so that people
+;; who incorporate that system, instead of loading it from here,
+;; won't need this file.
+(use-package :trubanc-loader :trubanc)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair

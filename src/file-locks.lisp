@@ -23,7 +23,7 @@
    (process :initform nil
             :accessor lock-process)))
 
-(defmethod print-object ((lock lock) stream)
+(defmethod print-object ((lock file-lock) stream)
   (print-unreadable-object (lock stream :type t)
     (format stream "~d:~d ~s ~s"
             (lock-process-count lock)

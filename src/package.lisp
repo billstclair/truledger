@@ -1,7 +1,7 @@
 ; -*- mode: lisp -*-
 
 (defpackage #:trubanc
-  (:use :cl :cffi :cl-base64 :trubanc-loader)
+  (:use :cl :cffi :cl-base64)
   (:export
 
    ;; openssl-cffi.lisp

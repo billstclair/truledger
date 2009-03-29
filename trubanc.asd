@@ -15,5 +15,5 @@
      (:file "ccl")
      (:file "utilities")
      (:file "openssl-cffi")
-     (:file "locks")
+     (:file "file-locks")
      (:file "fsdb")))))
