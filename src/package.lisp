@@ -5,15 +5,6 @@
   (:export
 
    ;; openssl-cffi.lisp
-   #:fopen
-   #:fclose
-   #:with-fopen-file
-   #:fread-string
-
-   #:read-rsa-private-key
-   #:write-rsa-private-key
-   #:read-rsa-public-key
-   #:write-rsa-public-key
    #:decode-rsa-private-key
    #:encode-rsa-private-key
    #:decode-rsa-public-key
@@ -24,8 +15,24 @@
    #:sign
    #:verify
 
+   ;; locks.lisp
+   #:file-lock
+   #:grab-file-lock
+   #:release-file-lock
+   #:with-file-locked
+
+   ;; fsdb.lisp
+   #:fsdb
+   #:db-put
+   #:db-get
+   #:db-lock
+   #:db-unlock
+   #:db-contents
+   #:db-subdir
+
    ;; utilities.lisp
    #:file-get-contents
+   #:file-put-contents
    #:hex
    #:trim
    #:bin2hex

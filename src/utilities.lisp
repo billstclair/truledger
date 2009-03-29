@@ -1,14 +1,18 @@
 (in-package :trubanc)
 
 (defun file-get-contents (file)
-  (with-open-file (stream file)
-    (let* ((len (file-length stream))
-           (s (make-string len)))
-      (read-sequence s stream)
-      s)))
+  (with-open-file (stream file :if-does-not-exist nil)
+    (when stream
+      (let* ((len (file-length stream))
+             (s (make-string len)))
+        (read-sequence s stream)
+        s))))
 
 (defun file-put-contents (file contents)
-  (with-open-file (stream file :direction :output :if-exists :overwrite)
+  (with-open-file (stream file
+                          :direction :output
+                          :if-exists :overwrite
+                          :if-does-not-exist :create)
     (write-sequence contents stream)
     contents))
 

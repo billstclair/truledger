@@ -11,7 +11,7 @@
 (defvar *file-locks*
   (make-hash-table :test 'equal))
 
-(defclass lock ()
+(defclass file-lock ()
   ((syslock :initarg :syslock
             :accessor lock-syslock)
    (filename :initarg :filename
@@ -36,7 +36,7 @@
     (with-lock-grabbed (*file-locks-lock*)
       (unless (setq lock (gethash filename *file-locks*))
         (setq lock (make-instance
-                   'lock
+                   'file-lock
                    :syslock (make-lock filename)
                    :filename filename))
         (setf (gethash filename *file-locks*) lock))

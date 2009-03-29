@@ -40,18 +40,6 @@
 
 (defconstant $pem-string-rsa-public "RSA PUBLIC KEY")
 
-(defparameter $i2d-RSAPublicKey
-  (foreign-symbol-pointer "i2d_RSAPublicKey"))
-
-(defparameter $i2d-PublicKey
-  (foreign-symbol-pointer "i2d_PublicKey"))
-
-(defparameter $i2d-PublicKey
-  (foreign-symbol-pointer "i2d_PublicKey"))
-
-(defparameter $d2i-RSAPublicKey
-  (foreign-symbol-pointer "d2i_RSAPublicKey"))
-
 (defcfun ("BIO_new" %bio-new) :pointer
   (type :pointer))
 
@@ -130,6 +118,11 @@
   (with-foreign-strings ((namep $pem-string-rsa :encoding :latin-1))
     (%pem-asn1-read-bio $d2i-RSAPrivateKey namep bio x cb u)))
 
+(defun %pem-write-bio-rsa-private-key
+    (bio x &optional (enc $null) (kstr $null) (klen 0) (cb $null) (u $null))
+  (with-foreign-strings ((namep $pem-string-rsa :encoding :latin-1))
+    (%pem-asn1-write-bio $i2d-RSAPrivateKey namep bio x enc kstr klen cb u)))
+
 (defun decode-rsa-private-key (string &optional (password ""))
   "Convert a PEM string to an RSA structure. Free it with RSA-FREE.
    Will prompt for the password if it needs it and you provide nil."
@@ -141,11 +134,6 @@
       (when (null-pointer-p res)
         (error "Couldn't encode private key from string"))
       res)))
-
-(defun %pem-write-bio-rsa-private-key
-    (bio x &optional (enc $null) (kstr $null) (klen 0) (cb $null) (u $null))
-  (with-foreign-strings ((namep $pem-string-rsa :encoding :latin-1))
-    (%pem-asn1-write-bio $i2d-RSAPrivateKey namep bio x enc kstr klen cb u)))
 
 ;; Could switch to PEM_write_PKCS8PrivateKey, if PHP compatibility is
 ;; no longer necessary. It's supposed to be more secure.
@@ -167,6 +155,10 @@
   (cb :pointer)
   (u :pointer))
 
+(defcfun ("PEM_write_bio_RSA_PUBKEY" %pem-write-bio-rsa-pubkey) :int
+  (bp :pointer)
+  (rsa :pointer))
+
 (defun decode-rsa-public-key (string)
   "Convert a PEM-encoded string to an RSA public key.
    You must RSA-FREE the result when you're done with it."
@@ -175,10 +167,6 @@
       (when (null-pointer-p res)
         (error "Couldn't decode public key"))
       res)))
-
-(defcfun ("PEM_write_bio_RSA_PUBKEY" %pem-write-bio-rsa-pubkey) :int
-  (bp :pointer)
-  (rsa :pointer))
 
 (defun encode-rsa-public-key (rsa)
   "Encode an RSA public or private key to a PEM-encoded public key."
