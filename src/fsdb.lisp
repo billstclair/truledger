@@ -7,7 +7,48 @@
 
 (in-package :trubanc)
 
-(defclass fsdb ()
+;; All put/get database implementations should extend db
+(defclass db ()
+  ())
+
+(defun unimplemented-db-method (gf)
+  (error "Unimplemented db method: ~s" gf))
+
+(defgeneric db-get (db key)
+  (:method ((db db) key)
+    (declare (ignore key))
+    (unimplemented-db-method 'db-get)))
+
+(defgeneric db-put (db key value)
+  (:method ((db db) key value)
+    (declare (ignore key value))
+    (unimplemented-db-method 'db-put)))
+
+(defgeneric db-lock (db key)
+  (:method ((db db) key)
+    (declare (ignore key))
+    (unimplemented-db-method 'db-lock)))
+  
+(defgeneric db-unlock (db lock)
+  (:method ((db db) lock)
+    (declare (ignore lock))
+    (unimplemented-db-method 'db-unlock)))
+
+(defgeneric db-contents (db &optional key)
+  (:method ((db db) &optional key)
+    (declare (ignore key))
+    (unimplemented-db-method 'db-contents)))
+
+(defgeneric db-subdir (db key)
+  (:method ((db db) key)
+    (declare (ignore key))
+    (unimplemented-db-method 'db-subdir)))
+  
+;;;
+;;; Implement the db protocol using the file system
+;;;
+
+(defclass fsdb (db)
   ((dir :type string
         :initarg :dir
         :accessor fsdb-dir)))
@@ -62,7 +103,7 @@
 (defmethod db-lock ((db fsdb) key)
   (grab-file-lock (db-filename db key)))
 
-(defun db-unlock (lock)
+(defmethod db-unlock ((db fsdb) lock)
   (release-file-lock lock))
 
 (defun file-namestring-or-last-directory (path)

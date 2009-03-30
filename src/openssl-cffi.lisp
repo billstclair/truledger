@@ -303,6 +303,9 @@
         (with-rsa-public-key (rsa rsa-key) (doit thunk rsa))
         (with-rsa-private-key (rsa rsa-key) (doit thunk rsa)))))
 
+(defun public-key-id (pubkey)
+  (sha1 (trim pubkey)))
+
 (defun sign (data rsa-private-key)
   "Sign the string in DATA with the RSA-PRIVATE-KEY.
    Return the signature BASE64-encoded."
