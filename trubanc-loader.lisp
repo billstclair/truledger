@@ -31,7 +31,7 @@
          (directory systems-wildcard :directories t :files nil))
   (add-to-registry *source-directory*))
 
-(asdf:oos 'asdf:load-op :trubanc)
+(loadsys :trubanc)
 
 ;; This is not in the :trubanc package def, so that people
 ;; who incorporate that system, instead of loading it from here,
