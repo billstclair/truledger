@@ -17,18 +17,20 @@
    (keydict :initform (make-hash-table :test 'equal)
             :accessor parser-keydict)
    (always-verify-sigs-p :initform nil
+                         :initarg :always-verify-sigs-p
                          :accessor parser-always-verify-sigs-p)
    (verify-sigs-p :initform t
+                  :initarg :verify-sigs-p
                   :accessor parser-verify-sigs-p)))
 
 (defmethod parse ((parser parser) string &optional
                   (verify-sigs-p (parser-verify-sigs-p parser)))
   "Return a hash table, or signal en error, if the parse could not be done,
-     or an ID couldn't be found, or a signature was bad.
-     left-paren, right-paren, comma, colon, and period are special chars.
-     They, and back-slash, are escaped by backslashes
-     If VERIFY-SIGS-P is false, don't verify PGP signatures.
-     By default, use (PARSER-VERIFY-SIGS-P PARSER)"
+   or an ID couldn't be found, or a signature was bad.
+   left-paren, right-paren, comma, colon, and period are special chars.
+   They, and back-slash, are escaped by backslashes
+   If VERIFY-SIGS-P is false, don't verify PGP signatures.
+   By default, use (PARSER-VERIFY-SIGS-P PARSER)"
   (let* ((tokens (tokenize string))
          (state nil)
          (res nil)
@@ -40,8 +42,7 @@
          (value nil)
          (needsig nil)
          (msg nil)
-         (stack (make-array 10 :fill-pointer 0 :adjustable t))
-         (keydb (parser-keydb parser)))
+         (stack (make-array 10 :fill-pointer 0 :adjustable t)))
     (flet ((init-dict ()
              (setq dict (make-hash-table :test 'equal)
                    dictidx -1))
@@ -116,32 +117,11 @@
                                        (equal (gethash dict 1) "bankid")))
                          (unless id
                            (error "Signature without ID at ~d" pos))
-                         (let* ((keydict (parser-keydict parser))
-                                (pubkey (gethash id keydict))
-                                (dict-1 (gethash 1 dict)))
-                           (when (and (not pubkey)
-                                      (or (equal dict-1 "register")
-                                          (equal dict-1 "bankid")))
-                             ;; May be the first time we've seen this ID.
-                             ;; If it's a key definition message, we're set
-                             (setq pubkey
-                                   (if (equal dict-1 "register")
-                                       (gethash 3 dict)
-                                       (gethash 2 dict)))
-                             (let ((pubkeyid (public-key-id pubkey)))
-                               (if (not (equal id pubkeyid))
-                                 (setq pubkey nil)
-                                 (setf (gethash id keydict) pubkey))))
-                           (unless pubkey
-                             (setq pubkey (and keydb (db-get keydb id)))
-                             (when pubkey
-                               (unless (equal id (public-key-id pubkey))
-                                 (error "Pubkey doesn't match id: ~s" id))
-                               (setf (gethash id keydict) pubkey)))
-                           (unless pubkey
-                             (error "No key for id: ~s at ~d" id pos))
-                           (when (or verify-sigs-p
-                                     (parser-always-verify-sigs-p parser))
+                         (when (or verify-sigs-p
+                                   (parser-always-verify-sigs-p parser))
+                           (let ((pubkey (parser-get-pubkey parser id dict)))
+                             (unless pubkey
+                               (error "No key for id: ~s at ~d" id pos))
                              (unless (verify msg tok pubkey)
                                (error "Signature verification failed at ~d" pos)))))
                        (setf (gethash $PARSER-MSGKEY dict)
@@ -154,9 +134,6 @@
                                       dictidx (pop pop)
                                       start (pop pop)
                                       key (pop pop)))
-                              (if key
-                                  (setf (gethash key dict) value)
-                                  (append-dict value))
                               (setq needsig t))
                              (t
                               (push dict res)
@@ -167,6 +144,32 @@
       (when needsig
         (error "Premature end of message"))
       (nreverse res))))
+
+(defmethod parser-get-pubkey ((parser parser) id dict)
+  (let* ((keydict (parser-keydict parser))
+         (keydb (parser-keydb parser))
+         (pubkey (gethash id keydict))
+         (dict-1 (gethash 1 dict)))
+    (when (and (not pubkey)
+               (or (equal dict-1 "register")
+                   (equal dict-1 "bankid")))
+      ;; May be the first time we've seen this ID.
+      ;; If it's a key definition message, we're set
+      (setq pubkey
+            (if (equal dict-1 "register")
+                (gethash 3 dict)
+                (gethash 2 dict)))
+      (let ((pubkeyid (public-key-id pubkey)))
+        (if (not (equal id pubkeyid))
+            (setq pubkey nil)
+            (setf (gethash id keydict) pubkey))))
+    (unless pubkey
+      (setq pubkey (and keydb (db-get keydb id)))
+      (when pubkey
+        (unless (equal id (public-key-id pubkey))
+          (error "Pubkey doesn't match id: ~s" id))
+        (setf (gethash id keydict) pubkey)))
+    pubkey))
 
 (defun tokenize (string)
   (let ((res nil)
@@ -203,34 +206,30 @@
                  res)))
     (nreverse res)))
 
+(defmethod get-parsemsg ((parser parser) parse)
+  "Return the message string that parsed into the hash table in PARSE."
+  (gethash $PARSER-MSGKEY parse))
+
+(defmethod unsigned-message ((parser parser) msg)
+  "Return just the message part of a signed message, not including the signature.
+   Assumes that the message will parse."
+  (let ((pos (search "):" msg :from-end t)))
+    (if pos
+        (subseq msg 0 (1+ pos))
+        msg)))
+
+(defmethod first-message ((parser parser) msg)
+  "Return the first message in a list of them.
+   Assumes that message parses correctly."
+  (let ((pos 0))
+    (loop
+       (setq pos (position #\. msg :start (1+ pos)))
+       (unless pos (return msg))
+       (unless (eql (aref msg (1- pos)) #\\)
+         (return (subseq msg 0 pos))))))
+
 #||
-;; Continue conversion here
-
-  // Return the message string that parsed into the array in $parse
-  function get_parsemsg($parse) {
-    return @$parse[$this->msgkey];
-  }
-
-  // Return just the message part of a signed message, not including the signature.
-  // Assumes that the message will parse.
-  function unsigned_message($msg) {
-    $pos = strpos("):", $msg);
-    if ($pos === FALSE) return $msg;
-    return substr($msg, 0, $pos+1);
-  }
-
-  // Return the first message in a list of them.
-  // Assumes that message parses correctly.
-  function first_message($msg) {
-    while (true) {
-      $pos = strpos($msg, ".", $pos+1);
-      if ($pos === FALSE) return $msg;
-      else {
-        if ($pos == 0 || $msg[$pos-1] != "\\") return substr($msg, 0, $pos);
-      }
-    }
-  }
-
+;; Continue here
   // $parse is an array with numeric and string keys
   // $pattern is an array with numeric keys with string value, and
   // non-numeric keys with non-false values.
