@@ -104,6 +104,18 @@
 (defun strcat (&rest strings)
   (apply #'concatenate 'string strings))
 
+(defun str-replace (old new string)
+  "Change all instance of OLD to NEW in STRING"
+  (loop with pos = 0
+        with old-len = (length old)
+        with new-len = (length new)
+        with res = string
+        for idx = (search old res :start2 pos)
+        do
+     (when (null idx) (return res))
+     (setq res (strcat (subseq res 0 idx) new (subseq res (+ idx old-len)))
+           pos (+ idx new-len))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair

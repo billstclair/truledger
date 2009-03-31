@@ -2,7 +2,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Parse "(id,[key:]value,...):signature" into an array, verifying signatures
+;;; Parse "(id,[key:]value,...):signature" into a hash table,
+;;; verifying signatures.
 ;;; Can separate multiple top-level forms with periods.
 ;;; Values can be (id,...):signature forms.
 ;;;
@@ -206,11 +207,11 @@
                  res)))
     (nreverse res)))
 
-(defmethod get-parsemsg ((parser parser) parse)
+(defun get-parsemsg (parse)
   "Return the message string that parsed into the hash table in PARSE."
   (gethash $PARSER-MSGKEY parse))
 
-(defmethod unsigned-message ((parser parser) msg)
+(defun unsigned-message (msg)
   "Return just the message part of a signed message, not including the signature.
    Assumes that the message will parse."
   (let ((pos (search "):" msg :from-end t)))
@@ -218,7 +219,7 @@
         (subseq msg 0 (1+ pos))
         msg)))
 
-(defmethod first-message ((parser parser) msg)
+(defun first-message (msg)
   "Return the first message in a list of them.
    Assumes that message parses correctly."
   (let ((pos 0))
@@ -228,188 +229,102 @@
        (unless (eql (aref msg (1- pos)) #\\)
          (return (subseq msg 0 pos))))))
 
-#||
-;; Continue here
-  // $parse is an array with numeric and string keys
-  // $pattern is an array with numeric keys with string value, and
-  // non-numeric keys with non-false values.
-  // A numeric key in $pattern must match a numeric key in $parse.
-  // A non-numeric key in $pattern must correspond to a numeric key in $parse
-  // at the element number in $pattern or the same non-numeric key in $parse.
-  // The result maps the non-numeric keys and values in $pattern and
-  // their positions, to the matching values in $parse.
-  // See the test code below for examples.
-  function matchargs($parse, $pattern) {
-    $i = 0;
-    $res = array();
-    foreach ($pattern as $key => $value) {
-      if (is_numeric($key)) {
-        $name = $value;
-        $optional = false;
-      } else {
-        $name = $key;
-        $optional = true;
-      }
-      $val = @$parse[$i];
-      if ($val === NULL) $val = @$parse[$name];
-      if (!$optional && $val === NULL) return false;
-      if (!($val === NULL)) {
-        $res[$name] = $val;
-        $res[$i] = $val;
-      }
-      $i++;
-    }
-    $msgkey = $this->msgkey;
-    foreach ($parse as $key => $value) {
-      if ($key != $msgkey && $res[$key] === NULL) return false;
-    }
-    $res[$msgkey] = @$parse[$msgkey];
-    return $res;
-  }
+(defun match-args (parse pattern)
+  "parse is a hash table with numeric and string keys.
+   pattern is a sequence of (key . value) pairs.
+   a numeric key in pattern must match a numeric key in parse.
+   a non-numeric key in pattern must correspond to a numeric key in parse
+   at the element number in pattern or the same non-numeric key in parse.
+   the result maps the non-numeric keys and values in $pattern and
+   their positions, to the matching values in $parse.
+   see the test code below for examples."
+  (loop
+     with res = (make-hash-table :test 'equal)
+     with name
+     with optional
+     for  (key . value) across pattern
+     for i from 0
+     do
+       (cond ((integerp key)
+              (setq name value
+                    optional nil))
+             (t
+              (setq name key
+                    optional t)))
+       (let ((val (gethash i parse)))
+         (unless val (setq val (gethash name parse)))
+         (when (and (not optional) (not val)) (return nil))
+         (when val
+           (setf (gethash name res) val
+                 (gethash i res) val)))
+     finally
+       (maphash (lambda (key value)
+                  (declare (ignore value))
+                  (unless (or (eq key $PARSER-MSGKEY)
+                              (gethash key res))
+                    (return nil)))
+                parse)
+       (setf (gethash $PARSER-MSGKEY res)
+             (gethash $PARSER-MSGKEY parse))
+     (return res)))
 
-  function formatpattern($pattern) {
-    $res = "(";
-    $comma = false;
-    foreach($pattern as $key => $value) {
-      if ($comma) $res .= ",";
-      $comma = true;
-      if (is_numeric($key)) $res .= "<$value>";
-      else $res .= "$key=<$key>";
-    }
-    $res .= ")";
-    return $res;
-  }
+(defun format-pattern (pattern)
+  (let ((res "(")
+        (comma nil))
+    (loop for (key . value) across pattern
+       do
+         (when comma (setq res (strcat res ",")))
+         (setq comma t)
+       (if (numberp key)
+           (setq res (format nil "~a<~a>" res value))
+           (setq res (format nil "~a~a=<~a>" res key value))))
+    (setq res (strcat res ")"))
+    res))
 
-  // Remove the signatures out of a message
-  function remove_signatures($msg) {
-    $res = "";
-    while ($msg) {
-      $tail = strstr($msg, "):\n");
-      $extralen = 1;
-      $matchlen = 3;
-      $tail2 = strstr($msg, "\\)\\:\n");
-      if (strlen($tail2) > strlen($tail)) {
-        $tail = $tail2;
-        $extralen = 2;
-        $matchlen = 5;
-      }
-      $i = strlen($msg) - strlen($tail);
-      $res .= substr($msg, 0, $i + $extralen);
-      $msg = substr($tail, $matchlen);
-      $dotpos = strpos($msg, ".");
-      $leftpos = strpos($msg, "(");
-      $commapos = strpos($msg, ",");
-      if ($dotpos === FALSE) $dotpos = $leftpos;
-      elseif (!($leftpos === FALSE)) $dotpos = min($dotpos, $leftpos);
-      if ($dotpos === FALSE) $dotpos = $commapos;
-      elseif (!($commapos === FALSE)) $dotpos = min($dotpos, $commapos);
-      $parenpos = strpos($msg, ")");
-      if (!($parenpos === false) &&
-          ($dotpos === FALSE || $parenpos < $dotpos)) $msg = substr($msg, $parenpos);
-      elseif ($dotpos) {
-        $res .= "\n";
-        $msg = substr($msg, $dotpos);
-      } else break;
-    }
-    return str_replace(",(", ",\n(", $res);
-  }
+(defun strstr (haystack needle)
+  (let ((pos (search needle haystack)))
+    (and pos (subseq haystack pos))))
 
-}
-
-||#
-
-;; Test code
-#||
-$p = new parser(false);
-echo "RES: " . $p->remove_signatures("(foo,bar,bletch,(1,2,3):
-fjdkf
-fjdkf
-jfkd
-):
-jdfksal
-jfdkla;
-.(a,b,c):
-fjkdsal
-fjkdsla");
-echo "\n";
-||#
-
-#||
-$parser = new parser(false);
-$pattern = array("x", "y", "bletch"=>1);
-echo $parser->formatpattern($pattern) . "\n";
-$args = $parser->matchargs(array("foo","bar","3"), $pattern);
-echo "1: ";
-if ($args) print_r($args);
-else echo "Didn't match, and I expected it to\n";
-$args = $parser->matchargs(array("foo","bar","bletch"=>2), $pattern);
-echo "2: ";
-if ($args) print_r($args);
-else echo "Didn't match, and I expected it to\n";
-$args = $parser->matchargs(array("foo","bar","nomatch"=>2), $pattern);
-echo "3: ";
-if ($args) {
-  echo "Didn"t expect this match:\n";
-  print_r($args);
-}
-else echo "Didn't match, as expected\n";
-$args = $parser->matchargs(array("foo",""), $pattern);
-echo "4: ";
-if ($args) print_r($args);
-else echo "Didn't match, and I expected it to\n";
-$args = $parser->matchargs(array("foo","y"=>""), $pattern);
-echo "5: ";
-if ($args) print_r($args);
-else echo "Didn't match, and I expected it to\n";
-$args = $parser->matchargs(array("foo"), $pattern);
-echo "6: ";
-if ($args) {
-  echo "Didn"t expect this match:\n";
-  print_r($args);
-}
-else echo "Didn't match, as expected\n";
-||#
-#||
-require_once "dictdb.php";
-$keydb = new dictdb();
-$ssl = new ssl();
-
-$privkey = $ssl->make_privkey(512);
-$pubkey = $ssl->privkey_to_pubkey($privkey);
-$id = $ssl->pubkey_id($pubkey);
-$privkey2 = $ssl->make_privkey(512);
-$pubkey2 = $ssl->privkey_to_pubkey($privkey2);
-$id2 = $ssl->pubkey_id($pubkey2);
-$keydb->put($id, $pubkey);
-$keydb->put($id2, $pubkey2);
-$msg = "($id,\(1\,2\:3\\\\4\.5\),2,x:foo)";
-$sig = $ssl->sign($msg, $privkey);
-if (!$sig) {
-  echo "No signature generated for $msg\n";
-  return;
-}
-$msg = "$msg:$sig";
-
-$msg2 = "($id,$msg,y:$msg)";
-$sig2 = $ssl->sign($msg2, $privkey);
-$msg .= ".$msg2:$sig2";
-
-$msg3 = "($id2,id,$pubkey2)";
-$sig3 = $ssl->sign($msg3, $privkey2);
-$msg4 = "($id2,foo,bar)";
-$sig4 = $ssl->sign($msg4, $privkey2);
-$msg .= ".$msg3:$sig3.$msg4:$sig4.";
-
-echo "$msg\n";
-$parser = new parser($keydb, $ssl);
-$res = $parser->parse($msg);
-if ($res) {
-  print_r($res);
-} else {
-  echo $parser->errmsg;
-}
-echo "\n";
-||#
+(defun remove-signatures (msg)
+  "Remove the signatures from a message"
+  (loop
+     with res = ""
+     do
+       (let ((tail (strstr msg #.(format nil "):~%")))
+             (extralen 1)
+             (matchlen 3)
+             (tail2 (strstr msg #.(format nil "\\)\\:~%"))))
+         (when (and tail2 (< (length tail2) (length tail)))
+           (setq tail tail2
+                 extralen 2
+                 matchlen 5))
+         (let* ((msglen (length msg))
+                (i (- msglen (length tail)))
+                dotpos leftpos commapos)
+           (when (> msglen 0)
+             (setq res (strcat res (subseq msg 0 (min msglen (+ i extralen))))))
+           (setq msg (and tail (subseq tail matchlen))
+                 dotpos (position msg ".")
+                 leftpos (position msg "(")
+                 commapos (position msg ","))
+           (cond ((null dotpos)
+                  (setq dotpos leftpos))
+                 (leftpos
+                  (setq dotpos (min dotpos leftpos))))
+           (cond ((null dotpos)
+                  (setq dotpos commapos))
+                 (commapos
+                  (setq dotpos (min dotpos commapos))))
+           (let ((parenpos (position msg ")")))
+             (cond ((and parenpos
+                         (or (not dotpos) (< parenpos dotpos)))
+                    (setq msg (subseq msg parenpos)))
+                   (dotpos
+                    (setq res (strcat res #.(format nil "~%")))
+                    (setq msg (subseq msg dotpos)))
+                   (t (loop-finish))))))
+     finally
+       (return (str-replace ",(" #.(format nil ",~%(") res))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
