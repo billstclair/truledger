@@ -49,99 +49,106 @@
                    dictidx -1))
            (append-dict (value)
              (setf (gethash (incf dictidx) dict) value)))
-      (loop for first = t then nil
+      (loop
+         for first = t then nil
          for (pos . tok) in tokens
          do
-         (when (and first (not (eql tok #\()))
-           (error "Message does not begin with left paren"))
-         (cond ((eql tok #\()
-                (setq needsig t)
-                (when (and dict state (not (member state '(#\: #\,))))
-                  (error "Open paren not after colon or comma at ~d" pos))
-                (when (and key (not (eql state #\:)))
-                  (error "Missing key at ~d" pos))
-                (when dict
-                  (vector-push-extend `(,state ,dict ,dictidx ,start ,key) stack)
-                  (setq state nil
-                        dict nil
+           (format t "state: ~s, tok: ~s, key: ~s, value: ~s~%"
+                   state tok key value)
+           (when (and first (not (eql tok #\()))
+             (error "Message does not begin with left paren"))
+           (cond ((eql tok #\()
+                  (setq needsig t)
+                  (when (and dict state (not (member state '(#\: #\,))))
+                    (error "Open paren not after colon or comma at ~d" pos))
+                  (when (and key (not (eql state #\:)))
+                    (error "Missing key at ~d" pos))
+                  (when dict
+                    (vector-push-extend `(,state ,dict ,dictidx ,start ,key) stack)
+                    (setq state nil
+                          dict nil
+                          key nil))
+                  (setq start pos
+                        state #\())
+                 ((eql tok #\))
+                  (cond ((eql state #\,)
+                         (when key
+                           (error "Missing key at ~s" pos))
+                         (unless dict (init-dict))
+                         (append-dict (or value ""))
+                         (setq value nil))
+                        ((eql state #\:)
+                         (unless dict (init-dict))
+                         (setf (gethash key dict) (or value "")
+                               value nil))
+                        (state
+                         (error "Close paren not after value at ~d" pos)))
+                  (setq msg (subseq string start (1+ pos))
+                        state #\)))
+                 ((eql tok #\:)
+                  (cond ((eql state #\))
+                         (setq state :sig))
+                        ((null value)
+                         (error "Missing key before colon at ~d" pos))
+                        (t
+                         (setq key value
+                               value nil
+                               state #\:))))
+                 ((eql tok #\,)
+                  (cond ((eql state #\:)
+                         (unless key
+                           (error "Missing key"))
+                         (unless dict (init-dict))
+                         (setf (gethash key dict) (or value "")
+                               key nil))
+                        (t (when (and state
+                                      (not (member state '(#\, #\())))
+                             (error "Misplaced comma at ~d, state: ~s" pos state))
+                           (unless dict (init-dict))
+                           (append-dict (or value ""))))
+                  (setq value nil
+                        state #\,))
+                 ((eql tok #\.)
+                  (when (or state (> (length stack) 0))
+                    (error "Misplaced period at ~d" pos))
+                  (when dict (push dict res))
+                  (setq dict nil
                         key nil))
-                (setq start pos
-                      state #\())
-               ((eql tok #\))
-                (cond ((eql state #\,)
-                       (when key
-                         (error "Missing key at ~s" pos))
-                       (unless dict (init-dict))
-                       (append-dict (or value ""))
-                       (setq value nil))
-                      ((eql state #\:)
-                       (unless dict (init-dict))
-                       (setf (gethash key dict) (or value "")
-                             value nil))
-                      (state
-                       (error "Close paren not after value at ~d" pos)))
-                (setq msg (subseq string start (1+ pos))
-                      state #\)))
-               ((eql tok #\:)
-                (cond ((eql state #\))
-                       (setq state :sig))
-                      ((null value)
-                       (error "Missing key before colon at ~d" pos))
-                      (t
-                       (setq key value
-                             value nil
-                             state #\:))))
-               ((eql tok #\,)
-                (when (and state
-                           (not (member state '(#\, #\())))
-                  (error "Misplaced comma at ~d, state: ~s" pos state))
-                (unless dict (init-dict))
-                (append-dict (or value ""))
-                (setq value nil
-                      state #\,))
-               ((eql tok #\.)
-                (when (or state (> (length stack) 0))
-                  (error "Misplaced period at ~d" pos))
-                (when dict (push dict res))
-                (setq dict nil
-                      key nil))
-               (t 
-                (cond ((member state '(#\( #\,))
-                       (setq value tok))
-                      ((eql state #\:)
-                       (when (null dict) (init-dict))
-                       (setf (gethash key dict) tok
-                             value nil))
-                      ((eq state :sig)
-                       (setq id (and dict (gethash 0 dict)))
-                       (when (not (and (equal id "0")
-                                       (equal (gethash dict 1) "bankid")))
-                         (unless id
-                           (error "Signature without ID at ~d" pos))
-                         (when (or verify-sigs-p
-                                   (parser-always-verify-sigs-p parser))
-                           (let ((pubkey (parser-get-pubkey parser id dict)))
-                             (unless pubkey
-                               (error "No key for id: ~s at ~d" id pos))
-                             (unless (verify msg tok pubkey)
-                               (error "Signature verification failed at ~d" pos)))))
-                       (setf (gethash $PARSER-MSGKEY dict)
-                             (subseq string start (+ pos (length tok))))
-                       (cond ((> (length stack) 0)
-                              (let ((pop  (vector-pop stack)))
-                                (setq value dict
-                                      state (pop pop)
-                                      dict (pop pop)
-                                      dictidx (pop pop)
-                                      start (pop pop)
-                                      key (pop pop)))
-                              (setq needsig t))
-                             (t
-                              (push dict res)
-                              (setq dict nil
-                                    needsig nil)))
-                       (setq state nil))
-                      (t (error "Misplaced value at ~d" pos))))))
+                 (t 
+                  (cond ((member state '(#\( #\,))
+                         (setq value tok))
+                        ((eql state #\:)
+                         (setq value tok))
+                        ((eq state :sig)
+                         (setq id (and dict (gethash 0 dict)))
+                         (when (not (and (equal id "0")
+                                         (equal (gethash dict 1) "bankid")))
+                           (unless id
+                             (error "Signature without ID at ~d" pos))
+                           (when (or verify-sigs-p
+                                     (parser-always-verify-sigs-p parser))
+                             (let ((pubkey (parser-get-pubkey parser id dict)))
+                               (unless pubkey
+                                 (error "No key for id: ~s at ~d" id pos))
+                               (unless (verify msg tok pubkey)
+                                 (error "Signature verification failed at ~d" pos)))))
+                         (setf (gethash $PARSER-MSGKEY dict)
+                               (subseq string start (+ pos (length tok))))
+                         (cond ((> (length stack) 0)
+                                (let ((pop  (vector-pop stack)))
+                                  (setq value dict
+                                        state (pop pop)
+                                        dict (pop pop)
+                                        dictidx (pop pop)
+                                        start (pop pop)
+                                        key (pop pop)))
+                                (setq needsig t))
+                               (t
+                                (push dict res)
+                                (setq dict nil
+                                      needsig nil)))
+                         (setq state nil))
+                        (t (error "Misplaced value at ~d" pos))))))
       (when needsig
         (error "Premature end of message"))
       (nreverse res))))

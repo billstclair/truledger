@@ -182,93 +182,94 @@
            :accessor utility-parser)
    (bankgetter :initarg :bankgetter
                :initform nil
-               :accessor utility-bankgetter)
-   (patterns :initarg :patterns
-             :initform nil
-             :accessor utility-patterns))
+               :accessor utility-bankgetter)))
+
+(defvar *patterns* nil)
+
+;; Patterns for non-request data
+(defun patterns ()
+  (or *patterns*
+      (let ((patterns '(;; Customer messages
+                        (:|balance| .
+                         (:|bankid| :|time| :|asset| :|amount| (:|acct|)))
+                        (:|outboxhash| . (:|bankid| :|time| :|count| :|hash|))
+                        (:|balancehash| . (:|bankid| :|time| :|count| :|hash|))
+                        (:|spend| .
+                         (:|bankid| :|time| :|id| :|asset| :|amount| (:|note|)))
+                        (:|asset| .
+                         (:|bankid| :|asset| :|scale| :|precision| :|assetname|))
+                        (:|storage| . (:|bankid| :|time| :|asset| :|percent|))
+                        (:|storagefee| . (:|bankid| :|time| :|asset| :|amount|))
+                        (:|fraction| . (:|bankid| :|time| :|asset| :|amount|))
+                        (:|register| . (:|bankid| :|pubkey| (:|name|)))
+                        (:|spendaccept| . (:|bankid| :|time| :|id| (:|note|)))
+                        (:|spendreject| . (:|bankid| :|time| :|id| (:|note|)))
+                        (:|getoutbox| .(:|bankid| :|req|))
+                        (:|getinbox| . (:|bankid| :|req|))
+                        (:|processinbox| . (:|bankid| :|time| :|timelist|))
+                        (:|storagefees| . (:|bankid| :|req|))
+                        (:|gettime| . (:|bankid| :|time|))
+                        (:|couponenvelope| . (:|id| :|encryptedcoupon|))
+
+                        ;; Bank signed messages
+                        (:|failed| . (:|msg| :|errmsg|))
+                        (:|tokenid| . (:|tokenid|))
+                        (:|bankid| . (:|bankid|))
+                        (:|regfee| . (:|bankid| :|time| :|asset| :|amount|))
+                        (:|tranfee| . (:|bankid| :|time| :|asset| :|amount|))
+                        (:|time| . (:|id| :|time|))
+                        (:|inbox| . (:|time| :|msg|))
+                        (:|req| . (:|id| :|req|))
+                        (:|coupon| .
+                         (:|bankurl| :|coupon| :|asset| :|amount| (:|note|)))
+                        (:|couponnumberhash| . (:|coupon|))
+                        (:|atregister| . (:|msg|))
+                        (:|atoutboxhash| . (:|msg|))
+                        (:|atbalancehash| . (:|msg|))
+                        (:|atgetinbox| . (:|msg|))
+                        (:|atbalance| . (:|msg|))
+                        (:|atspend| . (:|msg|))
+                        (:|attranfee| . (:|msg|))
+                        (:|atasset| . (:|msg|))
+                        (:|atstorage| . (:|msg|))
+                        (:|atstoragefee| . (:|msg|))
+                        (:|atfraction| . (:|msg|))
+                        (:|atprocessinbox| . (:|msg|))
+                        (:|atstoragefees| . (:|msg|))
+                        (:|atspendaccept| . (:|msg|))
+                        (:|atspendreject| . (:|msg|))
+                        (:|atgetoutbox| . (:|msg|))
+                        (:|atcoupon| . (:|coupon| :|spend|))
+                        (:|atcouponenvelope| . (:|msg|))
+                        ))
+            (hash (make-hash-table :test 'eq)))
+        (loop
+           for (key . value) in patterns
+           do
+             (setf (gethash key hash) value))
+        (setq *patterns* hash))))
 
 #||
-;; continue here
-  // Patterns for non-request data
-  function patterns() {
-    $t = $this->t;
-    if (!$this->patterns) {
-      $patterns = array(// Customer messages
-                        $t->BALANCE => array($t->BANKID,$t->TIME,
-                                             $t->ASSET, $t->AMOUNT, $t->ACCT=>1),
-                        $t->OUTBOXHASH => array($t->BANKID, $t->TIME, $t->COUNT, $t->HASH),
-                        $t->BALANCEHASH => array($t->BANKID, $t->TIME, $t->COUNT, $t->HASH),
-                        $t->SPEND => array($t->BANKID,$t->TIME,$t->ID,
-                                           $t->ASSET,$t->AMOUNT,$t->NOTE=>1),
-                        $t->ASSET => array($t->BANKID,$t->ASSET,
-                                           $t->SCALE,$t->PRECISION,$t->ASSETNAME),
-                        $t->STORAGE => array($t->BANKID,$t->TIME,$t->ASSET,$t->PERCENT),
-                        $t->STORAGEFEE => array($t->BANKID,$t->TIME,$t->ASSET,$t->AMOUNT),
-                        $t->FRACTION => array($t->BANKID,$t->TIME,$t->ASSET,$t->AMOUNT),
-                        $t->REGISTER => array($t->BANKID,$t->PUBKEY,$t->NAME=>1),
-                        $t->SPENDACCEPT => array($t->BANKID,$t->TIME,$t->ID,$t->NOTE=>1),
-                        $t->SPENDREJECT => array($t->BANKID,$t->TIME,$t->ID,$t->NOTE=>1),
-                        $t->GETOUTBOX =>array($t->BANKID, $t->REQ),
-                        $t->GETINBOX => array($t->BANKID, $t->REQ),
-                        $t->PROCESSINBOX => array($t->BANKID,$t->TIME,$t->TIMELIST),
-                        $t->STORAGEFEES => array($t->BANKID,$t->REQ),
-                        $t->GETTIME => array($t->BANKID, $t->TIME),
-                        $t->COUPONENVELOPE => array($t->ID, $t->ENCRYPTEDCOUPON),
-
-                        // Bank signed messages
-                        $t->FAILED => array($t->MSG, $t->ERRMSG),
-                        $t->TOKENID => array($t->TOKENID),
-                        $t->BANKID => array($t->BANKID),
-                        $t->REGFEE => array($t->BANKID, $t->TIME, $t->ASSET, $t->AMOUNT),
-                        $t->TRANFEE => array($t->BANKID, $t->TIME, $t->ASSET, $t->AMOUNT),
-                        $t->TIME => array($t->ID, $t->TIME),
-                        $t->INBOX => array($t->TIME, $t->MSG),
-                        $t->REQ => array($t->ID, $t->REQ),
-                        $t->COUPON => array($t->BANKURL, $t->COUPON, $t->ASSET, $t->AMOUNT, $t->NOTE=>1),
-                        $t->COUPONNUMBERHASH => array($t->COUPON),
-                        $t->ATREGISTER => array($t->MSG),
-                        $t->ATOUTBOXHASH => array($t->MSG),
-                        $t->ATBALANCEHASH => array($t->MSG),
-                        $t->ATGETINBOX => array($t->MSG),
-                        $t->ATBALANCE => array($t->MSG),
-                        $t->ATSPEND => array($t->MSG),
-                        $t->ATTRANFEE => array($t->MSG),
-                        $t->ATASSET => array($t->MSG),
-                        $t->ATSTORAGE => array($t->MSG),
-                        $t->ATSTORAGEFEE => array($t->MSG),
-                        $t->ATFRACTION => array($t->MSG),
-                        $t->ATPROCESSINBOX => array($t->MSG),
-                        $t->ATSTORAGEFEES => array($t->MSG),
-                        $t->ATSPENDACCEPT => array($t->MSG),
-                        $t->ATSPENDREJECT => array($t->MSG),
-                        $t->ATGETOUTBOX => array($t->MSG),
-                        $t->ATCOUPON => array($t->COUPON, $t->SPEND),
-                        $t->ATCOUPONENVELOPE => array($t->MSG)
-                        );
-      $this->patterns = $patterns;
-    }
-    return $this->patterns;
-  }
-
+;; Continue here
   function match_pattern($req, $bankid=false) {
     $t = $this->t;
     $parser = $this->parser;
     $patterns = $this->patterns();
     $pattern = $patterns[$req[1]];
     if (!$pattern) return "Unknown request: '" . $req[1] . "'";
-    $pattern = array_merge(array($t->CUSTOMER,$t->REQUEST), $pattern);
+    $pattern = array_merge(array(:|customer|,:|request|), $pattern);
     $args = $parser->matchargs($req, $pattern);
     if (!$args) {
       $msg = $parser->get_parsemsg($req);
       return "Request doesn't match pattern for '" . $req[1] . "': " .
         $parser->formatpattern($pattern) . " $msg";
     }
-    $argsbankid = @$args[$t->BANKID];
+    $argsbankid = @$args[:|bankid|];
     if (!$bankid) $bankid = $this->bankgetter->bankid();
-    if (array_key_exists($t->BANKID, $args) && $bankid && $argsbankid != $bankid) {
+    if (array_key_exists(:|bankid|, $args) && $bankid && $argsbankid != $bankid) {
       return "bankid mismatch, sb: $bankid, was: $argsbankid";
     }
-    if (strlen(@$args[$t->NOTE]) > 4096) {
+    if (strlen(@$args[:|note|]) > 4096) {
       return "Note too long. Max: 4096 chars";
     }
     return $args;
@@ -291,7 +292,7 @@
   // $removed_names is an array of names in the $key dir to remove.
   // $unpacker is an object on which to call the unpack_bankmsg()
   // method with a single-arg, a bank-signed message. It returns
-  // a parsed and matched $args array whose $t->MSG element is
+  // a parsed and matched $args array whose :|msg| element is
   // the parsed user message wrapped by the bank signing.
   // Returns array('hash'=>$hash, 'count'=>$count)
   // Where $hash is the sha1 hash, and $count is the number of items
@@ -308,7 +309,7 @@
         $msg = $db->get("$key/$name");
         $args = $unpacker->unpack_bankmsg($msg);
         if (!$args || is_string($args)) return false;
-        $req = $args[$t->MSG];
+        $req = $args[:|msg|];
         if (!$req) return false;
         $msg = $parser->get_parsemsg($req);
         if (!$msg) return false;
@@ -322,10 +323,10 @@
     sort($items);
     $str = implode('.', array_map('trim', $items));
     $hash = sha1($str);
-    return array($t->HASH => $hash, $t->COUNT => count($items));
+    return array(:|hash| => $hash, :|count| => count($items));
   }
 
-  // Compute the balance hash as array($t->HASH => $hash, $t->COUNT => $hashcnt)
+  // Compute the balance hash as array(:|hash| => $hash, :|count| => $hashcnt)
   // $id is the ID of the account.
   // $unpacker must have balancekey() and unpack_bankmsg() methods.
   // $acctbals is array($acct => array($assetid => $msg))
@@ -356,12 +357,12 @@
         $hasharray = $this->dirhash($db, "$balancekey/$acct", $unpacker,
                                     $newitems, $removed_names);
         if ($hash != '') $hash .= '.';
-        $hash .= $hasharray[$t->HASH];
-        $hashcnt += $hasharray[$t->COUNT];
+        $hash .= $hasharray[:|hash|];
+        $hashcnt += $hasharray[:|count|];
       }
     }
     if ($hashcnt > 1) $hash = sha1($hash);
-    return array($t->HASH => $hash, $t->COUNT => $hashcnt);
+    return array(:|hash| => $hash, :|count| => $hashcnt);
   }
 
   // Take the values in the passed array and return an array with
@@ -435,7 +436,6 @@
     }
   }
 ||#
-)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
