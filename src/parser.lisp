@@ -281,10 +281,6 @@
     (setq res (strcat res ")"))
     res))
 
-(defun strstr (haystack needle)
-  (let ((pos (search needle haystack)))
-    (and pos (subseq haystack pos))))
-
 (defun remove-signatures (msg)
   "Remove the signatures from a message"
   (loop
