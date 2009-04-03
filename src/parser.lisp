@@ -17,6 +17,9 @@
           :initform nil)
    (keydict :initform (make-hash-table :test 'equal)
             :accessor parser-keydict)
+   (bank-getter :initarg :bank-getter
+                :initform nil
+                :accessor parser-bank-getter)
    (always-verify-sigs-p :initform nil
                          :initarg :always-verify-sigs-p
                          :accessor parser-always-verify-sigs-p)
@@ -243,8 +246,7 @@
    a non-numeric key in pattern must correspond to a numeric key in parse
    at the element number in pattern or the same non-numeric key in parse.
    the result maps the non-numeric keys and values in $pattern and
-   their positions, to the matching values in $parse.
-   see the test code below for examples."
+   their positions, to the matching values in $parse."
   (loop
      with res = (make-hash-table :test 'equal)
      with name
@@ -328,6 +330,34 @@
                    (t (loop-finish))))))
      finally
        (return (str-replace ",(" #.(format nil ",~%(") res))))
+
+(defgeneric bankid (bankid-getter)
+  (:method ((getter t))
+    (error "~s doesn't know for bankid" getter)))
+
+(defmethod match-pattern ((parser parser) req &optional bankid)
+  (let* ((patterns (patterns))
+         (pattern (gethash (gethash 1 req) patterns)))
+    (unless pattern
+      (error "Unknown request: ~s" (gethash 1 req)))
+    (setq pattern (append '(:|customer| :|request|) pattern))
+    (let ((args (match-args req pattern)))
+      (unless args
+        (error "Request doesn't match pattern for ~s: ~s, ~s"
+               (gethash 1 req)
+               (format-pattern pattern)
+               (get-parsemsg req)))
+      (let ((args-bankid (gethash :|bankid| args)))
+        (when args-bankid
+          (unless bankid
+            (setq bankid (bankid (parser-bank-getter parser))))
+          (unless (equal bankid args-bankid)
+            (error "bankid mismatch, sb: ~s, was: ~s"
+                   bankid args-bankid))))
+      (when (> (length (gethash :|note| args)) 4096)
+        (error "Note too long. Max: 4096 chars"))
+      args)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

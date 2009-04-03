@@ -251,30 +251,6 @@
 
 #||
 ;; Continue here
-  function match_pattern($req, $bankid=false) {
-    $t = $this->t;
-    $parser = $this->parser;
-    $patterns = $this->patterns();
-    $pattern = $patterns[$req[1]];
-    if (!$pattern) return "Unknown request: '" . $req[1] . "'";
-    $pattern = array_merge(array(:|customer|,:|request|), $pattern);
-    $args = $parser->matchargs($req, $pattern);
-    if (!$args) {
-      $msg = $parser->get_parsemsg($req);
-      return "Request doesn't match pattern for '" . $req[1] . "': " .
-        $parser->formatpattern($pattern) . " $msg";
-    }
-    $argsbankid = @$args[:|bankid|];
-    if (!$bankid) $bankid = $this->bankgetter->bankid();
-    if (array_key_exists(:|bankid|, $args) && $bankid && $argsbankid != $bankid) {
-      return "bankid mismatch, sb: $bankid, was: $argsbankid";
-    }
-    if (strlen(@$args[:|note|]) > 4096) {
-      return "Note too long. Max: 4096 chars";
-    }
-    return $args;
-  }
-
   // Parse and match a message.
   // Returns an array mapping parameter names to values.
   // Returns a string if parsing or matching fails.
