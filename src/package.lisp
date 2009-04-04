@@ -1,6 +1,11 @@
 ; -*- mode: lisp -*-
 
-(defpackage #:trubanc
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Trubanc package definition
+;;;
+
+(cl:defpackage :trubanc
   (:use :cl :cffi :cl-base64)
   (:export
 

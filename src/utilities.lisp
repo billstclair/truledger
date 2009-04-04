@@ -1,3 +1,10 @@
+; -*- mode: lisp -*-
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Various utility functions
+;;;
+
 (in-package :trubanc)
 
 (defun file-get-contents (file)
@@ -370,13 +377,13 @@
                                        (wbp (0) (bcsub now baltime)))
                                 secs-per-year-pct)))
                (cond ((< (bccomp fee 0) 0)
-                      (setq fee  0))
+                      (setq fee  "0"))
                      ((> (bccomp fee balance) 0)
                       (setq fee balance)))
                (values fee (bcsub balance fee)))))))
 
 (defun normalize-balance (balance fraction digits)
-  "Add together $balance & $fraction, to $digits precision.
+  "Add together BALANCE & FRACTION, to DIGITS precision.
    Return two values, the integer part and the fractional part."
   (wbp (digits)
     (split-decimal (bcadd balance fraction))))

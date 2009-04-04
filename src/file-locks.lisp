@@ -5,7 +5,7 @@
 ;;; Read-write locks
 ;;;
 
-(in-package #:trubanc)
+(in-package :trubanc)
 
 (defvar *file-locks-lock*
   (make-lock))

@@ -1,6 +1,11 @@
-(in-package :trubanc)
+; -*- mode: lisp -*-
 
-;; Arbitrary precision floating point math, ala PHP's bcmath package.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Arbitrary precision floating point math, ala PHP's bcmath package.
+;;;
+
+(in-package :trubanc)
 
 (defvar *bcmath-precision* 0)
 

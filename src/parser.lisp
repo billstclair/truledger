@@ -8,6 +8,8 @@
 ;;; Values can be (id,...):signature forms.
 ;;;
 
+(in-package :trubanc)
+
 (defconstant $PARSER-MSGKEY "%msg%")
 
 (defclass parser ()

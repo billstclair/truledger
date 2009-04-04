@@ -9,7 +9,7 @@
 ;;; Replaced by openssl-cffi.lisp, which uses libssl directly.
 ;;;
 
-(in-package #:trubanc)
+(in-package :trubanc)
 
 (defun openssl-trim (string &optional (begin "-----BEGIN"))
   "Return the tail of STRING, starting with BEGIN"

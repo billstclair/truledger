@@ -5,7 +5,7 @@
 ;;; CCL interface functions 
 ;;;
 
-(in-package #:trubanc)
+(in-package :trubanc)
 
 (defun run-program (program args &key input output)
   (ccl:run-program program args :input input :output output))
