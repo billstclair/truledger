@@ -18,6 +18,7 @@
    (keydict :initform (make-hash-table :test 'equal)
             :accessor parser-keydict)
    (bank-getter :initarg :bank-getter
+                :type (or function null)
                 :initform nil
                 :accessor parser-bank-getter)
    (always-verify-sigs-p :initform nil
@@ -56,6 +57,7 @@
          for first = t then nil
          for (pos . tok) in tokens
          do
+           #+nil
            (format t "state: ~s, tok: ~s, key: ~s, value: ~s~%"
                    state tok key value)
            (when (and first (not (eql tok #\()))
@@ -241,7 +243,7 @@
 
 (defun match-args (parse pattern)
   "parse is a hash table with numeric and string keys.
-   pattern is a sequence of (key . value) pairs.
+   pattern is a list of (key . value) pairs.
    a numeric key in pattern must match a numeric key in parse.
    a non-numeric key in pattern must correspond to a numeric key in parse
    at the element number in pattern or the same non-numeric key in parse.
@@ -251,8 +253,10 @@
      with res = (make-hash-table :test 'equal)
      with name
      with optional
-     for  (key . value) across pattern
+     for elt in pattern
      for i from 0
+     for key = (if (listp elt) (car elt) i)
+     for value = (if (listp elt) (cdr elt) elt)
      do
        (cond ((integerp key)
               (setq name value
@@ -331,32 +335,67 @@
      finally
        (return (str-replace ",(" #.(format nil ",~%(") res))))
 
-(defgeneric bankid (bankid-getter)
-  (:method ((getter t))
-    (error "~s doesn't know for bankid" getter)))
-
 (defmethod match-pattern ((parser parser) req &optional bankid)
   (let* ((patterns (patterns))
-         (pattern (gethash (gethash 1 req) patterns)))
+         (request-name (gethash 1 req))
+         (request (find-symbol request-name :keyword))
+         (pattern (gethash request patterns)))
     (unless pattern
-      (error "Unknown request: ~s" (gethash 1 req)))
+      (error "Unknown request: ~s" request-name))
     (setq pattern (append '(:|customer| :|request|) pattern))
     (let ((args (match-args req pattern)))
       (unless args
         (error "Request doesn't match pattern for ~s: ~s, ~s"
-               (gethash 1 req)
+               request-name
                (format-pattern pattern)
                (get-parsemsg req)))
       (let ((args-bankid (gethash :|bankid| args)))
         (when args-bankid
           (unless bankid
-            (setq bankid (bankid (parser-bank-getter parser))))
-          (unless (equal bankid args-bankid)
+            (let ((bank-getter (parser-bank-getter parser)))
+              (when bank-getter
+                (setq bankid (funcall bank-getter)))))
+          (unless (or (null bankid) (equal bankid args-bankid))
             (error "bankid mismatch, sb: ~s, was: ~s"
                    bankid args-bankid))))
       (when (> (length (gethash :|note| args)) 4096)
         (error "Note too long. Max: 4096 chars"))
       args)))
+
+(defmethod match-message ((parser parser) (msg string))
+  "Parse and match a message.
+   Returns a hash table parameter names to values."
+  (let ((reqs (parse parser msg)))
+    (match-pattern parser (car reqs))))
+
+ (defmethod dirhash ((db db) key unpacker &optional newitem removed-names)
+   "Return the hash of a directory, KEY, of bank-signed messages.
+    The hash is of the user messages wrapped by the bank signing.
+    NEWITEM is a new item or an array of new items, not bank-signed.
+    REMOVED-NAMES is a list of names in the KEY dir to remove.
+    UNPACKER is a function to call with a single-arg, a bank-signed
+    message. It returns a parsed and matched ARGS hash table whose :|msg|
+    element is the parsed user message wrapped by the bank signing.
+    Returns two values, the sha1 hash of the items and the number of items."
+   (let ((contents (db-contents db key))
+         (items nil))
+     (dolist (name contents)
+       (unless (member name removed_names :test 'equal)
+         (let* ((msg (db-get db (strcat key "/" name)))
+                (args (funcall unpacker msg))
+                (req (gethash :|msg| args)))
+           (unless req
+             (error "Directory msg is not a bank-wrapped message"))
+           (unless (setq msg (get-parsemsg req))
+             (error "get-parsemsg didn't find anything"))
+           (push msg items))))
+     (if newitem
+         (if (stringp newitem) (push newitem items))
+         (setq items (append items newitem)))
+     (setq items (sort items 'string-lessp))
+     (let* ((str (apply 'implode "." (mapcar 'trim items)))
+            (hash (sha1 str)))
+       (values hash (length items)))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

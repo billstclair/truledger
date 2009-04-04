@@ -105,6 +105,13 @@
   "Concatenate a bunch of strings"
   (apply #'concatenate 'string (mapcar 'string strings)))
 
+(defun implode (separator &rest strings)
+  (declare (dynamic-extent strings))
+  (let ((res (car strings)))
+    (dolist (item (cdr strings))
+      (setq res (strcat res separator item)))
+    res))
+
 (defun strstr (haystack needle)
   "Find NEEDLE in HAYSTACK. Return the tail of HAYSTACK including NEEDLE."
   (let ((pos (search needle haystack)))
@@ -251,17 +258,6 @@
 
 #||
 ;; Continue here
-  // Parse and match a message.
-  // Returns an array mapping parameter names to values.
-  // Returns a string if parsing or matching fails.
-  function match_message($msg) {
-    $parser = $this->parser;
-
-    $reqs = $parser->parse($msg);
-    if (!$reqs) return $parser->errmsg || "Parse failed";
-    return $this->match_pattern($reqs[0]);
-  }
-
   // Return the hash of a directory, $key, of bank-signed messages.
   // The hash is of the user messages wrapped by the bank signing.
   // $newitems is a new item or an array of new items, not bank-signed.
