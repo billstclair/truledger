@@ -104,6 +104,16 @@
         "0"
         (unpack-bankmsg server msg $ATBALANCE $BALANCE $AMOUNT))))
 
+(defun outbox-key (id)
+  (strcat (account-dir id) $OUTBOX))
+
+(defun outbox-hash-key (id)
+  (strcat (account-dir id) $OUTBOXHASH))
+
+(defun inbox-key (id)
+  (strcat (account-dir id) $INBOX))
+
+
 #||
 ;; Continue here
   // Get the values necessary to compute the storage fee.
@@ -153,18 +163,6 @@
     }
 
     return $percent;
-  }
-
-  function outboxkey($id) {
-    return $this->accountdir($id) . $this->t->OUTBOX;
-  }
-
-  function outboxhashkey($id) {
-    return $this->accountdir($id) . $this->t->OUTBOXHASH;
-  }
-
-  function inboxkey($id) {
-    return $this->accountdir($id) . $this->t->INBOX;
   }
 
   function storagefeekey($id, $assetid=false) {
