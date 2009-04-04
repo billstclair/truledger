@@ -13,6 +13,7 @@
     :components
     ((:file "package")
      (:file "ccl")
+     (:file "bcmath")
      (:file "utilities")
      (:file "openssl-cffi")
      (:file "file-locks")

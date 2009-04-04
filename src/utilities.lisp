@@ -256,120 +256,103 @@
              (setf (gethash key hash) value))
         (setq *patterns* hash))))
 
+(defmethod dirhash ((db db) key unpacker &optional newitem removed-names)
+  "Return the hash of a directory, KEY, of bank-signed messages.
+    The hash is of the user messages wrapped by the bank signing.
+    NEWITEM is a new item or an array of new items, not bank-signed.
+    REMOVED-NAMES is a list of names in the KEY dir to remove.
+    UNPACKER is a function to call with a single-arg, a bank-signed
+    message. It returns a parsed and matched ARGS hash table whose :|msg|
+    element is the parsed user message wrapped by the bank signing.
+    Returns two values, the sha1 hash of the items and the number of items."
+  (let ((contents (db-contents db key))
+        (items nil))
+    (dolist (name contents)
+      (unless (member name removed-names :test 'equal)
+        (let* ((msg (db-get db (strcat key "/" name)))
+               (args (funcall unpacker msg))
+               (req (gethash :|msg| args)))
+          (unless req
+            (error "Directory msg is not a bank-wrapped message"))
+          (unless (setq msg (get-parsemsg req))
+            (error "get-parsemsg didn't find anything"))
+          (push msg items))))
+    (if newitem
+        (if (stringp newitem) (push newitem items))
+        (setq items (append items newitem)))
+    (setq items (sort items 'string-lessp))
+    (let* ((str (apply 'implode "." (mapcar 'trim items)))
+           (hash (sha1 str)))
+      (values hash (length items)))))
+
+(defmethod balancehash ((db db) unpacker balancekey acctbals)
+  "Compute the balance hash as two values: hash & count.
+   UNPACKER is a function of one argument, a string, representing
+   a bank-signed message. It returns the unpackaged bank message
+   BALANCEKEY is the key to the user balance directory.
+   $acctbals is an alist of alists: ((acct . (assetid . msg)) ...)"
+  (let* ((hash nil)
+         (hashcnt 0)
+         (accts (db-contents db balancekey))
+         (needsort nil))
+    (loop
+       for  acct.bals in acctbals
+       for acct = (car acct.bals)
+       do
+         (unless (member acct acct :test 'equal)
+           (push acct accts)
+           (setq needsort t)))
+    (when needsort (setq accts (sort accts 'string-lessp)))
+    (loop
+       for acct in accts
+       for newitems = nil
+       for removed-names = nil
+       for newacct = (cdr (assoc acct acctbals :test 'equal))
+       do
+         (when newacct
+           (loop
+              for (assetid . msg) in newacct
+              do
+                (push msg newitems)
+                (push assetid removed-names)))
+         (multiple-value-bind (hash1 cnt)
+             (dirhash db (strcat balancekey "/" acct) unpacker
+                      newitems removed-names)
+           (setq hash (if hash (strcat hash "." hash1) hash1))
+           (incf hashcnt cnt)))
+    (when (> hashcnt 1) (setq hash (sha1 hash)))
+    (values hash hashcnt)))
+
+(defun hex-char-p (x)
+  "Predicate. True if x is 0-9, a-f, or A-F"
+  (check-type x character)
+  (let ((code (char-code x)))
+    (or (and (>= code #.(char-code #\0))
+             (<= code #.(char-code #\9)))
+        (and (>= code #.(char-code #\a))
+             (<= code #.(char-code #\f)))
+        (and (>= code #.(char-code #\A))
+             (<= code #.(char-code #\F))))))
+
+(defun coupon-p (x)
+  "Predicate. True if arg looks like a coupon number."
+  (and (stringp x)
+       (eql 32 (length x))
+       (every 'hex-char-p x)))
+
+(defun id-p (x)
+  "Predicate. True if arg looks like an ID."
+  (and (stringp x)
+       (eql 40 (length x))
+       (every 'hex-char-p x)))
+
+(defun fraction-digits (percent)
+  "Calculate the number of digits to keep for the fractional balance.
+   Add 3 for divide by 365, 2 for percent, 3 more for 1/1000 precision."
+  (+ (number-precision percent) 8))
+
 #||
 ;; Continue here
-  // Return the hash of a directory, $key, of bank-signed messages.
-  // The hash is of the user messages wrapped by the bank signing.
-  // $newitems is a new item or an array of new items, not bank-signed.
-  // $removed_names is an array of names in the $key dir to remove.
-  // $unpacker is an object on which to call the unpack_bankmsg()
-  // method with a single-arg, a bank-signed message. It returns
-  // a parsed and matched $args array whose :|msg| element is
-  // the parsed user message wrapped by the bank signing.
-  // Returns array('hash'=>$hash, 'count'=>$count)
-  // Where $hash is the sha1 hash, and $count is the number of items
-  // hashed.
-  // Returns false if there's a problem.
-  function dirhash($db, $key, $unpacker, $newitem=false, $removed_names=false) {
-    $parser = $this->parser;
-    $t = $this->t;
-
-    $contents = $db->contents($key);
-    $items = array();
-    foreach ($contents as $name) {
-      if (!$removed_names || !in_array($name, $removed_names)) {
-        $msg = $db->get("$key/$name");
-        $args = $unpacker->unpack_bankmsg($msg);
-        if (!$args || is_string($args)) return false;
-        $req = $args[:|msg|];
-        if (!$req) return false;
-        $msg = $parser->get_parsemsg($req);
-        if (!$msg) return false;
-        $items[] = $msg;
-      }
-    }
-    if ($newitem) {
-      if (is_string($newitem)) $items[] = $newitem;
-      else $items = array_merge($items, $newitem);
-    }
-    sort($items);
-    $str = implode('.', array_map('trim', $items));
-    $hash = sha1($str);
-    return array(:|hash| => $hash, :|count| => count($items));
-  }
-
-  // Compute the balance hash as array(:|hash| => $hash, :|count| => $hashcnt)
-  // $id is the ID of the account.
-  // $unpacker must have balancekey() and unpack_bankmsg() methods.
-  // $acctbals is array($acct => array($assetid => $msg))
-  function balancehash($db, $id, $unpacker, $acctbals) {
-    $t = $this->t;
-
-    $hash = '';
-    $hashcnt = 0;
-    $balancekey = $unpacker->balancekey($id);
-    $accts = $db->contents($balancekey);
-    $needsort = false;
-    foreach ($acctbals as $acct => $bals) {
-      if (!in_array($acct, $accts)) {
-        $accts[] = $acct;
-        $needsort = true;
-      }
-    }
-    if ($needsort) sort($accts);
-    foreach ($accts as $acct) {
-      $newitems = array();
-      $removed_names = array();
-      $newacct = @$acctbals[$acct];
-      if ($newacct) {
-        foreach ($newacct as $assetid => $msg) {
-          $newitems[] = $msg;
-          $removed_names[] = $assetid;
-        }
-        $hasharray = $this->dirhash($db, "$balancekey/$acct", $unpacker,
-                                    $newitems, $removed_names);
-        if ($hash != '') $hash .= '.';
-        $hash .= $hasharray[:|hash|];
-        $hashcnt += $hasharray[:|count|];
-      }
-    }
-    if ($hashcnt > 1) $hash = sha1($hash);
-    return array(:|hash| => $hash, :|count| => $hashcnt);
-  }
-
-  // Take the values in the passed array and return an array with
-  // those values as its keys mapping to $value.
-  function array_to_keys($arr, $value=true) {
-    $res = array();
-    foreach($arr as $v) {
-      $res[$v] = $value;
-    }
-    return $res;
-  }
-
-  // Predicate. True if arg looks like a coupon number
-  function is_coupon_number($x) {
-    return is_string($x) && strlen($x) == 32 && @pack("H*", $x);
-  }
-
-  // Predicate. True if arg looks like an ID
-  function is_id($x) {
-    return is_string($x) && strlen($x) == 40 && @pack("H*", $x);
-  }
-
-  // Return the number of digits after the decimal point in a number
-  function number_precision($number) {
-    $i = strpos($number, '.');
-    if ($i === false) return 0;
-    return strlen($number) - $i - 1;
-  }
-
-  // Calculate the number of digits to keep for the fractional balance
-  function fraction_digits($percent) {
-    // Add 3 for divide by 365, 2 for percent, 3 more for 1/1000 precision
-    return $this->number_precision($percent) + 8;
-  }
-
   // Calculate the storage fee.
   // $balance is the balance
   // $baltime is the time of the $balance

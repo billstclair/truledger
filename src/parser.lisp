@@ -368,35 +368,6 @@
   (let ((reqs (parse parser msg)))
     (match-pattern parser (car reqs))))
 
- (defmethod dirhash ((db db) key unpacker &optional newitem removed-names)
-   "Return the hash of a directory, KEY, of bank-signed messages.
-    The hash is of the user messages wrapped by the bank signing.
-    NEWITEM is a new item or an array of new items, not bank-signed.
-    REMOVED-NAMES is a list of names in the KEY dir to remove.
-    UNPACKER is a function to call with a single-arg, a bank-signed
-    message. It returns a parsed and matched ARGS hash table whose :|msg|
-    element is the parsed user message wrapped by the bank signing.
-    Returns two values, the sha1 hash of the items and the number of items."
-   (let ((contents (db-contents db key))
-         (items nil))
-     (dolist (name contents)
-       (unless (member name removed_names :test 'equal)
-         (let* ((msg (db-get db (strcat key "/" name)))
-                (args (funcall unpacker msg))
-                (req (gethash :|msg| args)))
-           (unless req
-             (error "Directory msg is not a bank-wrapped message"))
-           (unless (setq msg (get-parsemsg req))
-             (error "get-parsemsg didn't find anything"))
-           (push msg items))))
-     (if newitem
-         (if (stringp newitem) (push newitem items))
-         (setq items (append items newitem)))
-     (setq items (sort items 'string-lessp))
-     (let* ((str (apply 'implode "." (mapcar 'trim items)))
-            (hash (sha1 str)))
-       (values hash (length items)))))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
