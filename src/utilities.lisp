@@ -351,46 +351,35 @@
    Add 3 for divide by 365, 2 for percent, 3 more for 1/1000 precision."
   (+ (number-precision percent) 8))
 
-#||
-;; Continue here
-  // Calculate the storage fee.
-  // $balance is the balance
-  // $baltime is the time of the $balance
-  // $now is the current time
-  // $percent is the storage fee rate, in percent/year
-  // $digits is the precision for the arithmetic
-  // Returns the storage fee, and subtracts it from $balance
-  function storagefee($balance, $baltime, $now, $percent, $digits) {
-    if (!$percent) return 0;
+(defun storage-fee (balance baltime now percent digits)
+  "Calculate the storage fee.
+   BALANCE is the balance.
+   BALTIME is the time of the BALANCE, as an integer string.
+   NOW is the current time, as an integer string.
+   PERCENT is the storage fee rate, in percent/year.
+   DIGITS is the precision for the arithmetic.
+   Returns two values:
+    1) the storage fee
+    2) balance - storage-fee"
+  (wbp (digits)
+    (cond ((eql 0 (bccomp percent 0))
+           (values "0" balance))
+          (t (let* ((secs-per-year-pct (* 60 60 24 365 100))
+                    (fee (bcdiv (bcmul balance
+                                       percent
+                                       (wbp (0) (bcsub now baltime)))
+                                secs-per-year-pct)))
+               (cond ((< (bccomp fee 0) 0)
+                      (setq fee  0))
+                     ((> (bccomp fee balance) 0)
+                      (setq fee balance)))
+               (values fee (bcsub balance fee)))))))
 
-    $SECSPERYEARPCT = bcmul(60 * 60 * 24 * 365, 100, 0);
-
-    $baltime = bcadd($baltime, 0, 0); // truncate
-    $time = bcadd($now, 0, 0);         // truncate
-    $fee = bcmul($balance, $percent, $digits);
-    $fee = bcmul($fee, bcsub($time, $baltime), $digits);
-    $fee = bcdiv($fee, $SECSPERYEARPCT, $digits);
-    if (bccomp($fee, 0) < 0) $fee = 0;
-    elseif (bccomp($fee, $balance) > 0) $fee = $balance;
-    return $fee;
-  }
-
-  // Add together $balance & $fraction, to $digits precision.
-  // Put the integer part of the total into $balance and the
-  // fractional part into $fraction.
-  function normalize_balance(&$balance, &$fraction, $digits) {
-    $total = bcadd($balance, $fraction, $digits);
-    $i = strpos($total, '.');
-    if ($i === false) {
-      $balance = $total;
-      $fraction = 0;
-    } else {
-      $balance = substr($total, 0, $i);
-      $fraction = '0' . substr($total, $i);
-      if (bccomp($fraction, 0, $digits) == 0) $fraction = 0;
-    }
-  }
-||#
+(defun normalize-balance (balance fraction digits)
+  "Add together $balance & $fraction, to $digits precision.
+   Return two values, the integer part and the fractional part."
+  (wbp (digits)
+    (split-decimal (bcadd balance fraction))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

@@ -17,22 +17,22 @@
          (if (null i) number (strcat (subseq number 0 i) (subseq number (1+ i))))
          i))))
 
-(defun remove-decimal-part (number)
-  "Remove the decimal point and to its right from a number, rounding as appropriate"
+(defun split-decimal (number)
+  "Return two values, the integer and decimal part of a decimal string."
   (let ((pos (position #\. number)))
     (if (not pos)
-        number
-        (let ((res (subseq number 0 pos))
-              (dec (if (> (length number) pos)
-                       (char-code (aref number (1+ pos)))
-                       0)))
-          (if (>= dec #.(char-code #\5))
-              (format nil "~d" (1+ (parse-integer res :radix 10)))
-              res)))))
+        (values number 0)
+        (values (subseq number 0 pos)
+                (if (> (length number) pos)
+                    (strcat "0." (subseq number (1+ pos)))
+                    0)))))
 
 (defmacro with-bcmath-precision ((precision) &body body)
   `(let ((*bcmath-precision* ,precision))
      ,@body))
+
+(defmacro wbp ((precision) &body body)
+  `(with-bcmath-precision (,precision) ,@body))
 
 (defun bcshift-precision (x)
   "Shift a string or integer to the left *bcmath-precision* places.
@@ -72,7 +72,7 @@
       ;; but PHP can't do that, and it gets pretty big.
       ;; Could optimize this by using an integer divide.
       (setq res (parse-integer
-                 (remove-decimal-part
+                 (split-decimal
                   (bcunshift-precision
                    (* res (bcshift-precision num))))
                  :radix 10)))
@@ -82,7 +82,7 @@
   (let ((res (bcshift-precision dividend))
         (shifter (expt 10 *bcmath-precision*)))
     (dolist (num divisors)
-      (setq res (/ (* res shifter) (bcshift-precision num))))
+      (setq res (round (* res shifter) (bcshift-precision num))))
     (bcunshift-precision res)))
 
 (defun bccomp (x y)
