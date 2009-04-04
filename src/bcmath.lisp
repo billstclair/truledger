@@ -47,7 +47,7 @@
       (multiple-value-bind (precision num) (number-precision x t)
         (let* ((diff (- *bcmath-precision* precision))
                (str (cond ((> diff 0)
-                           (strcat num (make-string diff :initial-element #\0)))
+                           (strcat num (zero-string diff)))
                           ((< diff 0)
                            (subseq num 0 (+ (length num) diff)))
                           (t num))))
@@ -62,7 +62,7 @@
       (let* ((diff (- (length x) *bcmath-precision*)))
         (if (> diff 0)
             (strcat (subseq x 0 diff) "." (subseq x diff))
-            (strcat "0." (make-string (- diff) :initial-element #\0) x)))))
+            (strcat "0." (zero-string (- diff)) x)))))
 
 (defun bcadd (&rest numbers)
   (bcunshift-precision (apply '+ (mapcar 'bcshift-precision numbers))))

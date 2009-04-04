@@ -18,6 +18,8 @@
      (:file "fsdb")
      (:file "bcmath")
      (:file "utilities")
+     (:file "loomrandom")
+     (:file "timestamp")
      ))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

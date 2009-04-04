@@ -106,6 +106,18 @@
 (defmethod db-unlock ((db fsdb) lock)
   (release-file-lock lock))
 
+(defmacro with-db-lock ((db key) &body body)
+  (let ((thunk (gensym)))
+    `(flet ((,thunk () ,@body))
+       (declare (dynamic-extent #',thunk))
+       (call-with-db-lock #',thunk ,db ,key))))
+
+(defun call-with-db-lock (thunk db key)
+  (let ((lock (db-lock db key)))
+    (unwind-protect
+         (funcall thunk)
+      (db-unlock db lock))))
+
 (defun file-namestring-or-last-directory (path)
   (if (or (pathname-name path) (pathname-type path))
       (file-namestring path)

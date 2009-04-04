@@ -136,6 +136,9 @@
      (setq res (strcat (subseq res 0 idx) new (subseq res (+ idx old-len)))
            pos (+ idx new-len))))
 
+(defun zero-string (len)
+  (make-string len :initial-element #\0))
+
 (defun integer-string-sort (array)
   "Sort a sequence of integers represented as strings.
    Doesn't use bignum math, just prepends leading zeroes.
@@ -154,8 +157,7 @@
              (let ((len (length item)))
                (when (< len maxlen)
                  (setf (elt res i)
-                       (strcat (make-string (- maxlen len)
-                                            :initial-element #\0)
+                       (strcat (zero-string (- maxlen len))
                                item)))
                (incf i)))
            res))
@@ -188,15 +190,6 @@
 (defun assetid (id scale precision name)
   "Return the id for an asset"
   (sha1 (format nil "~a,~a,~a,~a" id scale precision name)))
-
-(defclass utility ()
-  ((parser :type (or parser null)
-           :initarg :parser
-           :initform nil
-           :accessor utility-parser)
-   (bankgetter :initarg :bankgetter
-               :initform nil
-               :accessor utility-bankgetter)))
 
 (defvar *patterns* nil)
 
