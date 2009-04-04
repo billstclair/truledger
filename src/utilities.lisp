@@ -196,58 +196,58 @@
 ;; Patterns for non-request data
 (defun patterns ()
   (or *patterns*
-      (let ((patterns '(;; Customer messages
-                        (:|balance| .
-                         (:|bankid| :|time| :|asset| :|amount| (:|acct|)))
-                        (:|outboxhash| . (:|bankid| :|time| :|count| :|hash|))
-                        (:|balancehash| . (:|bankid| :|time| :|count| :|hash|))
-                        (:|spend| .
-                         (:|bankid| :|time| :|id| :|asset| :|amount| (:|note|)))
-                        (:|asset| .
-                         (:|bankid| :|asset| :|scale| :|precision| :|assetname|))
-                        (:|storage| . (:|bankid| :|time| :|asset| :|percent|))
-                        (:|storagefee| . (:|bankid| :|time| :|asset| :|amount|))
-                        (:|fraction| . (:|bankid| :|time| :|asset| :|amount|))
-                        (:|register| . (:|bankid| :|pubkey| (:|name|)))
-                        (:|spendaccept| . (:|bankid| :|time| :|id| (:|note|)))
-                        (:|spendreject| . (:|bankid| :|time| :|id| (:|note|)))
-                        (:|getoutbox| .(:|bankid| :|req|))
-                        (:|getinbox| . (:|bankid| :|req|))
-                        (:|processinbox| . (:|bankid| :|time| :|timelist|))
-                        (:|storagefees| . (:|bankid| :|req|))
-                        (:|gettime| . (:|bankid| :|time|))
-                        (:|couponenvelope| . (:|id| :|encryptedcoupon|))
+      (let ((patterns `(;; Customer messages
+                        (,$kBALANCE .
+                         (,$kBANKID ,$kTIME ,$kASSET ,$kAMOUNT (,$kACCT)))
+                        (,$kOUTBOXHASH . (,$kBANKID ,$kTIME ,$kCOUNT ,$kHASH))
+                        (,$kBALANCEHASH . (,$kBANKID ,$kTIME ,$kCOUNT ,$kHASH))
+                        (,$kSPEND .
+                         (,$kBANKID ,$kTIME ,$kID ,$kASSET ,$kAMOUNT (,$kNOTE)))
+                        (,$kASSET .
+                         (,$kBANKID ,$kASSET ,$kSCALE ,$kPRECISION ,$kASSETNAME))
+                        (,$kSTORAGE . (,$kBANKID ,$kTIME ,$kASSET ,$kPERCENT))
+                        (,$kSTORAGEFEE . (,$kBANKID ,$kTIME ,$kASSET ,$kAMOUNT))
+                        (,$kFRACTION . (,$kBANKID ,$kTIME ,$kASSET ,$kAMOUNT))
+                        (,$kREGISTER . (,$kBANKID ,$kPUBKEY (,$kNAME)))
+                        (,$kSPENDACCEPT . (,$kBANKID ,$kTIME ,$kID (,$kNOTE)))
+                        (,$kSPENDREJECT . (,$kBANKID ,$kTIME ,$kID (,$kNOTE)))
+                        (,$kGETOUTBOX .(,$kBANKID ,$kREQ))
+                        (,$kGETINBOX . (,$kBANKID ,$kREQ))
+                        (,$kPROCESSINBOX . (,$kBANKID ,$kTIME ,$kTIMELIST))
+                        (,$kSTORAGEFEES . (,$kBANKID ,$kREQ))
+                        (,$kGETTIME . (,$kBANKID ,$kTIME))
+                        (,$kCOUPONENVELOPE . (,$kID ,$kENCRYPTEDCOUPON))
 
                         ;; Bank signed messages
-                        (:|failed| . (:|msg| :|errmsg|))
-                        (:|tokenid| . (:|tokenid|))
-                        (:|bankid| . (:|bankid|))
-                        (:|regfee| . (:|bankid| :|time| :|asset| :|amount|))
-                        (:|tranfee| . (:|bankid| :|time| :|asset| :|amount|))
-                        (:|time| . (:|id| :|time|))
-                        (:|inbox| . (:|time| :|msg|))
-                        (:|req| . (:|id| :|req|))
-                        (:|coupon| .
-                         (:|bankurl| :|coupon| :|asset| :|amount| (:|note|)))
-                        (:|couponnumberhash| . (:|coupon|))
-                        (:|atregister| . (:|msg|))
-                        (:|atoutboxhash| . (:|msg|))
-                        (:|atbalancehash| . (:|msg|))
-                        (:|atgetinbox| . (:|msg|))
-                        (:|atbalance| . (:|msg|))
-                        (:|atspend| . (:|msg|))
-                        (:|attranfee| . (:|msg|))
-                        (:|atasset| . (:|msg|))
-                        (:|atstorage| . (:|msg|))
-                        (:|atstoragefee| . (:|msg|))
-                        (:|atfraction| . (:|msg|))
-                        (:|atprocessinbox| . (:|msg|))
-                        (:|atstoragefees| . (:|msg|))
-                        (:|atspendaccept| . (:|msg|))
-                        (:|atspendreject| . (:|msg|))
-                        (:|atgetoutbox| . (:|msg|))
-                        (:|atcoupon| . (:|coupon| :|spend|))
-                        (:|atcouponenvelope| . (:|msg|))
+                        (,$kFAILED . (,$kMSG ,$kERRMSG))
+                        (,$kTOKENID . (,$kTOKENID))
+                        (,$kBANKID . (,$kBANKID))
+                        (,$kREGFEE . (,$kBANKID ,$kTIME ,$kASSET ,$kAMOUNT))
+                        (,$kTRANFEE . (,$kBANKID ,$kTIME ,$kASSET ,$kAMOUNT))
+                        (,$kTIME . (,$kID ,$kTIME))
+                        (,$kINBOX . (,$kTIME ,$kMSG))
+                        (,$kREQ . (,$kID ,$kREQ))
+                        (,$kCOUPON .
+                         (,$kBANKURL ,$kCOUPON ,$kASSET ,$kAMOUNT (,$kNOTE)))
+                        (,$kCOUPONNUMBERHASH . (,$kCOUPON))
+                        (,$kATREGISTER . (,$kMSG))
+                        (,$kATOUTBOXHASH . (,$kMSG))
+                        (,$kATBALANCEHASH . (,$kMSG))
+                        (,$kATGETINBOX . (,$kMSG))
+                        (,$kATBALANCE . (,$kMSG))
+                        (,$kATSPEND . (,$kMSG))
+                        (,$kATTRANFEE . (,$kMSG))
+                        (,$kATASSET . (,$kMSG))
+                        (,$kATSTORAGE . (,$kMSG))
+                        (,$kATSTORAGEFEE . (,$kMSG))
+                        (,$kATFRACTION . (,$kMSG))
+                        (,$kATPROCESSINBOX . (,$kMSG))
+                        (,$kATSTORAGEFEES . (,$kMSG))
+                        (,$kATSPENDACCEPT . (,$kMSG))
+                        (,$kATSPENDREJECT . (,$kMSG))
+                        (,$kATGETOUTBOX . (,$kMSG))
+                        (,$kATCOUPON . (,$kCOUPON ,$kSPEND))
+                        (,$kATCOUPONENVELOPE . (,$kMSG))
                         ))
             (hash (make-hash-table :test 'eq)))
         (loop
@@ -262,7 +262,7 @@
     NEWITEM is a new item or an array of new items, not bank-signed.
     REMOVED-NAMES is a list of names in the KEY dir to remove.
     UNPACKER is a function to call with a single-arg, a bank-signed
-    message. It returns a parsed and matched ARGS hash table whose :|msg|
+    message. It returns a parsed and matched ARGS hash table whose $kMSG
     element is the parsed user message wrapped by the bank signing.
     Returns two values, the sha1 hash of the items and the number of items."
   (let ((contents (db-contents db key))
@@ -271,7 +271,7 @@
       (unless (member name removed-names :test 'equal)
         (let* ((msg (db-get db (strcat key "/" name)))
                (args (funcall unpacker msg))
-               (req (gethash :|msg| args)))
+               (req (gethash $kMSG args)))
           (unless req
             (error "Directory msg is not a bank-wrapped message"))
           (unless (setq msg (get-parsemsg req))

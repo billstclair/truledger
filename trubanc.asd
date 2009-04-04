@@ -17,6 +17,8 @@
      (:file "file-locks")
      (:file "fsdb")
      (:file "bcmath")
+     (:file "tokens")
+     (:file "parser")
      (:file "utilities")
      (:file "loomrandom")
      (:file "timestamp")

@@ -29,10 +29,9 @@
 (defun random-id ()
   "Return a random 128-bit location, as hex"
   (let ((res (bin2hex (urandom-bytes 16))))
-    (when (< (length res) 32)
-      (setq res (strcat (make-string (- 32 (length res)) :initial-element #\0)
-                        res)))
-    res))
+    (if (>= (length res) 32)
+        res
+        (strcat (zero-string (- 32 (length res))) res))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
