@@ -114,95 +114,77 @@
   (strcat (account-dir id) $INBOX))
 
 
+(defmethod storage-info ((server server) id assetid)
+  "Get the values necessary to compute the storage fee.
+   Inputs:
+    ID - the user ID
+    ASSETID - the asset ID
+   Return values:
+    1) storage fee percent
+    2) the ID of the asset issuer
+    3) the fraction balance for ID/ASSETID
+    4) the time of the fraction"
+  (let* ((parser (parser server))
+         (db (db server))
+         (msg (db-get db (strcat $ASSET "/" assetid))))
+    (unless msg
+      (error "Uknown asset: ~%" assetid))
+    (let* ((reqs (parse parser msg))
+           (req (elt reqs 1)))
+      (unless req (return-from storage-info nil))
+
+      (let ((args (match-pattern parser req)))
+        (unless (equal (gethash $kREQUEST args) $ATSTORAGE)
+          (return-from storage-info nil))
+        (setq req (gethash $kMSG args)
+              args (match-pattern parser req))
+        (unless (equal (gethash $kREQUEST args) $STORAGE)
+          (return-from storage-info nil))
+        (let ((issuer (gethash $kCUSTOMER args))
+              (percent (gethash $kPERCENT args)))
+          (let* ((fraction nil)
+                 (fractime nil)
+                 (key (fraction-balance-key id assetid))
+                 (msg (db-get db key)))
+            (when msg
+              (setq args (unpack-bankmsg server msg $ATFRACTION $FRACTION)
+                    fraction (gethash $kAMOUNT args)
+                    fractime (gethash $kTIME args)))
+            (values percent issuer fraction fractime)))))))
+
+(defun storage-fee-key (id &optional assetid)
+  (let ((res (strcat (account-dir id) $STORAGEFEE)))
+    (if assetid
+        (strcat res "/" assetid)
+        res)))
+
+(defun outbox-dir (id)
+  (strcat (account-dir id) $OUTBOX))
+
+(defmethod outbox-hash ((server server) id &optional newitem removed-items)
+  (let ((db (db server)))
+    (dirhash db (outbox-key id)
+             (lambda (msg) (unpack-bankmsg server msg))
+             newitem
+             removed-items)))
+
+(defmethod outbox-hash-msg ((server server) id)
+  (multiple-value-bind (hash count) (outbox-hash server id)
+    (bankmsg server
+             $kOUTBOXHASH
+             (bankid server)
+             (get-acct-last server id)
+             count
+             hash)))
+
+(defun balance-hash-key (id)
+  (strcat (account-dir id) $BALANCEHASH))
+
+(defmethod is-asset-p ((server server) assetid)
+  (db-get (db server) (strcat $ASSET "/" assetid)))
+
 #||
 ;; Continue here
-  // Get the values necessary to compute the storage fee.
-  // Inputs:
-  // $id - the user ID
-  // $assetid - the asset ID
-  // Return value: storage fee $percent
-  // On output (set only if $percent != 0):
-  // $issuer - the ID of the asset issuer
-  // $fraction - the fraction balance for $id/$assetid
-  // $fractime - the time of the fraction
-  function storageinfo($id, $assetid, &$issuer, &$fraction, &$fractime) {
-    $t = $this->t;
-    $u = $this->u;
-    $parser = $this->parser;
-    $db = $this->db;
-
-    $msg = $db->get($t->ASSET . "/$assetid");
-    if ($msg) {
-      $reqs = $parser->parse($msg);
-      if (!$reqs) return 0;
-      $req = $reqs[1];
-      if (!$req) return 0;
-    }
-    $args = $u->match_pattern($req);
-    if (is_string($args)) return 0;
-    if ($args[$t->REQUEST] != $t->ATSTORAGE) return 0;
-    $req = $args[$t->MSG];
-    $args = $u->match_pattern($req);
-    if (is_string($args)) return 0;
-    if ($args[$t->REQUEST] != $t->STORAGE) return 0;
-    $issuer = $args[$t->CUSTOMER];
-    if ($issuer == $id) return 0;
-
-    $percent = $args[$t->PERCENT];
-    
-    $fraction = 0;
-    $fractime = 0;
-    $key = $this->fractionbalancekey($id, $assetid);
-    $msg = $db->get($key);
-    if ($msg) {
-      $args = $this->unpack_bankmsg($msg, $t->ATFRACTION, $t->FRACTION);
-      if (!is_string($args)) {
-        $fraction = $args[$t->AMOUNT];
-        $fractime = $args[$t->TIME];
-      }
-    }
-
-    return $percent;
-  }
-
-  function storagefeekey($id, $assetid=false) {
-    $res = $this->accountdir($id) . $this->t->STORAGEFEE;
-    if ($assetid) $res .= "/$assetid";
-    return $res;
-  }
-
-  function outboxdir($id) {
-    return $this->accountdir($id) . $this->t->OUTBOX;
-  }
-
-  function outboxhash($id, $newitem=false, $removed_items=false) {
-    $db = $this->db;
-    $u = $this->u;
-
-    return $u->dirhash($db, $this->outboxkey($id), $this, $newitem, $removed_items);
-  }
-
-  function outboxhashmsg($id) {
-    $t = $this->t;
-
-    $array = $this->outboxhash($id);
-    $hash = $array[$t->HASH];
-    $count = $array[$t->COUNT];
-    return $this->bankmsg($this->t->OUTBOXHASH,
-                          $this->bankid,
-                          $this->getacctlast($id),
-                          $count,
-                          $hash);
-  }
-
-  function balancehashkey($id) {
-    return $this->accountdir($id) . $this->t->BALANCEHASH;
-  }
-
-  function is_asset($assetid) {
-    return $this->db->get($this->t->ASSET . "/$assetid");
-  }
-
   function lookup_asset($assetid) {
     $t = $this->t;
     $u = $this->u;
@@ -305,7 +287,6 @@
     $sig = $this->ssl->sign($msg, $this->privkey);
     return "$msg:\n$sig";
   }
-
 
   // Make an unsigned message from the args.
   // Takes as many args as you care to pass.
