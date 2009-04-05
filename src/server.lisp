@@ -18,7 +18,6 @@
               :initform (make-instance 'timestamp)
               :accessor timestamp)
    (pubkeydb :type db
-             :initarg :pubkeydb
              :accessor pubkeydb)
    (bankname :type string
              :initarg :bankname
@@ -55,11 +54,11 @@
 (defmethod initialize-intance ((server server) &key db passphrase)
   (let ((pubkeydb (db-subdir db $PUBKEY)))
     (setf (pubkeydb server) pubkeydb
-          (parser server)
-          (make-instance 'parser
-                         :keydb pubkeydb
-                         :bank-getter (lambda () (bankid server))
-                         :always-verify-sigs-p (always-verify-sigs-p server)))
+          (parser server) (make-instance
+                           'parser
+                           :keydb pubkeydb
+                           :bank-getter (lambda () (bankid server))
+                           :always-verify-sigs-p (always-verify-sigs-p server)))
     (setup-db server passphrase)))
 
 (defmethod gettime ((server server))
@@ -217,7 +216,7 @@
 
 (defmethod unpack-bank-param ((server server) type &optional (key type))
   "Unpack wrapped initialization parameter."
-  (unpack-bankmsg server (db-get (db server) type) type nil key t))
+  (unpack-bankmsg server (db-get (db server) type) nil key t))
 
 (defmethod banksign ((server server) msg)
   "Bank sign a message."
@@ -241,81 +240,49 @@
            (setq msg (strcat msg ",")))
          (setq msg (strcat msg (if (eq v msgval) v (escape v)))))))
 
-#||
-;; Continue here
-  // Make a bank signed message from the args.
-  // Takes as many args as you care to pass
-  function bankmsg() {
-    $req = func_get_args();
-    $req = array_merge(array($this->bankid), $req);
-    $msg = call_user_func_array(array($this, 'makemsg'), $req);
-    return $this->banksign($msg);
-  }
+(defmethod bankmsg ((server server) &rest req)
+  "Make a bank signed message from the args."
+  (banksign server (apply 'makemsg server (bankid server) req)))
 
-  function shorten_failmsg_msg($msg) {
-    if (strlen($msg) > 1024) {
-      $msg = substr($msg, 0, 1021) . "...";
-    }
-    return $msg;
-  }
+(defun shorten-failmsg-msg (msg)
+  (if (> (length msg) 1024)
+      (strcat (subseq msg 0 1021) "...")
+      msg))
 
-  // Takes as many args as you care to pass
-  function failmsg() {
-    $args = func_get_args();
-    if (count($args) > 0) $args[0] = $this->shorten_failmsg_msg($args[0]);
-    $msg = array_merge(array($this->bankid, $this->t->FAILED), $args);
-    return $this->banksign($this->u->makemsg($msg));
-  }
+(defmethod failmsg ((server server) &rest req)
+  (when (stringp (car req))
+    (setf (car req) (shorten-failmsg-msg (car req))))
+  (apply 'bankmsg server (bankid server) $FAILED req))
 
-  function maybedie($msg, $die) {
-    if ($die) die("$msg\n");
-    return $msg;
-  }
 
-  // Reverse the bankmsg() function, optionally picking one field to return
-  function unpack_bankmsg($msg, $type=false, $subtype=false, $idx=false, $fatal=false) {
-    $bankid = $this->bankid;
-    $parser = $this->parser;
-    $t = $this->t;
-    $u = $this->u;
-
-    $reqs = $parser->parse($msg);
-    if (!$reqs) return $this->maybedie($parser->errmsg, $fatal);
-    $req = $reqs[0];
-    $args = $u->match_pattern($req);
-    if (is_string($args)) $this->maybedie("While matching bank-wrapped message: $args", $fatal);
-    if ($args[$CUSTOMER] != $bankid && $bankid) {
-      return $this->maybedie("bankmsg not from bank", $fatal);
-    }
-    if ($type && $args[$REQUEST] != $type) {
-      if ($fatal) die("Bankmsg wasn't of type: $type\n");
-      return false;
-    }
-    if (!$subtype) {
-      if ($idx) {
-        $res = $args[$idx];
-        return $this->maybedie($res, $fatal && !$res);
-      }
-      $args[$this->unpack_reqs_key] = $reqs; // save parse results
-      return $args;
-    }
-
-    $req = $args[$MSG];      // this is already parsed
-    if (!$req) return $this->maybedie("No wrapped message", $fatal);
-    $args = $u->match_pattern($req);
-    if (is_string($args)) return $this->maybedie("While matching wrapped customer message: $args", $fatal);
-    if (is_string($subtype) && !$args[$REQUEST] == $subtype) {
-      if ($fatal) die("Wrapped message wasn't of type: $subtype\n");
-      return false;
-    }
-    if ($idx) {
-      $res = $args[$idx];
-      return $this->maybedie($res, $fatal && !$res);
-    }
-    $args[$this->unpack_reqs_key] = $reqs; // save parse results
-    return $args;
-  }
-||#
+(defmethod unpack-bankmsg ((server server) msg &optional type subtype idx)
+  "Reverse the bankmsg() function, optionally picking one field to return."
+  (let* ((bankid (bankid server))
+         (parser (parser server))
+         (reqs (parse parser msg))
+         (req (gethash 0 reqs))
+         (args (match-pattern parser req)))
+    (when (and bankid (not (equal (gethash $CUSTOMER args) bankid)))
+      (error "Bankmsg not from bank"))
+    (when (and type (not (equal (gethash $REQUEST args) type)))
+      (error "Bankmsg wasn't of type: ~s" type))
+    (cond ((not subtype)
+           (cond (idx
+                  (or (gethash idx args)
+                      (error "No arg in bankmsg: ~s" idx)))
+                 (t (setf (gethash $UNPACK-REQS-KEY args) reqs) ; save parse results
+                    args)))
+          (t (setq req (gethash $MSG args)) ;this is already parsed
+             (unless req
+               (error "No wrapped message"))
+             (setq args (match-pattern parser req))
+             (when (and subtype (not (equal (gethash $REQUEST args) subtype)))
+               (error "Wrapped message wasn't of type: ~%" subtype))
+             (cond (idx
+                    (or (gethash idx args)
+                        (error "No arg with idx: ~s" idx)))
+                   (t (setf (gethash $UNPACK-REQS-KEY args) reqs) ; save parse results
+                      args))))))
 
 (defmethod setup-db ((server server) passphrase)
   "Initialize the database, if it needs initializing."
