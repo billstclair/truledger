@@ -28,13 +28,15 @@
             :initarg :bankurl
             :initform nil
             :accessor bankurl)
-   (regfee :type integer
+   (tokenid :type string
+            :accessor tokenid)
+   (regfee :type string
            :initarg :regfee
-           :initform 10
+           :initform "10"
            :accessor regfee)
-   (tranfee :type integer
+   (tranfee :type string
             :initarg :tranfee
-            :initform 1
+            :initform "2"
             :accessor tranfee)
    (privkey :type string
             :accessor privkey)
@@ -48,7 +50,7 @@
               :initform nil
               :accessor debugmsgs)))
 
-(defparameter $UNPACK-REQS-KEY "unpack_reqs")
+(defconstant $UNPACK-REQS-KEY "unpack-reqs")
 
 (defmethod initialize-intance ((server server) &key db passphrase)
   (let ((pubkeydb (db-subdir db $PUBKEY)))
@@ -181,142 +183,66 @@
   (strcat (account-dir id) $BALANCEHASH))
 
 (defmethod is-asset-p ((server server) assetid)
+  "Returns the message defining ASSETID, or NIL, if there isn't one."
   (db-get (db server) (strcat $ASSET "/" assetid)))
+
+(defmethod lookup-asset ((server server) assetid)
+  (let ((asset (is-asset-p server assetid)))
+    (when asset
+      (let ((res (unpack-bankmsg server asset $ATASSET $ASSET)))
+        (let ((req1 (elt 1 (gethash $UNPACK-REQS-KEY res))))
+          (when req1
+            (let ((args (match-pattern (parser server) req1)))
+              (setf (gethash $PERCENT res) (gethash $PERCENT args)))))
+        res))))
+
+(defmethod lookup-asset-name ((server server) assetid)
+  (let ((assetreq (lookup-asset server assetid)))
+    (and assetreq
+         (gethash $ASSETNAME assetreq))))
+
+;; More restrictive than Lisp's alphanumericp
+(defun is-alphanumeric-p (char)
+  (let ((code (char-code char)))
+    (or (and (>= code #.(char-code #\0)) (<= code #.(char-code #\9)))
+        (and (>= code #.(char-code #\a)) (<= code #.(char-code #\z)))
+        (and (>= code #.(char-code #\A)) (<= code #.(char-code #\Z))))))
+
+(defun is-acct-name-p (acct)
+  (and (stringp acct)
+       (every 'is-alphanumeric-p acct)))
+
+(defun pubkey-id (pubkey)
+  (sha1 (trim pubkey)))
+
+(defmethod unpack-bank-param ((server server) type &optional (key type))
+  "Unpack wrapped initialization parameter."
+  (unpack-bankmsg server (db-get (db server) type) type nil key t))
+
+(defmethod banksign ((server server) msg)
+  "Bank sign a message."
+  (let ((sig (sign msg (privkey server))))
+    (strcat msg #.(format nil ":~%") sig)))
+
+(defmethod makemsg ((server server) &rest req)
+  "Make an unsigned message from the args."
+  (let ((hash (make-hash-table :test 'equal))
+        (i -1))
+    (dolist (arg req) (setf (gethash (incf i) hash) arg))
+    (loop
+       with args = (match-pattern (parser server) hash)
+       with msg = "("
+       with msgval = (gethash $MSG args)
+       for k from 0
+       for v = (gethash k args)
+       do
+         (unless v (return (strcat msg ")")))
+         (when (equal msg "(")
+           (setq msg (strcat msg ",")))
+         (setq msg (strcat msg (if (eq v msgval) v (escape v)))))))
 
 #||
 ;; Continue here
-  function lookup_asset($assetid) {
-    $t = $this->t;
-    $u = $this->u;
-
-    $asset = $this->is_asset($assetid);
-    if (!$asset) return false;
-    $res = $this->unpack_bankmsg($asset, $t->ATASSET, $t->ASSET);
-    if (is_string($res)) return $res;
-    $req1 = @$res[$this->unpack_reqs_key][1];
-    if ($req1) {
-      $args = $u->match_pattern($req1);
-      if (is_string($args)) return "While matching asset storage fee: $args";
-      $res[$t->PERCENT] = @$args[$t->PERCENT];
-    }
-    return $res;
-  }
-
-  function lookup_asset_name($assetid) {
-    $assetreq = $this->lookup_asset($assetid);
-    return $assetreq[$this->t->ASSETNAME];
-  }
-
-  function is_alphanumeric($char) {
-    $ord = ord($char);
-    return ($ord >= ord('0') && $ord <= ord('9')) ||
-      ($ord >= ord('A') && $ord <= ord('Z')) ||
-      ($ord >= ord('a') && $ord <= ord('z'));
-  }
-
-  function is_acct_name($acct) {
-    for ($i=0; $i<strlen($acct); $i++) {
-      if (!$this->is_alphanumeric(substr($acct, $i, 1))) return false;
-    }
-    return true;
-  }
-
-  // Initialize the database, if it needs initializing
-  function setupDB($passphrase) {
-    $db = $this->db;
-    $ssl = $this->ssl;
-    $t = $this->t;
-    $u = $this->u;
-
-    $bankname = $this->bankname;
-    if (!$db->get($t->PRIVKEY)) {
-      // http://www.rsa.com/rsalabs/node.asp?id=2004 recommends that 3072-bit
-      // RSA keys are equivalent to 128-bit symmetric keys, and they should be
-      // secure past 2031.
-      $privkey = $ssl->make_privkey(3072, $passphrase);
-      $db->put($t->PRIVKEY, $privkey);
-      $privkey = $ssl->load_private_key($privkey, $passphrase);
-      $this->privkey = $privkey;
-      $pubkey = $ssl->privkey_to_pubkey($privkey);
-      $bankid = $ssl->pubkey_id($pubkey);
-      $this->bankid = $bankid;
-      $db->put($t->TIME, 0);
-      $db->put($t->BANKID, $this->bankmsg($t->BANKID, $bankid));
-      $regmsg = $this->bankmsg($t->REGISTER, $bankid, "\n$pubkey", $bankname);
-      $regmsg = $this->bankmsg($t->ATREGISTER, $regmsg);
-      $db->put($t->PUBKEY . "/$bankid", $pubkey);
-      $db->put($t->PUBKEYSIG . "/$bankid", $regmsg);
-      $token_name = "Usage Tokens";
-      if ($this->bankname) $token_name = "$bankname $token_name";
-      $tokenid = $u->assetid($bankid, 0, 0, $token_name);
-      $this->tokenid = $tokenid;
-      $db->put($t->TOKENID, $this->bankmsg($t->TOKENID, $tokenid));
-      $asset = $this->bankmsg($t->ASSET, $bankid, $tokenid, 0, 0, $token_name);
-      $db->put($t->ASSET . "/$tokenid", $this->bankmsg($t->ATASSET, $asset));
-      $this->regfee = 10;
-      $db->put($t->REGFEE, $this->bankmsg($t->REGFEE, $bankid, 0, $tokenid, $this->regfee));
-      $this->tranfee = 2;
-      $db->put($t->TRANFEE, $this->bankmsg($t->TRANFEE, $bankid, 0, $tokenid, $this->tranfee));
-      $accountdir = $t->ACCOUNT . "/$bankid";
-      $db->put($this->accttimekey($bankid), 0);
-      $db->put($this->acctlastkey($bankid), 0);
-      $db->put($this->acctreqkey($bankid), 0);
-      $mainkey = $this->acctbalancekey($bankid);
-      // $t->BALANCE => array($t->BANKID,$t->TIME, $t->ASSET, $t->AMOUNT, $t->ACCT=>1),
-      $msg = $this->bankmsg($t->BALANCE, $bankid, 0, $tokenid, -1);
-      $msg = $this->bankmsg($t->ATBALANCE, $msg);
-      $db->put("$mainkey/$tokenid", $msg);
-    } else {
-      $privkey = $ssl->load_private_key($db->get($t->PRIVKEY), $passphrase);
-      $this->privkey = $privkey;
-      $this->bankid = $this->unpack_bank_param($db, $t->BANKID);
-      $this->tokenid = $this->unpack_bank_param($db, $t->TOKENID);
-      $this->regfee = $this->unpack_bank_param($db, $t->REGFEE, $t->AMOUNT);
-      $this->tranfee = $this->unpack_bank_param($db, $t->TRANFEE, $t->AMOUNT);
-    }
-  }
-
-  // Unpack wrapped initialization parameter
-  function unpack_bank_param($db, $type, $key=false) {
-    if (!$key) $key = $type;
-    return $this->unpack_bankmsg($db->get($type), $type, false, $key, true);
-  }
-
-  // Bank sign a message
-  function banksign($msg) {
-    $sig = $this->ssl->sign($msg, $this->privkey);
-    return "$msg:\n$sig";
-  }
-
-  // Make an unsigned message from the args.
-  // Takes as many args as you care to pass.
-  function makemsg() {
-    $t = $this->t;
-    $u = $this->u;
-
-    $req = func_get_args();
-    $args = $u->match_pattern($req);
-    // I don't like this at all, but I don't know what else to do
-    if (!$args) return call_user_func_array(array($this, 'failmsg'), $req);
-    if (is_string($args)) return $this->failmsg($args);
-    $msg = '(';
-    $skip = false;
-    foreach ($args as $k => $v) {
-      if (is_int($k)) {
-        if ($skip) $skip = false;
-        else {
-          if ($msg != '(') $msg .= ',';
-          $msg .= $u->escape($v);
-        }
-      } elseif ($k == $t->MSG) {
-        $skip = true;
-        $msg .= ",$v";
-      }
-    }
-    $msg .= ')';
-    return $msg;
-  }
-
   // Make a bank signed message from the args.
   // Takes as many args as you care to pass
   function bankmsg() {
@@ -358,10 +284,10 @@
     $req = $reqs[0];
     $args = $u->match_pattern($req);
     if (is_string($args)) $this->maybedie("While matching bank-wrapped message: $args", $fatal);
-    if ($args[$t->CUSTOMER] != $bankid && $bankid) {
+    if ($args[$CUSTOMER] != $bankid && $bankid) {
       return $this->maybedie("bankmsg not from bank", $fatal);
     }
-    if ($type && $args[$t->REQUEST] != $type) {
+    if ($type && $args[$REQUEST] != $type) {
       if ($fatal) die("Bankmsg wasn't of type: $type\n");
       return false;
     }
@@ -374,11 +300,11 @@
       return $args;
     }
 
-    $req = $args[$t->MSG];      // this is already parsed
+    $req = $args[$MSG];      // this is already parsed
     if (!$req) return $this->maybedie("No wrapped message", $fatal);
     $args = $u->match_pattern($req);
     if (is_string($args)) return $this->maybedie("While matching wrapped customer message: $args", $fatal);
-    if (is_string($subtype) && !$args[$t->REQUEST] == $subtype) {
+    if (is_string($subtype) && !$args[$REQUEST] == $subtype) {
       if ($fatal) die("Wrapped message wasn't of type: $subtype\n");
       return false;
     }
@@ -389,6 +315,62 @@
     $args[$this->unpack_reqs_key] = $reqs; // save parse results
     return $args;
   }
+||#
+
+(defmethod setup-db ((server server) passphrase)
+  "Initialize the database, if it needs initializing."
+  (let ((db (db server)))
+    (if (db-get db $PRIVKEY)
+        (setf (privkey server) (decode-rsa-private-key
+                                (db-get db $PRIVKEY) passphrase)
+              (bankid server) (unpack-bank-param server $BANKID)
+              (tokenid server) (unpack-bank-param server $TOKENID)
+              (regfee server) (unpack-bank-param server $REGFEE $AMOUNT)
+              (tranfee server) (unpack-bank-param server $TRANFEE $AMOUNT))
+        ;; http://www.rsa.com/rsalabs/node.asp?id=2004 recommends that 3072-bit
+        ;; RSA keys are equivalent to 128-bit symmetric keys, and they should be
+        ;; secure past 2031.
+        (let* ((privkey (rsa-generate-key 3072))
+               (privkey-text (encode-rsa-private-key privkey passphrase))
+               (pubkey (encode-rsa-public-key privkey))
+               (bankid (pubkey-id pubkey))
+               (bankname (bankname server))
+               (ut "Usage Tokens")
+               (token-name (if bankname (strcat bankname " " ut) ut))
+               (zero "0")
+               (tokenid (assetid bankid zero zero token-name))
+               (asset (bankmsg
+                       server $ASSET bankid tokenid zero zero token-name)))
+          (db-put db $PRIVKEY privkey-text)
+          (setf (privkey server) privkey
+                (bankid server) bankid)
+          (db-put db $TIME zero)
+          (db-put db $BANKID (bankmsg server $BANKID $bankid))
+          (db-put db (strcat $PUBKEY "/" bankid) pubkey)
+          (db-put db (strcat $PUBKEYSIG "/" bankid)
+                  (bankmsg server $ATREGISTER
+                           (bankmsg server $REGISTER
+                                    bankid
+                                    (strcat #.(format nil "~%") pubkey)
+                                    bankname)))
+          (setf (tokenid server) tokenid)
+          (db-put db $TOKENID (bankmsg server $TOKENID tokenid))
+          (db-put db (strcat $ASSET "/" tokenid)
+                  (bankmsg server $ATASSET asset))
+          (db-put db $REGFEE
+                  (bankmsg server $REGFEE bankid zero tokenid (regfee server)))
+          (db-put db $TRANFEE
+                  (bankmsg server $TRANFEE bankid zero tokenid (tranfee server)))
+          (db-put db (acct-time-key bankid) zero)
+          (db-put db (acct-last-key bankid) zero)
+          (db-put db (acct-req-key bankid) zero)
+          (db-put db (asset-balance-key bankid tokenid)
+                  (bankmsg server $ATBALANCE
+                           (bankmsg server $BALANCE
+                                    bankid zero tokenid "-1")))))))
+
+#||
+;; Continue here
 
   function scaninbox($id) {
     $db = $this->db;
@@ -470,10 +452,10 @@
     if ($req) $req = $req[0];
     $args = $u->match_pattern($req);
     if (is_string($args)) return "Failed to match bank-signed message";
-    if ($args[$t->CUSTOMER] != $this->bankid) {
+    if ($args[$CUSTOMER] != $this->bankid) {
       return "Not signed by this bank";
     }
-    $msg = $args[$t->MSG];
+    $msg = $args[$MSG];
     $req = $parser->parse($msg);
     if (!$req) return $parser->errmsg;
     if ($req) $req = $req[0];
@@ -500,13 +482,13 @@
     $t = $this->t;
 
     $balmsg = $db->get($key);
-    $balargs = $this->unpack_bankmsg($balmsg, $t->ATBALANCE, $t->BALANCE);
+    $balargs = $this->unpack_bankmsg($balmsg, $ATBALANCE, $BALANCE);
     if (is_string($balargs) || !$balargs) {
       return "Error unpacking bank balance: '$balargs'";
-    } elseif (@$balargs[$t->ACCT] && $balargs[$t->ACCT] != $t->MAIN) {
+    } elseif (@$balargs[$ACCT] && $balargs[$ACCT] != $MAIN) {
       return "Bank balance message not for main account";
     } else {
-      $bal = $balargs[$t->AMOUNT];
+      $bal = $balargs[$AMOUNT];
       $newbal = bcadd($bal, $amount);
       $balsign = bccomp($bal, 0);
       $newbalsign = bccomp($newbal, 0);
@@ -514,9 +496,9 @@
           ($balsign < 0 && $newbalsign >= 0)) {
         return "Transaction would put bank out of balance.";
       } else {
-        // $t->BALANCE => array($t->BANKID,$t->TIME, $t->ASSET, $t->AMOUNT, $t->ACCT=>1)
-        $msg = $this->bankmsg($t->BALANCE, $bankid, $this->gettime(), $assetid, $newbal);
-        $msg = $this->bankmsg($t->ATBALANCE, $msg);
+        // $BALANCE => array($BANKID,$TIME, $ASSET, $AMOUNT, $ACCT=>1)
+        $msg = $this->bankmsg($BALANCE, $bankid, $this->gettime(), $assetid, $newbal);
+        $msg = $this->bankmsg($ATBALANCE, $msg);
         $db->put($key, $msg);
         $key = $this->acctreqkey($bankid);
         // Make sure clients update the balance
@@ -531,8 +513,8 @@
     $t = $this->t;
     $db = $this->db;
 
-    $id = $args[$t->CUSTOMER];
-    $req = $args[$t->REQ];
+    $id = $args[$CUSTOMER];
+    $req = $args[$REQ];
     $reqkey = $this->acctreqkey($id);
     $res = false;
     $lock = $db->lock($reqkey);
@@ -564,10 +546,10 @@
     $db = $this->db;
     $bankid = $this->bankid;
 
-    $asset = $args[$t->ASSET];
-    $amount = $args[$t->AMOUNT];
-    $acct = @$args[$t->ACCT];
-    if (!$acct) $acct = $t->MAIN;
+    $asset = $args[$ASSET];
+    $amount = $args[$AMOUNT];
+    $acct = @$args[$ACCT];
+    if (!$acct) $acct = $MAIN;
 
     $state['accts'][$acct] = true;
 
@@ -597,14 +579,14 @@
       $amount = 0;
       $acctargs = false;
     } else {
-      $acctargs = $this->unpack_bankmsg($acctmsg, $t->ATBALANCE, $t->BALANCE);
+      $acctargs = $this->unpack_bankmsg($acctmsg, $ATBALANCE, $BALANCE);
       if (is_string($acctargs) || !$acctargs ||
-          $acctargs[$t->ASSET] != $asset ||
-          $acctargs[$t->CUSTOMER] != $id) {
+          $acctargs[$ASSET] != $asset ||
+          $acctargs[$CUSTOMER] != $id) {
         return "Balance entry corrupted for acct: $acct, asset: " .
           $this->lookup_asset_name($asset) . " - $acctmsg";
       }
-      $amount = $acctargs[$t->AMOUNT];
+      $amount = $acctargs[$AMOUNT];
       $state['bals'][$asset] = bcadd($state['bals'][$asset], $amount);
       if (bccomp($amount,  0) < 0) {
         if (@$state['oldneg'][$asset]) {
@@ -647,7 +629,7 @@
     $percent = @$assetinfo['percent'];
     if ($percent && bccomp($amount, 0) > 0) {   // no charges for asset issuer
       $digits = $assetinfo['digits'];
-      $accttime = $acctargs[$t->TIME];
+      $accttime = $acctargs[$TIME];
       $time = $state['time'];
       $fee = $u->storagefee($amount, $accttime, $time, $percent, $digits);
       $storagefee = bcadd($assetinfo['storagefee'], $fee, $digits);
@@ -678,26 +660,26 @@
     $parser = $this->parser;
 
     $bankid = $this->bankid;
-    $coupon = @$args[$t->COUPON];
+    $coupon = @$args[$COUPON];
 
-    // $t->BANKID => array($t->PUBKEY)
-    $msg = $db->get($t->PUBKEYSIG . "/$bankid");
-    $args = $this->unpack_bankmsg($msg, $t->ATREGISTER);
+    // $BANKID => array($PUBKEY)
+    $msg = $db->get($PUBKEYSIG . "/$bankid");
+    $args = $this->unpack_bankmsg($msg, $ATREGISTER);
     if (is_string($args)) return $this->failmsg($msg, "Bank's pubkey is hosed");
-    $req = $args[$t->MSG];
+    $req = $args[$MSG];
     $res = $parser->get_parsemsg($req);
 
     if ($coupon) {
       // Validate a coupon number
       $coupon_number_hash = sha1($coupon);
-      $key = $t->COUPON . "/$coupon_number_hash";
+      $key = $COUPON . "/$coupon_number_hash";
       $coupon  = $db->get($key);
       if ($coupon) {
-        $args = $this->unpack_bankmsg($coupon, $t->ATSPEND, $t->SPEND);
+        $args = $this->unpack_bankmsg($coupon, $ATSPEND, $SPEND);
         if (is_string($args)) return $this->failmsg($msg, "Can't parse coupon: $args");
-        $assetid = $args[$t->ASSET];
-        $amount = $args[$t->AMOUNT];
-        $id = $args[$t->CUSTOMER];
+        $assetid = $args[$ASSET];
+        $amount = $args[$AMOUNT];
+        $id = $args[$CUSTOMER];
         if (!$db->get($this->acctlastkey($id))) {
           // Not already registered, coupon must be for usage tokens,
           // and must be big enough to register with
@@ -707,7 +689,7 @@
             return $this->failmsg($msg, "It costs " . $this->regfee . " usage tokens to register a new account.");
           }
         }
-        $msg = $this->bankmsg($t->COUPONNUMBERHASH, $coupon_number_hash);
+        $msg = $this->bankmsg($COUPONNUMBERHASH, $coupon_number_hash);
       } else {
         $msg = $this->failmsg($inmsg, "Coupon invalid or already redeemed");
       }
@@ -721,10 +703,10 @@
   function do_id($args, $reqs, $msg) {
     $t = $this->t;
     $db = $this->db;
-    // $t->ID => array($t->BANKID,$t->ID)
-    $customer = $args[$t->CUSTOMER];
-    $id = $args[$t->ID];
-    $key = $db->get($t->PUBKEYSIG . "/$id");
+    // $ID => array($BANKID,$ID)
+    $customer = $args[$CUSTOMER];
+    $id = $args[$ID];
+    $key = $db->get($PUBKEYSIG . "/$id");
     if ($key) return $key;
     else return $this->failmsg($msg, 'No such public key');
   }
@@ -735,9 +717,9 @@
     $db = $this->db;
     $u = $this->u;
 
-    // $t->REGISTER => array($t->BANKID,$t->PUBKEY,$t->NAME=>1)
-    $id = $args[$t->CUSTOMER];
-    $pubkey = $args[$t->PUBKEY];
+    // $REGISTER => array($BANKID,$PUBKEY,$NAME=>1)
+    $id = $args[$CUSTOMER];
+    $pubkey = $args[$PUBKEY];
     if ($db->get($this->acctlastkey($id))) {
       return $this->failmsg($msg, "Already registered");
     }
@@ -753,9 +735,9 @@
     for ($i=1; $i<count($reqs); $i++) {
       $req = $reqs[$i];
       $reqargs = $u->match_pattern($req);
-      $reqid = $reqargs[$t->CUSTOMER];
-      $request = $reqargs[$t->REQUEST];
-      if ($request != $t->COUPONENVELOPE) {
+      $reqid = $reqargs[$CUSTOMER];
+      $request = $reqargs[$REQUEST];
+      if ($request != $COUPONENVELOPE) {
         return $this->failmsg($msg, "Non-coupon request with register: $request");
       }
       $reqargslist[] = $reqargs;
@@ -775,10 +757,10 @@
         if (is_string($inmsg_args)) {
           return $this->failmsg($msg, "Inbox parsing failed: $inmsg_args");
         }
-        if ($inmsg_args && $inmsg_args[$t->REQUEST] == $t->SPEND) {
-          // $t->SPEND = array($t->BANKID,$t->TIME,$t->ID,$t->ASSET,$t->AMOUNT,$t->NOTE=>1))
-          $asset = $inmsg_args[$t->ASSET];
-          $amount = $inmsg_args[$t->AMOUNT];
+        if ($inmsg_args && $inmsg_args[$REQUEST] == $SPEND) {
+          // $SPEND = array($BANKID,$TIME,$ID,$ASSET,$AMOUNT,$NOTE=>1))
+          $asset = $inmsg_args[$ASSET];
+          $amount = $inmsg_args[$AMOUNT];
           if ($asset == $tokenid && $amount >= $regfee) {
             $success = true;
             break;
@@ -790,14 +772,14 @@
       }
     }
     $bankid = $this->bankid;
-    $db->put($t->PUBKEY . "/$id", $pubkey);
+    $db->put($PUBKEY . "/$id", $pubkey);
     $msg = $this->parser->get_parsemsg($reqs[0]);
-    $res = $this->bankmsg($t->ATREGISTER, $msg);
-    $db->put($t->PUBKEYSIG . "/$id", $res);
+    $res = $this->bankmsg($ATREGISTER, $msg);
+    $db->put($PUBKEYSIG . "/$id", $res);
     $time = $this->gettime();
     if ($regfee != 0) {
       $spendmsg = $this->signed_spend($time, $id, $tokenid, -$regfee, "Registration fee");
-      $spendmsg = $this->bankmsg($t->INBOX, $time, $spendmsg);
+      $spendmsg = $this->bankmsg($INBOX, $time, $spendmsg);
       $db->put($this->inboxkey($id) . "/$time", $spendmsg);
     }
     $db->put($this->acctlastkey($id), 1);
@@ -808,8 +790,8 @@
   // Process a getreq
   function do_getreq($args, $reqs, $msg) {
     $t = $this->t;
-    $id = $args[$t->CUSTOMER];
-    return $this->bankmsg($t->REQ,
+    $id = $args[$CUSTOMER];
+    return $this->bankmsg($REQ,
                           $id,
                           $this->db->get($this->acctreqkey($id)));
   }
@@ -822,7 +804,7 @@
     $err = $this->checkreq($args, $msg);
     if ($err) return $err;
 
-    $id = $args[$t->CUSTOMER];
+    $id = $args[$CUSTOMER];
 
     $lock = $db->lock($this->accttimekey($id));
 
@@ -831,7 +813,7 @@
 
     $db->unlock($lock);
 
-    return $this->bankmsg($t->TIME, $id, $time);
+    return $this->bankmsg($TIME, $id, $time);
   }
 
   function do_getfees($args, $reqs, $msg) {
@@ -841,8 +823,8 @@
     $err = $this->checkreq($args, $msg);
     if ($err) return $err;
 
-    $regfee = $db->get($t->REGFEE);
-    $tranfee = $db->get($t->TRANFEE);
+    $regfee = $db->get($REGFEE);
+    $tranfee = $db->get($TRANFEE);
     return "$regfee.$tranfee";
   }
 
@@ -854,7 +836,7 @@
 
     $parser->verifysigs(false);
 
-    $id = $args[$t->CUSTOMER];
+    $id = $args[$CUSTOMER];
     $lock = $db->lock($this->accttimekey($id));
     $res = $this->do_spend_internal($args, $reqs, $msg,
                                     $ok, $assetid, $issuer, $storagefee, $digits);
@@ -882,13 +864,13 @@
 
     $ok = false;
 
-    // $t->SPEND => array($t->BANKID,$t->TIME,$t->ID,$t->ASSET,$t->AMOUNT,$t->NOTE=>1),
-    $id = $args[$t->CUSTOMER];
-    $time = $args[$t->TIME];
-    $id2 = $args[$t->ID];
-    $assetid = $args[$t->ASSET];
-    $amount = $args[$t->AMOUNT];
-    $note = @$args[$t->NOTE];
+    // $SPEND => array($BANKID,$TIME,$ID,$ASSET,$AMOUNT,$NOTE=>1),
+    $id = $args[$CUSTOMER];
+    $time = $args[$TIME];
+    $id2 = $args[$ID];
+    $assetid = $args[$ASSET];
+    $amount = $args[$AMOUNT];
+    $note = @$args[$NOTE];
 
     // Burn the transaction, even if balances don't match.
     $err = $this->deq_time($id, $time);
@@ -915,7 +897,7 @@
     $last = $this->getacctlast($id);
     foreach ($inbox as $inmsg) {
       $inmsg_args = $this->unpack_bankmsg($inmsg);
-      if ($last < 0 || bccomp($inmsg_args[$t->TIME], $last) <= 0) {
+      if ($last < 0 || bccomp($inmsg_args[$TIME], $last) <= 0) {
         return $this->failmsg($msg, "Please process your inbox before doing a spend");
       }
     }
@@ -954,75 +936,75 @@
       $req = $reqs[$i];
       $reqargs = $u->match_pattern($req);
       if (is_string($reqargs)) return $this->failmsg($msg, $reqargs); // match error
-      $reqid = $reqargs[$t->CUSTOMER];
-      $request = $reqargs[$t->REQUEST];
-      $reqtime = $reqargs[$t->TIME];
+      $reqid = $reqargs[$CUSTOMER];
+      $request = $reqargs[$REQUEST];
+      $reqtime = $reqargs[$TIME];
       if ($reqtime != $time) return $this->failmsg($msg, "Timestamp mismatch");
       if ($reqid != $id) return $this->failmsg($msg, "ID mismatch");
       $reqmsg = $parser->get_parsemsg($req);
-      if ($request == $t->TRANFEE) { 
+      if ($request == $TRANFEE) { 
        if ($feemsg) {
-          return $this->failmsg($msg, $t->TRANFEE . ' appeared multiple times');
+          return $this->failmsg($msg, $TRANFEE . ' appeared multiple times');
         }
-        $tranasset = $reqargs[$t->ASSET];
-        $tranamt = $reqargs[$t->AMOUNT];
+        $tranasset = $reqargs[$ASSET];
+        $tranamt = $reqargs[$AMOUNT];
         if ($tranasset != $tokenid || $tranamt != $tokens) {
           return $this->failmsg($msg, "Mismatched tranfee asset or amount ($tranasset <> $tokenid || $tranamt <> $tokens)");
         }
-        $feemsg = $this->bankmsg($t->ATTRANFEE, $reqmsg);
-      } elseif ($request == $t->STORAGEFEE) {
+        $feemsg = $this->bankmsg($ATTRANFEE, $reqmsg);
+      } elseif ($request == $STORAGEFEE) {
         if ($storagemsg) {
-          return $this->failmsg($msg, $t->STORAGEFEE . ' appeared multiple times');
+          return $this->failmsg($msg, $STORAGEFEE . ' appeared multiple times');
         }
-        $storageasset = $reqargs[$t->ASSET];
-        $storageamt = $reqargs[$t->AMOUNT];
+        $storageasset = $reqargs[$ASSET];
+        $storageamt = $reqargs[$AMOUNT];
         if ($storageasset != $assetid) {
           return $this->failmsg($msg, "Storage fee asset id doesn't match spend");
         }
-        $storagemsg = $this->bankmsg($t->ATSTORAGEFEE, $reqmsg);
-      } elseif ($request == $t->FRACTION) {
+        $storagemsg = $this->bankmsg($ATSTORAGEFEE, $reqmsg);
+      } elseif ($request == $FRACTION) {
         if ($fracmsg) {
-          return $this->failmsg($msg, $t->FRACTION . ' appeared multiple times');
+          return $this->failmsg($msg, $FRACTION . ' appeared multiple times');
         }
-        $fracasset = $reqargs[$t->ASSET];
-        $fracamt = $reqargs[$t->AMOUNT];
+        $fracasset = $reqargs[$ASSET];
+        $fracamt = $reqargs[$AMOUNT];
         if ($fracasset != $assetid) {
           return $this->failmsg($msg, "Fraction asset id doesn't match spend");
         }
-        $fracmsg = $this->bankmsg($t->ATFRACTION, $reqmsg);
-      } elseif ($request == $t->BALANCE) {
-        if ($time != $reqargs[$t->TIME]) {
+        $fracmsg = $this->bankmsg($ATFRACTION, $reqmsg);
+      } elseif ($request == $BALANCE) {
+        if ($time != $reqargs[$TIME]) {
           return $this->failmsg($msg, "Time mismatch in balance item");
         }
         $errmsg = $this->handle_balance_msg($id, $reqmsg, $reqargs, $state);
         if ($errmsg) return $this->failmsg($msg, $errmsg);
         $newbals[] = $reqmsg;
-      } elseif ($request == $t->OUTBOXHASH) {
+      } elseif ($request == $OUTBOXHASH) {
         if ($outboxhashreq) {
-          return $this->failmsg($msg, $t->OUTBOXHASH . " appeared multiple times");
+          return $this->failmsg($msg, $OUTBOXHASH . " appeared multiple times");
         }
-        if ($time != $reqargs[$t->TIME]) {
+        if ($time != $reqargs[$TIME]) {
           return $this->failmsg($msg, "Time mismatch in outboxhash");
         }
         $outboxhashreq = $req;
         $outboxhashmsg = $reqmsg;
-        $outboxhash = $reqargs[$t->HASH];
-        $outboxhashcnt = $reqargs[$t->COUNT];
-      } elseif ($request == $t->BALANCEHASH) {
+        $outboxhash = $reqargs[$HASH];
+        $outboxhashcnt = $reqargs[$COUNT];
+      } elseif ($request == $BALANCEHASH) {
         if ($balancehashreq) {
-          return $this->failmsg($msg, $t->BALANCEHASH . " appeared multiple times");
+          return $this->failmsg($msg, $BALANCEHASH . " appeared multiple times");
         }
-        if ($time != $reqargs[$t->TIME]) {
+        if ($time != $reqargs[$TIME]) {
           return $this->failmsg($msg, "Time mismatch in balancehash");
         }
         $balancehashreq = $req;
-        $balancehash = $reqargs[$t->HASH];
-        $balancehashcnt = $reqargs[$t->COUNT];
+        $balancehash = $reqargs[$HASH];
+        $balancehashcnt = $reqargs[$COUNT];
         $balancehashmsg = $reqmsg;
       } else {
         return $this->failmsg($msg, "$request not valid for spend. Only " .
-                              $t->TRANFEE . ', ' . $t->BALANCE . ", and " .
-                              $t->OUTBOXHASH);
+                              $TRANFEE . ', ' . $BALANCE . ", and " .
+                              $OUTBOXHASH);
       }
     }
 
@@ -1064,7 +1046,7 @@
 
     // tranfee must be included if there's a transaction fee
     if ($tokens != 0 && !$feemsg && $id != $id2) {
-      return $this->failmsg($msg, $t->TRANFEE . " missing");
+      return $this->failmsg($msg, $TRANFEE . " missing");
     }
 
     if (bccomp($amount, 0) < 0) {
@@ -1110,13 +1092,13 @@
     $spendmsg = $parser->get_parsemsg($reqs[0]);
     if ($id != $id2 && $id != $bankid) {
       if (!$outboxhashreq) {
-        return $this->failmsg($msg, $t->OUTBOXHASH . " missing");
+        return $this->failmsg($msg, $OUTBOXHASH . " missing");
       } else {
         $hasharray = $this->outboxhash($id, $spendmsg);
-        $hash = $hasharray[$t->HASH];
-        $hashcnt = $hasharray[$t->COUNT];
+        $hash = $hasharray[$HASH];
+        $hashcnt = $hasharray[$COUNT];
         if ($outboxhash != $hash || $outboxhashcnt != $hashcnt) {
-          return $this->failmsg($msg, $t->OUTBOXHASH . ' mismatch');
+          return $this->failmsg($msg, $OUTBOXHASH . ' mismatch');
         }
       }
     }
@@ -1124,30 +1106,30 @@
     // balancehash must be included, except on bank spends
     if ($id != $bankid) {
       if (!$balancehashreq) {
-        return $this->failmsg($msg, $t->BALANCEHASH . " missing");
+        return $this->failmsg($msg, $BALANCEHASH . " missing");
       } else {
         $hasharray = $u->balancehash($db, $id, $this, $acctbals);
-        $hash = $hasharray[$t->HASH];
-        $hashcnt = $hasharray[$t->COUNT];
+        $hash = $hasharray[$HASH];
+        $hashcnt = $hasharray[$COUNT];
         if ($balancehash != $hash || $balancehashcnt != $hashcnt) {
-          return $this->failmsg($msg, $t->BALANCEHASH . " mismatch, hash sb: $hash, was: $balancehash, count sb: $hashcnt, was: $balancehashcnt");
+          return $this->failmsg($msg, $BALANCEHASH . " mismatch, hash sb: $hash, was: $balancehash, count sb: $hashcnt, was: $balancehashcnt");
         }
       }
     }
 
     // All's well with the world. Commit this puppy.
     // Eventually, the commit will be done as a second phase.
-    $outbox_item = $this->bankmsg($t->ATSPEND, $spendmsg);
+    $outbox_item = $this->bankmsg($ATSPEND, $spendmsg);
     if ($feemsg) {
       $outbox_item .= ".$feemsg";
     }
     $res = $outbox_item;
 
     $newtime = false;
-    if ($id2 != $t->COUPON) {
+    if ($id2 != $COUPON) {
       if ($id != $id2) {
         $newtime = $this->gettime();
-        $inbox_item = $this->bankmsg($t->INBOX, $newtime, $spendmsg);
+        $inbox_item = $this->bankmsg($INBOX, $newtime, $spendmsg);
         if ($feemsg) {
           $inbox_item .= ".$feemsg";
         }
@@ -1164,15 +1146,15 @@
       $coupon_number = $random->random_id();
       $bankurl = $this->bankurl;
       if ($note) {
-        $coupon = $this->bankmsg($t->COUPON, $bankurl, $coupon_number, $assetid, $amount, $note);
+        $coupon = $this->bankmsg($COUPON, $bankurl, $coupon_number, $assetid, $amount, $note);
       } else {
-        $coupon = $this->bankmsg($t->COUPON, $bankurl, $coupon_number, $assetid, $amount);
+        $coupon = $this->bankmsg($COUPON, $bankurl, $coupon_number, $assetid, $amount);
       }
       $coupon_number_hash = sha1($coupon_number);
-      $db->put($t->COUPON . "/$coupon_number_hash", "$outbox_item");
+      $db->put($COUPON . "/$coupon_number_hash", "$outbox_item");
       $pubkey = $this->pubkeydb->get($id);
       $coupon = $ssl->pubkey_encrypt($coupon, $pubkey);
-      $coupon = $this->bankmsg($t->COUPONENVELOPE, $id, $coupon);
+      $coupon = $this->bankmsg($COUPONENVELOPE, $id, $coupon);
       $res .= ".$coupon";
       $outbox_item .= ".$coupon";
     }
@@ -1189,7 +1171,7 @@
     foreach ($acctbals as $acct => $balances) {
       $acctdir = "$balancekey/$acct";
       foreach ($balances as $balasset => $balance) {
-        $balance = $this->bankmsg($t->ATBALANCE, $balance);
+        $balance = $this->bankmsg($ATBALANCE, $balance);
         $res .= ".$balance";
         $db->put("$acctdir/$balasset", $balance);
       }
@@ -1204,7 +1186,7 @@
 
     if ($id != $id2 && $id != $bankid) {
       // Update outboxhash
-      $outboxhash_item = $this->bankmsg($t->ATOUTBOXHASH, $outboxhashmsg);
+      $outboxhash_item = $this->bankmsg($ATOUTBOXHASH, $outboxhashmsg);
       $res .= ".$outboxhash_item";
       $db->put($this->outboxhashkey($id), $outboxhash_item);
 
@@ -1214,7 +1196,7 @@
 
     if ($id != $bankid) {
       // Update balancehash
-      $balancehash_item = $this->bankmsg($t->ATBALANCEHASH, $balancehashmsg);
+      $balancehash_item = $this->bankmsg($ATBALANCEHASH, $balancehashmsg);
       $res .= ".$balancehash_item";
       $db->put($this->balancehashkey($id), $balancehash_item);
     }
@@ -1258,17 +1240,17 @@
       if (count($reqs) != 1) return "Bad storagefee msg: $storagemsg";
       $args = $u->match_pattern($reqs[0]);
       if (is_string($args)) return "While posting storagefee: $args";
-      if ($args[$t->CUSTOMER] != $bankid ||
-          $args[$t->REQUEST] != $t->STORAGEFEE ||
-          $args[$t->BANKID] != $bankid ||
-          $args[$t->ASSET] != $assetid) {
+      if ($args[$CUSTOMER] != $bankid ||
+          $args[$REQUEST] != $STORAGEFEE ||
+          $args[$BANKID] != $bankid ||
+          $args[$ASSET] != $assetid) {
         return "Storage fee message malformed";
       }
-      $amount = $args[$t->AMOUNT];
+      $amount = $args[$AMOUNT];
       $storagefee = bcadd($storagefee, $amount, $digits);
     }
     $time = $this->gettime();
-    $storagemsg = $this->bankmsg($t->STORAGEFEE, $bankid, $time, $assetid, $storagefee);
+    $storagemsg = $this->bankmsg($STORAGEFEE, $bankid, $time, $assetid, $storagefee);
     $db->put($key, $storagemsg);
   }
 
@@ -1280,7 +1262,7 @@
 
     $parser->verifysigs(false);
 
-    $id = $args[$t->CUSTOMER];
+    $id = $args[$CUSTOMER];
     $lock = $db->lock($this->accttimekey($id));
     $res = $this->do_spendreject_internal($args, $msg, $id);
     $db->unlock($lock);
@@ -1296,28 +1278,28 @@
     $db = $this->db;
     $bankid = $this->bankid;
 
-    $time = $args[$t->TIME];
+    $time = $args[$TIME];
     $key = $this->outboxkey($id);
     $item = $db->get("$key/$time");
     if (!$item) return $this->failmsg($msg, "No outbox entry for time: $time");
-    $args = $this->unpack_bankmsg($item, $t->ATSPEND, $t->SPEND);
+    $args = $this->unpack_bankmsg($item, $ATSPEND, $SPEND);
     if (is_string($args)) return $this->failmsg($msg, $args);
-    if ($time != $args[$t->TIME]) {
+    if ($time != $args[$TIME]) {
       return $this->failmsg($msg, "Time mismatch in outbox item");
     }
-    if ($args[$t->ID] == $t->COUPON) {
+    if ($args[$ID] == $COUPON) {
       return $this->failmsg($msg, "Coupons must be redeemed, not cancelled");
     }
-    $recipient = $args[$t->ID];
+    $recipient = $args[$ID];
     $key = $this->inboxkey($recipient);
     $inbox = $db->contents($key);
     foreach ($inbox as $intime) {
       $item = $db->get("$key/$intime");
       // Unlikely, but possible
       if (!$item) return $this->failmsg($msg, "Spend has already been processed");
-      $args = $this->unpack_bankmsg($item, $t->INBOX, $t->SPEND);
+      $args = $this->unpack_bankmsg($item, $INBOX, $SPEND);
       if (is_string($args)) return $this->failmsg($msg, $args);
-      if ($args[$t->TIME] == $time) {
+      if ($args[$TIME] == $time) {
         // Calculate the fee, if there is one
         $feeamt = '';
         $reqs = $args[$this->unpack_reqs_key];
@@ -1325,18 +1307,18 @@
         if ($req) {
           $args = $u->match_pattern($req);
           if (is_string($args)) return $this->failmsg($msg, $args);
-          if ($args[$t->CUSTOMER] != $bankid) {
+          if ($args[$CUSTOMER] != $bankid) {
             return $this->failmsg($msg, "Fee message not from bank");
           }
-          if ($args[$t->REQUEST] == $t->ATTRANFEE) {
-            $req = $args[$t->MSG];
+          if ($args[$REQUEST] == $ATTRANFEE) {
+            $req = $args[$MSG];
             $args = $u->match_pattern($req);
             if (is_string($args)) return $this->failmsg($msg, $args);
-            if ($args[$t->REQUEST] != $t->TRANFEE) {
+            if ($args[$REQUEST] != $TRANFEE) {
               return $this->failmsg($msg, "Fee wrapper doesn't wrap fee message");
             }
-            $feeasset = $args[$t->ASSET];
-            $feeamt = $args[$t->AMOUNT];
+            $feeasset = $args[$ASSET];
+            $feeamt = $args[$AMOUNT];
           }
         }
         // Found the inbox item corresponding to the outbox item
@@ -1352,7 +1334,7 @@
           $this->add_to_bank_balance($feeasset, $feeamt);
         }
         $newtime = $this->gettime();
-        $item = $this->bankmsg($t->INBOX, $newtime, $msg);
+        $item = $this->bankmsg($INBOX, $newtime, $msg);
         $key = $this->inboxkey($id);
         $db->put("$key/$newtime", $item);
         return $item;
@@ -1370,7 +1352,7 @@
     $t = $this->t;
     $db = $this->db;
     
-    $id = $args[$t->CUSTOMER];
+    $id = $args[$CUSTOMER];
     $lock = $db->lock($this->accttimekey($id));
     $res = $this->do_couponenvelope_internal($args, $msg, $id);
     $db->unlock($lock);
@@ -1382,7 +1364,7 @@
 
     $res = $this->do_couponenvelope_raw($args, $id);
     if (is_string($res)) return $this->failmsg($msg, $res);
-    return $this->bankmsg($t->ATCOUPONENVELOPE, $msg);
+    return $this->bankmsg($ATCOUPONENVELOPE, $msg);
   }
 
   // Called by do_register to process coupons there
@@ -1394,26 +1376,26 @@
     $parser = $this->parser;
     $u = $this->u;
 
-    $encryptedto = $args[$t->ID];
+    $encryptedto = $args[$ID];
     if ($encryptedto != $bankid) {
       return "Coupon not encrypted to bank";
     }
-    $coupon = $args[$t->ENCRYPTEDCOUPON];
+    $coupon = $args[$ENCRYPTEDCOUPON];
     $coupon = $this->ssl->privkey_decrypt($coupon, $this->privkey);
     if ($u->is_coupon_number($coupon)) {
       $coupon_number = $coupon;
     } else {
-      $args = $this->unpack_bankmsg($coupon, $t->COUPON);
+      $args = $this->unpack_bankmsg($coupon, $COUPON);
       if (is_string($args)) return "Error parsing coupon: $args";
-      if ($bankid != $args[$t->CUSTOMER]) {
+      if ($bankid != $args[$CUSTOMER]) {
         return "Coupon not signed by bank";
       }
-      $coupon_number = $args[$t->COUPON];
+      $coupon_number = $args[$COUPON];
     }
 
     $coupon_number_hash = sha1($coupon_number);
 
-    $key = $t->COUPON . "/$coupon_number_hash";
+    $key = $COUPON . "/$coupon_number_hash";
     $lock = $db->lock($key);
     $outbox_item = $db->get($key);
     if ($outbox_item) $db->put($key, '');
@@ -1424,13 +1406,13 @@
       $inbox = $db->contents($key);
       foreach ($inbox as $time) {
         $item = $db->get("$key/$time");
-        if (strstr($item, ',' . $t->COUPON . ',')) {
+        if (strstr($item, ',' . $COUPON . ',')) {
           $reqs = $parser->parse($item);
           if ($reqs && count($reqs) > 1) {
             $req = $reqs[1];
             $msg = $u->match_pattern($req);
             if (!is_string($msg)) {
-              if ($coupon_number_hash == $msg[$t->COUPON]) {
+              if ($coupon_number_hash == $msg[$COUPON]) {
                 // Customer already redeemded this coupon.
                 // Success if he tries to do it again.
                 return false;
@@ -1442,14 +1424,14 @@
       return "Coupon already redeemed";
     }
 
-    $args = $this->unpack_bankmsg($outbox_item, $t->ATSPEND);
+    $args = $this->unpack_bankmsg($outbox_item, $ATSPEND);
     if (is_string($args)) {
       // Make sure the spender can cancel the coupon
       $db->put($key, $outbox_item);
       return "While unpacking coupon spend: $args";
     }
     $reqs = $args[$this->unpack_reqs_key];
-    $spendreq = $args[$t->MSG];
+    $spendreq = $args[$MSG];
     $spendmsg = $parser->get_parsemsg($spendreq);
     $feemsg = '';
     if (count($reqs) > 1) {
@@ -1457,8 +1439,8 @@
       $feemsg = $parser->get_parsemsg($feereq);
     }
     $newtime = $this->gettime();
-    $inbox_item = $this->bankmsg($t->INBOX, $newtime, $spendmsg);
-    $cnhmsg = $this->bankmsg($t->COUPONNUMBERHASH, $coupon_number_hash);
+    $inbox_item = $this->bankmsg($INBOX, $newtime, $spendmsg);
+    $cnhmsg = $this->bankmsg($COUPONNUMBERHASH, $coupon_number_hash);
     $inbox_item .= $cnhmsg;
     if ($feemsg) $inbox_item .= ".$feemsg";
 
@@ -1472,7 +1454,7 @@
     $t = $this->t;
     $db = $this->db;
 
-    $id = $args[$t->CUSTOMER];
+    $id = $args[$CUSTOMER];
     $lock = $db->lock($this->accttimekey($id));
     $res = $this->do_getinbox_internal($args, $msg, $id);
     $db->unlock($lock);
@@ -1488,23 +1470,23 @@
     if ($err) return $err;
 
     $inbox = $this->scaninbox($id);
-    $res = $this->bankmsg($t->ATGETINBOX, $msg);
+    $res = $this->bankmsg($ATGETINBOX, $msg);
     $last = 1;
     foreach ($inbox as $inmsg) {
       $res .= '.' . $inmsg;
       $args = $u->match_message($inmsg);
       if ($args && !is_string($args)) {
-        if ($args[$t->REQUEST] == $t->INBOX) {
-          $time = $args[$t->TIME];
+        if ($args[$REQUEST] == $INBOX) {
+          $time = $args[$TIME];
           if (bccomp($time, $last) > 0) $last = $time;
         }
-        $args = $u->match_pattern($args[$t->MSG]);
+        $args = $u->match_pattern($args[$MSG]);
       }
       $err = false;
       if (!$args) $err = 'Inbox parse error';
       elseif (is_string($args)) $err = "Inbox match error: $args";
-      elseif ($args[$t->ID] != $id && $args[$t->ID] != $t->COUPON) {
-        $err = "Inbox entry for wrong ID: " . $args[$t->ID];
+      elseif ($args[$ID] != $id && $args[$ID] != $COUPON) {
+        $err = "Inbox entry for wrong ID: " . $args[$ID];
       }
       if ($err) return $this->failmsg($msg, $err);
     }
@@ -1524,7 +1506,7 @@
      * if (count($inbox) > 0) {
      *   // Avoid bumping the global timestamp if the customer already
      *   // has two timestamps > the highest inbox timestamp.
-     *   $time = $args[$t->TIME];
+     *   $time = $args[$TIME];
      *   $key = $this->accttimekey($id);
      *   $times = explode(',', $db->get($key));
      *   if (!(count($times) >= 2 &&
@@ -1533,8 +1515,8 @@
      *     $times = array($this->gettime(), $this->gettime());
      *     $db->put($key, implode(',', $times));
      *   }
-     *   $res .= '.' . $this->bankmsg($t->TIME, $id, $times[0]);
-     *   $res .= '.' . $this->bankmsg($t->TIME, $id, $times[1]);
+     *   $res .= '.' . $this->bankmsg($TIME, $id, $times[0]);
+     *   $res .= '.' . $this->bankmsg($TIME, $id, $times[1]);
      * }
      */
     return $res;
@@ -1547,7 +1529,7 @@
 
     $parser->verifysigs(false);
 
-    $id = $args[$t->CUSTOMER];
+    $id = $args[$CUSTOMER];
     $lock = $db->lock($this->accttimekey($id));
     $res = $this->do_processinbox_internal($args, $reqs, $msg, $ok, $charges);
     $db->unlock($lock);
@@ -1580,10 +1562,10 @@
 
     $ok = false;
 
-    // $t->PROCESSINBOX => array($t->BANKID,$t->TIME,$t->TIMELIST),
-    $id = $args[$t->CUSTOMER];
-    $time = $args[$t->TIME];
-    $timelist = $args[$t->TIMELIST];
+    // $PROCESSINBOX => array($BANKID,$TIME,$TIMELIST),
+    $id = $args[$CUSTOMER];
+    $time = $args[$TIME];
+    $timelist = $args[$TIMELIST];
     $inboxtimes = explode('|', $timelist);
 
     // Burn the transaction, even if balances don't match.
@@ -1601,30 +1583,30 @@
     foreach ($inboxtimes as $inboxtime) {
       $item = $db->get("$inboxkey/$inboxtime");
       if (!$item) return $this->failmsg($msg, "Inbox entry not found: $inboxtime");
-      $itemargs = $this->unpack_bankmsg($item, $t->INBOX, true);
-      if ($itemargs[$t->ID] != $id && $itemargs[$t->ID] != $t->COUPON) {
+      $itemargs = $this->unpack_bankmsg($item, $INBOX, true);
+      if ($itemargs[$ID] != $id && $itemargs[$ID] != $COUPON) {
         return $this->failmsg($msg, "Inbox corrupt. Item found for other customer");
       }
-      $request = $itemargs[$t->REQUEST];
-      if ($request == $t->SPEND) {
-        $itemtime = $itemargs[$t->TIME];
+      $request = $itemargs[$REQUEST];
+      if ($request == $SPEND) {
+        $itemtime = $itemargs[$TIME];
         $spends[$itemtime] = array($inboxtime, $itemargs);
         $itemreqs = $itemargs[$this->unpack_reqs_key];
         $itemcnt = count($itemreqs);
         $feereq = ($itemcnt > 1) ? $itemreqs[$itemcnt-1] : false;
         if ($feereq) {
           $feeargs = $u->match_pattern($feereq);
-          if ($feeargs && $feeargs[$t->REQUEST] == $t->ATTRANFEE) {
-            $feeargs = $u->match_pattern($feeargs[$t->MSG]);
+          if ($feeargs && $feeargs[$REQUEST] == $ATTRANFEE) {
+            $feeargs = $u->match_pattern($feeargs[$MSG]);
           }
-          if (!$feeargs || $feeargs[$t->REQUEST] != $t->TRANFEE) {
+          if (!$feeargs || $feeargs[$REQUEST] != $TRANFEE) {
             return $this->failmsg($msg, "Inbox corrupt. Fee not properly encoded");
           }
           $fees[$itemtime] = $feeargs;
         }
       }
-      elseif ($request == $t->SPENDACCEPT) $accepts[$inboxtime] = $itemargs;
-      elseif ($request == $t->SPENDREJECT) $rejects[$inboxtime] = $itemargs;
+      elseif ($request == $SPENDACCEPT) $accepts[$inboxtime] = $itemargs;
+      elseif ($request == $SPENDREJECT) $rejects[$inboxtime] = $itemargs;
       else return $this->failmsg($msg, "Inbox corrupted. Found '$request' item");
     }
 
@@ -1633,7 +1615,7 @@
 
     // Refund the transaction fees for accepted spends
     foreach ($accepts as $itemargs) {
-      $outboxtime = $itemargs[$t->TIME];
+      $outboxtime = $itemargs[$TIME];
       $outboxtimes[] = $outboxtime;
       $spendfeeargs = $this->get_outbox_args($id, $outboxtime);
       if (is_string($spendfeeargs)) {
@@ -1641,8 +1623,8 @@
       }
       $feeargs = $spendfeeargs[1];
       if ($feeargs) {
-        $asset = $feeargs[$t->ASSET];
-        $amt = $feeargs[$t->AMOUNT];
+        $asset = $feeargs[$ASSET];
+        $amt = $feeargs[$AMOUNT];
         $bals[$asset] = bcadd(@$bals[$asset], $amt);
       }
     }
@@ -1654,29 +1636,29 @@
     // Credit the spend amounts for rejected spends, but do NOT
     // refund the transaction fees
     foreach ($rejects as $itemargs) {
-      $outboxtime = $itemargs[$t->TIME];
+      $outboxtime = $itemargs[$TIME];
       $outboxtimes[] = $outboxtime;
       $spendfeeargs = $this->get_outbox_args($id, $outboxtime);
       if (is_string($spendfeeargs)) {
         return $this->failmsg($msg, $spendfeeargs);
       }
       $spendargs = $spendfeeargs[0];
-      $asset = $spendargs[$t->ASSET];
-      $amt = $spendargs[$t->AMOUNT];
-      $spendtime = $spendargs[$t->TIME];
+      $asset = $spendargs[$ASSET];
+      $amt = $spendargs[$AMOUNT];
+      $spendtime = $spendargs[$TIME];
       if (bccomp($amt, 0) < 0) {
         $oldneg[$asset] = $spendargs;
       }
       $bals[$asset] = bcadd(@$bals[$asset], $amt);
-      $tobecharged[] = array($t->AMOUNT => $amt,
-                             $t->TIME => $spendtime,
-                             $t->ASSET => $asset);
+      $tobecharged[] = array($AMOUNT => $amt,
+                             $TIME => $spendtime,
+                             $ASSET => $asset);
     }
 
     $inboxmsgs = array();
     $acctbals = array();
     $accts = array();
-    $res = $this->bankmsg($t->ATPROCESSINBOX, $parser->get_parsemsg($reqs[0]));
+    $res = $this->bankmsg($ATPROCESSINBOX, $parser->get_parsemsg($reqs[0]));
     $tokens = 0;
 
     $state = array('acctbals' => $acctbals,
@@ -1698,119 +1680,119 @@
       $req = $reqs[$i];
       $reqmsg = $parser->get_parsemsg($req);
       $args = $u->match_pattern($req);
-      if ($args[$t->CUSTOMER] != $id) {
+      if ($args[$CUSTOMER] != $id) {
         return $this->failmsg
-          ($msg, "Item not from same customer as " . $t->PROCESSINBOX);
+          ($msg, "Item not from same customer as " . $PROCESSINBOX);
       }
-      $request = $args[$t->REQUEST];
-      if ($request == $t->SPENDACCEPT ||
-          $request == $t->SPENDREJECT) {
-        // $t->SPENDACCEPT => array($t->BANKID,$t->TIME,$t->id,$t->NOTE=>1),
-        // $t->SPENDREJECT => array($t->BANKID,$t->TIME,$t->id,$t->NOTE=>1),
-        $itemtime = $args[$t->TIME];
-        $otherid = $args[$t->ID];
+      $request = $args[$REQUEST];
+      if ($request == $SPENDACCEPT ||
+          $request == $SPENDREJECT) {
+        // $SPENDACCEPT => array($BANKID,$TIME,$id,$NOTE=>1),
+        // $SPENDREJECT => array($BANKID,$TIME,$id,$NOTE=>1),
+        $itemtime = $args[$TIME];
+        $otherid = $args[$ID];
         $inboxpair = $spends[$itemtime];
         if (!$inboxpair || count($inboxpair) != 2) {
           return $this->failmsg($msg, "'$request' not matched in '" .
-                                $t->PROCESSINBOX . "' item, itemtime: $itemtime");
+                                $PROCESSINBOX . "' item, itemtime: $itemtime");
         }
         $itemargs = $inboxpair[1];
-        if ($request == $t->SPENDACCEPT) {
+        if ($request == $SPENDACCEPT) {
           // Accepting the payment. Credit it.
-          $itemasset = $itemargs[$t->ASSET];
-          $itemamt = $itemargs[$t->AMOUNT];
-          $itemtime = $itemargs[$t->TIME];
-          if (bccomp($itemamt, 0) < 0 && $itemargs[$t->CUSTOMER] != $bankid) {
+          $itemasset = $itemargs[$ASSET];
+          $itemamt = $itemargs[$AMOUNT];
+          $itemtime = $itemargs[$TIME];
+          if (bccomp($itemamt, 0) < 0 && $itemargs[$CUSTOMER] != $bankid) {
             $state['oldneg'][$itemasset] = $itemargs;
           }
           $state['bals'][$itemasset] = bcadd(@$state['bals'][$itemasset], $itemamt);
-          $tobecharged[] = array($t->AMOUNT => $itemamt,
-                                 $t->TIME => $itemtime,
-                                 $t->ASSET => $itemasset);
-          $res .= '.' . $this->bankmsg($t->ATSPENDACCEPT, $reqmsg);
+          $tobecharged[] = array($AMOUNT => $itemamt,
+                                 $TIME => $itemtime,
+                                 $ASSET => $itemasset);
+          $res .= '.' . $this->bankmsg($ATSPENDACCEPT, $reqmsg);
         } else {
           // Rejecting the payment. Credit the fee.
           $feeargs = $fees[$itemtime];
           if ($feeargs) {
-            $feeasset = $feeargs[$t->ASSET];
-            $feeamt = $feeargs[$t->AMOUNT];
+            $feeasset = $feeargs[$ASSET];
+            $feeamt = $feeargs[$AMOUNT];
             $state['bals'][$feeasset] = bcadd(@$state['bals'][$feeasset], $feeamt);
           }
-          $res .= '.' . $this->bankmsg($t->ATSPENDREJECT, $reqmsg);
+          $res .= '.' . $this->bankmsg($ATSPENDREJECT, $reqmsg);
         }
         if ($otherid == $bankid) {
-          if ($request == $t->SPENDREJECT &&
-              $itemargs[$t->AMOUNT] < 0) {
+          if ($request == $SPENDREJECT &&
+              $itemargs[$AMOUNT] < 0) {
             return $this->failmsg($msg, "You may not reject a bank charge");
           }
           $inboxtime = $request;
           $inboxmsg = $itemargs;
         } else {
           $inboxtime = $this->gettime();
-          $inboxmsg = $this->bankmsg($t->INBOX, $inboxtime, $reqmsg);
+          $inboxmsg = $this->bankmsg($INBOX, $inboxtime, $reqmsg);
         }
         if ($inboxtime) $inboxmsgs[] = array($otherid, $inboxtime, $inboxmsg);
-      } elseif ($request == $t->STORAGEFEE) {
-        if ($time != $args[$t->TIME]) {
-          $argstime = $args[$t->TIME];
+      } elseif ($request == $STORAGEFEE) {
+        if ($time != $args[$TIME]) {
+          $argstime = $args[$TIME];
           return $this->failmsg($msg, "Time mismatch in storagefee item, was: $argstime, sb: $time");
         }
-        $storageasset = $args[$t->ASSET];
-        $storageamt = $args[$t->AMOUNT];
+        $storageasset = $args[$ASSET];
+        $storageamt = $args[$AMOUNT];
         if (@$storagemsgs[$storageasset]) {
           return $this->failmsg($msg, "Duplicate storage fee for asset: $storageasset");
         }
         $storageamts[$storageasset] = $storageamt;
-        $storagemsg = $this->bankmsg($t->ATSTORAGEFEE, $reqmsg);
+        $storagemsg = $this->bankmsg($ATSTORAGEFEE, $reqmsg);
         $storagemsgs[$storageasset] = $storagemsg;
-      } elseif ($request == $t->FRACTION) {
-        if ($time != $args[$t->TIME]) {
-          $argstime = $args[$t->TIME];
+      } elseif ($request == $FRACTION) {
+        if ($time != $args[$TIME]) {
+          $argstime = $args[$TIME];
           return $this->failmsg($msg, "Time mismatch in fraction item, was: $argstime, sb: $time");
         }
-        $fracasset = $args[$t->ASSET];
-        $fracamt = $args[$t->AMOUNT];
+        $fracasset = $args[$ASSET];
+        $fracamt = $args[$AMOUNT];
         if (@$fracmsgs[$fracasset]) {
           return $this->failmsg($msg, "Duplicate fraction balance for asset: $fracasset");
         }
         $fracamts[$fracasset] = $fracamt;
-        $fracmsg = $this->bankmsg($t->ATFRACTION, $reqmsg);
+        $fracmsg = $this->bankmsg($ATFRACTION, $reqmsg);
         $fracmsgs[$fracasset] = $fracmsg;
-      } elseif ($request == $t->OUTBOXHASH) {
+      } elseif ($request == $OUTBOXHASH) {
         if ($outboxhashreq) {
-          return $this->failmsg($msg, $t->OUTBOXHASH . " appeared multiple times");
+          return $this->failmsg($msg, $OUTBOXHASH . " appeared multiple times");
         }
-        if ($time != $args[$t->TIME]) {
+        if ($time != $args[$TIME]) {
           return $this->failmsg($msg, "Time mismatch in outboxhash");
         }
         $outboxhashreq = $req;
         $outboxhashmsg = $parser->get_parsemsg($req);
-        $outboxhash = $args[$t->HASH];
-        $outboxcnt = $args[$t->COUNT];
-      } elseif ($request == $t->BALANCE) {
-        if ($time != $args[$t->TIME]) {
-          $argstime = $args[$t->TIME];
+        $outboxhash = $args[$HASH];
+        $outboxcnt = $args[$COUNT];
+      } elseif ($request == $BALANCE) {
+        if ($time != $args[$TIME]) {
+          $argstime = $args[$TIME];
           return $this->failmsg($msg, "Time mismatch in balance item, was: $argstime, sb: $time");
         }
         $errmsg = $this->handle_balance_msg($id, $reqmsg, $args, $state);
         if ($errmsg) return $this->failmsg($msg, $errmsg);
         $newbals[] = $reqmsg;
-      } elseif ($request == $t->BALANCEHASH) {
+      } elseif ($request == $BALANCEHASH) {
         if ($balancehashreq) {
-          return $this->failmsg($msg, $t->BALANCEHASH . " appeared multiple times");
+          return $this->failmsg($msg, $BALANCEHASH . " appeared multiple times");
         }
-        if ($time != $args[$t->TIME]) {
+        if ($time != $args[$TIME]) {
           return $this->failmsg($msg, "Time mismatch in balancehash");
         }
         $balancehashreq = $req;
-        $balancehash = $args[$t->HASH];
-        $balancehashcnt = $args[$t->COUNT];
+        $balancehash = $args[$HASH];
+        $balancehashcnt = $args[$COUNT];
         $balancehashmsg = $parser->get_parsemsg($req);
       } else {
-        return $this->failmsg($msg, "$request not valid for " . $t->PROCESSINBOX .
-                              ". Only " . $t->SPENDACCEPT . ", " . $t->SPENDREJECT .
-                              ", " . $t->OUTBOXHASH . ", " .
-                              $t->BALANCE . ", &" . $t->BALANCEHASH);
+        return $this->failmsg($msg, "$request not valid for " . $PROCESSINBOX .
+                              ". Only " . $SPENDACCEPT . ", " . $SPENDREJECT .
+                              ", " . $OUTBOXHASH . ", " .
+                              $BALANCE . ", &" . $BALANCEHASH);
       }
     }
 
@@ -1843,9 +1825,9 @@
     if ($charges) {
       // Add storage fees for accepted spends and affirmed rejects
       foreach ($tobecharged as $item) {
-        $itemamt = $item[$t->AMOUNT];
-        $itemtime = $item[$t->TIME];
-        $itemasset = $item[$t->ASSET];
+        $itemamt = $item[$AMOUNT];
+        $itemtime = $item[$TIME];
+        $itemasset = $item[$ASSET];
         $assetinfo = $charges[$itemasset];
         if ($assetinfo) {
           $percent = $assetinfo['percent'];
@@ -1916,30 +1898,30 @@
       // Make sure the outbox hash was included iff needed
       if ((count($outboxtimes) > 0 && !$outboxhashreq) ||
           (count($outboxtimes) == 0 && $outboxhashreq)) {
-        return $this->failmsg($msg, $t->OUTBOXHASH .
+        return $this->failmsg($msg, $OUTBOXHASH .
                               ($outboxhashreq ? " included when not needed" :
                                " missing"));
       }
 
       if ($outboxhashreq) {
         $hasharray = $this->outboxhash($id, false, $outboxtimes);
-        $hash = $hasharray[$t->HASH];
-        $hashcnt = $hasharray[$t->COUNT];
+        $hash = $hasharray[$HASH];
+        $hashcnt = $hasharray[$COUNT];
         if ($outboxhash != $hash || $outboxcnt != $hashcnt) {
           return $this->failmsg
-            ($msg, $t->OUTBOXHASH . " mismatch");
+            ($msg, $OUTBOXHASH . " mismatch");
         }
       }
 
       // Check balancehash
       if (!$balancehashreq) {
-        return $this->failmsg($msg, $t->BALANCEHASH . " missing");
+        return $this->failmsg($msg, $BALANCEHASH . " missing");
       } else {
         $hasharray = $u->balancehash($db, $id, $this, $acctbals);
-        $hash = $hasharray[$t->HASH];
-        $hashcnt = $hasharray[$t->COUNT];
+        $hash = $hasharray[$HASH];
+        $hashcnt = $hasharray[$COUNT];
         if ($balancehash != $hash || $balancehashcnt != $hashcnt) {
-          return $this->failmsg($msg, $t->BALANCEHASH . ' mismatch');
+          return $this->failmsg($msg, $BALANCEHASH . ' mismatch');
         }
       }
     }
@@ -1950,7 +1932,7 @@
     foreach ($acctbals as $acct => $balances) {
       $acctkey = "$balancekey/$acct";
       foreach ($balances as $balasset => $balance) {
-        $balance = $this->bankmsg($t->ATBALANCE, $balance);
+        $balance = $this->bankmsg($ATBALANCE, $balance);
         $res .= ".$balance";
         $db->put("$acctkey/$balasset", $balance);
       }
@@ -1962,9 +1944,9 @@
       if ($otherid == $bankid) {
         $request = $inboxmsg[1];
         $itemargs = $inboxmsg[2];
-        if ($request == $t->SPENDREJECT) {
+        if ($request == $SPENDREJECT) {
           // Return the funds to the bank's account
-          $this->add_to_bank_balance($itemargs[$t->ASSET], $itemargs[$t->AMOUNT]);
+          $this->add_to_bank_balance($itemargs[$ASSET], $itemargs[$AMOUNT]);
         }
       } else {
         $inboxtime = $inboxmsg[1];
@@ -1990,13 +1972,13 @@
     if ($id != $bankid) {
       // Update outboxhash
       if ($outboxhashreq) {
-        $outboxhash_item = $this->bankmsg($t->ATOUTBOXHASH, $outboxhashmsg);
+        $outboxhash_item = $this->bankmsg($ATOUTBOXHASH, $outboxhashmsg);
         $res .= ".$outboxhash_item";
         $db->put($this->outboxhashkey($id), $outboxhash_item);
       }
 
       // Update balancehash
-      $balancehash_item = $this->bankmsg($t->ATBALANCEHASH, $balancehashmsg);
+      $balancehash_item = $this->bankmsg($ATBALANCEHASH, $balancehashmsg);
       $res .= ".$balancehash_item";
       $db->put($this->balancehashkey($id), $balancehash_item);
     }
@@ -2018,7 +2000,7 @@
     $t = $this->t;
     $db = $this->db;
 
-    $id = $args[$t->CUSTOMER];
+    $id = $args[$CUSTOMER];
     $lock = $db->lock($this->accttimekey($id));
     $res = $this->do_storagefees_internal($msg, $args);
     $db->unlock($lock);
@@ -2034,35 +2016,35 @@
     $err = $this->checkreq($args, $msg);
     if ($err) return $err;
 
-    $id = $args[$t->CUSTOMER];
+    $id = $args[$CUSTOMER];
     $inboxkey = $this->inboxkey($id);
     $key = $this->storagefeekey($id);
     $assetids = $db->contents($key);
     foreach ($assetids as $assetid) {
       $storagefee = $db->get("$key/$assetid");
-      $args = $this->unpack_bankmsg($storagefee, $t->STORAGEFEE);
+      $args = $this->unpack_bankmsg($storagefee, $STORAGEFEE);
       if (is_string($args)) {
         return $this->failmsg($msg, "storagefee parse error: $args");
       }
-      if ($assetid != $args[$t->ASSET]) {
-        $feeasset = $args[$t->ASSET];
+      if ($assetid != $args[$ASSET]) {
+        $feeasset = $args[$ASSET];
         return $this->failmsg($msg, "Asset mismatch, sb: $assetid, was: $feeasset");
       }
-      $amount = $args[$t->AMOUNT];
+      $amount = $args[$AMOUNT];
       $percent = $this->storageinfo($id, $assetid, $issuer, $fraction, $fractime);
       $digits = $u->fraction_digits($percent);
       $u->normalize_balance($amount, $fraction, $digits);
       if (bccomp($amount, 0, 0) > 0) {
         $time = $this->gettime();
-        $storagefee = $this->bankmsg($t->STORAGEFEE, $bankid, $time, $assetid, $fraction);
-        $spend = $this->bankmsg($t->SPEND, $bankid, $time, $id, $assetid, $amount, "Storage fees");
-        $inbox = $this->bankmsg($t->INBOX, $time, $spend);
+        $storagefee = $this->bankmsg($STORAGEFEE, $bankid, $time, $assetid, $fraction);
+        $spend = $this->bankmsg($SPEND, $bankid, $time, $id, $assetid, $amount, "Storage fees");
+        $inbox = $this->bankmsg($INBOX, $time, $spend);
         $db->put("$key/$assetid", $storagefee);
         $db->put("$inboxkey/$time", $inbox);
       }
     }
     
-    return $this->bankmsg($t->ATSTORAGEFEES, $msg);
+    return $this->bankmsg($ATSTORAGEFEES, $msg);
   }
 
   function get_outbox_args($id, $spendtime) {
@@ -2080,20 +2062,20 @@
     $spendargs = $u->match_pattern($reqs[0]);
     $feeargs = false;
     if (count($reqs) > 1) $feeargs = $u->match_pattern($reqs[1]);
-    if ($spendargs[$t->CUSTOMER] != $bankid ||
-        $spendargs[$t->REQUEST] != $t->ATSPEND ||
+    if ($spendargs[$CUSTOMER] != $bankid ||
+        $spendargs[$REQUEST] != $ATSPEND ||
         ($feeargs &&
-         ($feeargs[$t->CUSTOMER] != $bankid ||
-          $feeargs[$t->REQUEST] != $t->ATTRANFEE))) {
+         ($feeargs[$CUSTOMER] != $bankid ||
+          $feeargs[$REQUEST] != $ATTRANFEE))) {
       return "Outbox corrupted";
     }
-    $spendargs = $u->match_pattern($spendargs[$t->MSG]);
-    if ($feeargs) $feeargs = $u->match_pattern($feeargs[$t->MSG]);
-    if ($spendargs[$t->CUSTOMER] != $id ||
-        $spendargs[$t->REQUEST] != $t->SPEND ||
+    $spendargs = $u->match_pattern($spendargs[$MSG]);
+    if ($feeargs) $feeargs = $u->match_pattern($feeargs[$MSG]);
+    if ($spendargs[$CUSTOMER] != $id ||
+        $spendargs[$REQUEST] != $SPEND ||
         ($feeargs &&
-         ($feeargs[$t->CUSTOMER] != $id ||
-          $feeargs[$t->REQUEST] != $t->TRANFEE))) {
+         ($feeargs[$CUSTOMER] != $id ||
+          $feeargs[$REQUEST] != $TRANFEE))) {
       return "Outbox inner messages corrupted";
     }
     return array($spendargs, $feeargs); 
@@ -2106,8 +2088,8 @@
     $err = $this->checkreq($args, $msg);
     if ($err) return $err;
 
-    $assetid = $args[$t->ASSET];
-    $asset = $db->get($t->ASSET . "/$assetid");
+    $assetid = $args[$ASSET];
+    $asset = $db->get($ASSET . "/$assetid");
     if (!$asset) return $this->failmsg($msg, "Unknown asset: $assetid");
     return $asset;
   }
@@ -2116,7 +2098,7 @@
     $t = $this->t;
     $db = $this->db;
 
-    $id = $args[$t->CUSTOMER];
+    $id = $args[$CUSTOMER];
     $lock = $db->lock($this->accttimekey($id));
     $res = $this->do_asset_internal($args, $reqs, $msg);
     $db->unlock($lock);
@@ -2134,12 +2116,12 @@
       return $this->failmsg($msg, "No balance items");
     }
 
-    // $t->ASSET => array($t->BANKID,$t->ASSET,$t->SCALE,$t->PRECISION,$t->ASSETNAME),
-    $id = $args[$t->CUSTOMER];
-    $assetid = $args[$t->ASSET];
-    $scale = $args[$t->SCALE];
-    $precision = $args[$t->PRECISION];
-    $assetname = $args[$t->ASSETNAME];
+    // $ASSET => array($BANKID,$ASSET,$SCALE,$PRECISION,$ASSETNAME),
+    $id = $args[$CUSTOMER];
+    $assetid = $args[$ASSET];
+    $scale = $args[$SCALE];
+    $precision = $args[$PRECISION];
+    $assetname = $args[$ASSETNAME];
     $storage_msg = false;
 
     if (!(is_numeric($scale) && is_numeric($precision) &&
@@ -2191,9 +2173,9 @@
       $req = $reqs[$i];
       $args = $u->match_pattern($req);
       if (is_string($req_args)) return $this->failmsg($msg, $args); // match error
-      $reqid = $args[$t->CUSTOMER];
-      $request = $args[$t->REQUEST];
-      $reqtime = $args[$t->TIME];
+      $reqid = $args[$CUSTOMER];
+      $request = $args[$REQUEST];
+      $reqtime = $args[$TIME];
       if ($i == 1) {
         // Burn the transaction
         $time = $reqtime;
@@ -2202,26 +2184,26 @@
         $state['time'] = $time;
       }
       if ($reqid != $id) return $this->failmsg($msg, "ID mismatch");
-      elseif ($request == $t->STORAGE) {
+      elseif ($request == $STORAGE) {
         if ($storage_msg) return $this->failmsg($msg, "Duplicate storage fee");
         $storage_msg = $parser->get_parsemsg($req);
       }
-      elseif ($request == $t->BALANCE) {
+      elseif ($request == $BALANCE) {
         $reqmsg = $parser->get_parsemsg($req);
         $errmsg = $this->handle_balance_msg($id, $reqmsg, $args, $state, $assetid);
         if ($errmsg) return $this->failmsg($msg, $errmsg);
         $newbals[] = $reqmsg;
-      } elseif ($request == $t->BALANCEHASH) {
+      } elseif ($request == $BALANCEHASH) {
         if ($balancehashreq) {
-          return $this->failmsg($msg, $t->BALANCEHASH . " appeared multiple times");
+          return $this->failmsg($msg, $BALANCEHASH . " appeared multiple times");
         }
         $balancehashreq = $req;
-        $balancehash = $args[$t->HASH];
-        $balancehashcnt = $args[$t->COUNT];
+        $balancehash = $args[$HASH];
+        $balancehashcnt = $args[$COUNT];
         $balancehashmsg = $parser->get_parsemsg($req);
       } else {
         return $this->failmsg($msg, "$request not valid for asset creation. Only " .
-                              $t->BALANCE . ' & ' . $t->BALANCEHASH);
+                              $BALANCE . ' & ' . $BALANCEHASH);
       }
     }
 
@@ -2234,7 +2216,7 @@
 
     // Check that we have exactly as many negative balances after the transaction
     // as we had before, plus one for the new asset
-    if (!$exists) $oldneg[$assetid] = $t->MAIN;
+    if (!$exists) $oldneg[$assetid] = $MAIN;
     if (count($oldneg) != count($newneg)) {
       return $this->failmsg($msg, "Negative balance count not conserved");
     }
@@ -2262,24 +2244,24 @@
 
     // balancehash must be included
     if (!$balancehashreq) {
-      return $this->failmsg($msg, $t->BALANCEHASH . " missing");
+      return $this->failmsg($msg, $BALANCEHASH . " missing");
     } else {
       $hasharray = $u->balancehash($db, $id, $this, $acctbals);
-      $hash = $hasharray[$t->HASH];
-      $hashcnt = $hasharray[$t->COUNT];
+      $hash = $hasharray[$HASH];
+      $hashcnt = $hasharray[$COUNT];
       if ($balancehash != $hash || $balancehashcnt != $hashcnt) {
-        return $this->failmsg($msg, $t->BALANCEHASH .
+        return $this->failmsg($msg, $BALANCEHASH .
                               " mismatch, hash: $balancehash, sb: $hash, count: $balancehashcnt, sb: $hashcnt");
       }
     }
   
     // All's well with the world. Commit this puppy.
     // Add asset
-    $res = $this->bankmsg($t->ATASSET, $parser->get_parsemsg($reqs[0]));
+    $res = $this->bankmsg($ATASSET, $parser->get_parsemsg($reqs[0]));
     if ($storage_msg) {
-      $res .= "." . $this->bankmsg($t->ATSTORAGE, $storage_msg);
+      $res .= "." . $this->bankmsg($ATSTORAGE, $storage_msg);
     }
-    $db->put($t->ASSET . "/$assetid", $res);
+    $db->put($ASSET . "/$assetid", $res);
 
     // Credit bank with tokens
     $this->add_to_bank_balance($tokenid, $tokens);
@@ -2289,14 +2271,14 @@
     foreach ($acctbals as $acct => $balances) {
       $acctkey = "$balancekey/$acct";
       foreach ($balances as $balasset => $balance) {
-        $balance = $this->bankmsg($t->ATBALANCE, $balance);
+        $balance = $this->bankmsg($ATBALANCE, $balance);
         $res .= ".$balance";
         $db->put("$acctkey/$balasset", $balance);
       }
     }
 
     // Update balancehash
-    $balancehash_item = $this->bankmsg($t->ATBALANCEHASH, $balancehashmsg);
+    $balancehash_item = $this->bankmsg($ATBALANCEHASH, $balancehashmsg);
     $res .= ".$balancehash_item";
     $db->put($this->balancehashkey($id), $balancehash_item);
 
@@ -2307,7 +2289,7 @@
     $t = $this->t;
     $db = $this->db;
 
-    $id = $args[$t->CUSTOMER];
+    $id = $args[$CUSTOMER];
     $lock = $db->lock($this->accttimekey($id));
     $res = $this->do_getbalance_internal($args, $reqs, $msg);
     $db->unlock($lock);
@@ -2321,10 +2303,10 @@
     $err = $this->checkreq($args, $msg);
     if ($err) return $err;
 
-    // $t->GETBALANCE => array($t->BANKID,$t->REQ,$t->ACCT=>1,$t->ASSET=>1));
-    $id = $args[$t->CUSTOMER];
-    $acct = @$args[$t->ACCT];
-    $assetid = @$args[$t->ASSET];
+    // $GETBALANCE => array($BANKID,$REQ,$ACCT=>1,$ASSET=>1));
+    $id = $args[$CUSTOMER];
+    $acct = @$args[$ACCT];
+    $assetid = @$args[$ASSET];
 
     if ($acct) $acctkeys = array($this->acctbalancekey($id, $acct));
     else {
@@ -2377,7 +2359,7 @@
     $t = $this->t;
     $db = $this->db;
 
-    $id = $args[$t->CUSTOMER];
+    $id = $args[$CUSTOMER];
     $lock = $db->lock($this->accttimekey($id));
     $res = $this->do_getoutbox_internal($args, $reqs, $msg);
     $db->unlock($lock);
@@ -2391,10 +2373,10 @@
     $err = $this->checkreq($args, $msg);
     if ($err) return $err;
 
-    // $t->GETOUTBOX => array($t->BANKID,$t->REQ),
-    $id = $args[$t->CUSTOMER];
+    // $GETOUTBOX => array($BANKID,$REQ),
+    $id = $args[$CUSTOMER];
 
-    $msg = $this->bankmsg($t->ATGETOUTBOX, $msg);
+    $msg = $this->bankmsg($ATGETOUTBOX, $msg);
     $outboxkey = $this->outboxkey($id);
     $contents = $db->contents($outboxkey);
     foreach ($contents as $time) {
@@ -2415,22 +2397,22 @@
 
     if (!$this->commands) {
       $patterns = $u->patterns();
-      $names = array($t->BANKID => array($t->PUBKEY, $t->COUPON=>1),
-                     $t->ID => array($t->BANKID,$t->ID),
-                     $t->REGISTER => $patterns[$t->REGISTER],
-                     $t->GETREQ => array($t->BANKID),
-                     $t->GETTIME => array($t->BANKID,$t->REQ),
-                     $t->GETFEES => array($t->BANKID,$t->REQ,$t->OPERATION=>1),
-                     $t->SPEND => $patterns[$t->SPEND],
-                     $t->SPENDREJECT => $patterns[$t->SPENDREJECT],
-                     $t->COUPONENVELOPE => $patterns[$t->COUPONENVELOPE],
-                     $t->GETINBOX => $patterns[$t->GETINBOX],
-                     $t->PROCESSINBOX => $patterns[$t->PROCESSINBOX],
-                     $t->STORAGEFEES => $patterns[$t->STORAGEFEES],
-                     $t->GETASSET => array($t->BANKID,$t->REQ,$t->ASSET),
-                     $t->ASSET => array($t->BANKID,$t->ASSET,$t->SCALE,$t->PRECISION,$t->ASSETNAME),
-                     $t->GETOUTBOX => $patterns[$t->GETOUTBOX],
-                     $t->GETBALANCE => array($t->BANKID,$t->REQ,$t->ACCT=>1,$t->ASSET=>1));
+      $names = array($BANKID => array($PUBKEY, $COUPON=>1),
+                     $ID => array($BANKID,$ID),
+                     $REGISTER => $patterns[$REGISTER],
+                     $GETREQ => array($BANKID),
+                     $GETTIME => array($BANKID,$REQ),
+                     $GETFEES => array($BANKID,$REQ,$OPERATION=>1),
+                     $SPEND => $patterns[$SPEND],
+                     $SPENDREJECT => $patterns[$SPENDREJECT],
+                     $COUPONENVELOPE => $patterns[$COUPONENVELOPE],
+                     $GETINBOX => $patterns[$GETINBOX],
+                     $PROCESSINBOX => $patterns[$PROCESSINBOX],
+                     $STORAGEFEES => $patterns[$STORAGEFEES],
+                     $GETASSET => array($BANKID,$REQ,$ASSET),
+                     $ASSET => array($BANKID,$ASSET,$SCALE,$PRECISION,$ASSETNAME),
+                     $GETOUTBOX => $patterns[$GETOUTBOX],
+                     $GETBALANCE => array($BANKID,$REQ,$ACCT=>1,$ASSET=>1));
       $commands = array();
       foreach($names as $name => $pattern) {
         $fun = str_replace('|', '', $name);
@@ -2457,20 +2439,20 @@
       return $this->failmsg($msg, "Unknown request: $req");
     }
     $method = $method_pattern[0];
-    $pattern = array_merge(array($t->CUSTOMER,$t->REQUEST), $method_pattern[1]);
+    $pattern = array_merge(array($CUSTOMER,$REQUEST), $method_pattern[1]);
     $args = $this->parser->matchargs($parses[0], $pattern);
     if (!$args) {
       return $this->failmsg($msg,
                             "Request doesn't match pattern: " .
                             $parser->formatpattern($pattern));
     }
-    if (array_key_exists($t->BANKID, $args)) {
-      $argsbankid = $args[$t->BANKID];
+    if (array_key_exists($BANKID, $args)) {
+      $argsbankid = $args[$BANKID];
       if ($argsbankid != $this->bankid) {
         return $this->failmsg($msg, "bankid mismatch");
       }
     }
-    if (strlen(@$args[$t->NOTE]) > 4096) {
+    if (strlen(@$args[$NOTE]) > 4096) {
       return $this->failmsg($msg, "Note too long. Max: 4096 chars");
     }
     return $this->$method($args, $parses, $msg);

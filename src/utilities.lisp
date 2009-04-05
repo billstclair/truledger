@@ -174,7 +174,7 @@
           (setq ptr i))))
     (strcat res (subseq str ptr))))
 
-(defun makemsg (alist)
+(defun simple-makemsg (alist)
   "Make an unsigned message from alist"
   (loop
      with msg = "("
