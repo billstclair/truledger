@@ -73,6 +73,11 @@
   (declare (dynamic-extent args))
   (apply #'ccl:process-wait whostate function args))
 
+(defun create-directory (dir &key mode)
+  (if mode
+      (ccl:create-directory dir :mode mode)
+      (ccl:create-directory dir)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair

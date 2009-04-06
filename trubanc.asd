@@ -22,6 +22,7 @@
      (:file "utilities")
      (:file "loomrandom")
      (:file "timestamp")
+     (:file "server")
      ))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -7,6 +7,15 @@
 
 (in-package :trubanc)
 
+(defun make-server (dir passphrase bankname bankurl)
+  "Create a Trubanc server instance."
+  (let ((db (make-fsdb dir)))
+    (make-instance 'server
+                   :db db
+                   :passphrase passphrase
+                   :bankname bankname
+                   :bankurl bankurl)))
+
 (defclass server ()
   ((db :type db
        :initarg :db
@@ -37,9 +46,9 @@
             :initarg :tranfee
             :initform "2"
             :accessor tranfee)
-   (privkey :type string
-            :accessor privkey)
-   (bankid :type string
+   (privkey :accessor privkey)
+   (bankid :type (or string null)
+           :initform nil
            :accessor bankid)
    (always-verify-sigs-p :type boolean
                          :initarg :always-verify-sigs-p
@@ -51,7 +60,7 @@
 
 (defconstant $UNPACK-REQS-KEY "unpack-reqs")
 
-(defmethod initialize-intance ((server server) &key db passphrase)
+(defmethod initialize-instance :after ((server server) &key db passphrase)
   (let ((pubkeydb (db-subdir db $PUBKEY)))
     (setf (pubkeydb server) pubkeydb
           (parser server) (make-instance
@@ -103,7 +112,7 @@
          (msg (db-get (db server) key)))
     (if (not msg)
         "0"
-        (unpack-bankmsg server msg $ATBALANCE $BALANCE $AMOUNT))))
+        (unpack-bankmsg server msg $kATBALANCE $kBALANCE $kAMOUNT))))
 
 (defun outbox-key (id)
   (strcat (account-dir id) $OUTBOX))
@@ -148,7 +157,7 @@
                  (key (fraction-balance-key id assetid))
                  (msg (db-get db key)))
             (when msg
-              (setq args (unpack-bankmsg server msg $ATFRACTION $FRACTION)
+              (setq args (unpack-bankmsg server msg $kATFRACTION $kFRACTION)
                     fraction (gethash $kAMOUNT args)
                     fractime (gethash $kTIME args)))
             (values percent issuer fraction fractime)))))))
@@ -188,7 +197,7 @@
 (defmethod lookup-asset ((server server) assetid)
   (let ((asset (is-asset-p server assetid)))
     (when asset
-      (let ((res (unpack-bankmsg server asset $ATASSET $ASSET)))
+      (let ((res (unpack-bankmsg server asset $kATASSET $kASSET)))
         (let ((req1 (elt 1 (gethash $UNPACK-REQS-KEY res))))
           (when req1
             (let ((args (match-pattern (parser server) req1)))
@@ -214,9 +223,13 @@
 (defun pubkey-id (pubkey)
   (sha1 (trim pubkey)))
 
-(defmethod unpack-bank-param ((server server) type &optional (key type))
+(defun keyword (string)
+  (or (find-symbol string :keyword)
+      (error "Not in keyword package: ~s" string)))
+
+(defmethod unpack-bank-param ((server server) type &optional (key (keyword type)))
   "Unpack wrapped initialization parameter."
-  (unpack-bankmsg server (db-get (db server) type) nil key t))
+  (unpack-bankmsg server (db-get (db server) type) type nil key))
 
 (defmethod banksign ((server server) msg)
   "Bank sign a message."
@@ -231,12 +244,12 @@
     (loop
        with args = (match-pattern (parser server) hash)
        with msg = "("
-       with msgval = (gethash $MSG args)
+       with msgval = (gethash $kMSG args)
        for k from 0
        for v = (gethash k args)
        do
          (unless v (return (strcat msg ")")))
-         (when (equal msg "(")
+         (unless (equal msg "(")
            (setq msg (strcat msg ",")))
          (setq msg (strcat msg (if (eq v msgval) v (escape v)))))))
 
@@ -260,11 +273,11 @@
   (let* ((bankid (bankid server))
          (parser (parser server))
          (reqs (parse parser msg))
-         (req (gethash 0 reqs))
+         (req (elt reqs 0))
          (args (match-pattern parser req)))
-    (when (and bankid (not (equal (gethash $CUSTOMER args) bankid)))
+    (when (and bankid (not (equal (gethash $kCUSTOMER args) bankid)))
       (error "Bankmsg not from bank"))
-    (when (and type (not (equal (gethash $REQUEST args) type)))
+    (when (and type (not (equal (gethash $kREQUEST args) type)))
       (error "Bankmsg wasn't of type: ~s" type))
     (cond ((not subtype)
            (cond (idx
@@ -272,11 +285,11 @@
                       (error "No arg in bankmsg: ~s" idx)))
                  (t (setf (gethash $UNPACK-REQS-KEY args) reqs) ; save parse results
                     args)))
-          (t (setq req (gethash $MSG args)) ;this is already parsed
+          (t (setq req (gethash $kMSG args)) ;this is already parsed
              (unless req
                (error "No wrapped message"))
              (setq args (match-pattern parser req))
-             (when (and subtype (not (equal (gethash $REQUEST args) subtype)))
+             (when (and subtype (not (equal (gethash $kREQUEST args) subtype)))
                (error "Wrapped message wasn't of type: ~%" subtype))
              (cond (idx
                     (or (gethash idx args)
@@ -292,8 +305,8 @@
                                 (db-get db $PRIVKEY) passphrase)
               (bankid server) (unpack-bank-param server $BANKID)
               (tokenid server) (unpack-bank-param server $TOKENID)
-              (regfee server) (unpack-bank-param server $REGFEE $AMOUNT)
-              (tranfee server) (unpack-bank-param server $TRANFEE $AMOUNT))
+              (regfee server) (unpack-bank-param server $REGFEE $kAMOUNT)
+              (tranfee server) (unpack-bank-param server $TRANFEE $kAMOUNT))
         ;; http://www.rsa.com/rsalabs/node.asp?id=2004 recommends that 3072-bit
         ;; RSA keys are equivalent to 128-bit symmetric keys, and they should be
         ;; secure past 2031.
@@ -305,14 +318,12 @@
                (ut "Usage Tokens")
                (token-name (if bankname (strcat bankname " " ut) ut))
                (zero "0")
-               (tokenid (assetid bankid zero zero token-name))
-               (asset (bankmsg
-                       server $ASSET bankid tokenid zero zero token-name)))
+               (tokenid (assetid bankid zero zero token-name)))
           (db-put db $PRIVKEY privkey-text)
           (setf (privkey server) privkey
                 (bankid server) bankid)
           (db-put db $TIME zero)
-          (db-put db $BANKID (bankmsg server $BANKID $bankid))
+          (db-put db $BANKID (bankmsg server $BANKID bankid))
           (db-put db (strcat $PUBKEY "/" bankid) pubkey)
           (db-put db (strcat $PUBKEYSIG "/" bankid)
                   (bankmsg server $ATREGISTER
@@ -323,7 +334,9 @@
           (setf (tokenid server) tokenid)
           (db-put db $TOKENID (bankmsg server $TOKENID tokenid))
           (db-put db (strcat $ASSET "/" tokenid)
-                  (bankmsg server $ATASSET asset))
+                  (bankmsg server $ATASSET
+                           (bankmsg server $ASSET
+                                    bankid tokenid zero zero token-name)))
           (db-put db $REGFEE
                   (bankmsg server $REGFEE bankid zero tokenid (regfee server)))
           (db-put db $TRANFEE

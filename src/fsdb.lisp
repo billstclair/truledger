@@ -48,6 +48,10 @@
 ;;; Implement the db protocol using the file system
 ;;;
 
+(defun make-fsdb (dir)
+  "Create an fsdb isstance for the given file system directory."
+  (make-instance 'fsdb :dir dir))
+
 (defclass fsdb (db)
   ((dir :type string
         :initarg :dir
@@ -59,6 +63,7 @@
 
 (defmethod initialize-instance :after ((db fsdb) &rest ignore)
   (declare (ignore ignore))
+  (ignore-errors (create-directory (strcat (fsdb-dir db) "/")))
   (let* ((dir (namestring (truename (fsdb-dir db))))
          (idx (1- (length dir))))
     (when (and (>= idx 0) (eql #\/ (aref dir idx)))

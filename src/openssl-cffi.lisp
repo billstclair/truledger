@@ -315,8 +315,8 @@
       (when (null-pointer-p type)
         (error "Can't get SHA1 type structure"))
       (with-foreign-pointer (ctx $EVP-MD-CTX-size)
-        (with-foreign-pointer (sig (%evp-pkey-size pkey))
-          (with-foreign-pointer (siglen (foreign-type-size :unsigned-long))
+        (with-foreign-pointer (sig (1+ (%evp-pkey-size pkey)))
+          (with-foreign-pointer (siglen (foreign-type-size :unsigned-int))
             (with-foreign-strings ((datap data :encoding :latin-1))
               (when (or (eql 0 (%evp-sign-init ctx type))
                         (unwind-protect
@@ -328,7 +328,7 @@
               ;; Here's the result
               (base64-encode
                (copy-memory-to-lisp
-                sig (mem-ref siglen :unsigned-long) nil)))))))))
+                sig (mem-ref siglen :unsigned-int) nil)))))))))
 
 (defun verify (data signature rsa-public-key)
   "Verify the SIGNATURE for DATA created by SIGN, using the given RSA-PUBLIC-KEY.
