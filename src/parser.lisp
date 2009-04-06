@@ -339,19 +339,18 @@
 
 (defmethod match-pattern ((parser parser) req &optional bankid)
   (let* ((patterns (patterns))
-         (request-name (gethash 1 req))
-         (request (find-symbol request-name :keyword))
+         (request (gethash 1 req))
          (pattern (gethash request patterns)))
     (unless pattern
-      (error "Unknown request: ~s" request-name))
-    (setq pattern (nconc `(,$kCUSTOMER ,$kREQUEST) pattern))
+      (error "Unknown request: ~s" request))
+    (setq pattern (nconc `(,$CUSTOMER ,$REQUEST) pattern))
     (let ((args (match-args req pattern)))
       (unless args
         (error "Request doesn't match pattern for ~s: ~s, ~s"
-               request-name
+               request
                (format-pattern pattern)
                (get-parsemsg req)))
-      (let ((args-bankid (gethash $kBANKID args)))
+      (let ((args-bankid (gethash $BANKID args)))
         (when args-bankid
           (unless bankid
             (let ((bank-getter (parser-bank-getter parser)))
@@ -360,7 +359,7 @@
           (unless (or (null bankid) (equal bankid args-bankid))
             (error "bankid mismatch, sb: ~s, was: ~s"
                    bankid args-bankid))))
-      (when (> (length (gethash $kNOTE args)) 4096)
+      (when (> (length (gethash $NOTE args)) 4096)
         (error "Note too long. Max: 4096 chars"))
       args)))
 

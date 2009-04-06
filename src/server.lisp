@@ -112,7 +112,7 @@
          (msg (db-get (db server) key)))
     (if (not msg)
         "0"
-        (unpack-bankmsg server msg $kATBALANCE $kBALANCE $kAMOUNT))))
+        (unpack-bankmsg server msg $ATBALANCE $BALANCE $AMOUNT))))
 
 (defun outbox-key (id)
   (strcat (account-dir id) $OUTBOX))
@@ -144,22 +144,22 @@
       (unless req (return-from storage-info nil))
 
       (let ((args (match-pattern parser req)))
-        (unless (equal (gethash $kREQUEST args) $ATSTORAGE)
+        (unless (equal (gethash $REQUEST args) $ATSTORAGE)
           (return-from storage-info nil))
-        (setq req (gethash $kMSG args)
+        (setq req (gethash $MSG args)
               args (match-pattern parser req))
-        (unless (equal (gethash $kREQUEST args) $STORAGE)
+        (unless (equal (gethash $REQUEST args) $STORAGE)
           (return-from storage-info nil))
-        (let ((issuer (gethash $kCUSTOMER args))
-              (percent (gethash $kPERCENT args)))
+        (let ((issuer (gethash $CUSTOMER args))
+              (percent (gethash $PERCENT args)))
           (let* ((fraction nil)
                  (fractime nil)
                  (key (fraction-balance-key id assetid))
                  (msg (db-get db key)))
             (when msg
-              (setq args (unpack-bankmsg server msg $kATFRACTION $kFRACTION)
-                    fraction (gethash $kAMOUNT args)
-                    fractime (gethash $kTIME args)))
+              (setq args (unpack-bankmsg server msg $ATFRACTION $FRACTION)
+                    fraction (gethash $AMOUNT args)
+                    fractime (gethash $TIME args)))
             (values percent issuer fraction fractime)))))))
 
 (defun storage-fee-key (id &optional assetid)
@@ -181,7 +181,7 @@
 (defmethod outbox-hash-msg ((server server) id)
   (multiple-value-bind (hash count) (outbox-hash server id)
     (bankmsg server
-             $kOUTBOXHASH
+             $OUTBOXHASH
              (bankid server)
              (get-acct-last server id)
              count
@@ -197,7 +197,7 @@
 (defmethod lookup-asset ((server server) assetid)
   (let ((asset (is-asset-p server assetid)))
     (when asset
-      (let ((res (unpack-bankmsg server asset $kATASSET $kASSET)))
+      (let ((res (unpack-bankmsg server asset $ATASSET $ASSET)))
         (let ((req1 (elt 1 (gethash $UNPACK-REQS-KEY res))))
           (when req1
             (let ((args (match-pattern (parser server) req1)))
@@ -223,11 +223,7 @@
 (defun pubkey-id (pubkey)
   (sha1 (trim pubkey)))
 
-(defun keyword (string)
-  (or (find-symbol string :keyword)
-      (error "Not in keyword package: ~s" string)))
-
-(defmethod unpack-bank-param ((server server) type &optional (key (keyword type)))
+(defmethod unpack-bank-param ((server server) type &optional (key type))
   "Unpack wrapped initialization parameter."
   (unpack-bankmsg server (db-get (db server) type) type nil key))
 
@@ -244,7 +240,7 @@
     (loop
        with args = (match-pattern (parser server) hash)
        with msg = "("
-       with msgval = (gethash $kMSG args)
+       with msgval = (gethash $MSG args)
        for k from 0
        for v = (gethash k args)
        do
@@ -275,9 +271,9 @@
          (reqs (parse parser msg))
          (req (elt reqs 0))
          (args (match-pattern parser req)))
-    (when (and bankid (not (equal (gethash $kCUSTOMER args) bankid)))
+    (when (and bankid (not (equal (gethash $CUSTOMER args) bankid)))
       (error "Bankmsg not from bank"))
-    (when (and type (not (equal (gethash $kREQUEST args) type)))
+    (when (and type (not (equal (gethash $REQUEST args) type)))
       (error "Bankmsg wasn't of type: ~s" type))
     (cond ((not subtype)
            (cond (idx
@@ -285,11 +281,11 @@
                       (error "No arg in bankmsg: ~s" idx)))
                  (t (setf (gethash $UNPACK-REQS-KEY args) reqs) ; save parse results
                     args)))
-          (t (setq req (gethash $kMSG args)) ;this is already parsed
+          (t (setq req (gethash $MSG args)) ;this is already parsed
              (unless req
                (error "No wrapped message"))
              (setq args (match-pattern parser req))
-             (when (and subtype (not (equal (gethash $kREQUEST args) subtype)))
+             (when (and subtype (not (equal (gethash $REQUEST args) subtype)))
                (error "Wrapped message wasn't of type: ~%" subtype))
              (cond (idx
                     (or (gethash idx args)
@@ -305,8 +301,8 @@
                                 (db-get db $PRIVKEY) passphrase)
               (bankid server) (unpack-bank-param server $BANKID)
               (tokenid server) (unpack-bank-param server $TOKENID)
-              (regfee server) (unpack-bank-param server $REGFEE $kAMOUNT)
-              (tranfee server) (unpack-bank-param server $TRANFEE $kAMOUNT))
+              (regfee server) (unpack-bank-param server $REGFEE $AMOUNT)
+              (tranfee server) (unpack-bank-param server $TRANFEE $AMOUNT))
         ;; http://www.rsa.com/rsalabs/node.asp?id=2004 recommends that 3072-bit
         ;; RSA keys are equivalent to 128-bit symmetric keys, and they should be
         ;; secure past 2031.
@@ -404,10 +400,10 @@
     $res = false;
     if ($q) {
       $times = explode(',', $q);
-      foreach ($times as $k => $v) {
+      foreach ($times as $ => $v) {
         if ($v == $time) {
           $res = $time;
-          unset($times[$k]);
+          unset($times[$]);
           $q = implode(',', $times);
           $db->put($key, $q);
         }
