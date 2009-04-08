@@ -345,78 +345,61 @@
                            (bankmsg server $BALANCE
                                     bankid zero tokenid "-1")))))))
 
+(defmethod scaninbox ((server server) id)
+  (loop
+     with db = (db server)
+     with inbox-key = (inbox-key id)
+     with times = (db-contents db inbox-key)
+     for time in times
+     for item = (db-get db (strcat inbox-key "/" time))
+     when item
+     collect item))
+
+(defmethod signed-balance (server time asset amount &optional acct)
+  (if acct
+      (bankmsg server $BALANCE (bankid server) time asset amount acct)
+      (bankmsg server $BALANCE (bankid server) time asset amount)))
+
+(defmethod signed-spend ((server server) time id assetid amount &optional note)
+  (let ((bankid (bankid server)))
+    (if note
+        (bankmsg server $SPEND bankid time id assetid amount note)
+        (bankmsg server $SPEND bankid time id assetid amount))))
+
+(defmethod enq-time ((server server) id)
+  (let* ((db (db server))
+         (time (gettime server))
+         (key (acct-time-key id)))
+    (with-db-lock (db key)
+      (let ((q (db-get db key)))
+        (if (not q)
+            (setq q time)
+            (setq q (strcat q "," time)))
+        (db-put db key q)
+        q))))
+
+(defmethod deq-time (server id time)
+  (let ((db (db server))
+        (key (acct-time-key id)))
+    (with-db-lock (db key)
+      (let ((q (db-get db key))
+            (res nil))
+        (when q
+          (let ((times (explode #\, q)))
+            (dolist (v times)
+              (when (equal v time)
+                (setq res time
+                      times (delete v times :test 'equal)
+                      q (apply 'implode #\, times))
+                (db-put db key q)))))
+        (unless res (error "Timestamp not enqueued: ~s" time))
+        (let ((unixtime (strip-fract time)))
+          (when (> (bccomp (get-universal-time) (bcadd unixtime (* 10 60))) 0)
+            (error "Timestamp too old: ~s" time)))))
+    time))
+
 #||
 ;; Continue here
-
-  function scaninbox($id) {
-    $db = $this->db;
-    $inboxkey = $this->inboxkey($id);
-    $times = $db->contents($inboxkey);
-    $res = array();
-    foreach ($times as $time) {
-      $item = $db->get("$inboxkey/$time");
-      if ($item) $res[] = $item;
-    }
-    return $res;
-  }
-
-  function signed_balance($time, $asset, $amount, $acct=false) {
-    if ($acct) {
-      return $this->bankmsg($this->t->BALANCE, $time, $asset, $amount, $acct);
-    } else {
-      return $this->bankmsg($this->t->BALANCE, $time, $asset, $amount);
-    }
-  }
-
-  function signed_spend($time, $id, $assetid, $amount, $note=false, $acct=false) {
-    $bankid = $this->bankid;
-    if ($note && $acct) {
-      return $this->bankmsg($this->t->SPEND, $bankid, $time, $id, $assetid, $amount, $note, $acct);
-    } elseif ($note) {
-      return $this->bankmsg($this->t->SPEND, $bankid, $time, $id, $assetid, $amount, $note);
-    } elseif ($acct) {
-      return $this->bankmsg($this->t->SPEND, $bankid, $time, $id, $assetid, $amount, "acct=$acct");
-    } else return $this->bankmsg($this->t->SPEND, $bankid, $time, $id, $assetid, $amount);
-  }
-
-  function enq_time($id) {
-    $db = $this->db;
-    $time = $this->gettime();
-    $key = $this->accttimekey($id);
-    $lock = $db->lock($key);
-    $q = $db->get($key);
-    if (!$q) $q = $time;
-    else $q .= ",$time";
-    $db->put($key, $q);
-    $db->unlock($lock);
-    return $q;
-  }
-
-  function deq_time($id, $time) {
-    $db = $this->db;
-    $key = $this->accttimekey($id);
-    $lock = $db->lock($key);
-    $q = $db->get($key);
-    $res = false;
-    if ($q) {
-      $times = explode(',', $q);
-      foreach ($times as $ => $v) {
-        if ($v == $time) {
-          $res = $time;
-          unset($times[$]);
-          $q = implode(',', $times);
-          $db->put($key, $q);
-        }
-      }
-    }
-    $db->unlock($lock);
-    if (!$res) return "Timestamp not enqueued: $time";
-    $unixtime = $this->timestamp->stripfract($time);
-    if ($unixtime > ($time + 10*60)) {
-      return "Timestamp too old: $time";
-    }
-    return false;
-  }
 
   function match_bank_signed_message($inmsg) {
     $t = $this->t;

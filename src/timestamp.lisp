@@ -44,3 +44,10 @@
                                       (incf n inc)
                                       (incf l n)))))))))))
     (setf (timestamp-lasttime timestamp) time)))
+
+(defun strip-fract (time)
+  "Return the integer part of a time returned by (next) above"
+  (let ((dotpos (position #\. time)))
+    (if dotpos
+        (subseq time 0 dotpos)
+        time)))

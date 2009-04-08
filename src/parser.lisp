@@ -348,7 +348,7 @@
       (unless args
         (error "Request doesn't match pattern for ~s: ~s, ~s"
                request
-               (format-pattern pattern)
+               pattern
                (get-parsemsg req)))
       (let ((args-bankid (gethash $BANKID args)))
         (when args-bankid

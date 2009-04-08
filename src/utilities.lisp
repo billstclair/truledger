@@ -18,7 +18,7 @@
 (defun file-put-contents (file contents)
   (with-open-file (stream file
                           :direction :output
-                          :if-exists :overwrite
+                          :if-exists :supersede
                           :if-does-not-exist :create)
     (write-sequence contents stream)
     contents))
@@ -118,6 +118,20 @@
     (dolist (item (cdr strings))
       (setq res (strcat res separator item)))
     res))
+
+(defun explode (separator string)
+  (let* ((len (length string))
+         (res
+          (loop
+             with len = (length string)
+             for start = 0 then (1+ end)
+             while (< start len)
+             for end = (or (position separator string :start start) len)
+             while end
+             collect (subseq string start end))))
+    (if (and (> len 0) (eql separator (aref string (1- len))))
+        (nconc res (list ""))
+        res)))t
 
 (defun strstr (haystack needle)
   "Find NEEDLE in HAYSTACK. Return the tail of HAYSTACK including NEEDLE."
