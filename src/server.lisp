@@ -393,98 +393,54 @@
                       q (apply 'implode #\, times))
                 (db-put db key q)))))
         (unless res (error "Timestamp not enqueued: ~s" time))
-        (let ((unixtime (strip-fract time)))
-          (when (> (bccomp (get-universal-time) (bcadd unixtime (* 10 60))) 0)
-            (error "Timestamp too old: ~s" time)))))
+        (when (> (bccomp (get-universal-time) (bcadd time (* 10 60)))
+                 0)
+          (error "Timestamp too old: ~s" time))))
     time))
+
+(defmethod add-to-bank-balance ((server server) assetid amount)
+  "Add AMOUNT to the bank balance for ASSETID in the main account.
+   Returns new balance, unless you add 0, then it returns nil."
+  (let ((bankid (bankid server))
+        (db (db server)))
+    (unless (eql 0 (bccomp amount 0))
+      (let ((key (asset-balance-key bankid assetid)))
+        (with-db-lock (db key)
+          (let* ((balmsg (db-get db key))
+                 (balargs (unpack-bankmsg server balmsg $ATBALANCE $BALANCE)))
+            (unless (or (null (gethash $ACCT balargs))
+                        (equal $MAIN (gethash $ACCT balargs)))
+              (error "Bank balance message not for main account"))
+            (let* ((bal (gethash $AMOUNT balargs))
+                   (newbal (bcadd bal amount))
+                   (balsign (bccomp bal 0))
+                   (newbalsign (bccomp newbal 0)))
+              (when (or (and (>= balsign 0) (< newbalsign 0))
+                        (and (< balsign 0) (>= newbalsign 0)))
+                (error "Transaction would put bank out of balance."))
+              ;; $BALANCE => `(,$BANKID ,$TIME ,$ASSET ,$AMOUNT (,$ACCT))
+              (let ((msg (bankmsg server $ATBALANCE
+                                  (bankmsg server $BALANCE
+                                           bankid (gettime server) assetid newbal)))
+                    (reqkey (acct-req-key bankid)))
+                (db-put db key msg)
+                ;; Make sure clients update the balance
+                (db-put db reqkey (bcadd 1 (db-get db reqkey)))
+                newbal))))))))
+
+(defmethod checkreq (server args)
+  (let* ((db (db server))
+         (id (gethash $CUSTOMER args))
+         (req (gethash $REQ args))
+         (reqkey (acct-req-key id)))
+    (with-db-lock (db reqkey)
+      (let ((oldreq (db-get db reqkey)))
+        (when (<= (bccomp req oldreq) 0)
+          (error "New req <= old req"))
+        (db-put db reqkey req)))))
 
 #||
 ;; Continue here
-
-  function match_bank_signed_message($inmsg) {
-    $t = $this->t;
-    $u = $this->u;
-    $parser = $this->parser;
-
-    $req = $parser->parse($inmsg);
-    if (!$req) return $parser->errmsg;
-    if ($req) $req = $req[0];
-    $args = $u->match_pattern($req);
-    if (is_string($args)) return "Failed to match bank-signed message";
-    if ($args[$CUSTOMER] != $this->bankid) {
-      return "Not signed by this bank";
-    }
-    $msg = $args[$MSG];
-    $req = $parser->parse($msg);
-    if (!$req) return $parser->errmsg;
-    if ($req) $req = $req[0];
-    return $u->match_pattern($req);
-  }
-
-  // Add $amount to the bank balance for $assetid in the main account
-  // Any non-false return value is an error string
-  function add_to_bank_balance($assetid, $amount) {
-    $bankid = $this->bankid;
-    $db = $this->db;
-
-    if ($amount == 0) return;
-    $key = $this->assetbalancekey($bankid, $assetid);
-    $lock = $db->lock($key);
-    $res = $this->add_to_bank_balance_internal($key, $assetid, $amount);
-    $db->unlock($lock);
-    return $res;
-  }
-
-  function add_to_bank_balance_internal($key, $assetid, $amount) {
-    $bankid = $this->bankid;
-    $db = $this->db;
-    $t = $this->t;
-
-    $balmsg = $db->get($key);
-    $balargs = $this->unpack_bankmsg($balmsg, $ATBALANCE, $BALANCE);
-    if (is_string($balargs) || !$balargs) {
-      return "Error unpacking bank balance: '$balargs'";
-    } elseif (@$balargs[$ACCT] && $balargs[$ACCT] != $MAIN) {
-      return "Bank balance message not for main account";
-    } else {
-      $bal = $balargs[$AMOUNT];
-      $newbal = bcadd($bal, $amount);
-      $balsign = bccomp($bal, 0);
-      $newbalsign = bccomp($newbal, 0);
-      if (($balsign >= 0 && $newbalsign < 0) ||
-          ($balsign < 0 && $newbalsign >= 0)) {
-        return "Transaction would put bank out of balance.";
-      } else {
-        // $BALANCE => array($BANKID,$TIME, $ASSET, $AMOUNT, $ACCT=>1)
-        $msg = $this->bankmsg($BALANCE, $bankid, $this->gettime(), $assetid, $newbal);
-        $msg = $this->bankmsg($ATBALANCE, $msg);
-        $db->put($key, $msg);
-        $key = $this->acctreqkey($bankid);
-        // Make sure clients update the balance
-        $db->put($key, bcadd(1, $db->get($key)));
-      }
-    }
-    return false;
-  }
-
-  // True return is an error string
-  function checkreq($args, $msg) {
-    $t = $this->t;
-    $db = $this->db;
-
-    $id = $args[$CUSTOMER];
-    $req = $args[$REQ];
-    $reqkey = $this->acctreqkey($id);
-    $res = false;
-    $lock = $db->lock($reqkey);
-    $oldreq = $db->get($reqkey);
-    if (bccomp($req, $oldreq) <= 0) $res = "New req <= old req";
-    else $db->put($reqkey, $req);
-    $db->unlock($lock);
-    if ($res) $res = $this->failmsg($msg, $res);
-    return $res;
-  }
-
   // Deal with an (<id>,balance,...) item from the customer for a
   // spend or processinbox request.
   // $id: the customer id

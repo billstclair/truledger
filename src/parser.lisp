@@ -59,9 +59,6 @@
          for first = t then nil
          for (pos . tok) in tokens
          do
-           #+nil
-           (format t "state: ~s, tok: ~s, key: ~s, value: ~s~%"
-                   state tok key value)
            (when (and first (not (eql tok #\()))
              (error "Message does not begin with left paren"))
            (cond ((eql tok #\()
@@ -142,7 +139,7 @@
                          (setf (gethash $PARSER-MSGKEY dict)
                                (subseq string start (+ pos (length tok))))
                          (cond ((> (length stack) 0)
-                                (let ((pop  (vector-pop stack)))
+                                (let ((pop (vector-pop stack)))
                                   (setq value dict
                                         state (pop pop)
                                         dict (pop pop)
@@ -153,8 +150,8 @@
                                (t
                                 (push dict res)
                                 (setq dict nil
-                                      needsig nil)))
-                         (setq state nil))
+                                      needsig nil
+                                      state nil))))
                         (t (error "Misplaced value at ~d" pos))))))
       (when needsig
         (error "Premature end of message"))
