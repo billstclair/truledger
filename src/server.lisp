@@ -54,9 +54,12 @@
                          :initarg :always-verify-sigs-p
                          :initform t
                          :accessor always-verify-sigs-p)
-   (debugmsgs :type list                ;of strings
-              :initform nil
-              :accessor debugmsgs)))
+   (debugmsgs-p :type boolean           ;of strings
+                :initform nil
+                :accessor debugmsgs-p)
+   (debugstr :type string
+             :initform ""
+             :accessor debugstr)))
 
 (defconstant $UNPACK-REQS-KEY "unpack-reqs")
 
@@ -123,7 +126,6 @@
 (defun inbox-key (id)
   (strcat (account-dir id) $INBOX))
 
-
 (defmethod storage-info ((server server) id assetid)
   "Get the values necessary to compute the storage fee.
    Inputs:
@@ -144,22 +146,22 @@
       (unless req (return-from storage-info nil))
 
       (let ((args (match-pattern parser req)))
-        (unless (equal (gethash $REQUEST args) $ATSTORAGE)
+        (unless (equal (getarg $REQUEST args) $ATSTORAGE)
           (return-from storage-info nil))
-        (setq req (gethash $MSG args)
+        (setq req (getarg $MSG args)
               args (match-pattern parser req))
-        (unless (equal (gethash $REQUEST args) $STORAGE)
+        (unless (equal (getarg $REQUEST args) $STORAGE)
           (return-from storage-info nil))
-        (let ((issuer (gethash $CUSTOMER args))
-              (percent (gethash $PERCENT args)))
+        (let ((issuer (getarg $CUSTOMER args))
+              (percent (getarg $PERCENT args)))
           (let* ((fraction nil)
                  (fractime nil)
                  (key (fraction-balance-key id assetid))
                  (msg (db-get db key)))
             (when msg
               (setq args (unpack-bankmsg server msg $ATFRACTION $FRACTION)
-                    fraction (gethash $AMOUNT args)
-                    fractime (gethash $TIME args)))
+                    fraction (getarg $AMOUNT args)
+                    fractime (getarg $TIME args)))
             (values percent issuer fraction fractime)))))))
 
 (defun storage-fee-key (id &optional assetid)
@@ -198,16 +200,16 @@
   (let ((asset (is-asset-p server assetid)))
     (when asset
       (let ((res (unpack-bankmsg server asset $ATASSET $ASSET)))
-        (let ((req1 (elt 1 (gethash $UNPACK-REQS-KEY res))))
+        (let ((req1 (elt 1 (getarg $UNPACK-REQS-KEY res))))
           (when req1
             (let ((args (match-pattern (parser server) req1)))
-              (setf (gethash $PERCENT res) (gethash $PERCENT args)))))
+              (setf (getarg $PERCENT res) (getarg $PERCENT args)))))
         res))))
 
 (defmethod lookup-asset-name ((server server) assetid)
   (let ((assetreq (lookup-asset server assetid)))
     (and assetreq
-         (gethash $ASSETNAME assetreq))))
+         (getarg $ASSETNAME assetreq))))
 
 ;; More restrictive than Lisp's alphanumericp
 (defun is-alphanumeric-p (char)
@@ -215,6 +217,24 @@
     (or (and (>= code #.(char-code #\0)) (<= code #.(char-code #\9)))
         (and (>= code #.(char-code #\a)) (<= code #.(char-code #\z)))
         (and (>= code #.(char-code #\A)) (<= code #.(char-code #\Z))))))
+
+(defun is-numeric-p (string)
+  (loop
+     with firstp = t
+     with sawdotp = nil
+     for chr across string
+     for code = (char-code chr)
+     do
+     (cond ((eql chr #\-)
+            (unless firstp (return nil)))
+           ((eql chr #\.)
+            (when sawdotp (return nil))
+            (setq sawdotp t))
+           (t (unless (and (>= code #.(char-code #\0))
+                           (<= code #.(char-code #\9)))
+                (return nil))))
+     (setq firstp nil)
+     finally (return t)))
 
 (defun is-acct-name-p (acct)
   (and (stringp acct)
@@ -240,9 +260,9 @@
     (loop
        with args = (match-pattern (parser server) hash)
        with msg = "("
-       with msgval = (gethash $MSG args)
+       with msgval = (getarg $MSG args)
        for k from 0
-       for v = (gethash k args)
+       for v = (getarg k args)
        do
          (unless v (return (strcat msg ")")))
          (unless (equal msg "(")
@@ -271,26 +291,26 @@
          (reqs (parse parser msg))
          (req (elt reqs 0))
          (args (match-pattern parser req)))
-    (when (and bankid (not (equal (gethash $CUSTOMER args) bankid)))
+    (when (and bankid (not (equal (getarg $CUSTOMER args) bankid)))
       (error "Bankmsg not from bank"))
-    (when (and type (not (equal (gethash $REQUEST args) type)))
+    (when (and type (not (equal (getarg $REQUEST args) type)))
       (error "Bankmsg wasn't of type: ~s" type))
     (cond ((not subtype)
            (cond (idx
-                  (or (gethash idx args)
+                  (or (getarg idx args)
                       (error "No arg in bankmsg: ~s" idx)))
-                 (t (setf (gethash $UNPACK-REQS-KEY args) reqs) ; save parse results
+                 (t (setf (getarg $UNPACK-REQS-KEY args) reqs) ; save parse results
                     args)))
-          (t (setq req (gethash $MSG args)) ;this is already parsed
+          (t (setq req (getarg $MSG args)) ;this is already parsed
              (unless req
                (error "No wrapped message"))
              (setq args (match-pattern parser req))
-             (when (and subtype (not (equal (gethash $REQUEST args) subtype)))
+             (when (and subtype (not (equal (getarg $REQUEST args) subtype)))
                (error "Wrapped message wasn't of type: ~%" subtype))
              (cond (idx
-                    (or (gethash idx args)
+                    (or (getarg idx args)
                         (error "No arg with idx: ~s" idx)))
-                   (t (setf (gethash $UNPACK-REQS-KEY args) reqs) ; save parse results
+                   (t (setf (getarg $UNPACK-REQS-KEY args) reqs) ; save parse results
                       args))))))
 
 (defmethod setup-db ((server server) passphrase)
@@ -408,10 +428,10 @@
         (with-db-lock (db key)
           (let* ((balmsg (db-get db key))
                  (balargs (unpack-bankmsg server balmsg $ATBALANCE $BALANCE)))
-            (unless (or (null (gethash $ACCT balargs))
-                        (equal $MAIN (gethash $ACCT balargs)))
+            (unless (or (null (getarg $ACCT balargs))
+                        (equal $MAIN (getarg $ACCT balargs)))
               (error "Bank balance message not for main account"))
-            (let* ((bal (gethash $AMOUNT balargs))
+            (let* ((bal (getarg $AMOUNT balargs))
                    (newbal (bcadd bal amount))
                    (balsign (bccomp bal 0))
                    (newbalsign (bccomp newbal 0)))
@@ -430,8 +450,8 @@
 
 (defmethod checkreq (server args)
   (let* ((db (db server))
-         (id (gethash $CUSTOMER args))
-         (req (gethash $REQ args))
+         (id (getarg $CUSTOMER args))
+         (req (getarg $REQ args))
          (reqkey (acct-req-key id)))
     (with-db-lock (db reqkey)
       (let ((oldreq (db-get db reqkey)))
@@ -439,268 +459,245 @@
           (error "New req <= old req"))
         (db-put db reqkey req)))))
 
+(defstruct balance-state
+  acctbals
+  bals
+  tokens
+  accts
+  oldneg
+  newneg
+  time
+  charges)
+
+(defmethod handle-balance-msg ((server server) id msg args state &optional
+                               creating-asset)
+  "Deal with an (<id>,balance,...) item from the customer for a
+   spend or processinbox request.
+   ID: the customer id
+   MSG: the signed (<id>,balance,...) message, as a string
+   ARGS: parser->parse(), then utility->match_pattern() output on balmsg
+   STATE: a BALANCE-STATE instance.
+     acctbals => alist: ((<acct> (<asset> . msg) ...) ...)
+     bals => alist: ((<asset> . <amount>) ...)
+     tokens => total new /account/<id>/balance/<acct>/<asset> files
+     accts => list: (<acct> ...)
+     oldneg => alist: ((<asset> . <acct>) ...), negative balances in current account
+     newneg => alist: ((<asset> . <acct>) ...), negative balances in updated account
+     time => the transaction time"
+  (let ((db (db server))
+        (bankid (bankid server))
+        (asset (getarg $ASSET args))
+        (amount (getarg $AMOUNT args))
+        (acct (or (getarg $ACCT args) $MAIN)))
+
+    (pushnew acct (balance-state-accts state))
+
+    (when (and (or (not creating-asset) (not (equal asset creating-asset)))
+               (not (is-asset-p server asset)))
+      (error "Unknown asset id: ~s" asset))
+
+    (unless (is-numeric-p amount)
+      (error "Not a number: ~s" amount))
+
+     (unless (is-acct-name-p acct)
+       (error "<acct> may contain only letters and digits: ~s" acct))
+
+     (let ((acct-cell (assocequal (balance-state-acctbals state) acct)))
+       (unless acct-cell
+         (setq acct-cell
+               (car (push (cons acct nil) (balance-state-acctbals state)))))
+       (when (assocequal asset (cdr acct-cell))
+         (error "Duplicate acct/asset balance pair: ~s/~s" acct asset))
+
+       (push (cons asset msg) (cdr acct-cell)))
+
+     (let ((bal-cell (assocequal asset (balance-state-bals state))))
+       (unless bal-cell
+         (setq bal-cell (car (push (cons asset 0) (balance-state-bals state)))))
+       (setf (cdr bal-cell) (bcsub (cdr bal-cell) amount))
+
+       (when (< (bccomp amount 0) 0)
+         (when (assocequal asset (balance-state-newneg state))
+           (error "Multiple new negative balances for asset: ~s" asset))
+         (push (cons asset acct) (balance-state-newneg state)))
+
+       (let* ((asset-balance-key (asset-balance-key id asset acct))
+              (acctmsg (db-get db asset-balance-key)))
+         (if (not acctmsg)
+             (unless (equal id bankid) (incf (balance-state-tokens state)))
+             (let* ((acctargs (unpack-bankmsg server acctmsg $ATBALANCE $BALANCE))
+                    (amount (getarg $AMOUNT acctargs)))
+               (setf (cdr bal-cell) (bcadd (cdr bal-cell) amount))
+               (when (< (bccomp amount 0) 0)
+                 (when (assocequal asset (balance-state-oldneg state))
+                   (error "Account corrupted. ~
+                           Multiple negative balances for asset: ~s"
+                          asset))
+                 (push (cons asset acct) (balance-state-oldneg state)))
+               (compute-storage-charges server id state asset amount acctargs)))))))
+
+(defstruct storage-info
+  percent
+  issuer
+  fraction
+  digits
+  fee)
+
+;; This is separate from handle-balance-msg mostly to get back some
+;; horizontal text space. Nobody else calls it.
+(defmethod compute-storage-charges ((server server) id state asset amount acctargs)
+  "Compute storage charges as a list of storage-info instances"
+  (let ((asset-info (cdr (assocequal asset (balance-state-charges state)))))
+    (unless asset-info
+      (unless (equal asset (tokenid server))
+        (multiple-value-bind (percent issuer fraction fractime)
+            (storage-info server id asset)
+          (setq asset-info (make-storage-info :percent percent
+                                              :issuer issuer
+                                              :fraction fraction
+                                              :fee 0))
+          (push (cons asset asset-info) (balance-state-charges state))
+          (when percent
+            (let ((digits (fraction-digits percent))
+                  (time (balance-state-time state)))
+              (when fraction
+                (setf (storage-info-fee asset-info)
+                      (storage-fee fraction fractime time percent digits)))
+              (setf (storage-info-digits asset-info) digits))))))
+    (when asset-info
+      (let ((percent (storage-info-percent asset-info)))
+        (when (and percent (> (bccomp amount 0) 0))
+          (let* ((digits (storage-info-digits asset-info))
+                 (accttime (getarg $TIME acctargs))
+                 (time (balance-state-time state))
+                 (fee (storage-fee amount accttime time percent digits)))
+            (setf (storage-info-fee asset-info)
+                  (bcadd (storage-info-fee asset-info) fee digits))))))))
+
+(defmethod debugmsg ((server server) msg)
+  (when (debugmsgs-p server)
+    (setf (debugstr server) (strcat (debugstr server) msg))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;;  Request processing
+;;;
+ 
+(defvar *message-handlers* (make-hash-table :test 'equal))
+
+(defun get-message-handler (message)
+  (gethash message *message-handlers*))
+
+(defun (setf get-message-handler) (value message)
+  (setf (gethash message *message-handlers*) value))
+
+(defmacro define-message-handler (name message (server args reqs) &body body)
+  `(progn
+     (setf (get-message-handler ,message) ',name)
+     (defmethod ,name ((,server server) ,args ,reqs) ,@body)))
+
+(define-message-handler do-bankid $BANKID (server inargs reqs)
+  "Look up the bank's public key"
+  (declare (ignore reqs))
+  (let* ((db (db server))
+         (bankid (bankid server))
+         (coupon (getarg $COUPON inargs))
+         (msg (db-get server (strcat $PUBKEYSIG "/" bankid)))
+         (args (unpack-bankmsg server msg $ATREGISTER))
+         (req (getarg $MSG args))
+         (res (get-parsemsg req)))
+
+    (when coupon
+      ;; Validate a coupon number
+      (let* ((coupon-number-hash (sha1 coupon))
+             (key (strcat $COUPON "/" coupon-number-hash))
+             (coupon (db-get db key)))
+        (unless coupon
+          (error "Coupon invalid or already redeemed"))
+        (setq args (unpack-bankmsg server coupon $ATSPEND $SPEND))
+        (let ((assetid (getarg $ASSET args))
+              (amount (getarg $AMOUNT args))
+              (id (getarg $CUSTOMER inargs)))
+          (unless (db-get db (acct-last-key id))
+            ;; Not already registered, coupon must be for usage tokens,
+            ;; and must be big enough to register with
+            (unless (equal assetid (tokenid server))
+              (error "Coupon not for usage tokens"))
+            (when (< (bccomp amount (bcadd (regfee server) 10)) 0)
+              (error "It costs ~s + 10 usage tokens to register a new account."
+                     (regfee server)))))
+        (let ((msg (bankmsg server $COUPONNUMBERHASH coupon-number-hash)))
+          (setq res (strcat res "." msg)))))
+
+    res))
+
+(define-message-handler do-id $ID (server args reqs)
+  "Lookup a public key."
+  (declare (ignore reqs))
+  (or (db-get (db server)
+              (strcat $PUBKEYSIG "/" (getarg $ID args)))
+      (error "No such public key")))
+
+(define-message-handler do-register $REGISTER (server args reqs)
+  (let ((db (db server))
+        (parser (parser server))
+        (id (getarg $CUSTOMER args))
+        (pubkey (getarg $PUBKEY args)))
+    (when (db-get db (acct-last-key id))
+      (error "Already registered"))
+    (unless (equal (pubkey-id pubkey) id)
+      (error "Pubkey doesn't match ID"))
+    (when (> (pubkey-bits pubkey) 4096)
+      (error "Key sizes larger than 4096 not allowed"))
+
+    ;; Process included coupons
+    (let ((reqargs-list nil))
+      (dolist (req (cdr reqs))
+        (let* ((reqargs (match-pattern parser req))
+               (request (getarg $REQUEST reqargs)))
+          (unless (equal request $COUPONENVELOPE)
+            (error "Non-coupon request with register: ~s" request))
+          (push reqargs reqargs-list)))
+
+      (dolist (reqargs (nreverse reqargs-list))
+        (do-couponenvelope-raw server reqargs id)))
+
+    ;; Ensure we have enough tokens to register
+    (let ((regfee (regfee server))
+          (tokenid (tokenid server)))
+      (when (> (bccomp regfee 0) 0)
+        (let ((inbox (scaninbox server id)))
+          (dolist (inmsg inbox
+                   (error "Insufficient asset tokens for registration fee"))
+            (let ((inmsg-args (unpack-bankmsg server inmsg nil t)))
+              (when (equal $SPEND (getarg $REQUEST inmsg-args))
+                (let ((asset (getarg $ASSET inmsg-args))
+                      (amount (getarg $AMOUNT inmsg-args)))
+                  (when (and (equal asset tokenid) (> (bccomp amount regfee) 0))
+                    (return))))))))
+
+      ;; Create the account
+      (let* ((msg (get-parsemsg (car reqs)))
+             (res (bankmsg server $ATREGISTER msg))
+             (time (gettime server)))
+        (db-put db (strcat $PUBKEY "/" id) pubkey)
+        (db-put db (strcat $PUBKEYSIG "/" id) res)
+        ;; Post the debit for the registration fee
+        (when (> (bccomp regfee 0)  0)
+          (let* ((spendmsg (bankmsg server
+                                    $INBOX
+                                    time
+                                    (signed-spend
+                                     server time id tokenid (bcsub 0 regfee)
+                                     "Registration fee"))))
+            (db-put db (strcat (inbox-key id) "/" time) spendmsg)))
+        ;; Mark the account as created
+        (db-put db (acct-last-key id) "1")
+        (db-put db (acct-req-key id) "0")
+        res))))
+
 #||
 ;; Continue here
-  // Deal with an (<id>,balance,...) item from the customer for a
-  // spend or processinbox request.
-  // $id: the customer id
-  // $msg: the signed (<id>,balance,...) message, as a string
-  // $args: parser->parse(), then utility->match_pattern() output on $balmsg
-  // &$state: an array of input and outputs:
-  //   'acctbals' => array(<acct> => array(<asset> => $msg))
-  //   'bals => array(<asset> => <amount>)
-  //   'tokens' => total new /account/<id>/balance/<acct>/<asset> files
-  //   'accts => array(<acct> => true);
-  //   'oldneg' => array(<asset> => <acct>), negative balances in current account
-  //   'newneg' => array(<asset> => <acct>), negative balances in updated account
-  //   'time' => the transaction time
-  // Returns an error string on error, or false on no error.
-  function handle_balance_msg($id, $msg, $args, &$state, $creating_asset=false) {
-    $t = $this->t;
-    $u = $this->u;
-    $db = $this->db;
-    $bankid = $this->bankid;
-
-    $asset = $args[$ASSET];
-    $amount = $args[$AMOUNT];
-    $acct = @$args[$ACCT];
-    if (!$acct) $acct = $MAIN;
-
-    $state['accts'][$acct] = true;
-
-    if ((!$creating_asset || $asset != $creating_asset) && !$this->is_asset($asset)) {
-      return "Unknown asset id: $asset";
-    }
-    if (!is_numeric($amount)) return "Not a number: $amount";
-    if (!$this->is_acct_name($acct)) {
-      return "<acct> may contain only letters and digits: $acct";
-    }
-    if (@$state['acctbals'][$acct][$asset]) {
-      return $this->failmsg($msg, "Duplicate acct/asset balance pair");
-    }
-    $state['acctbals'][$acct][$asset] = $msg;
-    $state['bals'][$asset] = bcsub($state['bals'][$asset], $amount);
-    if (bccomp($amount, 0) < 0) {
-      if (@$state['newneg'][$asset]) {
-        return 'Multiple new negative balances for asset: $asset';
-      }
-      $state['newneg'][$asset] = $acct;
-    }
-
-    $assetbalancekey = $this->assetbalancekey($id, $asset, $acct);
-    $acctmsg = $db->get($assetbalancekey);
-    if (!$acctmsg) {
-      if ($id != $bankid) $state['tokens']++;
-      $amount = 0;
-      $acctargs = false;
-    } else {
-      $acctargs = $this->unpack_bankmsg($acctmsg, $ATBALANCE, $BALANCE);
-      if (is_string($acctargs) || !$acctargs ||
-          $acctargs[$ASSET] != $asset ||
-          $acctargs[$CUSTOMER] != $id) {
-        return "Balance entry corrupted for acct: $acct, asset: " .
-          $this->lookup_asset_name($asset) . " - $acctmsg";
-      }
-      $amount = $acctargs[$AMOUNT];
-      $state['bals'][$asset] = bcadd($state['bals'][$asset], $amount);
-      if (bccomp($amount,  0) < 0) {
-        if (@$state['oldneg'][$asset]) {
-          return "Account corrupted. Multiple negative balances for asset: $asset";
-        }
-        $state['oldneg'][$asset] = $acct;
-      }
-    }
-
-    // Compute storage charges:
-    // $state['charges'] =
-    //   array($assetid =>
-    //         array('percent' => <Storage fee percent>,
-    //               'issuer' => <Asset issuer>,
-    //               'fraction' => <Fraction balance after fraction storage charge>,
-    //               'digits' => <Digits of precision to keep on fraction>
-    //               'storagefee' => <Total storage fee for asset>))
-    $charges = @$state['charges'];
-    if (!$charges) $state['charges'] = $charges = array();
-    $assetinfo = @$charges[$asset];
-    if (!$assetinfo) {
-      $assetinfo = array();
-      $tokenid = $this->tokenid;
-      if ($asset != $tokenid) {
-        $percent = $this->storageinfo($id, $asset, $issuer, $fraction, $fractime);
-        if ($percent) {
-          $digits = $u->fraction_digits($percent);
-          if ($fraction) {
-            $time = $state['time'];
-            $fracfee = $u->storagefee($fraction, $fractime, $time, $percent, $digits);
-          } else $fracfee = 0;
-          $assetinfo['percent'] = $percent;
-          $assetinfo['issuer'] = $issuer;
-          $assetinfo['fraction'] = $fraction;
-          $assetinfo['storagefee'] = $fracfee;
-          $assetinfo['digits'] = $digits;
-        }
-      }
-    }
-    $percent = @$assetinfo['percent'];
-    if ($percent && bccomp($amount, 0) > 0) {   // no charges for asset issuer
-      $digits = $assetinfo['digits'];
-      $accttime = $acctargs[$TIME];
-      $time = $state['time'];
-      $fee = $u->storagefee($amount, $accttime, $time, $percent, $digits);
-      $storagefee = bcadd($assetinfo['storagefee'], $fee, $digits);
-      $assetinfo['storagefee'] = $storagefee;
-    }
-    $charges[$asset] = $assetinfo;
-    $state['charges'] = $charges;
-    return false;
-  }
-
-  /*** Debugging ***/
-  function setdebugmsgs($debugmsgs) {
-    $this->debugmsgs = $debugmsgs;
-  }
-
-  function debugmsg($msg) {
-    if ($this->debugmsgs) {
-      $this->debugstr .= $msg;
-    }
-  }
-
-  /*** Request processing ***/
- 
-  // Look up the bank's public key
-  function do_bankid($args, $reqs, $inmsg) {
-    $t = $this->t;
-    $db = $this->db;
-    $parser = $this->parser;
-
-    $bankid = $this->bankid;
-    $coupon = @$args[$COUPON];
-
-    // $BANKID => array($PUBKEY)
-    $msg = $db->get($PUBKEYSIG . "/$bankid");
-    $args = $this->unpack_bankmsg($msg, $ATREGISTER);
-    if (is_string($args)) return $this->failmsg($msg, "Bank's pubkey is hosed");
-    $req = $args[$MSG];
-    $res = $parser->get_parsemsg($req);
-
-    if ($coupon) {
-      // Validate a coupon number
-      $coupon_number_hash = sha1($coupon);
-      $key = $COUPON . "/$coupon_number_hash";
-      $coupon  = $db->get($key);
-      if ($coupon) {
-        $args = $this->unpack_bankmsg($coupon, $ATSPEND, $SPEND);
-        if (is_string($args)) return $this->failmsg($msg, "Can't parse coupon: $args");
-        $assetid = $args[$ASSET];
-        $amount = $args[$AMOUNT];
-        $id = $args[$CUSTOMER];
-        if (!$db->get($this->acctlastkey($id))) {
-          // Not already registered, coupon must be for usage tokens,
-          // and must be big enough to register with
-          if ($assetid != $this->tokenid) {
-            return $this->failmsg($msg, "Coupon not for usage tokens");
-          } elseif ($amount < ($this->regfee + 10)) {
-            return $this->failmsg($msg, "It costs " . $this->regfee . " usage tokens to register a new account.");
-          }
-        }
-        $msg = $this->bankmsg($COUPONNUMBERHASH, $coupon_number_hash);
-      } else {
-        $msg = $this->failmsg($inmsg, "Coupon invalid or already redeemed");
-      }
-      $res .= ".$msg";
-    }
-
-    return $res;
-  }
-
-  // Lookup a public key
-  function do_id($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
-    // $ID => array($BANKID,$ID)
-    $customer = $args[$CUSTOMER];
-    $id = $args[$ID];
-    $key = $db->get($PUBKEYSIG . "/$id");
-    if ($key) return $key;
-    else return $this->failmsg($msg, 'No such public key');
-  }
-
-  // Register a new account
-  function do_register($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
-    $u = $this->u;
-
-    // $REGISTER => array($BANKID,$PUBKEY,$NAME=>1)
-    $id = $args[$CUSTOMER];
-    $pubkey = $args[$PUBKEY];
-    if ($db->get($this->acctlastkey($id))) {
-      return $this->failmsg($msg, "Already registered");
-    }
-    if ($this->ssl->pubkey_id($pubkey) != $id) {
-      return $this->failmsg($msg, "Pubkey doesn't match ID");
-    }
-    if ($this->ssl->pubkey_bits($pubkey) > 4096) {
-      return $this->failmsg($msg, "Key sizes larger than 4096 not allowed");
-    }
-
-    // Process included coupons
-    $reqargslist = array();
-    for ($i=1; $i<count($reqs); $i++) {
-      $req = $reqs[$i];
-      $reqargs = $u->match_pattern($req);
-      $reqid = $reqargs[$CUSTOMER];
-      $request = $reqargs[$REQUEST];
-      if ($request != $COUPONENVELOPE) {
-        return $this->failmsg($msg, "Non-coupon request with register: $request");
-      }
-      $reqargslist[] = $reqargs;
-    }
-    foreach ($reqargslist as $reqargs) {
-      $err = $this->do_couponenvelope_raw($reqargs, $id);
-      if ($err) return $this->failmsg($msg, $err);
-    }
-
-    $regfee = $this->regfee;
-    $tokenid = $this->tokenid;
-    $success = false;
-    if ($regfee > 0) {
-      $inbox = $this->scaninbox($id);
-      foreach ($inbox as $inmsg) {
-        $inmsg_args = $this->unpack_bankmsg($inmsg, false, true);
-        if (is_string($inmsg_args)) {
-          return $this->failmsg($msg, "Inbox parsing failed: $inmsg_args");
-        }
-        if ($inmsg_args && $inmsg_args[$REQUEST] == $SPEND) {
-          // $SPEND = array($BANKID,$TIME,$ID,$ASSET,$AMOUNT,$NOTE=>1))
-          $asset = $inmsg_args[$ASSET];
-          $amount = $inmsg_args[$AMOUNT];
-          if ($asset == $tokenid && $amount >= $regfee) {
-            $success = true;
-            break;
-          }
-        }
-      }
-      if (!$success) {
-        return $this->failmsg($msg, "Insufficient usage tokens for registration fee");
-      }
-    }
-    $bankid = $this->bankid;
-    $db->put($PUBKEY . "/$id", $pubkey);
-    $msg = $this->parser->get_parsemsg($reqs[0]);
-    $res = $this->bankmsg($ATREGISTER, $msg);
-    $db->put($PUBKEYSIG . "/$id", $res);
-    $time = $this->gettime();
-    if ($regfee != 0) {
-      $spendmsg = $this->signed_spend($time, $id, $tokenid, -$regfee, "Registration fee");
-      $spendmsg = $this->bankmsg($INBOX, $time, $spendmsg);
-      $db->put($this->inboxkey($id) . "/$time", $spendmsg);
-    }
-    $db->put($this->acctlastkey($id), 1);
-    $db->put($this->acctreqkey($id), 0);
-    return $res;
-  }
 
   // Process a getreq
   function do_getreq($args, $reqs, $msg) {

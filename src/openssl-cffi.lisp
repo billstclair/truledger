@@ -306,6 +306,14 @@
 (defun public-key-id (pubkey)
   (sha1 (trim pubkey)))
 
+(defun pubkey-bits (pubkey)
+  (with-rsa-public-key (key pubkey)
+    (* 8 (rsa-size key))))
+
+(defun privkey-bits (privkey)
+  (with-rsa-private-key (key privkey)
+    (* 8 (rsa-size key))))
+
 (defun sign (data rsa-private-key)
   "Sign the string in DATA with the RSA-PRIVATE-KEY.
    Return the signature BASE64-encoded."

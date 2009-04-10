@@ -280,6 +280,12 @@
              (gethash $PARSER-MSGKEY parse))
      (return res)))
 
+(defun getarg (key args)
+  (gethash key args))
+
+(defun (setf getarg) (value key args)
+  (setf (gethash key args) value))
+
 (defun format-pattern (pattern)
   (let ((res "(")
         (comma nil))

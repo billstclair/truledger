@@ -108,6 +108,9 @@
 (defun base64-decode (string)
   (base64-string-to-string string))
 
+(defun assocequal (item alist)
+  (assoc item alist :test 'equal))
+
 (defun strcat (&rest strings)
   "Concatenate a bunch of strings"
   (apply #'concatenate 'string (mapcar 'string strings)))
