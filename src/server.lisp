@@ -602,7 +602,7 @@
   (let* ((db (db server))
          (bankid (bankid server))
          (coupon (getarg $COUPON inargs))
-         (msg (db-get server (strcat $PUBKEYSIG "/" bankid)))
+         (msg (db-get db (strcat $PUBKEYSIG "/" bankid)))
          (args (unpack-bankmsg server msg $ATREGISTER))
          (req (getarg $MSG args))
          (res (get-parsemsg req)))
@@ -624,7 +624,7 @@
             (unless (equal assetid (tokenid server))
               (error "Coupon not for usage tokens"))
             (when (< (bccomp amount (bcadd (regfee server) 10)) 0)
-              (error "It costs ~s + 10 usage tokens to register a new account."
+              (error "It costs ~a + 10 usage tokens to register a new account."
                      (regfee server)))))
         (let ((msg (bankmsg server $COUPONNUMBERHASH coupon-number-hash)))
           (setq res (strcat res "." msg)))))
@@ -696,76 +696,49 @@
         (db-put db (acct-req-key id) "0")
         res))))
 
+(define-message-handler do-getreq $GETREQ (server args reqs)
+  "Process a getreq message"
+  (declare (ignore reqs))
+  (let ((id (getarg $CUSTOMER args)))
+    (bankmsg server $REQ id (db-get (db server) (acct-req-key id)))))
+
+(define-message-handler do-gettime $GETTIME (server args reqs)
+  "Process a time request."
+  (declare (ignore reqs))
+  (checkreq server args)
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args)))
+    (with-db-lock (db (acct-time-key id))
+      (let ((time (gettime server)))
+        (db-put db (acct-time-key id) time)
+        (bankmsg server $TIME id time)))))
+
+(define-message-handler do-getfees $GETFEES (server args reqs)
+  (declare (ignore reqs))
+  (checkreq server args)
+  (let* ((db (db server))
+         (regfee (db-get db $REGFEE))
+         (tranfee (db-get db $TRANFEE)))
+    (strcat regfee "." tranfee)))
+
+(define-message-handler do-spend $SPEND (server args reqs)
+  "Process a spend message."
+  (with-verify-sigs-p ((parser server) nil)
+    (let ((db (db server))
+          (id (getarg $CUSTOMER args))
+          res assetid issuer storagefee digits)
+      (with-db-lock (db (acct-time-key id))
+        (multiple-value-setq (res assetid issuer storagefee digits)
+          (do-spend-internal server args reqs)))
+
+      ;; This is outside the customer lock to avoid deadlock with the issuer account.
+      (when storagefee
+        (post-storage-fee server assetid issuer storagefee digits))
+
+      res)))
+
 #||
 ;; Continue here
-
-  // Process a getreq
-  function do_getreq($args, $reqs, $msg) {
-    $t = $this->t;
-    $id = $args[$CUSTOMER];
-    return $this->bankmsg($REQ,
-                          $id,
-                          $this->db->get($this->acctreqkey($id)));
-  }
-
-  // Process a time request
-  function do_gettime($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
-
-    $err = $this->checkreq($args, $msg);
-    if ($err) return $err;
-
-    $id = $args[$CUSTOMER];
-
-    $lock = $db->lock($this->accttimekey($id));
-
-    $time = $this->gettime();
-    $db->put($this->accttimekey($id), $time);
-
-    $db->unlock($lock);
-
-    return $this->bankmsg($TIME, $id, $time);
-  }
-
-  function do_getfees($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
-
-    $err = $this->checkreq($args, $msg);
-    if ($err) return $err;
-
-    $regfee = $db->get($REGFEE);
-    $tranfee = $db->get($TRANFEE);
-    return "$regfee.$tranfee";
-  }
-
-  // Process a spend
-  function do_spend($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
-    $parser = $this->parser;
-
-    $parser->verifysigs(false);
-
-    $id = $args[$CUSTOMER];
-    $lock = $db->lock($this->accttimekey($id));
-    $res = $this->do_spend_internal($args, $reqs, $msg,
-                                    $ok, $assetid, $issuer, $storagefee, $digits);
-    $db->unlock($lock);
-    // This is outside the customer lock to avoid deadlock with the issuer account.
-    if ($ok && $storagefee) {
-      $err = $this->post_storagefee($assetid, $issuer, $storagefee, $digits);
-      if ($err) {
-        $this->debugmsg("post_storagefee failed: $err\n");
-      }
-    }
-
-    $parser->verifysigs(true);
-
-    return $res;
-  }
-
   function do_spend_internal($args, $reqs, $msg,
                              &$ok, &$assetid, &$issuer, &$storagefee, &$digits) {
     $t = $this->t;

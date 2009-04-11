@@ -30,6 +30,18 @@
                   :initarg :verify-sigs-p
                   :accessor parser-verify-sigs-p)))
 
+(defmacro with-verify-sigs-p ((parser &optional verify-sigs-p) &body body)
+  (let ((thunk (gensym)))
+    `(flet ((,thunk () ,@body))
+       (declare (dynamic-extent #',thunk))
+       (call-with-verify-sigs-p #',thunk ,parser ,verify-sigs-p))))
+
+(defun call-with-verify-sigs-p (thunk parser verify-sigs-p)
+  (let ((old-value (parser-verify-sigs-p parser)))
+    (setf (parser-verify-sigs-p parser) verify-sigs-p)
+    (unwind-protect (funcall thunk)
+      (setf (parser-verify-sigs-p parser) old-value))))
+
 (defmethod parse ((parser parser) string &optional
                   (verify-sigs-p (parser-verify-sigs-p parser)))
   "Return a hash table, or signal en error, if the parse could not be done,
