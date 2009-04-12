@@ -194,15 +194,14 @@
           (setq ptr i))))
     (strcat res (subseq str ptr))))
 
-(defun simple-makemsg (alist)
-  "Make an unsigned message from alist"
+(defun simple-makemsg (&rest req)
+  "Make an unsigned message"
   (loop
      with msg = "("
      for i from 0
-     for (key . value) in alist
+     for value in req
      do
      (when (> i 0) (setq msg (strcat msg ",")))
-     (when (not (eql key i)) (setq msg (strcat msg key ":")))
      (setq msg (strcat msg (escape (string value))))
      finally
      (return (strcat msg ")"))))
@@ -235,7 +234,7 @@
                         (,$GETINBOX . (,$BANKID ,$REQ))
                         (,$PROCESSINBOX . (,$BANKID ,$TIME ,$TIMELIST))
                         (,$STORAGEFEES . (,$BANKID ,$REQ))
-                        (,$GETTIME . (,$BANKID ,$TIME))
+                        (,$GETTIME . (,$BANKID ,$REQ))
                         (,$COUPONENVELOPE . (,$ID ,$ENCRYPTEDCOUPON))
 
                         ;; Bank signed messages

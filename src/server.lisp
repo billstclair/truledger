@@ -243,14 +243,17 @@
 (defun pubkey-id (pubkey)
   (sha1 (trim pubkey)))
 
+(defun privkey-id (privkey)
+  (with-rsa-private-key (key privkey)
+    (pubkey-id (encode-rsa-public-key key))))
+
 (defmethod unpack-bank-param ((server server) type &optional (key type))
   "Unpack wrapped initialization parameter."
   (unpack-bankmsg server (db-get (db server) type) type nil key))
 
 (defmethod banksign ((server server) msg)
   "Bank sign a message."
-  (let ((sig (sign msg (privkey server))))
-    (strcat msg #.(format nil ":~%") sig)))
+  (signmsg server (privkey server) msg))
 
 (defmethod makemsg ((server server) &rest req)
   "Make an unsigned message from the args."
@@ -582,7 +585,8 @@
 (defvar *message-handlers* (make-hash-table :test 'equal))
 
 (defun get-message-handler (message)
-  (gethash message *message-handlers*))
+  (or (gethash message *message-handlers*)
+      (error "No message handler for ~s" message)))
 
 (defun (setf get-message-handler) (value message)
   (setf (gethash message *message-handlers*) value))
@@ -756,7 +760,7 @@
     ;; Burn the transaction, even if balances don't match.
     (deq-time server id time)
 
-    (unless (equal id2 bankid)
+    (when (equal id2 bankid)
       (error "Spends to the bank are not allowed."))
 
     (unless asset
@@ -2199,75 +2203,66 @@
 
   /*** End request processing ***/
 
-  function commands() {
-    $t = $this->t;
-    $u = $this->u;
-
-    if (!$this->commands) {
-      $patterns = $u->patterns();
-      $names = array($BANKID => array($PUBKEY, $COUPON=>1),
-                     $ID => array($BANKID,$ID),
-                     $REGISTER => $patterns[$REGISTER],
-                     $GETREQ => array($BANKID),
-                     $GETTIME => array($BANKID,$REQ),
-                     $GETFEES => array($BANKID,$REQ,$OPERATION=>1),
-                     $SPEND => $patterns[$SPEND],
-                     $SPENDREJECT => $patterns[$SPENDREJECT],
-                     $COUPONENVELOPE => $patterns[$COUPONENVELOPE],
-                     $GETINBOX => $patterns[$GETINBOX],
-                     $PROCESSINBOX => $patterns[$PROCESSINBOX],
-                     $STORAGEFEES => $patterns[$STORAGEFEES],
-                     $GETASSET => array($BANKID,$REQ,$ASSET),
-                     $ASSET => array($BANKID,$ASSET,$SCALE,$PRECISION,$ASSETNAME),
-                     $GETOUTBOX => $patterns[$GETOUTBOX],
-                     $GETBALANCE => array($BANKID,$REQ,$ACCT=>1,$ASSET=>1));
-      $commands = array();
-      foreach($names as $name => $pattern) {
-        $fun = str_replace('|', '', $name);
-        $commands[$name] = array("do_$fun", $pattern);
-      }
-      $this->commands = $commands;
-    }
-    return $this->commands;
-  }
-
-  // Process a message and return the response
-  // This is usually all you'll call from outside
-  function process($msg) {
-    $parser = $this->parser;
-    $t = $this->t;
-    $parses = $parser->parse($msg);
-    if (!$parses) {
-      return $this->failmsg($msg, $parser->errmsg);
-    }
-    $req = $parses[0][1];
-    $commands = $this->commands();
-    $method_pattern = $commands[$req];
-    if (!$method_pattern) {
-      return $this->failmsg($msg, "Unknown request: $req");
-    }
-    $method = $method_pattern[0];
-    $pattern = array_merge(array($CUSTOMER,$REQUEST), $method_pattern[1]);
-    $args = $this->parser->matchargs($parses[0], $pattern);
-    if (!$args) {
-      return $this->failmsg($msg,
-                            "Request doesn't match pattern: " .
-                            $parser->formatpattern($pattern));
-    }
-    if (array_key_exists($BANKID, $args)) {
-      $argsbankid = $args[$BANKID];
-      if ($argsbankid != $this->bankid) {
-        return $this->failmsg($msg, "bankid mismatch");
-      }
-    }
-    if (strlen(@$args[$NOTE]) > 4096) {
-      return $this->failmsg($msg, "Note too long. Max: 4096 chars");
-    }
-    return $this->$method($args, $parses, $msg);
-  }
-
-}
 ||#
+
+(defparameter *server-commands* nil)
+
+(defun server-commands ()
+  (or *server-commands*
+      (let* ((patterns (patterns))
+             (names `((,$BANKID . (,$PUBKEY (,$COUPON)))
+                      (,$ID . (,$BANKID ,$ID))
+                      (,$REGISTER . ,(gethash $REGISTER patterns))
+                      (,$GETREQ . (,$BANKID))
+                      (,$GETTIME . (,$BANKID ,$REQ))
+                      (,$GETFEES . (,$BANKID ,$REQ (,$OPERATION)))
+                      (,$SPEND . ,(gethash $SPEND patterns))
+                      (,$SPENDREJECT . ,(gethash $SPENDREJECT patterns))
+                      (,$COUPONENVELOPE . ,(gethash $COUPONENVELOPE patterns))
+                      (,$GETINBOX . ,(gethash $GETINBOX patterns))
+                      (,$PROCESSINBOX . ,(gethash $PROCESSINBOX patterns))
+                      (,$STORAGEFEES . ,(gethash $STORAGEFEES patterns))
+                      (,$GETASSET . (,$BANKID ,$REQ ,$ASSET))
+                      (,$ASSET . (,$BANKID ,$ASSET ,$SCALE ,$PRECISION ,$ASSETNAME))
+                      (,$GETOUTBOX . ,(gethash $GETOUTBOX patterns))
+                      (,$GETBALANCE (,$BANKID ,$REQ (,$ACCT) (,$ASSET)))))
+             (commands (make-hash-table :test 'equal)))
+      (loop
+         for (name . pattern) in names
+         do
+           (setf (gethash name commands) pattern))
+      (setq *server-commands* commands))))
+
+(defun shorten (string maxlen)
+  (if (> (length string) maxlen)
+      (strcat (subseq string (- maxlen 3)) "...")
+      string))
+
+(defmethod process ((server server) msg)
+  "Process a message and return the response.
+   This is usually all you'll call from outside."
+  (handler-case (process-internal server msg)
+    (error (c)
+      (bankmsg server $FAILED (shorten msg 4096) (format nil "~a" c)))))
+
+(defun process-internal (server msg)
+  (let* ((parser (parser server))
+         (reqs (parse parser msg))
+         (request (gethash 1 (car reqs)))
+         (pattern (gethash request (server-commands))))
+    (unless pattern
+      (error "Unknown request: ~s" request))
+    (setq pattern (append `(,$CUSTOMER ,$REQUEST) pattern))
+    (let* ((args (or (match-args (car reqs) pattern)
+                     (error "Can't match message")))
+           (args-bankid (getarg $BANKID args))
+           (note (getarg $NOTE args))
+           (handler (get-message-handler request)))
+      (unless (or (null args-bankid) (equal args-bankid (bankid server)))
+        (error "bankid mismatch"))
+      (when (> (length note) 4096)
+        (error "Note too long. Max: 4096 chars"))
+      (funcall handler server args reqs))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
