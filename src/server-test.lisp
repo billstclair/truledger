@@ -10,18 +10,20 @@
 (defun custmsg (privkey &rest req)
   (signmsg privkey (apply 'simple-makemsg req)))
 
-(defun test-newreq (server &optional (privkey (privkey server)))
+(defun test-newreq (server &optional
+                    (privkey (privkey server))
+                    (id (privkey-id privkey)))
   (let* ((msg (process
                server
-               (custmsg privkey
-                        (privkey-id privkey) $GETREQ (bankid server))))
+               (custmsg privkey id $GETREQ (bankid server))))
          (req (unpack-bankmsg server msg $REQ nil $REQ)))
     (bcadd req 1)))
 
-(defun test-gettime (server &optional (privkey (privkey server)))
+(defun test-gettime (server &optional
+                     (privkey (privkey server))
+                     (id (privkey-id privkey)))
   (let ((msg (process server
-                      (custmsg privkey
-                               (privkey-id privkey) $GETTIME
+                      (custmsg privkey id $GETTIME
                                (bankid server)
                                (test-newreq server privkey)))))
     (unpack-bankmsg server msg $TIME nil $TIME)))
@@ -30,23 +32,31 @@
                    (from-key (privkey server))
                    (assetid (tokenid server))
                    (note "Test spend"))
+  (when (integerp amount) (setq amount (format nil "~d" amount)))
   (let* ((db (db server))
-         (from-id (pubkey-id (encode-rsa-public-key from-key)))
+         (from-id (privkey-id from-key))
          (tokenid (tokenid server))
          (bankid (bankid server))
-         (tokens (unless (equal from-id bankid) 2))
+         (tokens (if (equal from-id bankid) 0 2))
          (balmsg (db-get db (asset-balance-key from-id assetid)))
          (bal (unpack-bankmsg server balmsg $ATBALANCE $BALANCE $AMOUNT))
-         (newbal (bcsub bal amount))
-         (time (test-gettime server from-key))
-         (spendmsg (custmsg from-key from-id $SPEND bankid time from-id
+         (newbal (bcsub bal amount (if (equal assetid tokenid) tokens 0)))
+         (time (test-gettime server from-key from-id))
+         (spendmsg (custmsg from-key from-id $SPEND bankid time to-id
                             assetid amount note))
-         (balmsg (custmsg from-key to-id $BALANCE bankid time assetid newbal))
+         (balmsg (custmsg from-key from-id $BALANCE bankid time assetid newbal))
          (msg (strcat spendmsg "." balmsg)))
-    (when tokens
-      tokenid
-      (error "Don't handle non-token spends yet"))      
+    (unless (equal from-id bankid)
+      (error "Don't handle spends yet from other than the bank"))      
     (process server msg)))
+
+(defun test-register (server privkey &optional name)
+  (let* ((pubkey (encode-rsa-public-key privkey))
+         (id (privkey-id privkey))
+         (msg (apply 'custmsg privkey id $REGISTER (bankid server) pubkey
+                     (and name (list name)))))
+    (process server msg)))
+                      
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

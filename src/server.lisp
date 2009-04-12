@@ -200,7 +200,8 @@
   (let ((asset (is-asset-p server assetid)))
     (when asset
       (let ((res (unpack-bankmsg server asset $ATASSET $ASSET)))
-        (let ((req1 (elt 1 (getarg $UNPACK-REQS-KEY res))))
+        (let* ((reqs (getarg $UNPACK-REQS-KEY res))
+               (req1 (and (> (length reqs) 1) (elt reqs 1))))
           (when req1
             (let ((args (match-pattern (parser server) req1)))
               (setf (getarg $PERCENT res) (getarg $PERCENT args)))))
@@ -312,8 +313,10 @@
              (unless req
                (error "No wrapped message"))
              (setq args (match-pattern parser req))
-             (when (and subtype (not (equal (getarg $REQUEST args) subtype)))
-               (error "Wrapped message wasn't of type: ~%" subtype))
+             (when (and subtype
+                        (not (eq subtype t))
+                        (not (equal (getarg $REQUEST args) subtype)))
+               (error "Wrapped message wasn't of type: ~s" subtype))
              (cond (idx
                     (or (getarg idx args)
                         (error "No arg with idx: ~s" idx)))
@@ -505,7 +508,7 @@
      (unless (is-acct-name-p acct)
        (error "<acct> may contain only letters and digits: ~s" acct))
 
-     (let ((acct-cell (assocequal (balance-state-acctbals state) acct)))
+     (let ((acct-cell (assocequal acct (balance-state-acctbals state))))
        (unless acct-cell
          (setq acct-cell
                (car (push (cons acct nil) (balance-state-acctbals state)))))
