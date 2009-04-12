@@ -266,8 +266,8 @@
        do
          (unless v (return (strcat msg ")")))
          (unless (equal msg "(")
-           (setq msg (strcat msg ",")))
-         (setq msg (strcat msg (if (eq v msgval) v (escape v)))))))
+           (dotcat msg ","))
+         (dotcat msg (if (eq v msgval) v (escape v))))))
 
 (defmethod bankmsg ((server server) &rest req)
   "Make a bank signed message from the args."
@@ -365,7 +365,7 @@
                            (bankmsg server $BALANCE
                                     bankid zero tokenid "-1")))))))
 
-(defmethod scaninbox ((server server) id)
+(defmethod scan-inbox ((server server) id)
   (loop
      with db = (db server)
      with inbox-key = (inbox-key id)
@@ -394,7 +394,7 @@
       (let ((q (db-get db key)))
         (if (not q)
             (setq q time)
-            (setq q (strcat q "," time)))
+            (dotcat q "," time))
         (db-put db key q)
         q))))
 
@@ -463,7 +463,6 @@
   acctbals
   bals
   tokens
-  accts
   oldneg
   newneg
   time
@@ -480,7 +479,6 @@
      acctbals => alist: ((<acct> (<asset> . msg) ...) ...)
      bals => alist: ((<asset> . <amount>) ...)
      tokens => total new /account/<id>/balance/<acct>/<asset> files
-     accts => list: (<acct> ...)
      oldneg => alist: ((<asset> . <acct>) ...), negative balances in current account
      newneg => alist: ((<asset> . <acct>) ...), negative balances in updated account
      time => the transaction time"
@@ -489,8 +487,6 @@
         (asset (getarg $ASSET args))
         (amount (getarg $AMOUNT args))
         (acct (or (getarg $ACCT args) $MAIN)))
-
-    (pushnew acct (balance-state-accts state))
 
     (when (and (or (not creating-asset) (not (equal asset creating-asset)))
                (not (is-asset-p server asset)))
@@ -627,7 +623,7 @@
               (error "It costs ~a + 10 usage tokens to register a new account."
                      (regfee server)))))
         (let ((msg (bankmsg server $COUPONNUMBERHASH coupon-number-hash)))
-          (setq res (strcat res "." msg)))))
+          (dotcat res "." msg))))
 
     res))
 
@@ -666,7 +662,7 @@
     (let ((regfee (regfee server))
           (tokenid (tokenid server)))
       (when (> (bccomp regfee 0) 0)
-        (let ((inbox (scaninbox server id)))
+        (let ((inbox (scan-inbox server id)))
           (dolist (inmsg inbox
                    (error "Insufficient asset tokens for registration fee"))
             (let ((inmsg-args (unpack-bankmsg server inmsg nil t)))
@@ -737,369 +733,304 @@
 
       res)))
 
+(defmethod do-spend-internal ((server server) args reqs)
+  "Do the work for a spend.
+   Returns five values:
+    res: The result message to be returned to the client
+    assetid: the ID of the storage fee asset
+    issuer: the issuer of the storage fee asset
+    storagefee: the storage fee
+    digits: the number of digits of precision for the storage fee"
+  (let* ((db (db server))
+         (bankid (bankid server))
+         (parser (parser server))
+
+         (id (getarg $CUSTOMER args))
+         (time (getarg $TIME args))
+         (id2 (getarg $ID args))
+         (assetid (getarg $ASSET args))
+         (amount (getarg $AMOUNT args))
+         (note (getarg $NOTE args))
+         (asset (lookup-asset server assetid)))
+
+    ;; Burn the transaction, even if balances don't match.
+    (deq-time server id time)
+
+    (unless (equal id2 bankid)
+      (error "Spends to the bank are not allowed."))
+
+    (unless asset
+      (error "Unknown asset id: ~s" assetid))
+
+    (unless (is-numeric-p amount)
+      (error "Not a number: ~s" amount))
+
+    ;; Make sure there are no inbox entries older than the highest
+    ;; timestamp last read from the inbox
+    (let ((inbox (scan-inbox server id))
+          (last (get-acct-last server id)))
+      (dolist (inmsg inbox)
+        (let ((inmsg-args (unpack-bankmsg server inmsg)))
+          (when (or (< (bccomp last 0) 0)
+                    (<= (bccomp (getarg $TIME inmsg-args) last) 0))
+            (error "Please process your inbox before doing a spend")))))
+
+    (let* ((tokens (if (and (not (equal id id2))
+                            (not (equal id bankid)))
+                       (tranfee server)
+                       "0"))
+           (tokenid (tokenid server))
+           (feemsg nil)
+           (storagemsg nil)
+           (storageamt nil)
+           (fracmsg nil)
+           (fracamt nil)
+           (state (make-balance-state
+                   :tokens tokens
+                   :time time
+                   :bals `((,tokenid . "0")
+                           ,@(unless (equal tokenid assetid)
+                                     `((,assetid . "0"))))))
+           (outboxhash-req nil)
+           (outboxhash-msg nil)
+           (outboxhash nil)
+           (outboxhash-cnt nil)
+           (balancehash-req nil)
+           (balancehash-msg nil)
+           (balancehash nil)
+           (balancehash-cnt nil))
+
+      (unless (equal id id2)
+        ;; No money changes hands on spends to yourself
+        (let ((cell (assocequal assetid (balance-state-bals state))))
+          (setf (cdr cell) (bcsub 0 amount))))
+
+      (loop
+         for req in (cdr reqs)
+         for reqargs = (match-pattern parser req)
+         for reqid = (getarg $CUSTOMER reqargs)
+         for request = (getarg $REQUEST reqargs)
+         for reqtime = (getarg $TIME reqargs)
+         for reqmsg = (get-parsemsg req)
+         do
+         (unless (equal reqtime time) (error "Timestamp mismatch"))
+         (unless (equal reqid id) (error "ID mismatch"))
+         (cond ((equal request $TRANFEE)
+                (when feemsg (error "~s appeared multiple times" $TRANFEE))
+                (let ((tranasset (getarg $ASSET reqargs))
+                      (tranamt (getarg $AMOUNT reqargs)))
+                  (unless (and (equal tranasset tokenid) (equal tranamt tokens))
+                    (error "Mismatched tranfee asset or amount")))
+                (setq feemsg (bankmsg server $ATTRANFEE reqmsg)))
+               ((equal request $STORAGEFEE)
+                (when storagemsg (error "~s appeared multiple times" $STORAGEFEE))
+                (unless (equal assetid (getarg $ASSET reqargs))
+                  (error "Storage fee asset id doesn't match spend"))
+                (setq storageamt (getarg $AMOUNT reqargs)
+                      storagemsg (bankmsg server $ATSTORAGEFEE reqmsg)))
+               ((equal request $FRACTION)
+                (when fracmsg (error "~s appeared multiple times" $FRACTION))
+                (unless (equal assetid (getarg $ASSET reqargs))
+                  (error "Fraction asset id doesn't match spend"))
+                (setq fracamt (getarg $AMOUNT reqargs)
+                      fracmsg (bankmsg server $ATFRACTION reqmsg)))
+               ((equal request $BALANCE)
+                (handle-balance-msg server id reqmsg reqargs state))
+               ((equal request $OUTBOXHASH)
+                (when outboxhash-req
+                  (error "~s appeared multiple times" $OUTBOXHASH))
+                (setq outboxhash-req req
+                      outboxhash-msg reqmsg
+                      outboxhash (getarg $HASH reqargs)
+                      outboxhash-cnt (getarg $COUNT reqargs)))
+               ((equal request $BALANCEHASH)
+                (when balancehash-req
+                  (error "~s appeared multiple times" $BALANCEHASH))
+                (setq balancehash-req req
+                      balancehash-msg reqmsg
+                      balancehash (getarg $HASH reqargs)
+                      balancehash-cnt (getarg $COUNT reqargs)))
+               (t
+                (error "~s not valid for spend. Only ~s, ~s, ~s, ~s, ~, & ~s"
+                       request
+                       $TRANFEE $STORAGEFEE $FRACTION
+                       $BALANCE $OUTBOXHASH $BALANCEHASH))))
+
+      (let* ((acctbals (balance-state-acctbals state))
+             (bals (balance-state-bals state))
+             (tokens (balance-state-tokens state))
+             (oldneg (balance-state-oldneg state))
+             (newneg (balance-state-newneg state))
+             (charges (balance-state-charges state))
+             (storagefee nil)
+             (assetinfo (cdr (assocequal assetid charges)))
+             (percent (and assetinfo (storage-info-percent assetinfo)))
+             issuer fraction digits)
+
+    ;; Work the storage fee into the balances
+    (when (and percent (not (eql (bccomp percent 0) 0)))
+      (setq issuer (storage-info-issuer assetinfo)
+            storagefee (storage-info-fee assetinfo)
+            fraction (storage-info-fraction assetinfo)
+            digits (storage-info-digits assetinfo))
+      (let* ((balcell (assocequal assetid bals))
+             (bal (bcsub (cdr balcell) storagefee digits)))
+        (multiple-value-setq (bal fraction) (normalize-balance bal fraction digits))
+        (setf (cdr balcell) bal)
+        (unless (eql 0 (bccomp fraction fracamt))
+          (error "Fraction amount was: ~s, sb: ~s" fracamt fraction))
+        (unless (eql 0 (bccomp storagefee storageamt))
+          (error "Storage fee was: ~s, sb: ~s" storageamt storagefee))))
+
+    (when (and (not storagefee) (or storagemsg fracmsg))
+      (error "Storage or fraction included when no storage fee"))
+
+    ;; tranfee must be included if there's a transaction fee
+    (when (and (not (eql 0 (bccomp tokens 0)))
+               (not feemsg)
+               (not (equal id id2)))
+      (error "~s  missing" $TRANFEE))
+
+    (when (< (bccomp amount 0) 0)
+      ;; Negative spend allowed only for switching issuer location
+      (unless (assocequal assetid oldneg)
+        (error "Negative spend on asset for which you are not the issuer"))
+
+      ;; Spending out the issuance.
+      ;; Mark the new "acct" for the negative as being the spend itself.
+      (unless (assocequal assetid newneg)
+        (push (cons assetid args) newneg)))
+
+    ;; Check that we have exactly as many negative balances after the transaction
+    ;; as we had before.
+    (unless (eql (length oldneg) (length newneg))
+      (error "Negative balance count not conserved"))
+
+    (dolist (old oldneg)
+      (unless (assocequal (car old) newneg)
+        (error "Negative balance assets not conserved")))
+
+    ;; Charge the transaction and new balance file tokens
+    (let ((balcell (assocequal tokenid bals)))
+      (unless balcell
+        (push (setq balcell (cons tokenid 0)) bals))
+      (setf (cdr balcell) (bcsub (cdr balcell) tokens)))
+
+    (let ((errmsg nil))
+      ;; Check that the balances in the spend message, match the current balance,
+      ;; minus amount spent minus fees.
+      (loop
+         for (balasset . balamount) in bals
+         do
+           (unless (eql (bccomp balamount 0) 0)
+             (let ((name (lookup-asset-name server balasset)))
+               (setq errmsg (if errmsg (strcat errmsg ", ") ""))
+               (dotcat errmsg name ": " balamount))))
+      (when errmsg (error "Balance discrepancies: ~a" errmsg)))
+
+    ;; Check outboxhash
+    ;; outboxhash must be included, except on self spends
+    (let ((spendmsg (get-parsemsg (car reqs))))
+      (unless (or (equal id id2) (equal id bankid))
+        (unless outboxhash-req
+          (error "~s missing" $OUTBOXHASH))
+        (multiple-value-bind (hash hashcnt) (outbox-hash server id spendmsg)
+          (unless (and (equal outboxhash hash) (equal outboxhash-cnt hashcnt))
+            (error "~s mismatch" $OUTBOXHASH))))
+
+      ;; balancehash must be included, except on bank spends
+      (unless (equal id bankid)
+        (unless balancehash-req
+          (error "~s missing" $BALANCEHASH))
+        (multiple-value-bind (hash hashcnt)
+            (balancehash db (lambda (msg) (unpack-bankmsg server msg))
+                         (balance-key id) acctbals)
+        (unless (and (equal balancehash hash) (equal balancehash-cnt hashcnt))
+          (error "~s mismatch, hash sb: ~s, was: ~s, count sb: ~s, was: ~s"
+                 $BALANCEHASH hash balancehash hashcnt balancehash-cnt))))
+
+      ;; All's well with the world. Commit this puppy.
+      ;; Eventually, the commit will be done as a second phase.
+      (let* ((outbox-item (bankmsg server $ATSPEND spendmsg))
+             (inbox-item nil)
+             (res outbox-item)
+             (newtime nil))
+        (when feemsg
+          (dotcat outbox-item "." feemsg)
+          (setq res outbox-item))
+
+        (cond ((not (equal id2 $COUPON))
+               (unless (equal id id2)
+                 (setq newtime (gettime server)
+                       inbox-item (bankmsg server $INBOX newtime spendmsg))
+                 (when feemsg
+                   (dotcat inbox-item "." feemsg))))
+              (t
+               ;; If it's a coupon request, generate the coupon
+               (let* ((coupon-number (random-id))
+                      (bankurl (bankurl server))
+                      (coupon
+                       (if note
+                           (bankmsg server $COUPON bankurl coupon-number
+                                    assetid amount note)
+                           (bankmsg server $COUPON bankurl coupon-number
+                                    assetid amount)))
+                      (coupon-number-hash (sha1 coupon-number)))
+                 (db-put db (strcat $COUPON "/" coupon-number-hash) outbox-item)
+                 (setq coupon
+                       (bankmsg server $COUPONENVELOPE id
+                                (pubkey-encrypt
+                                 coupon (db-get (pubkeydb server) id))))
+                 (dotcat res "." coupon)
+                 (dotcat outbox-item "." coupon))))
+
+        ;; Update balances
+        (let ((balance-key (balance-key id)))
+          (loop
+             for (acct . balances) in acctbals
+             for acctdir = (strcat balance-key "/" acct)
+             do
+               (loop
+                  for (balasset . balance) in balances
+                  do
+                    (setq balance (bankmsg server $ATBALANCE balance))
+                    (dotcat res "." balance)
+                    (db-put db (strcat acctdir "/" balasset) balance))))
+
+        (when fracmsg
+          (let ((key (fraction-balance-key id assetid)))
+            (db-put db key fracmsg)
+            (dotcat res "." fracmsg)))
+
+        (when storagemsg (dotcat res "." storagemsg))
+
+        (unless (or (equal id id2) (equal id bankid))
+          ;; Update outboxhash
+          (let ((outboxhash-item (bankmsg server $ATOUTBOXHASH outboxhash-msg)))
+            (dotcat res "." outboxhash-item)
+            (db-put db (outbox-hash-key id) outboxhash-item)))
+
+        ;; Append spend to outbox
+        (db-put db (strcat (outbox-dir id) "/" time) outbox-item)
+
+        (unless (equal id bankid)
+          ;; Update balancehash
+          (let ((balancehash-item (bankmsg server $ATBALANCEHASH balancehash-msg)))
+            (dotcat res "." balancehash-item)
+            (db-put db (balance-hash-key id) balancehash-item)))
+
+        ;; Append spend to recipient's inbox
+        (when newtime
+          (db-put db (strcat (inbox-key id2) "/" newtime) inbox-item))
+
+        ;; Force the user to do another getinbox, if anything appears
+        ;; in his inbox since he last processed it.
+        (db-put db (acct-last-key id) "-1")
+
+        (values res assetid issuer storagefee digits)))))))
+
 #||
 ;; Continue here
-  function do_spend_internal($args, $reqs, $msg,
-                             &$ok, &$assetid, &$issuer, &$storagefee, &$digits) {
-    $t = $this->t;
-    $u = $this->u;
-    $db = $this->db;
-    $bankid = $this->bankid;
-    $parser = $this->parser;
-
-    $ok = false;
-
-    // $SPEND => array($BANKID,$TIME,$ID,$ASSET,$AMOUNT,$NOTE=>1),
-    $id = $args[$CUSTOMER];
-    $time = $args[$TIME];
-    $id2 = $args[$ID];
-    $assetid = $args[$ASSET];
-    $amount = $args[$AMOUNT];
-    $note = @$args[$NOTE];
-
-    // Burn the transaction, even if balances don't match.
-    $err = $this->deq_time($id, $time);
-    if ($err) return $this->failmsg($msg, $err);
-
-    if ($id2 == $bankid) {
-      return $this->failmsg($msg, "Spends to the bank are not allowed.");
-    }
-
-    $asset = $this->lookup_asset($assetid);
-    if (!$asset) {
-      return $this->failmsg($msg, "Unknown asset id: $assetid");
-    }
-    if (is_string($asset)) {
-      return $this->failmsg($msg, "Bad asset: $asset");
-    }
-    if (!is_numeric($amount)) {
-      return $this->failmsg($msg, "Not a number: $amount");
-    }
-
-    // Make sure there are no inbox entries older than the highest
-    // timestamp last read from the inbox
-    $inbox = $this->scaninbox($id);
-    $last = $this->getacctlast($id);
-    foreach ($inbox as $inmsg) {
-      $inmsg_args = $this->unpack_bankmsg($inmsg);
-      if ($last < 0 || bccomp($inmsg_args[$TIME], $last) <= 0) {
-        return $this->failmsg($msg, "Please process your inbox before doing a spend");
-      }
-    }
-
-    $tokens = 0;
-    $tokenid = $this->tokenid;
-    $feemsg = '';
-    $storagemsg = '';
-    $fracmsg = '';
-    if ($id != $id2 && $id != $bankid) {
-      // Spends to yourself are free, as are spends from the bank
-      $tokens = $this->tranfee;
-    }
-
-    $bals = array();
-    $bals[$tokenid] = 0;
-    if ($id != $id2) {
-      // No money changes hands on spends to yourself
-      $bals[$assetid] = bcsub(0, $amount);
-    }
-    $acctbals = array();
-    $accts = array();
-    $oldneg = array();
-    $newneg = array();
-
-    $state = array('acctbals' => $acctbals,
-                   'bals' => $bals,
-                   'tokens' => $tokens,
-                   'accts' => $accts,
-                   'oldneg' => $oldneg,
-                   'newneg' => $newneg,
-                   'time' => $time);
-    $outboxhashreq = false;
-    $balancehashreq = false;
-    for ($i=1; $i<count($reqs); $i++) {
-      $req = $reqs[$i];
-      $reqargs = $u->match_pattern($req);
-      if (is_string($reqargs)) return $this->failmsg($msg, $reqargs); // match error
-      $reqid = $reqargs[$CUSTOMER];
-      $request = $reqargs[$REQUEST];
-      $reqtime = $reqargs[$TIME];
-      if ($reqtime != $time) return $this->failmsg($msg, "Timestamp mismatch");
-      if ($reqid != $id) return $this->failmsg($msg, "ID mismatch");
-      $reqmsg = $parser->get_parsemsg($req);
-      if ($request == $TRANFEE) { 
-       if ($feemsg) {
-          return $this->failmsg($msg, $TRANFEE . ' appeared multiple times');
-        }
-        $tranasset = $reqargs[$ASSET];
-        $tranamt = $reqargs[$AMOUNT];
-        if ($tranasset != $tokenid || $tranamt != $tokens) {
-          return $this->failmsg($msg, "Mismatched tranfee asset or amount ($tranasset <> $tokenid || $tranamt <> $tokens)");
-        }
-        $feemsg = $this->bankmsg($ATTRANFEE, $reqmsg);
-      } elseif ($request == $STORAGEFEE) {
-        if ($storagemsg) {
-          return $this->failmsg($msg, $STORAGEFEE . ' appeared multiple times');
-        }
-        $storageasset = $reqargs[$ASSET];
-        $storageamt = $reqargs[$AMOUNT];
-        if ($storageasset != $assetid) {
-          return $this->failmsg($msg, "Storage fee asset id doesn't match spend");
-        }
-        $storagemsg = $this->bankmsg($ATSTORAGEFEE, $reqmsg);
-      } elseif ($request == $FRACTION) {
-        if ($fracmsg) {
-          return $this->failmsg($msg, $FRACTION . ' appeared multiple times');
-        }
-        $fracasset = $reqargs[$ASSET];
-        $fracamt = $reqargs[$AMOUNT];
-        if ($fracasset != $assetid) {
-          return $this->failmsg($msg, "Fraction asset id doesn't match spend");
-        }
-        $fracmsg = $this->bankmsg($ATFRACTION, $reqmsg);
-      } elseif ($request == $BALANCE) {
-        if ($time != $reqargs[$TIME]) {
-          return $this->failmsg($msg, "Time mismatch in balance item");
-        }
-        $errmsg = $this->handle_balance_msg($id, $reqmsg, $reqargs, $state);
-        if ($errmsg) return $this->failmsg($msg, $errmsg);
-        $newbals[] = $reqmsg;
-      } elseif ($request == $OUTBOXHASH) {
-        if ($outboxhashreq) {
-          return $this->failmsg($msg, $OUTBOXHASH . " appeared multiple times");
-        }
-        if ($time != $reqargs[$TIME]) {
-          return $this->failmsg($msg, "Time mismatch in outboxhash");
-        }
-        $outboxhashreq = $req;
-        $outboxhashmsg = $reqmsg;
-        $outboxhash = $reqargs[$HASH];
-        $outboxhashcnt = $reqargs[$COUNT];
-      } elseif ($request == $BALANCEHASH) {
-        if ($balancehashreq) {
-          return $this->failmsg($msg, $BALANCEHASH . " appeared multiple times");
-        }
-        if ($time != $reqargs[$TIME]) {
-          return $this->failmsg($msg, "Time mismatch in balancehash");
-        }
-        $balancehashreq = $req;
-        $balancehash = $reqargs[$HASH];
-        $balancehashcnt = $reqargs[$COUNT];
-        $balancehashmsg = $reqmsg;
-      } else {
-        return $this->failmsg($msg, "$request not valid for spend. Only " .
-                              $TRANFEE . ', ' . $BALANCE . ", and " .
-                              $OUTBOXHASH);
-      }
-    }
-
-    $acctbals = $state['acctbals'];
-    $bals = $state['bals'];
-    $tokens = $state['tokens'];
-    $accts = $state['accts'];
-    $oldneg = $state['oldneg'];
-    $newneg = $state['newneg'];
-    $charges = $state['charges'];
-
-    // Work the storage fee into the balances
-    $storagefee = false;
-    if ($charges) {
-      $assetinfo = $charges[$assetid];
-      if ($assetinfo) {
-        $percent = $assetinfo['storagefee'];
-        if ($percent) {
-          $issuer = $assetinfo['issuer'];
-          $storagefee = $assetinfo['storagefee'];
-          $fraction = $assetinfo['fraction'];
-          $digits = $assetinfo['digits'];
-          $bal = $bals[$assetid];
-          $bal = bcsub($bal, $storagefee, $digits);
-          $u->normalize_balance($bal, $fraction, $digits);
-          $bals[$assetid] = $bal;
-          if (bccomp($fraction, $fracamt) != 0) {
-            return $this->failmsg($msg, "Fraction amount was: $fractamt, sb: $fraction");
-          }
-          if (bccomp($storagefee, $storageamt) != 0) {
-            return $this->failmsg($msg, "Storage fee was: $storageamt, sb: $storagefee");
-          }
-        }
-      }
-    }
-    if (!$storagefee && ($storagemsg || $fracmsg)) {
-      return $this->failmsg($msg, "Storage or fraction included when no storage fee");
-    }
-
-    // tranfee must be included if there's a transaction fee
-    if ($tokens != 0 && !$feemsg && $id != $id2) {
-      return $this->failmsg($msg, $TRANFEE . " missing");
-    }
-
-    if (bccomp($amount, 0) < 0) {
-      // Negative spend allowed only for switching issuer location
-      if (!$oldneg[$assetid]) {
-        return $this->failmsg($msg, "Negative spend on asset for which you are not the issuer");
-      }
-      // Spending out the issuance.
-      // Mark the new "acct" for the negative as being the spend itself.
-      if (!$newneg[$assetid]) $newneg[$assetid] = $args;
-    }
-
-    // Check that we have exactly as many negative balances after the transaction
-    // as we had before.
-    if (count($oldneg) != count($newneg)) {
-      return $this->failmsg($msg, "Negative balance count not conserved");
-    }
-    foreach ($oldneg as $asset => $acct) {
-      if (!$newneg[$asset]) {
-        return $this->failmsg($msg, "Negative balance assets not conserved");
-      }
-    }
-
-    // Charge the transaction and new balance file tokens;
-    $bals[$tokenid] = bcsub($bals[$tokenid], $tokens);
-
-    $errmsg = "";
-    $first = true;
-    // Check that the balances in the spend message, match the current balance,
-    // minus amount spent minus fees.
-    foreach ($bals as $balasset => $balamount) {
-      if (bccomp($balamount, 0) != 0) {
-        $name = $this->lookup_asset_name($balasset);
-        if (!$first) $errmsg .= ', ';
-        $first = false;
-        $errmsg .= "$name: $balamount";
-      }
-    }
-    if ($errmsg != '') return $this->failmsg($msg, "Balance discrepancies: $errmsg");
-
-    // Check outboxhash
-    // outboxhash must be included, except on self spends
-    $spendmsg = $parser->get_parsemsg($reqs[0]);
-    if ($id != $id2 && $id != $bankid) {
-      if (!$outboxhashreq) {
-        return $this->failmsg($msg, $OUTBOXHASH . " missing");
-      } else {
-        $hasharray = $this->outboxhash($id, $spendmsg);
-        $hash = $hasharray[$HASH];
-        $hashcnt = $hasharray[$COUNT];
-        if ($outboxhash != $hash || $outboxhashcnt != $hashcnt) {
-          return $this->failmsg($msg, $OUTBOXHASH . ' mismatch');
-        }
-      }
-    }
-
-    // balancehash must be included, except on bank spends
-    if ($id != $bankid) {
-      if (!$balancehashreq) {
-        return $this->failmsg($msg, $BALANCEHASH . " missing");
-      } else {
-        $hasharray = $u->balancehash($db, $id, $this, $acctbals);
-        $hash = $hasharray[$HASH];
-        $hashcnt = $hasharray[$COUNT];
-        if ($balancehash != $hash || $balancehashcnt != $hashcnt) {
-          return $this->failmsg($msg, $BALANCEHASH . " mismatch, hash sb: $hash, was: $balancehash, count sb: $hashcnt, was: $balancehashcnt");
-        }
-      }
-    }
-
-    // All's well with the world. Commit this puppy.
-    // Eventually, the commit will be done as a second phase.
-    $outbox_item = $this->bankmsg($ATSPEND, $spendmsg);
-    if ($feemsg) {
-      $outbox_item .= ".$feemsg";
-    }
-    $res = $outbox_item;
-
-    $newtime = false;
-    if ($id2 != $COUPON) {
-      if ($id != $id2) {
-        $newtime = $this->gettime();
-        $inbox_item = $this->bankmsg($INBOX, $newtime, $spendmsg);
-        if ($feemsg) {
-          $inbox_item .= ".$feemsg";
-        }
-      }
-    } else {
-      // If it's a coupon request, generate the coupon
-      $ssl = $this->ssl;
-      $random = $this->random;
-      if (!$random) {
-        require_once "LoomRandom.php";
-        $random = new LoomRandom();
-        $this->random = $random;
-      }
-      $coupon_number = $random->random_id();
-      $bankurl = $this->bankurl;
-      if ($note) {
-        $coupon = $this->bankmsg($COUPON, $bankurl, $coupon_number, $assetid, $amount, $note);
-      } else {
-        $coupon = $this->bankmsg($COUPON, $bankurl, $coupon_number, $assetid, $amount);
-      }
-      $coupon_number_hash = sha1($coupon_number);
-      $db->put($COUPON . "/$coupon_number_hash", "$outbox_item");
-      $pubkey = $this->pubkeydb->get($id);
-      $coupon = $ssl->pubkey_encrypt($coupon, $pubkey);
-      $coupon = $this->bankmsg($COUPONENVELOPE, $id, $coupon);
-      $res .= ".$coupon";
-      $outbox_item .= ".$coupon";
-    }
-
-    // I considered adding the transaction tokens to the bank
-    // balances here, but am just leaving them in the outbox,
-    // to be credited to this customer, if the spend is accepted,
-    // or to the recipient, if he rejects it.
-    // This means that auditing has to consider balances, outbox
-    // fees, and inbox spend items.
-
-    // Update balances
-    $balancekey = $this->balancekey($id);
-    foreach ($acctbals as $acct => $balances) {
-      $acctdir = "$balancekey/$acct";
-      foreach ($balances as $balasset => $balance) {
-        $balance = $this->bankmsg($ATBALANCE, $balance);
-        $res .= ".$balance";
-        $db->put("$acctdir/$balasset", $balance);
-      }
-    }
-
-    if ($fracmsg) {
-      $key = $this->fractionbalancekey($id, $assetid);
-      $db->put($key, $fracmsg);
-      $res .= ".$fracmsg";
-    }
-    if ($storagemsg) $res .= ".$storagemsg";
-
-    if ($id != $id2 && $id != $bankid) {
-      // Update outboxhash
-      $outboxhash_item = $this->bankmsg($ATOUTBOXHASH, $outboxhashmsg);
-      $res .= ".$outboxhash_item";
-      $db->put($this->outboxhashkey($id), $outboxhash_item);
-
-      // Append spend to outbox
-      $db->put($this->outboxdir($id) . "/$time", $outbox_item);
-    }
-
-    if ($id != $bankid) {
-      // Update balancehash
-      $balancehash_item = $this->bankmsg($ATBALANCEHASH, $balancehashmsg);
-      $res .= ".$balancehash_item";
-      $db->put($this->balancehashkey($id), $balancehash_item);
-    }
-
-    // Append spend to recipient's inbox
-    if ($newtime) {
-      $db->put($this->inboxkey($id2) . "/$newtime", $inbox_item);
-    }
-
-    // Force the user to do another getinbox, if anything appears
-    // in his inbox since he last processed it.
-    $db->put($this->acctlastkey($id), -1);
-
-    // We're done
-    $ok = true;
-    return $res;
-  }
-
   // Credit storage fee to an asset issuer
   function post_storagefee($assetid, $issuer, $storagefee, $digits) {
     $db = $this->db;
@@ -1542,14 +1473,12 @@
 
     $inboxmsgs = array();
     $acctbals = array();
-    $accts = array();
     $res = $this->bankmsg($ATPROCESSINBOX, $parser->get_parsemsg($reqs[0]));
     $tokens = 0;
 
     $state = array('acctbals' => $acctbals,
                    'bals' => $bals,
                    'tokens' => $tokens,
-                   'accts' => $accts,
                    'oldneg' => $oldneg,
                    'newneg' => $newneg,
                    'time' => $time);
@@ -1661,7 +1590,6 @@
         }
         $errmsg = $this->handle_balance_msg($id, $reqmsg, $args, $state);
         if ($errmsg) return $this->failmsg($msg, $errmsg);
-        $newbals[] = $reqmsg;
       } elseif ($request == $BALANCEHASH) {
         if ($balancehashreq) {
           return $this->failmsg($msg, $BALANCEHASH . " appeared multiple times");
@@ -1684,7 +1612,6 @@
     $acctbals = $state['acctbals'];
     $bals = $state['bals'];
     $tokens = $state['tokens'];
-    $accts = $state['accts'];
     $oldneg = $state['oldneg'];
     $newneg = $state['newneg'];
     $charges = $state['charges'];
@@ -2036,7 +1963,6 @@
     $bals = array();
     if (!$exists) $bals[$assetid] = -1;
     $acctbals = array();
-    $accts = array();
     $oldneg = array();
     $newneg = array();
 
@@ -2046,7 +1972,6 @@
     $state = array('acctbals' => $acctbals,
                    'bals' => $bals,
                    'tokens' => $tokens,
-                   'accts' => $accts,
                    'oldneg' => $oldneg,
                    'newneg' => $newneg
                    // 'time' initialized below
@@ -2077,7 +2002,6 @@
         $reqmsg = $parser->get_parsemsg($req);
         $errmsg = $this->handle_balance_msg($id, $reqmsg, $args, $state, $assetid);
         if ($errmsg) return $this->failmsg($msg, $errmsg);
-        $newbals[] = $reqmsg;
       } elseif ($request == $BALANCEHASH) {
         if ($balancehashreq) {
           return $this->failmsg($msg, $BALANCEHASH . " appeared multiple times");
@@ -2094,7 +2018,6 @@
 
     $acctbals = $state['acctbals'];
     $bals = $state['bals'];
-    $accts = $state['accts'];
     $tokens = $state['tokens'];
     $oldneg = $state['oldneg'];
     $newneg = $state['newneg'];

@@ -115,6 +115,9 @@
   "Concatenate a bunch of strings"
   (apply #'concatenate 'string (mapcar 'string strings)))
 
+(defmacro dotcat (place &rest strings)
+  `(setf ,place (strcat ,place ,@strings)))
+
 (defun implode (separator &rest strings)
   (declare (dynamic-extent strings))
   (let ((res (car strings)))
