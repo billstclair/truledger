@@ -8,8 +8,7 @@
 (in-package :trubanc)
 
 (defun custmsg (privkey &rest req)
-  (let ((msg (apply 'simple-makemsg req)))
-    (format nil "~a:~%~a" msg (sign msg privkey))))
+  (signmsg privkey (apply 'simple-makemsg req)))
 
 (defun test-newreq (server &optional (privkey (privkey server)))
   (let* ((msg (process

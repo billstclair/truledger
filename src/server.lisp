@@ -251,9 +251,13 @@
   "Unpack wrapped initialization parameter."
   (unpack-bankmsg server (db-get (db server) type) type nil key))
 
+(defun signmsg (privkey msg)
+  (let ((sig (sign msg privkey)))
+    (strcat msg #.(format nil ":~%") sig)))
+
 (defmethod banksign ((server server) msg)
   "Bank sign a message."
-  (signmsg server (privkey server) msg))
+  (signmsg (privkey server) msg))
 
 (defmethod makemsg ((server server) &rest req)
   "Make an unsigned message from the args."
