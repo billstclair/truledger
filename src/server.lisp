@@ -1040,136 +1040,92 @@
 
         (values res assetid issuer storagefee digits)))))))
 
+(defmethod post-storage-fee ((server server) assetid issuer storage-fee digits)
+  ;; Credit storage fee to an asset issuer
+  (let ((db (db server))
+        (parser (parser server))
+        (bankid (bankid server)))
+    (with-db-lock (db (acct-time-key issuer))
+      (let* ((key (storage-fee-key issuer assetid))
+             (storage-msg (db-get db key)))
+        (when storage-msg
+          (let ((reqs (parse parser storage-msg)))
+            (unless (eql 1 (length reqs))
+              (error "Bad storagefee msg: ~s" storage-msg))
+            (let* ((args (match-pattern parser (car reqs)))
+                   (amount (getarg $AMOUNT args)))
+              (unless (and (equal (getarg $CUSTOMER args) bankid)
+                           (equal (getarg $REQUEST args) $STORAGEFEE)
+                           (equal (getarg $BANKID args) bankid)
+                           (equal (getarg $ASSET args) assetid))
+                (error "Storage fee message malformed"))
+              (setq storage-fee (bcadd storage-fee amount digits)))))
+        (let* ((time (gettime server))
+               (storage-msg (bankmsg server $STORAGEFEE
+                                     bankid time assetid storage-fee)))
+          (db-put db key storage-msg))))))
+
+(define-message-handler do-spendreject $SPENDREJECT (server args reqs)
+  "Process a spend|reject"
+  (let ((db (db server))
+        (parser (parser server))
+        (id (getarg $CUSTOMER args)))
+    (with-verify-sigs-p (parser nil)
+      (with-db-lock (db (acct-time-key id))
+        (let* ((bankid (bankid server))
+               (time (getarg $TIME args))
+               (key (outbox-key id))
+               (item (db-get db (strcat key "/" time))))
+          (unless item
+            (error "No outbox entry for time: ~s" time))
+          (let ((args (unpack-bankmsg server item $ATSPEND $SPEND)))
+            (unless (equal time (getarg $TIME args))
+              (error "Time mismatch in outbox item"))
+            (when (equal (getarg $ID args) $COUPON)
+              (error "Coupons must be redeemed, not cancelled"))
+            (let* ((recipient (getarg $ID args))
+                   (key (inbox-key recipient))
+                   (inbox (db-contents db key))
+                   (feeamt nil)
+                   (feeasset nil))
+              (dolist (intime inbox
+                       (error "Spend has already been processed"))
+                (let* ((item (or (db-get db (strcat key "/" intime))
+                                 (error "Spend has already been processed")))
+                       (item2 nil)
+                       (args (unpack-bankmsg server item $INBOX $SPEND)))
+                  (when (equal (getarg $TIME args) time)
+                    ;; Calculate the fee, if there is one
+                    (let* ((reqs (getarg $UNPACK-REQS-KEY args))
+                           (req (second reqs)))
+                      (when req
+                        (let ((args (match-pattern parser req)))
+                          (unless (equal (getarg $CUSTOMER args) bankid)
+                            (error "Fee message not from bank"))
+                          (when (equal (getarg $REQUEST args) $ATTRANFEE)
+                            (setq req (getarg $MSG args)
+                                  args (match-pattern parser req))
+                            (unless (equal (getarg $REQUEST args) $TRANFEE)
+                              (error "Fee wrapper doesn't wrap fee message"))
+                            (setq feeasset (getarg $ASSET args)
+                                  feeamt (getarg $AMOUNT args))))))
+                    ;; Found the inbox item corresponding to the outbox item.
+                    ;; Make sure it's still there.
+                    (with-db-lock (db (strcat key "/" intime))
+                      (setq item2 (db-get db (strcat key "/" intime))))
+                    (unless item2
+                      (error "Spend has already been processed"))
+                    (when feeamt
+                      (add-to-bank-balance server feeasset feeamt))
+                    (let* ((newtime (gettime server))
+                           (msg (get-parsemsg (car reqs)))
+                           (item (bankmsg server $INBOX newtime msg))
+                           (key (inbox-key id)))
+                      (db-put db (strcat key "/" newtime) item)
+                      (return item))))))))))))
+
 #||
 ;; Continue here
-  // Credit storage fee to an asset issuer
-  function post_storagefee($assetid, $issuer, $storagefee, $digits) {
-    $db = $this->db;
-
-    $lock = $db->lock($this->accttimekey($issuer));
-    $res = $this->post_storagefee_internal($assetid, $issuer, $storagefee, $digits);
-    $db->unlock($lock);
-    return $res;
-  }
-
-  function post_storagefee_internal($assetid, $issuer, $storagefee, $digits) {
-    $db = $this->db;
-    $t = $this->t;
-    $u = $this->u;
-    $parser = $this->parser;
-    $bankid = $this->bankid;
-
-    $key = $this->storagefeekey($issuer, $assetid);
-    $storagemsg = $db->get($key);
-    if ($storagemsg) {
-      $reqs = $parser->parse($storagemsg);
-      if (!$reqs) return $parser->errmsg;
-      if (count($reqs) != 1) return "Bad storagefee msg: $storagemsg";
-      $args = $u->match_pattern($reqs[0]);
-      if (is_string($args)) return "While posting storagefee: $args";
-      if ($args[$CUSTOMER] != $bankid ||
-          $args[$REQUEST] != $STORAGEFEE ||
-          $args[$BANKID] != $bankid ||
-          $args[$ASSET] != $assetid) {
-        return "Storage fee message malformed";
-      }
-      $amount = $args[$AMOUNT];
-      $storagefee = bcadd($storagefee, $amount, $digits);
-    }
-    $time = $this->gettime();
-    $storagemsg = $this->bankmsg($STORAGEFEE, $bankid, $time, $assetid, $storagefee);
-    $db->put($key, $storagemsg);
-  }
-
-  // Process a spend|reject
-  function do_spendreject($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
-    $parser = $this->parser;
-
-    $parser->verifysigs(false);
-
-    $id = $args[$CUSTOMER];
-    $lock = $db->lock($this->accttimekey($id));
-    $res = $this->do_spendreject_internal($args, $msg, $id);
-    $db->unlock($lock);
-
-    $parser->verifysigs(true);
-
-    return $res;
-  }
-
-  function do_spendreject_internal($args, $msg, $id) {
-    $t = $this->t;
-    $u = $this->u;
-    $db = $this->db;
-    $bankid = $this->bankid;
-
-    $time = $args[$TIME];
-    $key = $this->outboxkey($id);
-    $item = $db->get("$key/$time");
-    if (!$item) return $this->failmsg($msg, "No outbox entry for time: $time");
-    $args = $this->unpack_bankmsg($item, $ATSPEND, $SPEND);
-    if (is_string($args)) return $this->failmsg($msg, $args);
-    if ($time != $args[$TIME]) {
-      return $this->failmsg($msg, "Time mismatch in outbox item");
-    }
-    if ($args[$ID] == $COUPON) {
-      return $this->failmsg($msg, "Coupons must be redeemed, not cancelled");
-    }
-    $recipient = $args[$ID];
-    $key = $this->inboxkey($recipient);
-    $inbox = $db->contents($key);
-    foreach ($inbox as $intime) {
-      $item = $db->get("$key/$intime");
-      // Unlikely, but possible
-      if (!$item) return $this->failmsg($msg, "Spend has already been processed");
-      $args = $this->unpack_bankmsg($item, $INBOX, $SPEND);
-      if (is_string($args)) return $this->failmsg($msg, $args);
-      if ($args[$TIME] == $time) {
-        // Calculate the fee, if there is one
-        $feeamt = '';
-        $reqs = $args[$this->unpack_reqs_key];
-        $req = $reqs[1];
-        if ($req) {
-          $args = $u->match_pattern($req);
-          if (is_string($args)) return $this->failmsg($msg, $args);
-          if ($args[$CUSTOMER] != $bankid) {
-            return $this->failmsg($msg, "Fee message not from bank");
-          }
-          if ($args[$REQUEST] == $ATTRANFEE) {
-            $req = $args[$MSG];
-            $args = $u->match_pattern($req);
-            if (is_string($args)) return $this->failmsg($msg, $args);
-            if ($args[$REQUEST] != $TRANFEE) {
-              return $this->failmsg($msg, "Fee wrapper doesn't wrap fee message");
-            }
-            $feeasset = $args[$ASSET];
-            $feeamt = $args[$AMOUNT];
-          }
-        }
-        // Found the inbox item corresponding to the outbox item
-        // Make sure it's still there
-        $lock = $db->lock("$key/$intime");
-        $item2 = $db->get("$key/$intime");
-        $db->put("$key/$intime", '');
-        $db->unlock($lock);
-        if ($item2 == '') {
-          return $this->failmsg($msg, "Spend has already been processed");
-        }
-        if ($feeamt) {
-          $this->add_to_bank_balance($feeasset, $feeamt);
-        }
-        $newtime = $this->gettime();
-        $item = $this->bankmsg($INBOX, $newtime, $msg);
-        $key = $this->inboxkey($id);
-        $db->put("$key/$newtime", $item);
-        return $item;
-      }
-    }
-    return $this->failmsg($msg, "Spend has already been processed");
-  }
-
 
   // Redeem coupon by moving it from coupon/<coupon> to the customer inbox.
   // This isn't the right way to do this.
