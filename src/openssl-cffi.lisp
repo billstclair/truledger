@@ -364,6 +364,90 @@
                    (not (eql 0 res))))  ; Here's the result
             (%evp-md-ctx-cleanup ctx)))))))
 
+(defcfun ("ERR_get_error" %err-get-error) :unsigned-long)
+
+(defcfun ("ERR_error_string" %err-error-string) :pointer
+  (e :unsigned-long)
+  (buf :pointer))
+
+(defcfun ("ERR_load_crypto_strings" %err-load-crypto-strings) :void)
+
+(defun get-openssl-errors ()
+  (%err-load-crypto-strings)
+  (with-foreign-pointer (buf 120)
+    (loop
+       for e = (%err-get-error)
+       while (not (eql e 0))
+       collect (progn
+                 (%err-error-string e buf)
+                 (foreign-string-to-lisp buf :encoding :latin-1)))))
+
+(defconstant $RSA-PKCS1-PADDING 1)
+(defconstant $RSA-PKCS1-PADDING-SIZE 11)
+
+(defcfun ("RSA_public_encrypt" %rsa-public-encrypt) :int
+  (flen :int)
+  (from :pointer)
+  (to :pointer)
+  (rsa :pointer)
+  (padding :int))
+
+(defcfun ("RSA_private_decrypt" %rsa-private-decrypt) :int
+  (flen :int)
+  (from :pointer)
+  (to :pointer)
+  (rsa :pointer)
+  (padding :int))
+
+(defun pubkey-encrypt (message pubkey)
+  "PUBKEY is an RSA public key. MESSAGE is a message to encrypt.
+   Returns encrypted message, base64 encoded."
+  (with-rsa-public-key (rsa pubkey)
+    (let* ((size (rsa-size rsa))
+           (msglen (length message))
+           (chars (- size $RSA-PKCS1-PADDING-SIZE))
+           (res ""))
+      (with-foreign-pointer (from chars)
+        (with-foreign-pointer (to size)
+          (loop
+             for i from 0 below msglen by chars
+             for flen = (min chars (- msglen i))
+             do
+               (copy-lisp-to-memory message from i (+ i flen))
+               (let ((len (%rsa-public-encrypt flen from to rsa $RSA-PKCS1-PADDING)))
+                 (when (< len 0)
+                   (error "Errors from %rsa-public-encrypt: ~s"
+                          (get-openssl-errors)))
+                 (dotcat res (copy-memory-to-lisp to len nil))))))
+      (base64-encode res))))
+
+(defun privkey-decrypt (message privkey)
+  "PRIVKEY is an RSA private key. MESSAGE is a message to decrypt,
+   base64-encoded. Returns decrypted message."
+  (with-rsa-private-key (rsa privkey)
+    (let* ((size (rsa-size rsa))
+           (msg (base64-decode message))
+           (msglen (length msg))
+           (res ""))
+      (with-foreign-pointer (from size)
+        (with-foreign-pointer (to size)
+          (loop
+             for i from 0 below msglen by size
+             for flen = (min size (- msglen i))
+             do
+               ;; lisp-string-to-foreign didn't work here,
+               ;; likely due to 0 bytes.
+               (dotimes (j flen)
+                 (setf (mem-ref from :unsigned-char j)
+                       (char-code (aref msg (+ i j)))))
+               (let ((len (%rsa-private-decrypt
+                           flen from to rsa $RSA-PKCS1-PADDING)))
+                 (when (< len 0)
+                   (error "Errors from %rsa-public-encrypt: ~s"
+                          (get-openssl-errors)))
+                 (dotcat res (copy-memory-to-lisp to len nil))))))
+      res)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair

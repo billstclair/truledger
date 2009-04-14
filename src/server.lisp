@@ -1069,7 +1069,8 @@
   "Process a spend|reject"
   (let ((db (db server))
         (parser (parser server))
-        (id (getarg $CUSTOMER args)))
+        (id (getarg $CUSTOMER args))
+        (msg (get-parsemsg (car reqs))))
     (with-verify-sigs-p (parser nil)
       (with-db-lock (db (acct-time-key id))
         (let* ((bankid (bankid server))
@@ -1118,7 +1119,6 @@
                     (when feeamt
                       (add-to-bank-balance server feeasset feeamt))
                     (let* ((newtime (gettime server))
-                           (msg (get-parsemsg (car reqs)))
                            (item (bankmsg server $INBOX newtime msg))
                            (key (inbox-key id)))
                       (db-put db (strcat key "/" newtime) item)
