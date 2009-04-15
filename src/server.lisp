@@ -1124,186 +1124,120 @@
                       (db-put db (strcat key "/" newtime) item)
                       (return item))))))))))))
 
+(define-message-handler do-couponenvelope $COUPONENVELOPE (server args reqs)
+  "Redeem coupon by moving it from coupon/<coupon> to the customer inbox.
+   This isn't the right way to do this.
+   It really wants to be like processinbox, with new balances.
+   You have to do it this way for a new registration, though."
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args)))
+    (with-db-lock (db (acct-time-key id))
+      (do-couponenvelope-raw server args id)
+      (bankmsg server $ATCOUPONENVELOPE (get-parsemsg (car reqs))))))
+
+(defun do-couponenvelope-raw (server args id)
+  "Called by do_register to process coupons there.
+   Returns an error string or false."
+  (check-type server server)
+
+  (let ((db (db server))
+        (bankid (bankid server))
+        (parser (parser server))
+        (encrypted-to (getarg $ID args)))
+    (unless (equal encrypted-to bankid)
+      (error "Coupon not encrypted to bank"))
+
+    (let* ((coupon (privkey-decrypt (getarg $ENCRYPTEDCOUPON args) (privkey server)))
+           (coupon-number (and (coupon-number-p coupon) coupon)))
+
+      (unless coupon-number
+        (let ((args (unpack-bankmsg server $coupon $COUPON)))
+          (unless (equal bankid (getarg $CUSTOMER args))
+            (error "Coupon not signed by bank"))
+          (setq coupon-number (getarg $COUPON args))))
+
+      (let* ((coupon-number-hash (sha1 coupon-number))
+             (key (strcat $COUPON "/" coupon-number-hash))
+             (outbox-item nil))
+        (with-db-lock (db key)
+          (setq outbox-item (db-get db key))
+          (when outbox-item (db-put db key nil)))
+
+    (cond ((not outbox-item)
+           (let* ((key (inbox-key id))
+                  (inbox (db-contents db key)))
+             (or (dolist (time inbox nil)
+                   (let ((item (db-get db (strcat key "/" time))))
+                     (when (search #.(strcat "," $COUPON ",") item)
+                       (let ((reqs (parse parser item)))
+                         (when (> (length reqs) 1)
+                           (let* ((req (second reqs))
+                                  (msg (match-pattern parser req)))
+                             (when (equal coupon-number-hash (getarg COUPON msg))
+                               ;; Customer already redeemded this coupon.
+                               ;; Success if he tries to do it again.
+                               (return t))))))))
+                 (error "Coupon already redeemed"))))
+          (t
+           (let* ((ok nil)
+                  (args (unwind-protect
+                             (progn (unpack-bankmsg server outbox-item $ATSPEND)
+                                    (setq ok t))
+                          (unless ok
+                            ;; Make sure the spender can cancel the coupon
+                            (db-put db key outbox-item))))
+                  (reqs (getarg $UNPACK-REQS-KEY args))
+                  (spendreq (getarg $MSG args))
+                  (spendmsg (get-parsemsg spendreq))
+                  (feemsg nil)
+                  (feereq nil)
+                  (newtime (gettime server))
+                  (inbox-item (bankmsg server $INBOX newtime spendmsg))
+                  (cnhmsg (bankmsg server $COUPONNUMBERHASH coupon-number-hash)))
+             (dotcat inbox-item "." cnhmsg)
+             (when (> (length reqs) 1)
+               (setq feereq (second reqs)
+                     feemsg (get-parsemsg feereq))
+               (dotcat inbox-item "." feemsg))
+             (let ((key (strcat (inbox-key id) "/" newtime)))
+               (db-put db key inbox-item)))))))))
+
+(define-message-handler do-getinbox $GETINBOX (server args reqs)
+  "Query inbox"
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args))
+        (parser (parser server)))
+    (with-db-lock (db (acct-time-key id))
+      (checkreq server args)
+      (let* ((inbox (scan-inbox server id))
+             (res (bankmsg server $ATGETINBOX (get-parsemsg (car reqs))))
+             (last "1"))
+
+        (dolist (inmsg inbox)
+          (dotcat res "." inmsg)
+          (let ((args (match-message parser inmsg)))
+            (when (equal (getarg $REQUEST args) $INBOX)
+              (let ((time (getarg $TIME args)))
+                (when (> (bccomp time last) 0)
+                  (setq last time))))
+            (setq args (match-pattern parser (getarg $MSG args)))
+            (let ((argsid (getarg $ID args)))
+              (unless (or (equal argsid id) (equal argsid $COUPON))
+                (error "Inbox entry for wrong ID: ~s" id)))))
+
+        (let* ((key (storage-fee-key id))
+               (asset-ids (db-contents db key)))
+          (dolist (assetid asset-ids)
+            $storagefee = $
+            (dotcat res "." (db-get db (strcat key "/" assetid)))))
+
+    ;; Update last time
+    (db-put db (acct-last-key id) last)
+
+    res))))
+
 #||
 ;; Continue here
-
-  // Redeem coupon by moving it from coupon/<coupon> to the customer inbox.
-  // This isn't the right way to do this.
-  // It really wants to be like processinbox, with new balances.
-  // You have to do it this way for a new registration, though.
-  function do_couponenvelope($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
-    
-    $id = $args[$CUSTOMER];
-    $lock = $db->lock($this->accttimekey($id));
-    $res = $this->do_couponenvelope_internal($args, $msg, $id);
-    $db->unlock($lock);
-    return $res;
-  }
-
-  function do_couponenvelope_internal($args, $msg, $id) {
-    $t = $this->t;
-
-    $res = $this->do_couponenvelope_raw($args, $id);
-    if (is_string($res)) return $this->failmsg($msg, $res);
-    return $this->bankmsg($ATCOUPONENVELOPE, $msg);
-  }
-
-  // Called by do_register to process coupons there
-  // Returns an error string or false
-  function do_couponenvelope_raw($args, $id) {
-    $t = $this->t;
-    $db = $this->db;
-    $bankid = $this->bankid;
-    $parser = $this->parser;
-    $u = $this->u;
-
-    $encryptedto = $args[$ID];
-    if ($encryptedto != $bankid) {
-      return "Coupon not encrypted to bank";
-    }
-    $coupon = $args[$ENCRYPTEDCOUPON];
-    $coupon = $this->ssl->privkey_decrypt($coupon, $this->privkey);
-    if ($u->is_coupon_number($coupon)) {
-      $coupon_number = $coupon;
-    } else {
-      $args = $this->unpack_bankmsg($coupon, $COUPON);
-      if (is_string($args)) return "Error parsing coupon: $args";
-      if ($bankid != $args[$CUSTOMER]) {
-        return "Coupon not signed by bank";
-      }
-      $coupon_number = $args[$COUPON];
-    }
-
-    $coupon_number_hash = sha1($coupon_number);
-
-    $key = $COUPON . "/$coupon_number_hash";
-    $lock = $db->lock($key);
-    $outbox_item = $db->get($key);
-    if ($outbox_item) $db->put($key, '');
-    $db->unlock($lock);
-
-    if (!$outbox_item) {
-      $key = $this->inboxkey($id);
-      $inbox = $db->contents($key);
-      foreach ($inbox as $time) {
-        $item = $db->get("$key/$time");
-        if (strstr($item, ',' . $COUPON . ',')) {
-          $reqs = $parser->parse($item);
-          if ($reqs && count($reqs) > 1) {
-            $req = $reqs[1];
-            $msg = $u->match_pattern($req);
-            if (!is_string($msg)) {
-              if ($coupon_number_hash == $msg[$COUPON]) {
-                // Customer already redeemded this coupon.
-                // Success if he tries to do it again.
-                return false;
-              }
-            }
-          }
-        }
-      }
-      return "Coupon already redeemed";
-    }
-
-    $args = $this->unpack_bankmsg($outbox_item, $ATSPEND);
-    if (is_string($args)) {
-      // Make sure the spender can cancel the coupon
-      $db->put($key, $outbox_item);
-      return "While unpacking coupon spend: $args";
-    }
-    $reqs = $args[$this->unpack_reqs_key];
-    $spendreq = $args[$MSG];
-    $spendmsg = $parser->get_parsemsg($spendreq);
-    $feemsg = '';
-    if (count($reqs) > 1) {
-      $feereq = $reqs[1];
-      $feemsg = $parser->get_parsemsg($feereq);
-    }
-    $newtime = $this->gettime();
-    $inbox_item = $this->bankmsg($INBOX, $newtime, $spendmsg);
-    $cnhmsg = $this->bankmsg($COUPONNUMBERHASH, $coupon_number_hash);
-    $inbox_item .= $cnhmsg;
-    if ($feemsg) $inbox_item .= ".$feemsg";
-
-    $key = $this->inboxkey($id) . "/$newtime";
-    $db->put($key, $inbox_item);
-    return false;
-  }
-
-  // Query inbox
-  function do_getinbox($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
-
-    $id = $args[$CUSTOMER];
-    $lock = $db->lock($this->accttimekey($id));
-    $res = $this->do_getinbox_internal($args, $msg, $id);
-    $db->unlock($lock);
-    return $res;
-  }
-
-  function do_getinbox_internal($args, $msg, $id) {
-    $t = $this->t;
-    $u = $this->u;
-    $db = $this->db;
-
-    $err = $this->checkreq($args, $msg);
-    if ($err) return $err;
-
-    $inbox = $this->scaninbox($id);
-    $res = $this->bankmsg($ATGETINBOX, $msg);
-    $last = 1;
-    foreach ($inbox as $inmsg) {
-      $res .= '.' . $inmsg;
-      $args = $u->match_message($inmsg);
-      if ($args && !is_string($args)) {
-        if ($args[$REQUEST] == $INBOX) {
-          $time = $args[$TIME];
-          if (bccomp($time, $last) > 0) $last = $time;
-        }
-        $args = $u->match_pattern($args[$MSG]);
-      }
-      $err = false;
-      if (!$args) $err = 'Inbox parse error';
-      elseif (is_string($args)) $err = "Inbox match error: $args";
-      elseif ($args[$ID] != $id && $args[$ID] != $COUPON) {
-        $err = "Inbox entry for wrong ID: " . $args[$ID];
-      }
-      if ($err) return $this->failmsg($msg, $err);
-    }
-
-    $key = $this->storagefeekey($id);
-    $assetids = $db->contents($key);
-    foreach ($assetids as $assetid) {
-      $storagefee = $db->get("$key/$assetid");
-      $res .= ".$storagefee";
-    }
-
-    // Update last time
-    $db->put($this->acctlastkey($id), $last);
-
-    /* Not pre-allocating timestamps any more
-     * // Append the timestamps, if there are any inbox entries
-     * if (count($inbox) > 0) {
-     *   // Avoid bumping the global timestamp if the customer already
-     *   // has two timestamps > the highest inbox timestamp.
-     *   $time = $args[$TIME];
-     *   $key = $this->accttimekey($id);
-     *   $times = explode(',', $db->get($key));
-     *   if (!(count($times) >= 2 &&
-     *         bccomp($times[0], $time) > 0 &&
-     *         bccomp($times[1], $time) > 0)) {
-     *     $times = array($this->gettime(), $this->gettime());
-     *     $db->put($key, implode(',', $times));
-     *   }
-     *   $res .= '.' . $this->bankmsg($TIME, $id, $times[0]);
-     *   $res .= '.' . $this->bankmsg($TIME, $id, $times[1]);
-     * }
-     */
-    return $res;
-  }
 
   function do_processinbox($args, $reqs, $msg) {
     $t = $this->t;

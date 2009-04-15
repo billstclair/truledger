@@ -177,7 +177,7 @@
         (and (>= code #.(char-code #\A))
              (<= code #.(char-code #\F))))))
 
-(defun coupon-p (x)
+(defun coupon-number-p (x)
   "Predicate. True if arg looks like a coupon number."
   (and (stringp x)
        (eql 32 (length x))

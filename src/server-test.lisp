@@ -56,6 +56,14 @@
          (msg (apply 'custmsg privkey id $REGISTER (bankid server) pubkey
                      (and name (list name)))))
     (process server msg)))
+
+(defun test-getinbox (server &optional (privkey (privkey server)))
+  (let ((id (privkey-id privkey)))
+    (process server (custmsg privkey 
+                             id
+                             $GETINBOX
+                             (bankid server)
+                             (test-newreq server privkey id)))))
                       
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
