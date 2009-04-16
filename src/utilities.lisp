@@ -121,6 +121,15 @@
 (defun assocequal (item alist)
   (assoc item alist :test 'equal))
 
+(defun make-equal-hash (&rest keys-and-values)
+  (let ((hash (make-hash-table :test 'equal)))
+    (loop
+       (when (null keys-and-values) (return))
+       (let ((key (pop keys-and-values))
+             (value (pop keys-and-values)))
+         (setf (gethash key hash) value)))
+    hash))
+
 (defun strcat (&rest strings)
   "Concatenate a bunch of strings"
   (apply #'concatenate 'string (mapcar 'string strings)))
