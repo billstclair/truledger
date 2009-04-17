@@ -861,7 +861,7 @@
                       balancehash (getarg $HASH reqargs)
                       balancehash-cnt (getarg $COUNT reqargs)))
                (t
-                (error "~s not valid for spend. Only ~s, ~s, ~s, ~s, ~, & ~s"
+                (error "~s not valid for spend. Only ~s, ~s, ~s, ~s, ~s, & ~s"
                        request
                        $TRANFEE $STORAGEFEE $FRACTION
                        $BALANCE $OUTBOXHASH $BALANCEHASH))))
@@ -914,7 +914,6 @@
     ;; as we had before.
     (unless (eql (hash-table-count oldneg) (hash-table-count newneg))
       (error "Negative balance count not conserved"))
-
     (loop
        for old being the hash-keys of oldneg
        do
@@ -1253,6 +1252,11 @@
 
     res))
 
+(defun checktime (was sb place)
+  (unless (equal was sb)
+    (error "Time mismatch in ~a, was: ~s, sb: ~s"
+           place was sb)))
+
 (defun do-processinbox-internal (server args reqs)
   (check-type server server)
   (let* ((db (db server))
@@ -1269,19 +1273,28 @@
          (storagemsgs (make-equal-hash))
          (fracmsgs (make-equal-hash))
          (inbox-key (inbox-key id))
+         (acctbals (make-equal-hash))
          (bals (make-equal-hash))
-         (outboxtimes nil)
+         (tokens 0)
          (oldneg (make-equal-hash))
          (newneg (make-equal-hash))
+         (charges (make-equal-hash))
          (tobecharged nil)
          (inboxmsgs nil)
-         (acctbals (make-equal-hash))
          (res (bankmsg server $ATPROCESSINBOX (get-parsemsg (car reqs))))
-         (tokens 0)
+         (outboxtimes nil)
          (outboxhashreq nil)
+         (outboxhashmsg nil)
+         (outboxhash nil)
+         (outboxcnt nil)
          (balancehashreq nil)
+         (balancehashmsg nil)
+         (balancehash nil)
+         (balancehashcnt nil)
          (fracamts (make-equal-hash))
-         (storageamts (make-equal-hash)))
+         (storageamts (make-equal-hash))
+         (storagefees (make-equal-hash))
+         (fractions (make-equal-hash)))
 
     ;; Burn the transaction, even if balances don't match.
     (deq-time server id time)
@@ -1337,37 +1350,34 @@
         (when (< (bccomp amt 0) 0)
           (setf (gethash asset oldneg) spendargs))
         (setf (gethash asset bals) (bcadd (gethash asset bals 0) amt))
-        (push (make-equal-hash $AMOUNT amt
-                               $TIME spendtime
-                               $ASSET asset)
-              tobecharged)))
-    (setq tobecharged (nreverse tobecharged))
+        (push (list amt spendtime asset) tobecharged)))
 
     (let ((state (make-balance-state :acctbals acctbals
                                      :bals bals
                                      :tokens tokens
                                      :oldneg oldneg
                                      :newneg newneg
-                                     :time time)))
+                                     :time time
+                                     :charges charges)))
 
       ;; Go through the rest of the processinbox items, collecting
       ;; accept and reject instructions and balances.
       (dolist (req (cdr reqs))
         (let* ((reqmsg (get-parsemsg req))
                (args (match-pattern parser req))
-               (request (getarg $REQUEST args)))
+               (request (getarg $REQUEST args))
+               (argstime (getarg $TIME args)))
           (unless (equal (getarg $CUSTOMER args) id)
             (error "Item not from same customer as ~s" $PROCESSINBOX))
           (cond ((or (equal request $SPENDACCEPT)
                      (equal request $SPENDREJECT))
                  ;; $SPENDACCEPT => array($BANKID,$TIME,$id,$NOTE=>1),
                  ;; $SPENDREJECT => array($BANKID,$TIME,$id,$NOTE=>1),
-                 (let* ((itemtime (getarg $TIME args))
-                        (otherid (getarg $ID args))
-                        (itemargs (gethash itemtime spends)))
+                 (let* ((otherid (getarg $ID args))
+                        (itemargs (gethash argstime spends)))
                    (unless itemargs
-                     (error "'~a' not matched in '~a' item, itemtime: ~a"
-                            request $PROCESSINBOX itemtime))
+                     (error "'~a' not matched in '~a' item, argstime: ~a"
+                            request $PROCESSINBOX argstime))
                    (cond ((equal request $SPENDACCEPT)
                           ;; Accepting the payment. Credit it.
                           (let ((itemasset (getarg $ASSET itemargs))
@@ -1379,14 +1389,11 @@
                               (setf (gethash itemasset oldneg) itemargs))
                             (setf (gethash itemasset bals)
                                   (bcadd (gethash itemasset bals) itemamt))
-                            (push (make-equal-hash $AMOUNT itemamt
-                                                   $TIME itemtime
-                                                   $ASSET itemasset)
-                                  tobecharged))
+                            (push (list itemamt itemtime itemasset) tobecharged))
                           (dotcat res "." (bankmsg server $ATSPENDACCEPT reqmsg)))
                          (t
                           ;; Rejecting the payment. Credit the fee.
-                          (let ((feeargs (gethash itemtime fees)))
+                          (let ((feeargs (gethash argstime fees)))
                             (when feeargs
                               (let ((feeasset (getarg $ASSET feeargs))
                                     (feeamt (getarg $AMOUNT feeargs)))
@@ -1406,9 +1413,7 @@
                                                     inboxtime reqmsg))))
                      (push (list otherid inboxtime inboxmsg) inboxmsgs))))
                 ((equal request $STORAGEFEE)
-                 (unless (equal time (getarg $TIME args))
-                   (error "Time mismatch in storagefee item, was: ~s, sb: ~s"
-                          (getarg $TIME args) time))
+                 (checktime argstime time "storagefee item")
                  (let ((storageasset (getarg $ASSET args))
                        (storageamt (getarg $AMOUNT args)))
                    (when (gethash storageasset storagemsgs)
@@ -1417,9 +1422,7 @@
                          (gethash storageasset storagemsgs)
                          (bankmsg server $ATSTORAGEFEE reqmsg))))
                 ((equal request $FRACTION)
-                 (unless (equal time (getarg $TIME args))
-                   (error "Time mismatch in fraction item, was: ~s, sb: ~s"
-                          (getarg $TIME args) time))
+                 (checktime argstime time "fraction item")
                  (let ((fracasset (getarg $ASSET args))
                        (fracamt (getarg $AMOUNT args)))
                    (when (gethash fracasset fracmsgs)
@@ -1428,106 +1431,85 @@
                          (gethash fracasset fracmsgs)
                          (bankmsg server $ATFRACTION reqmsg))))
                 ((equal request $OUTBOXHASH)
-)))))))
+                 (when outboxhashreq
+                   (error "~s appeared multiple times" $OUTBOXHASH))
+                 (checktime argstime time "outboxhash")
+                 (setq outboxhashreq req
+                       outboxhashmsg (get-parsemsg req)
+                       outboxhash (getarg $HASH args)
+                       outboxcnt (getarg $COUNT args)))
+                ((equal request $BALANCE)
+                 (checktime argstime time "balance item")
+                 (handle-balance-msg server id reqmsg args state))
+                ((equal request $BALANCEHASH)
+                 (when balancehashreq
+                   (error "~s appeared multiple times" $BALANCEHASH))
+                 (checktime argstime time "balancehash")
+                 (setq balancehashreq req
+                       balancehashmsg (get-parsemsg req)
+                       balancehash (getarg $HASH args)
+                       balancehashcnt (getarg $COUNT args)))
+                (t
+                 (error "~s not valid for ~s, only ~s, ~s, ~s, ~s, ~s, ~s, & ~s"
+                        request $PROCESSINBOX
+                        $SPENDACCEPT $SPENDREJECT
+                        $STORAGEFEE $FRACTION $OUTBOXHASH
+                        $BALANCE $BALANCEHASH)))))
+
+      (setq tokens (balance-state-tokens state)))
+
+    ;; Check that we have exactly as many negative balances after the transaction
+    ;; as we had before.
+    (unless (eql (hash-table-count oldneg) (hash-table-count newneg))
+      (error "Negative balance count not conserved"))
+    (loop
+       for asset being the hash-keys of oldneg
+       do
+       (unless (gethash asset newneg)
+         (error "Negative balance assets not conserved")))
+
+    ;; Charge the new balance file tokens
+    (let ((tokenid (tokenid server)))
+      (setf (gethash tokenid bals) (bcsub (gethash tokenid bals 0) tokens)))
+
+    ;; Work the storage fees into the balances
+    (unless (eql 0 (hash-table-count charges))
+      ;; Add storage fees for accepted spends and affirmed rejects
+      (loop
+         for (itemamt itemtime itemasset) in tobecharged
+         for assetinfo = (gethash itemasset charges)
+         when assetinfo
+         do
+         (let ((percent (storage-info-percent assetinfo)))
+           (when (and percent (not (eql 0 (bccomp percent 0))))
+             (let* ((digits (storage-info-digits assetinfo))
+                    (itemfee (storage-fee itemamt itemtime time percent digits))
+                    (storagefee (bcadd (storage-info-fee assetinfo)
+                                       itemfee digits)))
+               (setf (storage-info-fee assetinfo) storagefee)))))
+
+      (loop
+         for itemasset being the hash-key using (hash-value assetinfo) of charges
+         for percent = (storage-info-percent assetinfo)
+         when (and percent (not (eql 0 (bccomp percent 0))))
+         do
+           (let* ((digits (storage-info-digits assetinfo))
+                  (storagefee (storage-info-fee assetinfo))
+                  (bal (bcsub (gethash itemasset bals) storagefee digits))
+                  (fraction (bcadd (gethash itemasset fractions)
+                                   (storage-info-fraction assetinfo)
+                                   digits)))
+             (multiple-value-setq (bal fraction)
+               (normalize-balance bal fraction digits))
+             (setf (gethash itemasset bals) bal
+                   (storage-info-fraction assetinfo) fraction
+                   (gethash itemasset storagefees) storagefee
+                   (gethash itemasset fractions) fraction))))
+
+))
+
 #||
 ;; Continue here
-
-        if ($outboxhashreq) {
-          return $this->failmsg($msg, $OUTBOXHASH . " appeared multiple times");
-        }
-        if ($time != $args[$TIME]) {
-          return $this->failmsg($msg, "Time mismatch in outboxhash");
-        }
-        $outboxhashreq = $req;
-        $outboxhashmsg = $parser->get_parsemsg($req);
-        $outboxhash = $args[$HASH];
-        $outboxcnt = $args[$COUNT];
-      } elseif ($request == $BALANCE) {
-        if ($time != $args[$TIME]) {
-          $argstime = $args[$TIME];
-          return $this->failmsg($msg, "Time mismatch in balance item, was: $argstime, sb: $time");
-        }
-        $errmsg = $this->handle_balance_msg($id, $reqmsg, $args, $state);
-        if ($errmsg) return $this->failmsg($msg, $errmsg);
-      } elseif ($request == $BALANCEHASH) {
-        if ($balancehashreq) {
-          return $this->failmsg($msg, $BALANCEHASH . " appeared multiple times");
-        }
-        if ($time != $args[$TIME]) {
-          return $this->failmsg($msg, "Time mismatch in balancehash");
-        }
-        $balancehashreq = $req;
-        $balancehash = $args[$HASH];
-        $balancehashcnt = $args[$COUNT];
-        $balancehashmsg = $parser->get_parsemsg($req);
-      } else {
-        return $this->failmsg($msg, "$request not valid for " . $PROCESSINBOX .
-                              ". Only " . $SPENDACCEPT . ", " . $SPENDREJECT .
-                              ", " . $OUTBOXHASH . ", " .
-                              $BALANCE . ", &" . $BALANCEHASH);
-      }
-    }
-
-    $acctbals = $state['acctbals'];
-    $bals = $state['bals'];
-    $tokens = $state['tokens'];
-    $oldneg = $state['oldneg'];
-    $newneg = $state['newneg'];
-    $charges = $state['charges'];
-
-    // Check that we have exactly as many negative balances after the transaction
-    // as we had before.
-    if (count($oldneg) != count($newneg)) {
-      return $this->failmsg($msg, "Negative balance count not conserved");
-    }
-    foreach ($oldneg as $asset => $acct) {
-      if (!$newneg[$asset]) {
-        return $this->failmsg($msg, "Negative balance assets not conserved");
-      }
-    }
-
-    // Charge the new balance file tokens
-    $tokenid = $this->tokenid;
-    $bals[$tokenid] = bcsub(@$bals[$tokenid], $tokens);
-
-    // Work the storage fees into the balances
-    $storagefees = array();
-    $fractions = array();
-    if ($charges) {
-      // Add storage fees for accepted spends and affirmed rejects
-      foreach ($tobecharged as $item) {
-        $itemamt = $item[$AMOUNT];
-        $itemtime = $item[$TIME];
-        $itemasset = $item[$ASSET];
-        $assetinfo = $charges[$itemasset];
-        if ($assetinfo) {
-          $percent = $assetinfo['percent'];
-          if ($percent) {
-            $digits = $assetinfo['digits'];
-            $itemfee = $u->storagefee($itemamt, $itemtime, $time, $percent, $digits);
-            $storagefee = bcadd($assetinfo['storagefee'], $itemfee, $digits);
-            $assetinfo['storagefee'] = $storagefee;
-            $charges[$itemasset] = $assetinfo;            
-          }
-        }
-      }
-      foreach ($charges as $itemasset => $assetinfo) {
-        $percent = @$assetinfo['percent'];
-        if ($percent) {
-          $digits = $assetinfo['digits'];
-          $storagefee = @$assetinfo['storagefee'];
-          $bal = bcsub(@$bals[$itemasset], $storagefee, $digits);
-          $fraction = bcadd(@$fractions[$itemasset], @$assetinfo['fraction'], $digits);
-          $u->normalize_balance($bal, $fraction, $digits);
-          $bals[$itemasset] = $bal;
-          $assetinfo['fraction'] = $fraction;
-          $charges[$itemasset] = $assetinfo;
-          $storagefees[$itemasset] = $storagefee;
-          $fractions[$itemasset] = $fraction;
-        }
-      }
-    }
-
     foreach ($storageamts as $storageasset => $storageamt) {
       $storagefee = $storagefees[$storageasset];
       if (bccomp($storageamt, $storagefee) != 0) {

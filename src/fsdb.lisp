@@ -128,8 +128,6 @@
       (file-namestring path)
       (car (last (pathname-directory path)))))
 
-;; This doesn't work. Directories come with "/" at the end, so
-;; file-namestring returns "".
 (defmethod db-contents ((db fsdb) &optional key)
   (let ((dir (directory (db-filename db (strcat key "/*.*"))
                         :directories t
