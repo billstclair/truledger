@@ -216,7 +216,7 @@
                       (setq fee  "0"))
                      ((> (bccomp fee balance) 0)
                       (setq fee balance)))
-               (values fee (bcsub balance fee)))))))
+               (values (bcsub balance fee) fee))))))
 
 (defun normalize-balance (balance fraction digits)
   "Add together BALANCE & FRACTION, to DIGITS precision.

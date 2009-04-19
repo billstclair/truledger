@@ -133,9 +133,9 @@
     ASSETID - the asset ID
    Return values:
     1) storage fee percent
-    2) the ID of the asset issuer
-    3) the fraction balance for ID/ASSETID
-    4) the time of the fraction"
+    2) the fraction balance for ID/ASSETID
+    3) the time of the fraction
+    4) the ID of the asset issuer"
   (let* ((parser (parser server))
          (db (db server))
          (msg (db-get db (strcat $ASSET "/" assetid))))
@@ -162,7 +162,7 @@
               (setq args (unpack-bankmsg server msg $ATFRACTION $FRACTION)
                     fraction (getarg $AMOUNT args)
                     fractime (getarg $TIME args)))
-            (values percent issuer fraction fractime)))))))
+            (values percent fraction fractime issuer)))))))
 
 (defun storage-fee-key (id &optional assetid)
   (let ((res (strcat (account-dir id) $STORAGEFEE)))
@@ -219,10 +219,10 @@
         (and (>= code #.(char-code #\a)) (<= code #.(char-code #\z)))
         (and (>= code #.(char-code #\A)) (<= code #.(char-code #\Z))))))
 
-(defun is-numeric-p (string)
+(defun is-numeric-p (string &optional integer-p)
   (loop
      with firstp = t
-     with sawdotp = nil
+     with sawdotp = integer-p
      for chr across string
      for code = (char-code chr)
      do
@@ -556,7 +556,7 @@
   (let ((asset-info (cdr (assocequal asset (balance-state-charges state)))))
     (unless asset-info
       (unless (equal asset (tokenid server))
-        (multiple-value-bind (percent issuer fraction fractime)
+        (multiple-value-bind (percent fraction fractime issuer)
             (storage-info server id asset)
           (setq asset-info (make-storage-info :percent percent
                                               :issuer issuer
@@ -1665,369 +1665,283 @@
       (error "Outbox inner messages corrupted"))
     (cons spendargs feeargs)))
 
+(define-message-handler do-storagefees $STORAGEFEES (server args reqs)
+  ;; Process a storagefees request
+  (let ((db (db server))
+        (bankid (bankid server))
+        (id (getarg $CUSTOMER args)))
+    (with-db-lock (db (acct-time-key id))
+      (checkreq server args)
+      (let* ((inboxkey (inbox-key id))
+             (key (storage-fee-key id))
+             (assetids (db-contents db key)))
+        (dolist (assetid assetids)
+          (let* ((storagefee (db-get db (strcat key "/" assetid)))
+                 (args (unpack-bankmsg server storagefee $STORAGEFEE))
+                 (amount (getarg $AMOUNT args)))
+            (unless (equal assetid (getarg $ASSET args))
+              (error "Asset mismatch, sb: ~s, was: ~s"
+                     assetid (getarg $ASSET args)))
+            (multiple-value-bind (percent fraction)
+                (storage-info server id assetid)
+              (let ((digits (fraction-digits percent)))
+                (multiple-value-setq (amount fraction)
+                  (normalize-balance amount fraction digits)))
+              (when (> (bccomp amount 0) 0)
+                (let* ((time (gettime server))
+                       (storagefee (bankmsg server $STORAGEFEE
+                                            bankid time assetid fraction))
+                       (spend (bankmsg server $SPEND
+                                       bankid time id assetid amount
+                                       "Storage fees"))
+                       (inbox (bankmsg server $INBOX time spend)))
+                  (db-put db (strcat key "/" assetid) storagefee)
+                  (db-put db (strcat inboxkey "/" time) inbox)))))))
+      (bankmsg server $ATSTORAGEFEES (get-parsemsg (car reqs))))))
 
-#||
-;; Continue here
+(define-message-handler do-getasset $GETASSET (server args reqs)
+  (declare (ignore reqs))
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args)))
+    (with-db-lock (db (acct-time-key id))
+      (checkreq server args)
+      (let ((assetid (getarg $ASSET args)))
+        (or (db-get db (strcat $ASSET "/" assetid))
+            (error "Unknown asset: ~s" assetid))))))
 
-  // Process a storagefees request
-  function do_storagefees($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
+(define-message-handler do-asset $ASSET (server args reqs)
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args))
+        (bankid (bankid server))
+        (parser (parser server)))
+    (with-db-lock (db (acct-time-key id))
 
-    $id = $args[$CUSTOMER];
-    $lock = $db->lock($this->accttimekey($id));
-    $res = $this->do_storagefees_internal($msg, $args);
-    $db->unlock($lock);
-    return $res;
-  }
+      (when (< (length reqs) 2)
+        (error "No balance items"))
 
-  function do_storagefees_internal($msg, $args) {
-    $t = $this->t;
-    $db = $this->db;
-    $u = $this->u;
-    $bankid = $this->bankid;
+      ;; $ASSET => array($BANKID,$ASSET,$SCALE,$PRECISION,$ASSETNAME),
+      (let* ((assetid (getarg $ASSET args))
+             (scale (getarg $SCALE args))
+             (precision (getarg $PRECISION args))
+             (assetname (getarg $ASSETNAME args))
+             (storage-msg nil)
+             (exists-p (is-asset-p server assetid))
+             (tokens (if (equal id bankid) "0" "1"))
+             (bals (make-equal-hash))
+             (acctbals (make-equal-hash))
+             (oldneg (make-equal-hash))
+             (newneg (make-equal-hash))
+             (tokenid (tokenid server))
+             (time nil)
+             (state (make-balance-state
+                     :acctbals acctbals
+                     :bals bals
+                     :tokens tokens
+                     :oldneg oldneg
+                     :newneg newneg
+                     ;; 'time' initialized below
+                     ))
+             (balancehashreq nil)
+             (balancehash nil)
+             (balancehashcnt nil)
+             (balancehashmsg nil)
+             )
 
-    $err = $this->checkreq($args, $msg);
-    if ($err) return $err;
+        (unless (and (is-numeric-p scale t) (is-numeric-p precision t)
+                     (> (bccomp scale 0) 0) (> (bccomp precision 0) 0))
+          (error "Scale & precision must be integers >= 0"))
 
-    $id = $args[$CUSTOMER];
-    $inboxkey = $this->inboxkey($id);
-    $key = $this->storagefeekey($id);
-    $assetids = $db->contents($key);
-    foreach ($assetids as $assetid) {
-      $storagefee = $db->get("$key/$assetid");
-      $args = $this->unpack_bankmsg($storagefee, $STORAGEFEE);
-      if (is_string($args)) {
-        return $this->failmsg($msg, "storagefee parse error: $args");
-      }
-      if ($assetid != $args[$ASSET]) {
-        $feeasset = $args[$ASSET];
-        return $this->failmsg($msg, "Asset mismatch, sb: $assetid, was: $feeasset");
-      }
-      $amount = $args[$AMOUNT];
-      $percent = $this->storageinfo($id, $assetid, $issuer, $fraction, $fractime);
-      $digits = $u->fraction_digits($percent);
-      $u->normalize_balance($amount, $fraction, $digits);
-      if (bccomp($amount, 0, 0) > 0) {
-        $time = $this->gettime();
-        $storagefee = $this->bankmsg($STORAGEFEE, $bankid, $time, $assetid, $fraction);
-        $spend = $this->bankmsg($SPEND, $bankid, $time, $id, $assetid, $amount, "Storage fees");
-        $inbox = $this->bankmsg($INBOX, $time, $spend);
-        $db->put("$key/$assetid", $storagefee);
-        $db->put("$inboxkey/$time", $inbox);
-      }
-    }
-    
-    return $this->bankmsg($ATSTORAGEFEES, $msg);
-  }
+        (when (> (bccomp scale 10) 0)
+          (error "Maximum scale is 10"))
 
-  function do_getasset($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
+        ;; Don't really need this restriction. Maybe widen it a bit?
+        (unless (every #'is-alphanumeric-p assetname)
+          (error "Asset name must contain only letters and digits"))
 
-    $err = $this->checkreq($args, $msg);
-    if ($err) return $err;
+        (unless (equal assetid (assetid id scale precision assetname))
+          (error "Asset id is not sha1 hash of 'id,scale,precision,name'"))
 
-    $assetid = $args[$ASSET];
-    $asset = $db->get($ASSET . "/$assetid");
-    if (!$asset) return $this->failmsg($msg, "Unknown asset: $assetid");
-    return $asset;
-  }
+        (unless exists-p (setf (gethash assetid bals) "-1"))
+        (setf (gethash tokenid bals) "0")
 
-  function do_asset($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
+        (dolist (req (cdr reqs))
+          (let* ((reqargs (match-pattern parser req))
+                 (reqid (getarg $CUSTOMER reqargs))
+                 (request (getarg $REQUEST reqargs))
+                 (reqtime (getarg $TIME reqargs))
+                 (reqmsg (get-parsemsg req)))
+            (unless time
+              ;; Burn the transaction
+              (setq time reqtime)
+              (deq-time server id time)
+              (setf (balance-state-time state) time))
+            (unless (equal reqid id) (error "ID mismatch"))
+            (cond ((equal request $STORAGE)
+                   (when storage-msg (error "Duplicate storage fee"))
+                   (setq storage-msg reqmsg))
+                  ((equal request $BALANCE)
+                   (handle-balance-msg server id reqmsg args state assetid))
+                  ((equal request $BALANCEHASH)
+                   (when balancehashreq
+                     (error "~s appeared multiple times" $BALANCEHASH))
+                   (setq balancehashreq req
+                         balancehash (getarg $HASH args)
+                         balancehashcnt (getarg $COUNT args)
+                         balancehashmsg reqmsg))
+                  (t (error "~s not valid for asset creation. Only ~s, ~s, & ~s"
+                            request $STORAGE $BALANCE $BALANCEHASH)))))
 
-    $id = $args[$CUSTOMER];
-    $lock = $db->lock($this->accttimekey($id));
-    $res = $this->do_asset_internal($args, $reqs, $msg);
-    $db->unlock($lock);
-    return $res;
-  }
+        ;; Check that we have exactly as many negative balances after the transaction
+        ;; as we had before, plus one for the new asset.
+        (unless exists-p (setf (gethash assetid oldneg) $MAIN))
+        (unless (equal (hash-table-count oldneg) (hash-table-count newneg))
+          (error "Negative balance count not conserved"))
+        (loop
+           for asset being the hash-keys of oldneg
+           do
+           (unless (gethash asset newneg)
+             (error "Negative balance assets not conserved")))
 
-  function do_asset_internal($args, $reqs, $msg) {
-    $t = $this->t;
-    $u = $this->u;
-    $db = $this->db;
-    $bankid = $this->bankid;
-    $parser = $this->parser;
+        ;; Charge the new file tokens
+        (setq tokens (balance-state-tokens state))
+        (setf (gethash tokenid bals) (bcsub (gethash tokenid bals) tokens))
 
-    if (count($reqs) < 2) {
-      return $this->failmsg($msg, "No balance items");
-    }
+        (let ((errmsg nil))
+          ;; Check that the balances in the spend message, match the current balance,
+          ;; minus amount spent minus fees.
+          (loop
+             for balasset being the hash-key using (hash-value balamount) of bals
+             unless (eql 0 (bccomp balamount 0))
+             do
+             (let ((name (if (equal balasset assetid)
+                             assetname
+                             (lookup-asset-name server balasset))))
+               (if errmsg (dotcat errmsg ", ") (setq errmsg ""))
+               (dotcat errmsg name ": " balamount)))
+          (when errmsg (error "Balance discrepancies: ~s" errmsg)))
 
-    // $ASSET => array($BANKID,$ASSET,$SCALE,$PRECISION,$ASSETNAME),
-    $id = $args[$CUSTOMER];
-    $assetid = $args[$ASSET];
-    $scale = $args[$SCALE];
-    $precision = $args[$PRECISION];
-    $assetname = $args[$ASSETNAME];
-    $storage_msg = false;
+        ;; balancehash must be included
+        (unless balancehashreq (error "~s missing" $BALANCEHASH))
 
-    if (!(is_numeric($scale) && is_numeric($precision) &&
-          $scale >= 0 && $precision >= 0)) {
-      return $this->failmsg($msg, "Scale & precision must be integers >= 0");
-    }
-
-    if (bccomp($scale, 10) > 0) {
-      return $this->failmsg($msg, 'Maximum scale is 10');
-    }
-
-    // Don't really need this restriction. Maybe widen it a bit?
-    if (!$this->is_alphanumeric($assetname)) {
-      return $this->failmsg($msg, "Asset name must contain only letters and digits");
-    }
-
-    if ($assetid != $u->assetid($id, $scale, $precision, $assetname)) {
-      return $this->failmsg
-        ($msg, "Asset id is not sha1 hash of 'id,scale,precision,name'");
-    }
-
-    $exists = ($this->is_asset($assetid));
-
-    $tokens = 1;       // costs 1 token for the /asset/<assetid> file
-    if ($id == $bankid) $tokens = 0;
-
-    $bals = array();
-    if (!$exists) $bals[$assetid] = -1;
-    $acctbals = array();
-    $oldneg = array();
-    $newneg = array();
-
-    $tokenid = $this->tokenid;
-    $bals[$tokenid] = 0;
-
-    $state = array('acctbals' => $acctbals,
-                   'bals' => $bals,
-                   'tokens' => $tokens,
-                   'oldneg' => $oldneg,
-                   'newneg' => $newneg
-                   // 'time' initialized below
-                   );
-
-    $balancehashreq = false;
-
-    for ($i=1; $i<count($reqs); $i++) {
-      $req = $reqs[$i];
-      $args = $u->match_pattern($req);
-      if (is_string($req_args)) return $this->failmsg($msg, $args); // match error
-      $reqid = $args[$CUSTOMER];
-      $request = $args[$REQUEST];
-      $reqtime = $args[$TIME];
-      if ($i == 1) {
-        // Burn the transaction
-        $time = $reqtime;
-        $err = $this->deq_time($id, $time);
-        if ($err) return $this->failmsg($msg, $err);
-        $state['time'] = $time;
-      }
-      if ($reqid != $id) return $this->failmsg($msg, "ID mismatch");
-      elseif ($request == $STORAGE) {
-        if ($storage_msg) return $this->failmsg($msg, "Duplicate storage fee");
-        $storage_msg = $parser->get_parsemsg($req);
-      }
-      elseif ($request == $BALANCE) {
-        $reqmsg = $parser->get_parsemsg($req);
-        $errmsg = $this->handle_balance_msg($id, $reqmsg, $args, $state, $assetid);
-        if ($errmsg) return $this->failmsg($msg, $errmsg);
-      } elseif ($request == $BALANCEHASH) {
-        if ($balancehashreq) {
-          return $this->failmsg($msg, $BALANCEHASH . " appeared multiple times");
-        }
-        $balancehashreq = $req;
-        $balancehash = $args[$HASH];
-        $balancehashcnt = $args[$COUNT];
-        $balancehashmsg = $parser->get_parsemsg($req);
-      } else {
-        return $this->failmsg($msg, "$request not valid for asset creation. Only " .
-                              $BALANCE . ' & ' . $BALANCEHASH);
-      }
-    }
-
-    $acctbals = $state['acctbals'];
-    $bals = $state['bals'];
-    $tokens = $state['tokens'];
-    $oldneg = $state['oldneg'];
-    $newneg = $state['newneg'];
-
-    // Check that we have exactly as many negative balances after the transaction
-    // as we had before, plus one for the new asset
-    if (!$exists) $oldneg[$assetid] = $MAIN;
-    if (count($oldneg) != count($newneg)) {
-      return $this->failmsg($msg, "Negative balance count not conserved");
-    }
-    foreach ($oldneg as $asset => $acct) {
-      if (!$newneg[$asset]) {
-        return $this->failmsg($msg, "Negative balance assets not conserved");
-      }
-    }
-
-    // Charge the new file tokens
-    $bals[$tokenid] = bcsub($bals[$tokenid], $tokens);
-
-    $errmsg = "";
-    // Check that the balances in the spend message, match the current balance,
-    // minus amount spent minus fees.
-    foreach ($bals as $balasset => $balamount) {
-      if ($balamount != 0) {
-        if ($balasset == $assetid) $name = $assetname;
-        else $name = $this->lookup_asset_name($balasset);
-        if ($errmsg) $errmsg .= ', ';
-        $errmsg .= "$name: $balamount";
-      }
-    }
-    if ($errmsg != '') return $this->failmsg($msg, "Balance discrepancies: $errmsg");
-
-    // balancehash must be included
-    if (!$balancehashreq) {
-      return $this->failmsg($msg, $BALANCEHASH . " missing");
-    } else {
-      $hasharray = $u->balancehash($db, $id, $this, $acctbals);
-      $hash = $hasharray[$HASH];
-      $hashcnt = $hasharray[$COUNT];
-      if ($balancehash != $hash || $balancehashcnt != $hashcnt) {
-        return $this->failmsg($msg, $BALANCEHASH .
-                              " mismatch, hash: $balancehash, sb: $hash, count: $balancehashcnt, sb: $hashcnt");
-      }
-    }
+        (multiple-value-bind (hash hashcnt)
+            (balancehash db
+                         (lambda (msg) (unpack-bankmsg server msg))
+                         (balance-key id)
+                         acctbals)
+          (unless (and (equal balancehash hash) (equal balancehashcnt hashcnt))
+            (error "~s mismatch, hash: ~s, sb: ~s, count: ~s, sb: ~s"
+                   $BALANCEHASH balancehash hash balancehashcnt hashcnt)))
   
-    // All's well with the world. Commit this puppy.
-    // Add asset
-    $res = $this->bankmsg($ATASSET, $parser->get_parsemsg($reqs[0]));
-    if ($storage_msg) {
-      $res .= "." . $this->bankmsg($ATSTORAGE, $storage_msg);
-    }
-    $db->put($ASSET . "/$assetid", $res);
+        ;; All's well with the world. Commit this puppy.
+        ;; Add asset
+        (let ((res (bankmsg server $ATASSET (get-parsemsg (car reqs)))))
+          (when storage-msg
+            (dotcat res "." (bankmsg server $ATSTORAGE storage-msg)))
 
-    // Credit bank with tokens
-    $this->add_to_bank_balance($tokenid, $tokens);
+          (db-put db (strcat $ASSET "/" assetid) res)
 
-    // Update balances
-    $balancekey = $this->balancekey($id);
-    foreach ($acctbals as $acct => $balances) {
-      $acctkey = "$balancekey/$acct";
-      foreach ($balances as $balasset => $balance) {
-        $balance = $this->bankmsg($ATBALANCE, $balance);
-        $res .= ".$balance";
-        $db->put("$acctkey/$balasset", $balance);
-      }
-    }
+          ;; Credit bank with tokens
+          (add-to-bank-balance server tokenid tokens)
 
-    // Update balancehash
-    $balancehash_item = $this->bankmsg($ATBALANCEHASH, $balancehashmsg);
-    $res .= ".$balancehash_item";
-    $db->put($this->balancehashkey($id), $balancehash_item);
+          ;; Update balances
+          (let ((balancekey (balance-key id)))
+            (loop
+               for acct being the hash-key using (hash-value balances) of acctbals
+               for acctkey = (strcat balancekey "/" acct)
+               do
+               (loop
+                  for balasset being the hash-key using (hash-value balance)
+                  of balances
+                  for balmsg = (bankmsg server $ATBALANCE balance)
+                  do
+                  (dotcat res "." balmsg)
+                  (db-put db (strcat acctkey "/" balasset) balmsg))))
 
-    return $res;
-  }
+          ;; Update balancehash
+          (let ((balancehash-item (bankmsg server $ATBALANCEHASH balancehashmsg)))
+            (dotcat res "." balancehash-item)
+            (db-put db (balance-hash-key id) balancehash-item))
 
-  function do_getbalance($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
+          res)))))
 
-    $id = $args[$CUSTOMER];
-    $lock = $db->lock($this->accttimekey($id));
-    $res = $this->do_getbalance_internal($args, $reqs, $msg);
-    $db->unlock($lock);
-    return $res;
-  }
+(define-message-handler do-getbalance $GETBALANCE (server args reqs)
+  (declare (ignore reqs))
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args))
+        (acct (getarg $ACCT args))
+        (assetid (getarg $ASSET args))
+        (res "")
+        assetnames
+        assetkeys
+        acctkeys
+        assetids)
 
-  function do_getbalance_internal($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
+    (with-db-lock (db (acct-time-key id))
+      (checkreq server args)
 
-    $err = $this->checkreq($args, $msg);
-    if ($err) return $err;
+      (cond (acct
+             (setq acctkeys (list (acct-balance-key id acct))))
+            (t (let* ((balancekey (balance-key id))
+                      (acctnames (db-contents db balancekey)))
+                 (dolist (name acctnames)
+                   (push (strcat balancekey "/" name) acctkeys))
+                 (setf acctkeys (nreverse acctkeys)))))
 
-    // $GETBALANCE => array($BANKID,$REQ,$ACCT=>1,$ASSET=>1));
-    $id = $args[$CUSTOMER];
-    $acct = @$args[$ACCT];
-    $assetid = @$args[$ASSET];
+      (dolist (acctkey acctkeys)
+        (setq assetnames
+              (if assetid
+                  (list assetid)
+                  (db-contents db acctkey))
+              assetkeys nil)
+        (dolist (name assetnames)
+          (push (strcat acctkey "/" name) assetkeys))
+        (dolist (assetkey assetkeys)
+          (let ((bal (db-get db assetkey)))
+            (when bal
+                (unless (equal res "") (dotcat res "."))
+                (dotcat res bal)))))
 
-    if ($acct) $acctkeys = array($this->acctbalancekey($id, $acct));
-    else {
-      $balancekey = $this->balancekey($id);
-      $acctnames = $db->contents($balancekey);
-      $acctkeys = array();
-      foreach ($acctnames as $name) $acctkeys[] = "$balancekey/$name";
-    }
+      ;; Get the fractions
+      (setq assetids
+            (if assetid
+                (list assetid)
+                assetnames))
+      (dolist (assetid assetids)
+        (let* ((fractionkey (fraction-balance-key id assetid))
+               (fraction (db-get db fractionkey)))
+          (when fraction (dotcat res "." fraction))))
 
-    $res = '';
-    $assetnames = array();
-    foreach ($acctkeys as $acctkey) {
-      if ($assetid) $assetnames[] = $assetid;
-      else $assetnames = $db->contents($acctkey);
-      $assetkeys = array();
-      foreach ($assetnames as $name) $assetkeys[] = "$acctkey/$name";
+      (let ((balancehash (db-get db (balance-hash-key id))))
+        (when balancehash
+          (unless (equal res "") (dotcat res "."))
+          (dotcat res balancehash))))
 
-      foreach ($assetkeys as $assetkey) {
-        $bal = $db->get($assetkey);
-        if ($bal) {
-          if ($res) $res .= '.';
-          $res .= $bal;
-        }
-      }
-    }
+    res))
 
-    // Get the fractions
-    $assetids = array();
-    if ($assetid) $assetids[] = $assetid;
-    else {
-      foreach ($assetnames as $name) $assetids[] = $name;
-    }
-      
-    foreach($assetids as $assetid) {
-      $fractionkey = $this->fractionbalancekey($id, $assetid);
-      $fraction = $db->get($fractionkey);
-      if ($fraction) $res .= ".$fraction";
-    }
+(define-message-handler do-getoutbox $GETOUTBOX (server args reqs)
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args)))
+    (with-db-lock (db (acct-time-key id))
+      (checkreq server args)
 
-    $balancehash = $db->get($this->balancehashkey($id));
-    if ($balancehash) {
-      if ($res) $res .= '.';
-      $res .= $balancehash;
-    }
+      ;; $GETOUTBOX => array($BANKID,$REQ)
+      (let* ((id (getarg $CUSTOMER args))
+             (msg (bankmsg server $ATGETOUTBOX (get-parsemsg (car reqs))))
+             (outboxkey (outbox-key id))
+             (contents (db-contents db outboxkey))
+             (outboxhash (db-get db (outbox-hash-key id))))
 
-    return $res;
-  }
+        (dolist (time contents)
+          (dotcat msg "." (db-get db (strcat outboxkey "/" time))))
 
-  function do_getoutbox($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
+        (when outboxhash (dotcat msg "." outboxhash))
 
-    $id = $args[$CUSTOMER];
-    $lock = $db->lock($this->accttimekey($id));
-    $res = $this->do_getoutbox_internal($args, $reqs, $msg);
-    $db->unlock($lock);
-    return $res;
-  }
+        msg))))
 
-  function do_getoutbox_internal($args, $reqs, $msg) {
-    $t = $this->t;
-    $db = $this->db;
-
-    $err = $this->checkreq($args, $msg);
-    if ($err) return $err;
-
-    // $GETOUTBOX => array($BANKID,$REQ),
-    $id = $args[$CUSTOMER];
-
-    $msg = $this->bankmsg($ATGETOUTBOX, $msg);
-    $outboxkey = $this->outboxkey($id);
-    $contents = $db->contents($outboxkey);
-    foreach ($contents as $time) {
-      $msg .= '.' . $db->get("$outboxkey/$time");
-    }
-    $outboxhash = $db->get($this->outboxhashkey($id));
-    if ($outboxhash) $msg .= '.' . $outboxhash;
-
-    return $msg;
-  }
-
-
-  /*** End request processing ***/
-
-||#
+;;;
+;;; End request processing
+;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defparameter *server-commands* nil)
 
