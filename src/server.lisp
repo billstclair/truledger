@@ -1506,147 +1506,168 @@
                    (gethash itemasset storagefees) storagefee
                    (gethash itemasset fractions) fraction))))
 
-))
+    (loop
+       for storageasset being the hash-key using (hash-value storageamt)
+       of storageamts
+       for storagefee = (gethash storageasset storagefees)
+       do
+         (unless (eql 0 (bccomp storageamt storagefee))
+           (error "Storage fee mismatch, sb: ~s, was: ~s" storageamt storagefee))
+         (remhash storageasset storagefees))
+    (unless (eql 0 (hash-table-count storagefees))
+      (error "Storage fees missing for some assets"))
+
+    (loop
+       for fracasset being the hash-key using (hash-value fracamt) of fracamts
+       for fraction = (gethash fracasset fractions)
+       do
+       (unless (eql 0 (bccomp fracamt fraction))
+         (error "Fraction mismatch, sb: ~s, was: ~s" fracamt fraction))
+       (remhash fracasset fractions))
+    (unless (eql 0 (hash-table-count fractions))
+      (error "Fraction balances missing for some assets"))
+
+    ;; Check that the balances in the spend message, match the current balance,
+    ;; minus amount spent minus fees.
+    (let ((errmsg nil))
+      (loop
+         for balasset being the hash-key using (hash-value balamount) of bals
+         do
+           (unless (eql 0 (bccomp balamount 0))
+             (let ((name (lookup-asset-name server balasset)))
+               (if errmsg (dotcat errmsg ", ") (setq errmsg ""))
+               (dotcat errmsg name ": " balamount))))
+      (when errmsg
+        (error "Balance discrepancies: ~s" errmsg)))
+
+    ;; No outbox hash maintained for the bank
+    (unless (equal id bankid)
+      ;; Make sure the outbox hash was included iff needed
+      (when (or (and outboxtimes (not outboxhashreq))
+                (and (null outboxtimes) outboxhashreq))
+        (error (if outboxhashreq
+                   "~s included when not needed"
+                   "~s missing")
+               $OUTBOXHASH))
+
+      (when outboxhashreq
+        (multiple-value-bind (hash hashcnt)
+            (outbox-hash server id nil outboxtimes)
+          (unless (and (equal outboxhash hash) (equal outboxcnt hashcnt))
+            (error "~s mismatch" $OUTBOXHASH))))
+
+      ;; Check balancehash
+      (unless balancehashreq
+        (error "~s missing" $BALANCEHASH))
+
+        (multiple-value-bind (hash hashcnt)
+            (balancehash db
+                         (lambda (msg) (unpack-bankmsg server msg))
+                         (balance-key id)
+                         acctbals)
+        (unless (and (equal balancehash hash) (equal balancehashcnt hashcnt))
+          (error "~s mismatch" $BALANCEHASH))))
+
+    ;; All's well with the world. Commit this puppy.
+    ;; Update balances.
+    (let ((balancekey (balance-key id)))
+      (loop
+         for acct being the hash-key using (hash-value balances) of acctbals
+         for acctkey = (strcat balancekey "/" acct)
+         do
+           (loop
+              for balasset being the hash-key using (hash-value balance)
+              of balances
+              for balmsg = (bankmsg server $ATBALANCE balance)
+              do
+                (dotcat res "." balmsg)
+                (db-put db (strcat acctkey "/" balasset) balmsg))))
+
+    ;; Update accepted and rejected spenders' inboxes
+    (dolist (inboxmsg (reverse inboxmsgs))
+      (destructuring-bind (otherid inboxtime inboxmsg) inboxmsg
+        (cond ((equal otherid bankid)
+               (let ((request inboxtime)
+                     (itemargs inboxmsg))
+                 (when (equal request $SPENDREJECT)
+                   ;; Return the funds to the bank's account
+                   (add-to-bank-balance
+                    server (getarg $ASSET itemargs) (getarg $AMOUNT itemargs)))))
+              (t
+               (let ((inboxkey (inbox-key otherid)))
+                 (db-put db (strcat inboxkey "/" inboxtime) inboxmsg))))))
+
+    ;; Remove no longer needed inbox and outbox entries.
+    ;; Probably should have a bank config parameter to archive these somewhere.
+    (let ((inboxkey (inbox-key id)))
+      (dolist (inboxtime inboxtimes)
+        (db-put db (strcat inboxkey "/" inboxtime) "")))
+
+    ;; Clear processed outbox entries
+    (let ((outboxkey (outbox-key id)))
+      (dolist (outboxtime outboxtimes)
+        (db-put db (strcat outboxkey "/" outboxtime) "")))
+
+    (unless (equal id bankid)
+      ;; Update outboxhash
+      (when outboxhashreq
+        (let ((outboxhash-item (bankmsg server $ATOUTBOXHASH outboxhashmsg)))
+          (dotcat res "." outboxhash-item)
+          (db-put db (outbox-hash-key id) outboxhash-item)))
+
+      ;; Update balancehash
+      (let ((balancehash-item (bankmsg server $ATBALANCEHASH balancehashmsg)))
+        (dotcat res "." balancehash-item)
+        (db-put db (balance-hash-key id) balancehash-item)))
+
+    ;; Update fractions, and add fraction and storagefee messages to result
+    (loop
+       for storagemsg being the hash-values of storagemsgs
+       do
+         (dotcat res "." storagemsg))
+    (loop
+       for fracasset being the hash-key using (hash-value fracmsg) of fracmsgs
+       for key = (fraction-balance-key id fracasset)
+       do  
+         (dotcat res "." fracmsg)
+         (db-put db key fracmsg))
+    
+    (values res charges)))
+
+(defun get-outbox-args (server id spendtime)
+  (check-type server server)
+
+  (let* ((db (db server))
+         (parser (parser server))
+         (bankid (bankid server))
+         (outboxkey (outbox-key id))
+         (spendmsg (or (db-get db (strcat outboxkey "/" spendtime))
+                       (error "Can't find outbox item: ~s" spendtime)))
+         (reqs (parse parser spendmsg))
+         (spendargs (match-pattern parser (gethash 0 reqs)))
+         (feeargs (and (> (hash-table-count reqs) 1)
+                       (match-pattern parser (gethash 1 reqs)))))
+    (unless (and (equal (getarg $CUSTOMER spendargs) bankid)
+                 (equal (getarg $REQUEST spendargs) $ATSPEND)
+                 (or (null feeargs)
+                     (and (equal (getarg $CUSTOMER feeargs) bankid)
+                          (equal (getarg $REQUEST feeargs) $ATTRANFEE))))
+      (error "Outbox corrupted"))
+
+    (setq spendargs (match-pattern parser (getarg $MSG spendargs)))
+    (when feeargs
+      (setq feeargs (match-pattern parser (getarg $MSG feeargs))))
+    (unless (and (equal (getarg $CUSTOMER spendargs) id)
+                 (equal (getarg $REQUEST spendargs) $SPEND)
+                 (or (null feeargs)
+                     (and (equal (getarg $CUSTOMER feeargs) id)
+                          (equal (getarg $REQUEST feeargs) $TRANFEE))))
+      (error "Outbox inner messages corrupted"))
+    (cons spendargs feeargs)))
+
 
 #||
 ;; Continue here
-    foreach ($storageamts as $storageasset => $storageamt) {
-      $storagefee = $storagefees[$storageasset];
-      if (bccomp($storageamt, $storagefee) != 0) {
-        return $this->failmsg($msg, "Storage fee mismatch, sb: $storageamt, was: $storagefee");
-      }
-      unset($storagefees[$storageasset]);
-    }
-    if (count($storagefees) > 0) {
-      return $this->failmsg($msg, "Storage fees missing for some assets");      
-    }
-
-    foreach ($fracamts as $fracasset => $fracamt) {
-      $fraction = $fractions[$fracasset];
-      if (bccomp($fracamt, $fraction) != 0) {
-        return $this->failmsg($msg, "Fraction mismatch, sb: $fracamt, was: $fraction");
-      }
-      unset($fractions[$fracasset]);
-    }
-    if (count($fractions) > 0) {
-      return $this->failmsg($msg, "Fraction balances missing for some assets");
-    }
-
-    $errmsg = "";
-    $first = true;
-    // Check that the balances in the spend message, match the current balance,
-    // minus amount spent minus fees.
-    foreach ($bals as $balasset => $balamount) {
-      if ($balamount != 0) {
-        $name = $this->lookup_asset_name($balasset);
-        if (!$first) $errmsg .= ', ';
-        $first = false;
-        $errmsg .= "$name: $balamount";
-      }
-    }
-    if ($errmsg != '') return $this->failmsg($msg, "Balance discrepancies: $errmsg");
-
-    // No outbox hash maintained for the bank
-    if ($id != $bankid) {
-      // Make sure the outbox hash was included iff needed
-      if ((count($outboxtimes) > 0 && !$outboxhashreq) ||
-          (count($outboxtimes) == 0 && $outboxhashreq)) {
-        return $this->failmsg($msg, $OUTBOXHASH .
-                              ($outboxhashreq ? " included when not needed" :
-                               " missing"));
-      }
-
-      if ($outboxhashreq) {
-        $hasharray = $this->outboxhash($id, false, $outboxtimes);
-        $hash = $hasharray[$HASH];
-        $hashcnt = $hasharray[$COUNT];
-        if ($outboxhash != $hash || $outboxcnt != $hashcnt) {
-          return $this->failmsg
-            ($msg, $OUTBOXHASH . " mismatch");
-        }
-      }
-
-      // Check balancehash
-      if (!$balancehashreq) {
-        return $this->failmsg($msg, $BALANCEHASH . " missing");
-      } else {
-        $hasharray = $u->balancehash($db, $id, $this, $acctbals);
-        $hash = $hasharray[$HASH];
-        $hashcnt = $hasharray[$COUNT];
-        if ($balancehash != $hash || $balancehashcnt != $hashcnt) {
-          return $this->failmsg($msg, $BALANCEHASH . ' mismatch');
-        }
-      }
-    }
-
-    // All's well with the world. Commit this puppy.
-    // Update balances
-    $balancekey = $this->balancekey($id);
-    foreach ($acctbals as $acct => $balances) {
-      $acctkey = "$balancekey/$acct";
-      foreach ($balances as $balasset => $balance) {
-        $balance = $this->bankmsg($ATBALANCE, $balance);
-        $res .= ".$balance";
-        $db->put("$acctkey/$balasset", $balance);
-      }
-    }
-
-    // Update accepted and rejected spenders' inboxes
-    foreach ($inboxmsgs as $inboxmsg) {
-      $otherid = $inboxmsg[0];
-      if ($otherid == $bankid) {
-        $request = $inboxmsg[1];
-        $itemargs = $inboxmsg[2];
-        if ($request == $SPENDREJECT) {
-          // Return the funds to the bank's account
-          $this->add_to_bank_balance($itemargs[$ASSET], $itemargs[$AMOUNT]);
-        }
-      } else {
-        $inboxtime = $inboxmsg[1];
-        $inboxmsg = $inboxmsg[2];
-        $inboxkey = $this->inboxkey($otherid);
-        $db->put("$inboxkey/$inboxtime", $inboxmsg);
-      }
-    }
-
-    // Remove no longer needed inbox and outbox entries
-    // Probably should have a bank config parameter to archive these somewhere.
-    $inboxkey = $this->inboxkey($id);
-    foreach ($inboxtimes as $inboxtime) {
-      $db->put("$inboxkey/$inboxtime", '');
-    }
-
-    // Clear processed outbox entries
-    $outboxkey = $this->outboxkey($id);
-    foreach ($outboxtimes as $outboxtime) {
-      $db->put("$outboxkey/$outboxtime", '');
-    }
-
-    if ($id != $bankid) {
-      // Update outboxhash
-      if ($outboxhashreq) {
-        $outboxhash_item = $this->bankmsg($ATOUTBOXHASH, $outboxhashmsg);
-        $res .= ".$outboxhash_item";
-        $db->put($this->outboxhashkey($id), $outboxhash_item);
-      }
-
-      // Update balancehash
-      $balancehash_item = $this->bankmsg($ATBALANCEHASH, $balancehashmsg);
-      $res .= ".$balancehash_item";
-      $db->put($this->balancehashkey($id), $balancehash_item);
-    }
-
-    // Update fractions, and add fraction and storagefee messages to result
-    foreach ($storagemsgs as $storagemsg) $res .= ".$storagemsg";
-    foreach ($fracmsgs as $fracasset => $fracmsg) {
-      $res .= ".$fracmsg";
-      $key = $this->fractionbalancekey($id, $fracasset);
-      $db->put($key, $fracmsg);
-    }
-    
-    $ok = true;
-    return $res;
-  }
 
   // Process a storagefees request
   function do_storagefees($args, $reqs, $msg) {
@@ -1698,40 +1719,6 @@
     }
     
     return $this->bankmsg($ATSTORAGEFEES, $msg);
-  }
-
-  function get_outbox_args($id, $spendtime) {
-    $t = $this->t;
-    $u = $this->u;
-    $db = $this->db;
-    $parser = $this->parser;
-    $bankid = $this->bankid;
-
-    $outboxkey = $this->outboxkey($id);
-    $spendmsg = $db->get("$outboxkey/$spendtime");
-    if (!$spendmsg) return "Can't find outbox item: $spendtime";
-    $reqs = $parser->parse($spendmsg);
-    if (!$reqs) return $parser->errmsg;
-    $spendargs = $u->match_pattern($reqs[0]);
-    $feeargs = false;
-    if (count($reqs) > 1) $feeargs = $u->match_pattern($reqs[1]);
-    if ($spendargs[$CUSTOMER] != $bankid ||
-        $spendargs[$REQUEST] != $ATSPEND ||
-        ($feeargs &&
-         ($feeargs[$CUSTOMER] != $bankid ||
-          $feeargs[$REQUEST] != $ATTRANFEE))) {
-      return "Outbox corrupted";
-    }
-    $spendargs = $u->match_pattern($spendargs[$MSG]);
-    if ($feeargs) $feeargs = $u->match_pattern($feeargs[$MSG]);
-    if ($spendargs[$CUSTOMER] != $id ||
-        $spendargs[$REQUEST] != $SPEND ||
-        ($feeargs &&
-         ($feeargs[$CUSTOMER] != $id ||
-          $feeargs[$REQUEST] != $TRANFEE))) {
-      return "Outbox inner messages corrupted";
-    }
-    return array($spendargs, $feeargs); 
   }
 
   function do_getasset($args, $reqs, $msg) {
