@@ -1879,7 +1879,7 @@
     (with-db-lock (db (acct-time-key id))
       (checkreq server args)
 
-      (cond (acct
+      (cond ((and acct (not (equal acct "")))
              (setq acctkeys (list (acct-balance-key id acct))))
             (t (let* ((balancekey (balance-key id))
                       (acctnames (db-contents db balancekey)))
@@ -1889,7 +1889,7 @@
 
       (dolist (acctkey acctkeys)
         (setq assetnames
-              (if assetid
+              (if (and assetid (not (equal assetid "")))
                   (list assetid)
                   (db-contents db acctkey))
               assetkeys nil)
@@ -1916,7 +1916,10 @@
           (unless (equal res "") (dotcat res "."))
           (dotcat res balancehash))))
 
-    res))
+    (if (equal res "")
+        ;; Should this be an error, or just return the empty string?
+        (error "No balances found")
+        res)))
 
 (define-message-handler do-getoutbox $GETOUTBOX (server args reqs)
   (let ((db (db server))
@@ -1963,7 +1966,7 @@
                       (,$GETASSET . (,$BANKID ,$REQ ,$ASSET))
                       (,$ASSET . (,$BANKID ,$ASSET ,$SCALE ,$PRECISION ,$ASSETNAME))
                       (,$GETOUTBOX . ,(gethash $GETOUTBOX patterns))
-                      (,$GETBALANCE (,$BANKID ,$REQ (,$ACCT) (,$ASSET)))))
+                      (,$GETBALANCE . (,$BANKID ,$REQ (,$ACCT) (,$ASSET)))))
              (commands (make-hash-table :test 'equal)))
       (loop
          for (name . pattern) in names

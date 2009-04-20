@@ -28,6 +28,14 @@
                                (test-newreq server privkey)))))
     (unpack-bankmsg server msg $TIME nil $TIME)))
 
+(defun test-getfees (server &optional (privkey (privkey server)))
+  (let ((id (privkey-id privkey)))
+    (process server (custmsg privkey
+                             id
+                             $GETFEES
+                             (bankid server)
+                             (test-newreq server privkey id)))))
+
 (defun test-spend (server to-id amount &key
                    (from-key (privkey server))
                    (assetid (tokenid server))
@@ -64,7 +72,41 @@
                              $GETINBOX
                              (bankid server)
                              (test-newreq server privkey id)))))
-                      
+
+(defun test-getasset (server assetid &optional (privkey (privkey server)))
+  (let ((id (privkey-id privkey)))
+    (process server (custmsg privkey
+                             id
+                             $GETASSET
+                             (bankid server)
+                             (test-newreq server privkey id)
+                             assetid))))
+
+(defun test-getoutbox (server &optional (privkey (privkey server)))
+  (let ((id (privkey-id privkey)))
+    (process server (custmsg privkey
+                             id
+                             $GETOUTBOX
+                             (bankid server)
+                             (test-newreq server privkey id)))))
+
+(defun test-getbalance (server &optional acct asset (privkey (privkey server)))
+  (let* ((id (privkey-id privkey))
+         (req (test-newreq server privkey id))
+         (bankid (bankid server))
+         (msg (cond (asset (custmsg privkey id $GETBALANCE bankid req acct asset))
+                    (acct (custmsg privkey id $GETBALANCE bankid req acct))
+                    (t (custmsg privkey id $GETBALANCE bankid req)))))
+    (process server msg)))
+
+(defun test-getasset (server assetid &optional (privkey (privkey server)))
+  (let ((id (privkey-id privkey)))
+    (process server (custmsg privkey
+                             id
+                             $GETASSET
+                             (bankid server)
+                             (test-newreq server privkey id)
+                             assetid))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

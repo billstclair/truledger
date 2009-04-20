@@ -26,7 +26,7 @@
      for value in req
      do
      (when (> i 0) (setq msg (strcat msg ",")))
-     (setq msg (strcat msg (escape (string value))))
+     (setq msg (strcat msg (escape (string (or value "")))))
      finally
      (return (strcat msg ")"))))
 
