@@ -219,6 +219,10 @@
         (and (>= code #.(char-code #\a)) (<= code #.(char-code #\z)))
         (and (>= code #.(char-code #\A)) (<= code #.(char-code #\Z))))))
 
+(defun is-alphanumeric-or-space-p (char)
+  (or (eql char #\space)
+      (is-alphanumeric-p char)))
+
 (defun is-numeric-p (string &optional integer-p)
   (loop
      with firstp = t
@@ -289,7 +293,7 @@
 (defmethod failmsg ((server server) &rest req)
   (when (stringp (car req))
     (setf (car req) (shorten-failmsg-msg (car req))))
-  (apply 'bankmsg server (bankid server) $FAILED req))
+  (banksign server (apply 'simple-makemsg (bankid server) $FAILED req)))
 
 
 (defmethod unpack-bankmsg ((server server) msg &optional type subtype idx)
@@ -494,6 +498,8 @@
      oldneg => hash: <asset> => <acct>, negative balances in current account
      newneg => hash: <asset> => <acct>, negative balances in updated account
      time => the transaction time"
+  (unless (equal $BALANCE (getarg $REQUEST args))
+    (error "Non-balance message passed to handle-balance-msg"))
   (let ((db (db server))
         (bankid (bankid server))
         (asset (getarg $ASSET args))
@@ -520,7 +526,7 @@
        (setf (gethash asset acct-hash) msg))
 
      (let ((bals (balance-state-bals state)))
-       (setf (gethash asset bals) (bcsub (gethash asset bals) amount))
+       (setf (gethash asset bals) (bcsub (gethash asset bals 0) amount))
 
        (when (< (bccomp amount 0) 0)
          (when (gethash asset (balance-state-newneg state))
@@ -530,7 +536,9 @@
        (let* ((asset-balance-key (asset-balance-key id asset acct))
               (acctmsg (db-get db asset-balance-key)))
          (if (not acctmsg)
-             (unless (equal id bankid) (incf (balance-state-tokens state)))
+             (unless (equal id bankid)
+               (setf (balance-state-tokens state)
+                     (bcadd (balance-state-tokens state) 1)))
              (let* ((acctargs (unpack-bankmsg server acctmsg $ATBALANCE $BALANCE))
                     (amount (getarg $AMOUNT acctargs)))
                (setf (gethash asset bals) (bcadd (gethash asset bals 0) amount))
@@ -942,7 +950,8 @@
         (unless outboxhash-req
           (error "~s missing" $OUTBOXHASH))
         (multiple-value-bind (hash hashcnt) (outbox-hash server id spendmsg)
-          (unless (and (equal outboxhash hash) (equal outboxhash-cnt hashcnt))
+          (unless (and (equal outboxhash hash)
+                       (eql 0 (bccomp outboxhash-cnt hashcnt)))
             (error "~s mismatch" $OUTBOXHASH))))
 
       ;; balancehash must be included, except on bank spends
@@ -952,7 +961,8 @@
         (multiple-value-bind (hash hashcnt)
             (balancehash db (lambda (msg) (unpack-bankmsg server msg))
                          (balance-key id) acctbals)
-        (unless (and (equal balancehash hash) (equal balancehash-cnt hashcnt))
+        (unless (and (equal balancehash hash)
+                     (eql 0 (bccomp balancehash-cnt hashcnt)))
           (error "~s mismatch, hash sb: ~s, was: ~s, count sb: ~s, was: ~s"
                  $BALANCEHASH hash balancehash hashcnt balancehash-cnt))))
 
@@ -1016,10 +1026,10 @@
           ;; Update outboxhash
           (let ((outboxhash-item (bankmsg server $ATOUTBOXHASH outboxhash-msg)))
             (dotcat res "." outboxhash-item)
-            (db-put db (outbox-hash-key id) outboxhash-item)))
+            (db-put db (outbox-hash-key id) outboxhash-item))
 
-        ;; Append spend to outbox
-        (db-put db (strcat (outbox-dir id) "/" time) outbox-item)
+          ;; Append spend to outbox
+          (db-put db (strcat (outbox-dir id) "/" time) outbox-item))
 
         (unless (equal id bankid)
           ;; Update balancehash
@@ -1148,7 +1158,7 @@
            (coupon-number (and (coupon-number-p coupon) coupon)))
 
       (unless coupon-number
-        (let ((args (unpack-bankmsg server $coupon $COUPON)))
+        (let ((args (unpack-bankmsg server coupon $COUPON)))
           (unless (equal bankid (getarg $CUSTOMER args))
             (error "Coupon not signed by bank"))
           (setq coupon-number (getarg $COUPON args))))
@@ -1178,7 +1188,7 @@
           (t
            (let* ((ok nil)
                   (args (unwind-protect
-                             (progn (unpack-bankmsg server outbox-item $ATSPEND)
+                             (prog1 (unpack-bankmsg server outbox-item $ATSPEND)
                                     (setq ok t))
                           (unless ok
                             ;; Make sure the spender can cancel the coupon
@@ -1333,7 +1343,7 @@
     (dolist (itemargs accepts)
       (let* ((outboxtime (getarg $TIME itemargs))
              (spendfeeargs (get-outbox-args server id outboxtime))
-             (feeargs (second spendfeeargs)))
+             (feeargs (cdr spendfeeargs)))
         (push outboxtime outboxtimes)
         (when feeargs
           (let ((asset (getarg $ASSET feeargs))
@@ -1556,7 +1566,8 @@
       (when outboxhashreq
         (multiple-value-bind (hash hashcnt)
             (outbox-hash server id nil outboxtimes)
-          (unless (and (equal outboxhash hash) (equal outboxcnt hashcnt))
+          (unless (and (equal outboxhash hash)
+                       (eql 0 (bccomp outboxcnt hashcnt)))
             (error "~s mismatch" $OUTBOXHASH))))
 
       ;; Check balancehash
@@ -1568,7 +1579,8 @@
                          (lambda (msg) (unpack-bankmsg server msg))
                          (balance-key id)
                          acctbals)
-        (unless (and (equal balancehash hash) (equal balancehashcnt hashcnt))
+        (unless (and (equal balancehash hash)
+                     (eql 0 (bccomp balancehashcnt hashcnt)))
           (error "~s mismatch" $BALANCEHASH))))
 
     ;; All's well with the world. Commit this puppy.
@@ -1647,9 +1659,9 @@
          (spendmsg (or (db-get db (strcat outboxkey "/" spendtime))
                        (error "Can't find outbox item: ~s" spendtime)))
          (reqs (parse parser spendmsg))
-         (spendargs (match-pattern parser (gethash 0 reqs)))
-         (feeargs (and (> (hash-table-count reqs) 1)
-                       (match-pattern parser (gethash 1 reqs)))))
+         (spendargs (match-pattern parser (car reqs)))
+         (feeargs (and (> (length reqs) 1)
+                       (match-pattern parser (second reqs)))))
     (unless (and (equal (getarg $CUSTOMER spendargs) bankid)
                  (equal (getarg $REQUEST spendargs) $ATSPEND)
                  (or (null feeargs)
@@ -1709,6 +1721,8 @@
     (with-db-lock (db (acct-time-key id))
       (checkreq server args)
       (let ((assetid (getarg $ASSET args)))
+        (unless (and assetid (> (length assetid) 0))
+          (error "Illegal assetid: ~s" assetid))
         (or (db-get db (strcat $ASSET "/" assetid))
             (error "Unknown asset: ~s" assetid))))))
 
@@ -1758,7 +1772,7 @@
           (error "Maximum scale is 10"))
 
         ;; Don't really need this restriction. Maybe widen it a bit?
-        (unless (every #'is-alphanumeric-p assetname)
+        (unless (every #'is-alphanumeric-or-space-p assetname)
           (error "Asset name must contain only letters and digits"))
 
         (unless (equal assetid (assetid id scale precision assetname))
@@ -1783,13 +1797,13 @@
                    (when storage-msg (error "Duplicate storage fee"))
                    (setq storage-msg reqmsg))
                   ((equal request $BALANCE)
-                   (handle-balance-msg server id reqmsg args state assetid))
+                   (handle-balance-msg server id reqmsg reqargs state assetid))
                   ((equal request $BALANCEHASH)
                    (when balancehashreq
                      (error "~s appeared multiple times" $BALANCEHASH))
                    (setq balancehashreq req
-                         balancehash (getarg $HASH args)
-                         balancehashcnt (getarg $COUNT args)
+                         balancehash (getarg $HASH reqargs)
+                         balancehashcnt (getarg $COUNT reqargs)
                          balancehashmsg reqmsg))
                   (t (error "~s not valid for asset creation. Only ~s, ~s, & ~s"
                             request $STORAGE $BALANCE $BALANCEHASH)))))
@@ -1831,7 +1845,8 @@
                          (lambda (msg) (unpack-bankmsg server msg))
                          (balance-key id)
                          acctbals)
-          (unless (and (equal balancehash hash) (equal balancehashcnt hashcnt))
+          (unless (and (equal balancehash hash)
+                       (eql 0 (bccomp balancehashcnt hashcnt)))
             (error "~s mismatch, hash: ~s, sb: ~s, count: ~s, sb: ~s"
                    $BALANCEHASH balancehash hash balancehashcnt hashcnt)))
   
@@ -1984,7 +1999,7 @@
    This is usually all you'll call from outside."
   (handler-case (process-internal server msg)
     (error (c)
-      (bankmsg server $FAILED (shorten msg 4096) (format nil "~a" c)))))
+      (failmsg server msg (format nil "~a" c)))))
 
 (defun process-internal (server msg)
   (let* ((parser (parser server))

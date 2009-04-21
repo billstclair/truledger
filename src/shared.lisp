@@ -120,9 +120,10 @@
           (unless (setq msg (get-parsemsg req))
             (error "get-parsemsg didn't find anything"))
           (push msg items))))
-    (if newitem
-        (if (stringp newitem) (push newitem items))
-        (setq items (append items newitem)))
+    (when newitem
+      (if (stringp newitem)
+          (push newitem items)
+          (setq items (append items newitem))))
     (setq items (sort items 'string-lessp))
     (let* ((str (apply 'implode "." (mapcar 'trim items)))
            (hash (sha1 str)))

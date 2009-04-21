@@ -7,24 +7,24 @@
 
 (in-package :trubanc)
 
-(defvar *urandom-stream* nil)
 (defvar *use-urandom* t)
 
 (defun urandom-stream ()
-  (or *urandom-stream*
-      (and *use-urandom*
-          (or (setq *urandom-stream* (ignore-errors (open "/dev/urandom")))
-              (setq *use-urandom* nil)))))
+  (and *use-urandom*
+       (or (ignore-errors (open "/dev/urandom"))
+           (setq *use-urandom* nil))))
 
 (defun urandom-bytes (num)
   "Return $num random bytes from /dev/urandom as a string"
   (when (< num 0)
     (error "Number of bytes must be non-negative"))
   (let ((stream (urandom-stream)))
-    (with-output-to-string (s)
-      (if stream
-          (dotimes (i num) (write-char (read-char stream) s))
-          (dotimes (i num) (write-char (code-char (random 256)) s))))))
+    (unwind-protect
+         (with-output-to-string (s)
+           (if stream
+               (dotimes (i num) (write-char (read-char stream) s))
+               (dotimes (i num) (write-char (code-char (random 256)) s))))
+      (when stream (close stream)))))
 
 (defun random-id ()
   "Return a random 128-bit location, as hex"
