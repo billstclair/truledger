@@ -16,6 +16,9 @@
 (defvar *trubanc-ports-to-acceptors*
   (make-hash-table :test 'eql))
 
+(defvar *index-file*
+  (merge-pathnames "../index.inc" trubanc-loader:*source-directory*))
+
 (defun trubanc-web-server (server &key (port 8080))
   (setf (gethash port *trubanc-ports-to-servers*) server)
   (or (gethash port *trubanc-ports-to-acceptors*)
@@ -33,11 +36,26 @@
                (setq res (format nil "msg: <pre>~a</pre>~%response: <pre>~a</pre>~%"
                                  msg res)))
              res))
-          (t "Trubanc web page"))))
+          (t (file-get-contents *index-file*)))))
   
 (hunchentoot:define-easy-handler (trubanc-server :uri "/") (msg debug)
   (setf (hunchentoot:content-type*) "text/html")
   (do-trubanc-web-server msg debug))
+
+(hunchentoot:define-easy-handler (static-file :uri 'static-file-request-p) ()
+  (let ((file (merge-pathnames
+               (strcat ".." (hunchentoot:request-uri hunchentoot:*request*))
+               trubanc-loader:*source-directory*)))
+    (hunchentoot:handle-static-file
+     (if (cl-fad:directory-pathname-p file)
+         (merge-pathnames "index.html" file)
+         file))))
+
+(defun static-file-request-p (request)
+  (let ((script (hunchentoot:script-name request)))
+    (cond ((equal script "/") nil)
+          ((search "/.." script) nil)
+          (t t))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

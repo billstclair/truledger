@@ -3,7 +3,8 @@
 (cl:defpackage #:trubanc-loader
     (:use #:cl :ccl)
   (:export #:add-to-registry
-           #:loadsys))
+           #:loadsys
+           #:*source-directory*))
 
 (in-package #:trubanc-loader)
 
