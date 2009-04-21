@@ -6,7 +6,7 @@
   :author "Bill St. Clair <bill@billstclair.com>"
   :version "0.1"
   :license "Apache"
-  :depends-on (cffi cl-base64)
+  :depends-on (cffi cl-base64 hunchentoot)
   :components
   ((:module src
     :serial t
@@ -24,6 +24,7 @@
      (:file "loomrandom")
      (:file "timestamp")
      (:file "server")
+     (:file "server-web")
      ))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

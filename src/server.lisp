@@ -7,7 +7,7 @@
 
 (in-package :trubanc)
 
-(defun make-server (dir passphrase bankname bankurl)
+(defun make-server (dir passphrase &optional (bankname "") (bankurl ""))
   "Create a Trubanc server instance."
   (let ((db (make-fsdb dir)))
     (make-instance 'server
@@ -28,7 +28,7 @@
               :accessor timestamp)
    (pubkeydb :type db
              :accessor pubkeydb)
-   (bankname :type string
+   (bankname :type (or string null)
              :initarg :bankname
              :initform "A Random Trubanc"
              :accessor bankname)
@@ -330,6 +330,7 @@
         (setf (privkey server) (decode-rsa-private-key
                                 (db-get db $PRIVKEY) passphrase)
               (bankid server) (unpack-bank-param server $BANKID)
+              (bankurl server) (db-get db $BANKURL)
               (tokenid server) (unpack-bank-param server $TOKENID)
               (regfee server) (unpack-bank-param server $REGFEE $AMOUNT)
               (tranfee server) (unpack-bank-param server $TRANFEE $AMOUNT))
@@ -350,6 +351,7 @@
                 (bankid server) bankid)
           (db-put db $TIME zero)
           (db-put db $BANKID (bankmsg server $BANKID bankid))
+          (db-put db $BANKURL (bankurl server))
           (db-put db (strcat $PUBKEY "/" bankid) pubkey)
           (db-put db (strcat $PUBKEYSIG "/" bankid)
                   (bankmsg server $ATREGISTER
@@ -508,24 +510,22 @@
      (unless (is-acct-name-p acct)
        (error "<acct> may contain only letters and digits: ~s" acct))
 
-     (let ((acct-cell (assocequal acct (balance-state-acctbals state))))
-       (unless acct-cell
-         (setq acct-cell
-               (car (push (cons acct nil) (balance-state-acctbals state)))))
-       (when (assocequal asset (cdr acct-cell))
+     (let ((acct-hash (gethash acct (balance-state-acctbals state))))
+       (unless acct-hash
+         (setf (gethash acct (balance-state-acctbals state))
+               (setq acct-hash (make-equal-hash))))
+       (when (gethash asset acct-hash)
          (error "Duplicate acct/asset balance pair: ~s/~s" acct asset))
 
-       (push (cons asset msg) (cdr acct-cell)))
+       (setf (gethash asset acct-hash) msg))
 
-     (let ((bal-cell (assocequal asset (balance-state-bals state))))
-       (unless bal-cell
-         (setq bal-cell (car (push (cons asset 0) (balance-state-bals state)))))
-       (setf (cdr bal-cell) (bcsub (cdr bal-cell) amount))
+     (let ((bals (balance-state-bals state)))
+       (setf (gethash asset bals) (bcsub (gethash asset bals) amount))
 
        (when (< (bccomp amount 0) 0)
-         (when (assocequal asset (balance-state-newneg state))
+         (when (gethash asset (balance-state-newneg state))
            (error "Multiple new negative balances for asset: ~s" asset))
-         (push (cons asset acct) (balance-state-newneg state)))
+         (setf (gethash asset (balance-state-newneg state)) acct))
 
        (let* ((asset-balance-key (asset-balance-key id asset acct))
               (acctmsg (db-get db asset-balance-key)))
@@ -533,13 +533,13 @@
              (unless (equal id bankid) (incf (balance-state-tokens state)))
              (let* ((acctargs (unpack-bankmsg server acctmsg $ATBALANCE $BALANCE))
                     (amount (getarg $AMOUNT acctargs)))
-               (setf (cdr bal-cell) (bcadd (cdr bal-cell) amount))
+               (setf (gethash asset bals) (bcadd (gethash asset bals) amount))
                (when (< (bccomp amount 0) 0)
-                 (when (assocequal asset (balance-state-oldneg state))
+                 (when (gethash asset (balance-state-oldneg state))
                    (error "Account corrupted. ~
                            Multiple negative balances for asset: ~s"
                           asset))
-                 (push (cons asset acct) (balance-state-oldneg state)))
+                 (setf (gethash asset (balance-state-oldneg state)) acct))
                (compute-storage-charges server id state asset amount acctargs)))))))
 
 (defstruct storage-info
@@ -553,7 +553,7 @@
 ;; horizontal text space. Nobody else calls it.
 (defmethod compute-storage-charges ((server server) id state asset amount acctargs)
   "Compute storage charges as a list of storage-info instances"
-  (let ((asset-info (cdr (assocequal asset (balance-state-charges state)))))
+  (let ((asset-info (gethash asset (balance-state-charges state))))
     (unless asset-info
       (unless (equal asset (tokenid server))
         (multiple-value-bind (percent fraction fractime issuer)
@@ -562,7 +562,7 @@
                                               :issuer issuer
                                               :fraction fraction
                                               :fee 0))
-          (push (cons asset asset-info) (balance-state-charges state))
+          (setf (gethash asset (balance-state-charges state)) asset-info)
           (when percent
             (let ((digits (fraction-digits percent))
                   (time (balance-state-time state)))
@@ -1326,8 +1326,11 @@
                (push itemargs rejects))
               (t (error "Inbox corrupted. Found '~a' item" request)))))
 
+    (setq accepts (nreverse accepts)
+          rejects (nreverse rejects))
+
     ;; Refund the transaction fees for accepted spends
-    (dolist (itemargs (reverse accepts))
+    (dolist (itemargs accepts)
       (let* ((outboxtime (getarg $TIME itemargs))
              (spendfeeargs (get-outbox-args server id outboxtime))
              (feeargs (second spendfeeargs)))

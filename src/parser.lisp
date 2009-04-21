@@ -26,9 +26,15 @@
    (always-verify-sigs-p :initform nil
                          :initarg :always-verify-sigs-p
                          :accessor parser-always-verify-sigs-p)
-   (verify-sigs-p :initform t
-                  :initarg :verify-sigs-p
-                  :accessor parser-verify-sigs-p)))
+   (verify-sigs-hash :initform (make-weak-hash-table)
+                     :accessor parser-verify-sigs-hash)))
+
+(defmethod parser-verify-sigs-p (parser)
+  (gethash (current-process) (parser-verify-sigs-hash parser) t))
+
+(defmethod (setf parser-verify-sigs-p) (value parser)
+  (let ((hash (parser-verify-sigs-hash parser)))
+    (setf (gethash (current-process) hash) value)))
 
 (defmacro with-verify-sigs-p ((parser &optional verify-sigs-p) &body body)
   (let ((thunk (gensym)))
@@ -138,7 +144,7 @@
                         ((eq state :sig)
                          (setq id (and dict (gethash 0 dict)))
                          (when (not (and (equal id "0")
-                                         (equal (gethash dict 1) "bankid")))
+                                         (equal (gethash 1 dict) "bankid")))
                            (unless id
                              (error "Signature without ID at ~d" pos))
                            (when (or verify-sigs-p

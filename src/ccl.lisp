@@ -78,6 +78,15 @@
       (ccl:create-directory dir :mode mode)
       (ccl:create-directory dir)))
 
+(defun current-process ()
+  ccl:*current-process*)
+
+(defun make-weak-hash-table ()
+  (make-hash-table :test 'eq :weak t))
+
+(defun gc ()
+  (ccl:gc))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair
