@@ -41,12 +41,12 @@
                    'file-lock
                    :syslock (make-lock filename)
                    :filename filename))
-        (setf (gethash filename *file-locks*) lock))
-      (unless (eq (current-process) (lock-process lock))
-        (incf (lock-count lock))
-        (grab-lock (lock-syslock lock)))
-      (incf (lock-process-count lock))
-      (setf (lock-process lock) (current-process)))
+        (setf (gethash filename *file-locks*) lock)))
+    (unless (eq (current-process) (lock-process lock))
+      (incf (lock-count lock))
+      (grab-lock (lock-syslock lock)))
+    (incf (lock-process-count lock))
+    (setf (lock-process lock) (current-process))
     lock))
 
 (defun release-file-lock (lock)
@@ -57,9 +57,9 @@
       (setf (lock-process-count lock) 0
             (lock-process lock) nil)
       (when (<= (decf (lock-count lock)) 0)
-        (remhash (lock-filename lock) *file-locks*))
-      (release-lock (lock-syslock lock)))
-    t))      
+        (remhash (lock-filename lock) *file-locks*)))
+    (release-lock (lock-syslock lock))
+    t))
 
 (defmacro with-file-locked ((filename) &body body)
   (let ((lock (gensym)))

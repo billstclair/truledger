@@ -139,7 +139,7 @@
 
 (defun implode (separator &rest strings)
   (declare (dynamic-extent strings))
-  (let ((res (car strings)))
+  (let ((res (if (null strings) "" (car strings))))
     (dolist (item (cdr strings))
       (setq res (strcat res separator item)))
     res))

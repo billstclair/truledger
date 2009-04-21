@@ -139,10 +139,9 @@
          (accts (db-contents db balancekey))
          (needsort nil))
     (loop
-       for  acct.bals in acctbals
-       for acct = (car acct.bals)
+       for acct being the hash-keys of acctbals
        do
-         (unless (member acct acct :test 'equal)
+         (unless (member acct accts :test 'equal)
            (push acct accts)
            (setq needsort t)))
     (when needsort (setq accts (sort accts 'string-lessp)))
@@ -150,11 +149,11 @@
        for acct in accts
        for newitems = nil
        for removed-names = nil
-       for newacct = (cdr (assoc acct acctbals :test 'equal))
+       for newacct = (gethash acct acctbals)
        do
          (when newacct
            (loop
-              for (assetid . msg) in newacct
+              for assetid being the hash-key using (hash-value msg) of newacct
               do
                 (push msg newitems)
                 (push assetid removed-names)))

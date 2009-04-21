@@ -533,7 +533,7 @@
              (unless (equal id bankid) (incf (balance-state-tokens state)))
              (let* ((acctargs (unpack-bankmsg server acctmsg $ATBALANCE $BALANCE))
                     (amount (getarg $AMOUNT acctargs)))
-               (setf (gethash asset bals) (bcadd (gethash asset bals) amount))
+               (setf (gethash asset bals) (bcadd (gethash asset bals 0) amount))
                (when (< (bccomp amount 0) 0)
                  (when (gethash asset (balance-state-oldneg state))
                    (error "Account corrupted. ~
@@ -883,7 +883,7 @@
             storagefee (storage-info-fee assetinfo)
             fraction (storage-info-fraction assetinfo)
             digits (storage-info-digits assetinfo))
-      (let* ((bal (bcsub (gethash assetid bals) storagefee digits)))
+      (let* ((bal (bcsub (gethash assetid bals 0) storagefee digits)))
         (multiple-value-setq (bal fraction) (normalize-balance bal fraction digits))
         (setf (gethash assetid bals) bal)
         (unless (eql 0 (bccomp fraction fracamt))
@@ -921,7 +921,7 @@
            (error "Negative balance assets not conserved")))
 
     ;; Charge the transaction and new balance file tokens
-    (setf (gethash tokenid bals) (bcsub (gethash tokenid bals) tokens))
+    (setf (gethash tokenid bals) (bcsub (gethash tokenid bals 0) tokens))
 
     (let ((errmsg nil))
       ;; Check that the balances in the spend message, match the current balance,
@@ -1391,7 +1391,7 @@
                                                    bankid)))
                               (setf (gethash itemasset oldneg) itemargs))
                             (setf (gethash itemasset bals)
-                                  (bcadd (gethash itemasset bals) itemamt))
+                                  (bcadd (gethash itemasset bals 0) itemamt))
                             (push (list itemamt itemtime itemasset) tobecharged))
                           (dotcat res "." (bankmsg server $ATSPENDACCEPT reqmsg)))
                          (t
@@ -1498,8 +1498,8 @@
          do
            (let* ((digits (storage-info-digits assetinfo))
                   (storagefee (storage-info-fee assetinfo))
-                  (bal (bcsub (gethash itemasset bals) storagefee digits))
-                  (fraction (bcadd (gethash itemasset fractions)
+                  (bal (bcsub (gethash itemasset bals 0) storagefee digits))
+                  (fraction (bcadd (gethash itemasset fractions 0)
                                    (storage-info-fraction assetinfo)
                                    digits)))
              (multiple-value-setq (bal fraction)
@@ -1807,7 +1807,7 @@
 
         ;; Charge the new file tokens
         (setq tokens (balance-state-tokens state))
-        (setf (gethash tokenid bals) (bcsub (gethash tokenid bals) tokens))
+        (setf (gethash tokenid bals) (bcsub (gethash tokenid bals 0) tokens))
 
         (let ((errmsg nil))
           ;; Check that the balances in the spend message, match the current balance,
@@ -1919,10 +1919,7 @@
           (unless (equal res "") (dotcat res "."))
           (dotcat res balancehash))))
 
-    (if (equal res "")
-        ;; Should this be an error, or just return the empty string?
-        (error "No balances found")
-        res)))
+    res))
 
 (define-message-handler do-getoutbox $GETOUTBOX (server args reqs)
   (let ((db (db server))
