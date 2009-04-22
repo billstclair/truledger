@@ -19,18 +19,35 @@
 (defvar *trubanc-ports-to-www-dirs*
   (make-hash-table :test 'eql))
 
+(defun port-server (port)
+  (gethash port *trubanc-ports-to-servers*))
+
+(defun (setf port-server) (server port)
+  (setf (gethash port *trubanc-ports-to-servers*) server))
+
+(defun port-acceptor (port)
+  (gethash port *trubanc-ports-to-acceptors*))
+
+(defun (setf port-acceptor) (acceptor port)
+  (setf (gethash port *trubanc-ports-to-acceptors*) acceptor))
+
+(defun port-www-dir (port)
+  (gethash port *trubanc-ports-to-www-dirs*))
+
+(defun (setf port-www-dir) (www-dir port)
+  (setf (gethash port *trubanc-ports-to-www-dirs*) www-dir))
+
 (defun trubanc-web-server (server &key www-dir (port 8080))
-  (setf (gethash port *trubanc-ports-to-servers*) server
-        (gethash port *trubanc-ports-to-www-dirs*) www-dir)
-  (or (gethash port *trubanc-ports-to-acceptors*)
+  (setf (port-server port) server
+        (port-www-dir port) www-dir)
+  (or (port-acceptor port)
       (let ((acceptor (make-instance 'hunchentoot:acceptor :port port)))
         (hunchentoot:start acceptor)
-        (setf (gethash port *trubanc-ports-to-acceptors*) acceptor)
-        acceptor)))
+        (setf (port-acceptor port) acceptor))))
 
 (defun do-trubanc-web-server (msg debug)
   (let* ((port (hunchentoot:acceptor-port hunchentoot:*acceptor*))
-         (server (gethash port *trubanc-ports-to-servers*)))
+         (server (port-server port)))
     (cond (msg
            (let ((res (process server msg)))
              (when debug
@@ -49,7 +66,7 @@
 (defun do-static-file ()
   (let* ((acceptor hunchentoot:*acceptor*)
          (port (hunchentoot:acceptor-port acceptor))
-         (dir (gethash port *trubanc-ports-to-www-dirs*)))
+         (dir (port-www-dir port)))
     (cond ((not dir)
            #.(strcat "This is a <a href='http://trubanc.com/'>Trubanc</a>"
                      " server with no home page."))

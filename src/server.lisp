@@ -7,7 +7,7 @@
 
 (in-package :trubanc)
 
-(defun make-server (dir passphrase &optional (bankname "") (bankurl ""))
+(defun make-server (dir passphrase &key (bankname "") (bankurl ""))
   "Create a Trubanc server instance."
   (let ((db (make-fsdb dir)))
     (make-instance 'server

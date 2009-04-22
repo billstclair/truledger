@@ -78,11 +78,34 @@
   (and (probe-file *server-config-file*)
        (read-config-from-file *server-config-file*)))
 
-(defun start-server (passphrase &optional (config-port 8888))
+(defun write-server-config (server &key (port 8080) www-dir)
+  (check-type server server)
+  (let ((dir (or www-dir (port-www-dir port))))
+    (when dir
+      (setq www-dir (namestring (truename dir)))))
+  (let* ((db-dir (fsdb-dir (db server)))
+         (privkey (privkey server))
+         (config (sign-config `(:db-dir ,db-dir :port ,port :www-dir ,www-dir)
+                              privkey)))
+    (write-config-to-file config *server-config-file*)))
+
+(defun start-server (passphrase)
   "Read the server config file, start the server, and return the server instance.
-   If something goes wrong, start the config web server, and return nil."
-;; continue here
-  passphrase config-port)
+   Signal an error, if something goes wrong."
+  (let* ((config (read-server-config))
+         (db-dir (getf config :db-dir))
+         (server-port (getf config :port))
+         (server-www-dir (getf config :www-dir))
+         server)
+    (unless config (error "Couldn't read server config file"))
+    (handler-case
+        (setq server (make-server db-dir passphrase))
+      (error (c)
+        (error "Error creating server, db-dir: ~s, msg: ~a" db-dir c)))
+    (unless (verify-config config (privkey server))
+      (error "Failed to verify configuration signature"))
+    (trubanc-web-server server server-www-dir server-port)
+    server))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
