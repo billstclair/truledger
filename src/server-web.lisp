@@ -16,11 +16,12 @@
 (defvar *trubanc-ports-to-acceptors*
   (make-hash-table :test 'eql))
 
-(defvar *index-file*
-  (merge-pathnames "../index.inc" trubanc-loader:*source-directory*))
+(defvar *trubanc-ports-to-www-dirs*
+  (make-hash-table :test 'eql))
 
-(defun trubanc-web-server (server &key (port 8080))
-  (setf (gethash port *trubanc-ports-to-servers*) server)
+(defun trubanc-web-server (server &key www-dir (port 8080))
+  (setf (gethash port *trubanc-ports-to-servers*) server
+        (gethash port *trubanc-ports-to-www-dirs*) www-dir)
   (or (gethash port *trubanc-ports-to-acceptors*)
       (let ((acceptor (make-instance 'hunchentoot:acceptor :port port)))
         (hunchentoot:start acceptor)
@@ -36,20 +37,30 @@
                (setq res (format nil "msg: <pre>~a</pre>~%response: <pre>~a</pre>~%"
                                  msg res)))
              res))
-          (t (file-get-contents *index-file*)))))
+          (t (do-static-file)))))
   
 (hunchentoot:define-easy-handler (trubanc-server :uri "/") (msg debug)
   (setf (hunchentoot:content-type*) "text/html")
   (do-trubanc-web-server msg debug))
 
 (hunchentoot:define-easy-handler (static-file :uri 'static-file-request-p) ()
-  (let ((file (merge-pathnames
-               (strcat ".." (hunchentoot:request-uri hunchentoot:*request*))
-               trubanc-loader:*source-directory*)))
-    (hunchentoot:handle-static-file
-     (if (cl-fad:directory-pathname-p file)
-         (merge-pathnames "index.html" file)
-         file))))
+  (do-static-file))
+
+(defun do-static-file ()
+  (let* ((acceptor hunchentoot:*acceptor*)
+         (port (hunchentoot:acceptor-port acceptor))
+         (dir (gethash port *trubanc-ports-to-www-dirs*)))
+    (cond ((not dir)
+           #.(strcat "This is a <a href='http://trubanc.com/'>Trubanc</a>"
+                     " server with no home page."))
+          (t
+           (let ((file (merge-pathnames
+                        (strcat dir "/."
+                                (hunchentoot:request-uri hunchentoot:*request*)))))
+             (hunchentoot:handle-static-file
+              (if (cl-fad:directory-pathname-p file)
+                  (merge-pathnames "index.html" file)
+                  file)))))))
 
 (defun static-file-request-p (request)
   (let ((script (hunchentoot:script-name request)))

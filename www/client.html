@@ -1,0 +1,450 @@
+<html>
+<head>
+<link rel="stylesheet" type="text/css" href="css/docstyle.css">
+<title>A Trubanc Web Client</title>
+</head>
+<body>
+<h1>A Trubanc Web Client</h1>
+
+<p>
+I have written a <a href="./">Trubanc</a> web client, mostly as an
+example of how to use the
+<a href="viewtext.php?file=lib%2Fclient.php&search=&numbers=Yes">
+client API</a>, but it's also a useful tool for maintaining multiple
+Trubanc accounts on multiple Trubanc servers. This page uses sampled
+screen-shots from the client to teach you how to use it. You can
+follow those links within the text, or simply go to
+<a href="./client/">Trubanc.com/client</a> to create a new account.
+</p>
+
+<p>
+If you're interested in technical details of what goes on behind the
+scenes, this page is organized in about the same way as
+<a href="plain-english.html">
+Trubanc in Plain English</a>.
+
+<p>
+Disclaimer: This site has a fully-functional Trubanc client and
+server, but you wouldn't want to store any real money here. First off,
+you enter your passphrase into the client, unencrypted, so it's
+visible to anyone who can see your web traffic. You COULD install the
+client on your own computer and get rid of that problem, but the
+Trubanc server on this machine is under development, so I may
+occasionally break things. Plus, it's hosted on a machine in Arizona,
+under the watchful guns of the United States government. They have a
+nasty habit of deciding to steal people's property, because of made up
+"crimes" of "money laundering", or "operating a money tranfer service
+without a license" or "tax evasion". I hope that there will one day
+soon be many real Trubanc servers to choose from, hosted outside of
+the influence of the US government, and backed up daily to prevent
+lossage. For now, though, please use this site only to become
+accustomed to Trubanc, and to help me test it.
+</p>
+
+<span class="summary-header">Note</span>
+<p id="summary">
+If you just want to learn the Trubanc web client by doing, follow the
+directions in the gray boxes titled "Summary".
+</p>
+
+<h2>Opening an Account</h2>
+
+<p>
+When you first go to the client web page, you'll see the
+<a href="demo/">Login screen</a>. Once you've created an account,
+simply enter your passphrase and click the "Login" button (or press
+the "Enter" or "Return" key on your keyboard). But first, you need to
+create public key pair. Click the "Register a new account" link on the
+login screen to go to the
+<a href="demo/register.html">
+Registration screen</a>.
+</p>
+
+<p>
+Trubanc uses
+<a href="http://www.pgpi.org/doc/pgpintro/">
+public key</a>
+<a href="http://en.wikipedia.org/wiki/Public-key_cryptography">
+cryptography</a> to identify you in all communication with the server,
+and to ensure that the server you reach over the internet today is the
+same one you reached yesterday. With Trubanc, your private key,
+stored, encrypted with your passphrase, on the machine that hosts the
+client, <i>is</i> your identity. Guard it well. I will soon write
+instructions for installing the client on your PC. But if you use one
+over the internet, make sure it's over an encrypted (https)
+link. Protect your passphrase like your gold. If somebody gets it, and
+your encrypted private key, or access to a public client site holding
+your private key, they are <i>you</i> as far as a Trubanc server is
+concerned. But without it, <i>nobody</i> can impersonate you.
+</p>
+
+<p>
+To create your identity, you must first pick a passphrase. This should
+be a longish sequence of words that you can remember, but that it
+would be unlikely for anyone to guess. It's best to use your memory,
+not a piece of paper, to remember your passphrase. Pick a good one,
+and don't forget it. If you do, you've lost your identity and access
+to any assets stored in accounts keyed to it. Unless you picked a
+really easy passphrase, nobody can recover it for you. That's a good
+thing. There's a random-word passphrase generator on the
+<a href="https://loom.cc/?function=folder_tools">
+Loom Tools</a> page. Press the "Random" button in the "Passphrase"
+line.
+</p>
+
+<p>
+In order to protect Trubanc clients and servers from spammers, you'll
+also need to enter a "Coupon". A Trubanc coupon is a portable store of
+value. Coupons are usually used to give usage tokens to people who
+want to open new accounts, but they can be minted in any asset
+type. After you use one you get from a friend or the bank proprieter
+to create an account, you can mint your own on the
+<a href="demo/balance.html">
+balance screen</a>, and fund new accounts for your friends.
+</p>
+
+<p>
+Enter your passphrase twice, once in the "Passphrase" field, and again
+in the "Verification" field. Paste your "Coupon". Pick a "Key
+size". RSA Labs
+<a href="http://www.rsa.com/rsalabs/node.asp?id=2004">thinks</a> that
+a key size of 3072 bits should be secure until beyond the year
+2031. So that's the default. Smaller sizes are a little faster to
+generate, and use, but only a little. It hardly matters for a key that
+you'll only be using on this site to play with the interface. Finally,
+press the "Create account" button. It takes a few seconds to generate
+a new passphrase, so be patient.
+</p>
+
+<span class="summary-header">Summary</span>
+<ul id="summary">
+<li>Get a usage token coupon from somebody.</li>
+<li>Pick a passphrase.</li>
+<li>Go to
+<a href="client/">trubanc.com/client</a></li>
+<li>Click the "Register a new account" link to go to the registration
+  screen.
+<li>Enter your "Passphrase" and "Verification".</li>
+<li>Paste the "Coupon".</li>
+<li>Press the "Create account" button.</li>
+</ul>
+
+<h2>Receiving Assets</h2>
+
+<p>
+The
+<a href="demo/balance.html">Balance screen</a> is where you spend most
+of your quality Trubanc time. It lets you see spends from others that
+you haven't yet acknowledged, spends from yourself that the recipient
+has acknowledged and you haven't yet completed, and your current
+balances in all the assets you possess. It also has a "Show raw
+balance" link, which brings up the
+<a href="demo/rawbalance.html">
+raw balance screen</a>. This shows the low-level encodings of the
+signed and countersigned messages in your inbox, outbox, and
+balances. Unless you're a Trubanc developer, you probably won't need
+to look at this much.
+</p>
+
+<p>
+After you add a new bank, you'll see at least two spends. One will be
+from the coupon from your sponsor, for enough usage tokens to cover the
+registration fee. The other will be a negative spend from the bank for
+that registration fee. In Trubanc, the bank can't simply change your
+balance behind your back. All balances and spends are signed by you
+and countersigned by the bank. So in order to change your balance, you
+must explicity make or accept spends. If someone spends assets to you
+that you don't want, e.g. to purchase something that you no longer
+sell, you can choose to reject that spend.
+</p>
+
+<p>
+A Trubanc transaction has three steps:
+</p>
+<ol>
+<li>A makes a spend to B.</li>
+<li>B accepts or rejects the spend.</li>
+<li>A closes the transaction.</li>
+</ol>
+
+<p>
+The "<b>=== Inbox ===</b>" section of the balance screen has six
+columns:
+<ol>
+<li><b>Request:</b> this is "Spend" for spends other people made to you, or
+  "Accept" or "Reject" for acknowledgements of spends you made to
+  others.</li>
+<li><b>From:</b> This contains the name or ID of the other person. If
+  you've given him a nickname on the
+<a href="demo/contacts.html">Contacts screen</a>, that will appear. If
+he also has an account name, that will appear in parentheses. If the
+other person is not amongst your contacts, a "Nickname" text box
+will allow you to add him.</li>
+<li><b>Amount:</b> The amount that was spent in this transaction. If
+  you see "<span style="color: red;"><i>(new)</i></span>" after the
+  asset name, that means that you have never credited any amounts of
+  this asset type to your account. This can help you avoid accepting
+  counterfeit assets (same name, but different ID).</li>
+<li><b>Note:</b> The note in the original spend for this
+  transaction. For acknowledgement lines, this is your original spend note.</li>
+<li><b>Action:</b> the action you want to perform on this line when
+  you press the "Process Inbox" button.</li>
+<li><b>Reply:</b> you may type a reply here for spends, and you'll see
+  the other person's reply here for acknowledgements of your spends.</li>
+</ol>
+
+<p>
+To accept or reject or skip a spend, select what you want to do in
+each row's "Action" column. To prevent the server database from
+filling up, you're not allowed to do a new spend until you've cleared
+your inbox, but you can keep some spends around until then by skipping
+them.
+</p>
+
+<p>
+To remove a spend acknowledgement from your inbox, closing the
+transaction, check the "Remove" box in its "Action" column.
+</p>
+
+<p>
+Click the "Process Inbox" button to perform the corresponding "Action"
+to each row.
+</p>
+
+<span class="summary-header">Summary</span>
+<ul id="summary">
+<li>Go to the
+<a href="demo/balance.html">
+Balance screen</a>.
+<li>In the "Action" column, select an action for each spend and unclick
+  the "Remove" boxes for acknowledgements you wish to keep.</li>
+<li>Type a "Reply" for each accepted or rejected spend that needs
+  one.</li>
+<li>Click the "Process Inbox" button.</li>
+</ul>
+
+<h2>Adding Contacts</h2>
+
+<p>
+The Trubanc server keeps track of customers by their ID, the SHA1 hash of
+their public keys. Remembering 40-character hex strings tends to be
+hard for most of us humans, though, so the web client allows you to
+associate nicknames with your contacts. The
+<a href="demo/contacts.html">
+Contacts screen</a> shows you contacts that you have added in the past
+and allows you to add new ones. This is so simple that I'll just put
+it in the summary. You can also add a contact from the "Inbox" section
+of the
+<a href="demo/balance.html">
+Balance screen</a>, or during a spend, by fillin in the "Nickname" box
+in the inbox "From" column. or near the bottom of the spend form. This
+will add a new contact with a blank nickname and notes. You'll
+probably want to visit the Contacts screen to add those, especially if
+the customer has no Account Name.
+</p>
+
+<span class="summary-header">Summary</span>
+<ul id="summary">
+<li>Go to the
+<a href="demo/contacts.html">
+Contacts screen</a>.
+<li>Paste your contact's "ID".<li>
+<li>If you want, type a "Nickname".</li>
+<li>If you want, type some "Notes".</li>
+<li>Press the "Add/Change Contact" button.</li>
+<li>If the ID is new, a contact will be added. If it already exists,
+  the Nickname and Notes of the existing contact will be updated, if
+  non-blank. To remove a nickname or note, type a single space in that
+  field.</li>
+</ul>
+
+<h2>Spending Assets</h2>
+
+<p>
+All tranfers are sent and received on the
+<a href="demo/balance.html">
+Balance screen</a>. The "Receiving Assets" section above dealt with
+the "Inbox", This section deals with the "Balances" and "Outbox"
+sections.
+</p>
+
+<p>
+Spends are pretty well documented below the "Balances" and spend form:
+</p>
+<blockquote>
+<p>
+To make a spend, fill in the "Spend amount", choose a "Recipient" or
+enter a "Recipient ID, enter (optionally) a "Note", and click the
+"Spend" button next to the asset you wish to spend.
+</p>
+
+<p>
+To transfer balances, enter the "Spend Amount", select or fill-in the
+"Transfer to" name (letters, numbers, and spaces only), and click the
+"Spend" button next to the asset you want to transfer from. Each
+storage location costs one usage token, and there is currently no way
+to recover an unused location. 0 balances will show only on the raw
+balance screen.
+</p>
+
+<p>
+To mint a coupon, enter the "Spend Amount", check the "Mint coupon"
+box, and click the "Spend" button next to the asset you want to
+transfer to the coupon. You can redeem a coupon on the "Banks" page.
+</p>
+
+<p>
+Entering a "Nickname" will add the "Recipient ID" to your contacts
+list with that nickname, or change the nickname of the selected
+"Recipient".
+</p>
+</blockquote>
+
+<p>
+Trubanc lets you split up your balances into multiple
+sub-accounts. You start off with just one, named "main". You can add
+more by tranferring to them as described above.
+</p>
+
+<p>
+The "Outbox" section, below the spend instructions shows pending
+spends and coupons. The word "coupon" is a link to a page that shows
+that coupon, for easy copy and paste. When you mint a coupon, you'll
+be taken automatically to the new coupon's page. To redeem a coupon,
+paste it into the "Bank URL or Coupon" box on the
+<a href="demo/banks.html">
+Banks screen</a>, and click the "Add bank" button.
+</p>
+
+<p>
+Spends that have not yet been accepted or rejected, and coupons that
+have not yet been redeemed, can be cancelled by pressing the "Cancel"
+button in that row of the "Outbox" section. Cancelled spends will come
+into your inbox just as if the recipient had rejected them, except the
+bank will pocket the transaction fee, to discourage this as a regular
+practice. Cancelled coupons will come into your inbox as a regular
+spend, as if you had redeemed the coupon. You'll need to accept the
+spend, and acknowledge the acceptance, as two "Process Inbox" button
+presses.
+</p>
+
+<span class="summary-header">Summary</span>
+<ul id="summary">
+<li>Go to the
+<a href="demo/balance.html">
+Balance screen</a>.</li>
+<li>Enter the "Spend amount".</li>
+<li>Choose a "Recipient" or paste in his "Recipient ID".</li>
+<li>Type a "Nickname" if you want to add or change it.</li>
+<li>Click the "Spend" button next to the asset you want to spend.</li>
+</ul>
+
+<h2>Adding a Bank</h2>
+
+<p>
+To create an account at a new bank, or add an existing bank account to
+a new client, use the
+<a href="demo/banks.html">
+Banks screen</a>. To create a new account, or to redeem it in an
+existing account, paste a coupon into "Bank URL or Coupon". For a
+new account, if you want the account to be named, enter an "Account
+name". To add an existing account at another bank to a client that
+doesn't have it, enter the bank's URL as the "Bank URL or Coupon",
+instead of a coupon. Then press the "Add Bank" button.
+</p>
+
+<span class="summary-header">Summary</span>
+<ul id="summary">
+<li>Acquire a coupon with usage tokens for the new bank.
+<li>Go to the
+<a href="client/?cmd=banks">Banks screen</a>.</li>
+<li>Paste the coupon into "Bank URL or Coupon".</li>
+<li>Enter an "Account Name", if you want to identify yourself with
+other than your ID.</li>
+<li>Press the "Add Bank" button.</li>
+</ul>
+
+<h2>Preventing Spam</h2>
+
+<p>
+Since a spend requires two files, an outbox entry for the spender and
+an inbox entry for the recipient, the spender is charged two usage
+tokens to make the spend. That pays the bank for disk space (storage
+fees and non-refundable transaction fees will come soon). If the
+recipient accepts the spend, the spender will get those usage tokens
+back when he closes the transaction. If the recipient rejects the
+spend, he, not the spender, gets the usage tokens.
+</p>
+
+<p>
+A zero spend, with an attached note is very similar to an email. If it
+were free, spammers would be able to fill your Trubanc inbox with
+garbage. Since rejecting that spam message will cost the spammer two
+tokens, it will cost him money to keep doing it. This should
+discourage spam. I'll eventually add a feature where you can choose to
+give back the usage tokens with a rejected spend. Until then, you'll
+need to explicitly spend them back, except to spammers. An easy way to
+spend back usage tokens is to do a zero spend with a note to the
+recipient to reject the spend and take the tokens.
+</p>
+
+<h2>Issuing Assets</h2>
+
+<p>
+Many Trubanc banks will issue their own assets. Many of the existing
+digital gold currencies work that way. But, like
+<a href="https://loom.cc/">Loom</a>, Trubanc allows anyone to issue a
+currency. If you convince enough people that your currency is stable
+and accepted by enough people, they'll use it. Creating your new asset
+type is very easy. On the
+<a href="demo/assets.html">
+Assets screen</a>, you'll see a list of all the assets that are or
+ever were in your account. You can fill in the form with your new
+asset's "Scale", "Precision", and "Asset Name", and press the "Add
+Asset" button. "Scale" is the number of digits kept track
+of to the right of the decimal point. "Precision" is the minimum
+number of decimal places that will be printed, even if they're all
+zero. "Scale" must be greater than or equal to "Precision". Most
+GoldGram-like curencies use a scale of 7 and a precision of 3. The
+"Asset name" can be whatever you like. In the demo Trubanc, it costs
+two usage tokens to create a new asset type.
+</p>
+
+<p>
+When you create a new asset, it will appear in your "main"
+sub-account, with a balance of "-0". Negative balances are for assets
+you issue. You can spend as much of such an asset as you like, but
+people will trust your asset a lot better if you never spend more of
+it that you can back with the commodity you've choosen to back it.
+</p>
+
+<p>
+You can move asset issuance to another sub-account, or transfer it to
+another person, by doing a spend for the entire negative amount. So,
+right after asset creation, when your balance is "-0.000" in  your
+"main" sub-account, you can type "-0" as the "Spend amount" on the
+<a href="demo/balance.html">
+Balance screen</a>, and select either a "Recipient" or a "Transfer to"
+sub-account. If you transfer issuance to another person, you'll likely
+want to inform your asset holders of the change. It could have an
+effect on the perceived value of your asset.
+</p>
+
+<span class="summary-header">Summary</span>
+<ul id="summary">
+<li>Go to the
+<a href="demo/assets.html">
+Assets page</a>.</li>
+<li>Enter a "Scale", "Precision", and "Asset name".</li>
+<li>Press the "Add Asset" button.</li>
+</ul>
+
+<h2>Keeping History</h2>
+
+<p>I plan to add history to the client soon. Until then, once you've
+  cleared a transaction from your account, it's gone.</p>
+
+<p>Copyright &copy; 2008 Bill St. Clair, All Rights Reserved</p>
+
+</body>
+</html>

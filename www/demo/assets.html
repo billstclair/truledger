@@ -1,0 +1,57 @@
+<html>
+<head>
+<title>Assets - Trubanc Client</title>
+</head>
+<body onload='document.forms[0].scale.focus()'>
+<p>
+<img style="vertical-align: middle;" src="../trubanc-logo-50x49.gif" alt="Trubanc" width="50" height="49"/>
+<b>Trubanc</b>
+&nbsp;&nbsp;<a href="balance.html">Balance</a>&nbsp;&nbsp<a href="contacts.html">Contacts</a>&nbsp;&nbsp;<a href="banks.html">Banks</a>&nbsp;&nbsp<a href="assets.html"><b>Assets</b></a>&nbsp;&nbsp<a href="./">Logout</a></p>
+<b>Bank:</b> Trubanc <a href="http://trubanc.com">http://trubanc.com</a><br/>
+<b>Account name:</b> Bill St. Clair<br/>
+<b>Your ID:</b> 2e62b557d302c2248e8b985500ef7e1fb9d74295<br/>
+<span style="color: red;"></span><br>
+<form method="post" action="./" autocomplete="off">
+<input type="hidden" name="cmd" value="asset"/>
+<table>
+<tr>
+<td><b>Scale:</b></td>
+<td><input type="text" name="scale" size="3" value=""/>
+</tr><tr>
+<td><b>Precision:</b></td>
+<td><input type="text" name="precision" size="3" value=""/></td>
+</tr><tr>
+<td><b>Asset name:</b></td>
+<td><input type="text" name="assetname" size="30" value=""/></td>
+</tr><tr>
+<td></td>
+<td><input type="submit" name="newasset" value="Add Asset"/>
+<input type="submit" name="cancel" value="Cancel"/></td>
+</tr>
+</table>
+</form>
+<table border="1">
+<tr>
+<th>Asset name</th>
+<th>Scale</th>
+<th>Precision</th>
+<th>Owner</th>
+<th>Asset ID</th>
+</tr>
+<tr>
+<td>Bill Fake Goldgrams</td>
+<td align="right">7</td>
+<td align="right">3</td>
+<td><span title="2e62b557d302c2248e8b985500ef7e1fb9d74295">(Bill St. Clair)<span></td>
+<td>5259b5c6c87a9b545757954fd053bf11b6591504</td>
+</tr>
+<tr>
+<td>Trubanc Usage Tokens</td>
+<td align="right">0</td>
+<td align="right">0</td>
+<td><span title="06ab285d8e849cb9d9896825b6e43d83568cd675">(Trubanc)<span></td>
+<td>fab79a78b4d5e09a0823ec4293c4d5deb13dfaba</td>
+</tr>
+</table>
+</body>
+</html>

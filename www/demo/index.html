@@ -1,0 +1,25 @@
+<html>
+<head>
+<title>Trubanc Client</title>
+</head>
+<body onload='document.forms[0].passphrase.focus()'>
+<p>
+<img style="vertical-align: middle;" src="../trubanc-logo-50x49.gif" alt="Trubanc" width="50" height="49"/>
+<b>Trubanc</b>
+</p>
+<form method="get" action="balance.html" autocomplete="off">
+<input type="hidden" name="cmd" value="login"/>
+<table>
+<tr>
+<td><b>Passphrase:</b></td>
+<td><input type="password" name="passphrase" size="50"/>
+<input type="submit" name="login" value="Login"/></td>
+</tr><tr>
+<td></td>
+<td style="color: red">&nbsp;</td>
+</tr>
+</table>
+<a href="register.html">Register a new account</a>
+</form>
+</body>
+</html>

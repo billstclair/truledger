@@ -224,6 +224,23 @@
   (wbp (digits)
     (split-decimal (bcadd balance fraction))))
 
+;; save some typing for the cl-who macros
+(defmacro who ((var &optional stream
+                    &rest rest
+                    &key prologue indent)
+               &body body)
+  (declare (ignore prologue indent))
+  `(cl-who:with-html-output (,var ,stream ,@rest)
+     ,@body))
+
+(defmacro whots ((var &optional string-form
+                      &rest rest
+                      &key (element-type 'character) prologue indent)
+               &body body)
+  (declare (ignore element-type prologue indent))
+  `(cl-who:with-html-output-to-string (,var ,string-form ,@rest)
+     ,@body))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair

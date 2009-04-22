@@ -6,7 +6,7 @@
 ;;;
 
 (cl:defpackage :trubanc
-  (:use :cl :cffi :cl-base64)
+  (:use :cl :cffi :cl-base64 :cl-who)
   (:export
 
    ;; openssl-cffi.lisp

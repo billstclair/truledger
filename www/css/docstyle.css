@@ -1,0 +1,16 @@
+#summary {
+   border: 1px solid;
+   margin: 10px;
+   margin-top: 2px;
+   padding: 5px;
+   background-color: #dddddd;
+}
+
+#summary li {
+  margin-left: 15px
+}
+
+.summary-header {
+  margin: 15px;
+  font-weight: bold;
+}
