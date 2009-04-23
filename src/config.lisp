@@ -108,8 +108,8 @@
         (error "Error creating server, db-dir: ~s, msg: ~a" db-dir c)))
     (unless (verify-config config (privkey server))
       (error "Failed to verify configuration signature"))
-    (trubanc-web-server server server-www-dir server-port)
-    server))
+    (trubanc-web-server server :www-dir server-www-dir :port server-port)
+    server-port))
 
 (defctype size-t :unsigned-int)
 
@@ -127,12 +127,32 @@
         (let ((res (%read-passphrase p buf bufsize flags)))
           (when (null-pointer-p res) (error "Error reading passphrase"))
           (prog1 (foreign-string-to-lisp res :encoding :latin-1)
-            ;; Anal, I know, but fun.
-            (let ((bytes (urandom-bytes bufsize)))
-              (dotimes (i bufsize)
-                (dotimes (j 8)
-                  (setf (mem-ref buf :char i)
-                        (char-code (aref bytes (mod (+ i j) bufsize)))))))))))))
+            ;; Erase the passphrase from memory
+            (destroy-password buf bufsize 'mem-set-char)))))))
+
+(defun toplevel-function ()
+  (let ((passphrase (read-passphrase "Passphrase: ")))
+    (handler-bind
+        ((error (lambda (c)
+                  (format t "Error starting server: ~a~%" c)
+                  (finish-output)
+                  ;; Doesn't work
+                  ;;(invoke-debugger c)
+                  (quit))))
+      (unwind-protect
+           (let ((port (start-server passphrase)))
+             (format t "Server started on port ~d~%" port)
+             (finish-output)
+             (process-wait "Server shutdown"
+                           (lambda () (not (web-server-active-p)))))
+        (destroy-password passphrase)))))
+
+(defun save-trubanc-application (&optional (filename "trubanc-app"))
+  (stop-web-server)
+  (save-application filename
+                    :toplevel-function #'toplevel-function
+                    :prepend-kernel t
+                    :clear-clos-caches t))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

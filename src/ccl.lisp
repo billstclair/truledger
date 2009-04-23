@@ -15,8 +15,31 @@
 
 (defun df (x) (disassemble x))
 
+(defun arglist (x &optional include-bindings)
+  (ccl:arglist x include-bindings))
+
 (defun add-startup-function (f)
   (pushnew f ccl:*lisp-startup-functions*))
+
+(defun make-weak-hash-table ()
+  (make-hash-table :test 'eq :weak t))
+
+(defun gc ()
+  (ccl:gc))
+
+(defun save-application (filename &rest rest &key
+                         toplevel-function
+                         init-file
+                         error-handler
+                         application-class
+                         clear-clos-caches
+                         purify
+                         impurify
+                         prepend-kernel)
+  (declare (ignore toplevel-function init-file error-handler
+                   application-class clear-clos-caches purify
+                   impurify prepend-kernel))
+  (apply 'ccl:save-application filename rest))
 
 ;;;
 ;;; Locking.
@@ -80,12 +103,6 @@
 
 (defun current-process ()
   ccl:*current-process*)
-
-(defun make-weak-hash-table ()
-  (make-hash-table :test 'eq :weak t))
-
-(defun gc ()
-  (ccl:gc))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

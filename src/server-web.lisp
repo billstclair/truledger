@@ -23,19 +23,31 @@
   (gethash port *trubanc-ports-to-servers*))
 
 (defun (setf port-server) (server port)
-  (setf (gethash port *trubanc-ports-to-servers*) server))
+  (if port
+      (setf (gethash port *trubanc-ports-to-servers*) server)
+      (remhash port *trubanc-ports-to-servers*))
+  port)
 
 (defun port-acceptor (port)
   (gethash port *trubanc-ports-to-acceptors*))
 
 (defun (setf port-acceptor) (acceptor port)
-  (setf (gethash port *trubanc-ports-to-acceptors*) acceptor))
+  (if port
+      (setf (gethash port *trubanc-ports-to-acceptors*) acceptor)
+      (remhash port *trubanc-ports-to-acceptors*))
+  port)
 
 (defun port-www-dir (port)
   (gethash port *trubanc-ports-to-www-dirs*))
 
 (defun (setf port-www-dir) (www-dir port)
-  (setf (gethash port *trubanc-ports-to-www-dirs*) www-dir))
+  (if port
+      (setf (gethash port *trubanc-ports-to-www-dirs*) www-dir)
+      (remhash port *trubanc-ports-to-www-dirs*))
+  port)
+
+(defun web-server-active-p ()
+  (> (hash-table-count *trubanc-ports-to-acceptors*) 0))
 
 (defparameter *default-server-port* 8080)
 
@@ -46,6 +58,26 @@
       (let ((acceptor (make-instance 'hunchentoot:acceptor :port port)))
         (hunchentoot:start acceptor)
         (setf (port-acceptor port) acceptor))))
+
+(defun stop-web-server (&optional (port :all))
+  (cond ((eq port :all)
+         (let ((ports (loop
+                         for port being the hash-keys
+                         of *trubanc-ports-to-servers*
+                         collect port)))
+           (mapc 'stop-web-server ports)))
+        (t (let ((acceptor (port-acceptor port)))
+             (when acceptor
+               (setf (port-server port) nil
+                     (port-acceptor port) nil
+                     (port-www-dir port) nil)
+               (process-run-function
+                (format nil "Stop port ~d" port)
+                'hunchentoot:stop acceptor)
+               ;; The process above will hang until somebody
+               ;; makes the web server do something.
+               ;; Need to send it a "GET / HTTP/1.0" or some-such.
+               )))))
 
 (defun do-trubanc-web-server (msg debug)
   (let* ((port (hunchentoot:acceptor-port hunchentoot:*acceptor*))

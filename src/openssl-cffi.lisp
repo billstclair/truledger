@@ -26,13 +26,13 @@
 
 (defconstant $pem-string-rsa "RSA PRIVATE KEY")
 
-(defparameter $d2i-RSAPrivateKey
+(defun d2i-RSAPrivateKey ()
   (foreign-symbol-pointer "d2i_RSAPrivateKey"))
 
 (defcfun ("RSA_free" rsa-free) :void
   (r :pointer))
 
-(defparameter $i2d-RSAPrivateKey
+(defun i2d-RSAPrivateKey ()
   (foreign-symbol-pointer "i2d_RSAPrivateKey"))
 
 (defcfun ("EVP_des_ede3_cbc" evp-des-ede3-cbc) :pointer
@@ -116,12 +116,28 @@
 
 (defun %pem-read-bio-rsa-private-key (bio &optional (x $null) (cb $null) (u $null))
   (with-foreign-strings ((namep $pem-string-rsa :encoding :latin-1))
-    (%pem-asn1-read-bio $d2i-RSAPrivateKey namep bio x cb u)))
+    (%pem-asn1-read-bio (d2i-RSAPrivateKey) namep bio x cb u)))
 
 (defun %pem-write-bio-rsa-private-key
     (bio x &optional (enc $null) (kstr $null) (klen 0) (cb $null) (u $null))
   (with-foreign-strings ((namep $pem-string-rsa :encoding :latin-1))
-    (%pem-asn1-write-bio $i2d-RSAPrivateKey namep bio x enc kstr klen cb u)))
+    (%pem-asn1-write-bio (i2d-RSAPrivateKey) namep bio x enc kstr klen cb u)))
+
+(defun mem-set-char (val buf &optional (idx 0))
+  (setf (mem-ref buf :char idx) val))
+
+(defun aset (val array idx)
+  (setf (aref array idx) val))
+
+(defun destroy-password (buf &optional
+                         (len (length buf))
+                         (store-fun 'aset))
+  "Overwrite a password string with randomness"
+  (let* ((s-len (max 8 len))
+         (s (urandom-bytes s-len)))
+    (dotimes (i len)
+      (dotimes (j 8)
+        (funcall store-fun (aref s (mod (+ i j) s-len)) buf i)))))
 
 (defun decode-rsa-private-key (string &optional (password ""))
   "Convert a PEM string to an RSA structure. Free it with RSA-FREE.
@@ -129,7 +145,8 @@
   (with-bio-new-s-mem (bio string)
     (let ((res (if password
                    (with-foreign-strings ((passp password :encoding :latin-1))
-                     (%pem-read-bio-rsa-private-key bio $null $null passp))
+                     (prog1 (%pem-read-bio-rsa-private-key bio $null $null passp)
+                       (destroy-password passp (length password) 'mem-set-char)))
                    (%pem-read-bio-rsa-private-key bio))))
       (when (null-pointer-p res)
         (error "Couldn't encode private key from string"))
@@ -142,8 +159,9 @@
   (with-bio-new-s-mem (bio)
     (let ((res (if password
                    (with-foreign-strings ((passp password :encoding :latin-1))
-                     (%pem-write-bio-rsa-private-key
-                      bio rsa (evp-des-ede3-cbc) passp (length password)))
+                     (prog1 (%pem-write-bio-rsa-private-key
+                             bio rsa (evp-des-ede3-cbc) passp (length password))
+                       (destroy-password passp (length password) 'mem-set-char)))
                    (%pem-write-bio-rsa-private-key bio rsa))))
       (when (eql res 0)
         (error "Can't encode private key."))
