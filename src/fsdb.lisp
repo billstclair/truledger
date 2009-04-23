@@ -64,10 +64,7 @@
 (defmethod initialize-instance :after ((db fsdb) &rest ignore)
   (declare (ignore ignore))
   (ignore-errors (create-directory (strcat (fsdb-dir db) "/")))
-  (let* ((dir (namestring (truename (fsdb-dir db))))
-         (idx (1- (length dir))))
-    (when (and (>= idx 0) (eql #\/ (aref dir idx)))
-      (setq dir (subseq dir 0 idx)))
+  (let* ((dir (remove-trailing-separator (namestring (truename (fsdb-dir db))))))
     (setf (fsdb-dir db) dir)))
 
 (defun normalize-key (key)

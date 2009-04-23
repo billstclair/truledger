@@ -7,13 +7,12 @@
 
 (in-package :trubanc)
 
-(defvar *config-readtable*
+(defparameter *config-readtable*
   (let ((rt (copy-readtable)))
     (set-syntax-from-char #\# #\a rt)
+    (set-syntax-from-char #\` #\' rt)
     rt))
 
-;; Expects the stream to be "(k v k v k v)"
-;; Returns ((k . v) (k . v) (k . v))
 (defun read-config-from-stream (stream)
   (let ((*readtable* *config-readtable*))
     (read stream)))
@@ -78,24 +77,29 @@
   (and (probe-file *server-config-file*)
        (read-config-from-file *server-config-file*)))
 
-(defun write-server-config (server &key (port 8080) www-dir)
+(defun write-server-config (server &key
+                            (server-port *default-server-port*)
+                            server-www-dir)
   (check-type server server)
-  (let ((dir (or www-dir (port-www-dir port))))
+  (check-type server-port integer)
+  (let ((dir (or server-www-dir (port-www-dir server-port))))
     (when dir
-      (setq www-dir (namestring (truename dir)))))
-  (let* ((db-dir (fsdb-dir (db server)))
+      (setq server-www-dir
+            (remove-trailing-separator (namestring (truename dir))))))
+  (let* ((server-db-dir (fsdb-dir (db server)))
          (privkey (privkey server))
-         (config (sign-config `(:db-dir ,db-dir :port ,port :www-dir ,www-dir)
+         (config (sign-config `(:server-db-dir ,server-db-dir
+                                :server-port ,server-port
+                                :server-www-dir ,server-www-dir)
                               privkey)))
     (write-config-to-file config *server-config-file*)))
 
-(defun start-server (passphrase)
-  "Read the server config file, start the server, and return the server instance.
-   Signal an error, if something goes wrong."
-  (let* ((config (read-server-config))
-         (db-dir (getf config :db-dir))
-         (server-port (getf config :port))
-         (server-www-dir (getf config :www-dir))
+(defun start-server (passphrase &optional (config (read-server-config)))
+  "Read the server config file, start the web server, and return the server instance.
+   Signal an error if something goes wrong."
+  (let* ((db-dir (getf config :server-db-dir))
+         (server-port (getf config :server-port))
+         (server-www-dir (getf config :server-www-dir))
          server)
     (unless config (error "Couldn't read server config file"))
     (handler-case
@@ -106,6 +110,29 @@
       (error "Failed to verify configuration signature"))
     (trubanc-web-server server server-www-dir server-port)
     server))
+
+(defctype size-t :unsigned-int)
+
+(defcfun ("readpassphrase" %read-passphrase) :pointer
+  (prompt :pointer)
+  (buf :pointer)
+  (bufsiz size-t)
+  (flags :int))
+
+(defun read-passphrase (prompt)
+  (let ((bufsize 132)
+        (flags 0))    
+    (with-foreign-string (p prompt)
+      (with-foreign-pointer (buf bufsize)
+        (let ((res (%read-passphrase p buf bufsize flags)))
+          (when (null-pointer-p res) (error "Error reading passphrase"))
+          (prog1 (foreign-string-to-lisp res :encoding :latin-1)
+            ;; Anal, I know, but fun.
+            (let ((bytes (urandom-bytes bufsize)))
+              (dotimes (i bufsize)
+                (dotimes (j 8)
+                  (setf (mem-ref buf :char i)
+                        (char-code (aref bytes (mod (+ i j) bufsize)))))))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

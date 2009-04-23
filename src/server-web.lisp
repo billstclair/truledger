@@ -37,7 +37,9 @@
 (defun (setf port-www-dir) (www-dir port)
   (setf (gethash port *trubanc-ports-to-www-dirs*) www-dir))
 
-(defun trubanc-web-server (server &key www-dir (port 8080))
+(defparameter *default-server-port* 8080)
+
+(defun trubanc-web-server (server &key www-dir (port *default-server-port*))
   (setf (port-server port) server
         (port-www-dir port) www-dir)
   (or (port-acceptor port)
