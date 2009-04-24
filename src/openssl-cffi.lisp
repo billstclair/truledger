@@ -139,6 +139,9 @@
       (dotimes (j 8)
         (funcall store-fun (aref s (mod (+ i j) s-len)) buf i)))))
 
+(define-condition bad-rsa-key-or-password (simple-error)
+  ())
+
 (defun decode-rsa-private-key (string &optional (password ""))
   "Convert a PEM string to an RSA structure. Free it with RSA-FREE.
    Will prompt for the password if it needs it and you provide nil."
@@ -149,7 +152,8 @@
                        (destroy-password passp (length password) 'mem-set-char)))
                    (%pem-read-bio-rsa-private-key bio))))
       (when (null-pointer-p res)
-        (error "Couldn't decode private key from string"))
+        (error 'bad-rsa-key-or-password
+               :format-control "Couldn't decode private key from string"))
       res)))
 
 ;; Could switch to PEM_write_PKCS8PrivateKey, if PHP compatibility is

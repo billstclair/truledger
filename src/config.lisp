@@ -103,10 +103,7 @@
          (server-www-dir (getf config :server-www-dir))
          server)
     (unless config (error "Couldn't read server config file"))
-    (handler-case
-        (setq server (make-server db-dir passphrase))
-      (error (c)
-        (error "Error creating server, db-dir: ~s, msg: ~a" db-dir c)))
+    (setq server (make-server db-dir passphrase))
     (unless (verify-config config (privkey server))
       (error "Failed to verify configuration signature"))
     (trubanc-web-server server :www-dir server-www-dir :port server-port)
@@ -132,17 +129,26 @@
             (destroy-password buf bufsize 'mem-set-char)))))))
 
 (defun toplevel-function ()
-  (let* ((passphrase (read-passphrase "Passphrase: "))
-         (start-config-server-p))
-    (handler-case
-      (let ((port (start-server passphrase)))
-        (destroy-password passphrase)
-        (format t "Server started on port ~d~%" port)
-        (finish-output))
-      (error (c)
-        (format t "Error starting server: ~a~%" c)
-        (finish-output)
-        (setq start-config-server-p t)))
+  (let ((start-config-server-p nil)
+        passphrase)
+    (loop
+       (setq passphrase (read-passphrase "Passphrase: "))
+       (when (eql 0 (length passphrase))
+         (quit))
+       (handler-case
+           (let ((port (start-server passphrase)))
+             (destroy-password passphrase)
+             (format t "Server started on port ~d~%" port)
+             (finish-output)
+             (return))
+         (bad-rsa-key-or-password ()
+           (format t "Bad passphrase. Try again.~%")
+           (finish-output))
+         (error (c)
+           (format t "Error starting server: ~a~%" c)
+           (finish-output)
+           (setq start-config-server-p t)
+           (return))))
     (when start-config-server-p
       (handler-case
           (let ((port (start-config-server passphrase)))
@@ -151,9 +157,9 @@
         (error (c)
           (format t "Error starting config server: ~a~%" c)
           (finish-output)
-          (quit))))
-    (process-wait "Server shutdown"
-                  (lambda () (not (web-server-active-p))))))
+          (quit)))))
+  (process-wait "Server shutdown"
+                (lambda () (not (web-server-active-p)))))
 
 (defun save-trubanc-application (&optional (filename "trubanc-app"))
   (stop-web-server)
