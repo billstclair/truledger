@@ -149,7 +149,7 @@
                        (destroy-password passp (length password) 'mem-set-char)))
                    (%pem-read-bio-rsa-private-key bio))))
       (when (null-pointer-p res)
-        (error "Couldn't encode private key from string"))
+        (error "Couldn't decode private key from string"))
       res)))
 
 ;; Could switch to PEM_write_PKCS8PrivateKey, if PHP compatibility is

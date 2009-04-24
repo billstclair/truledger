@@ -140,9 +140,13 @@
                    (port-www-dir port) nil)
              (when acceptor
                (remove-web-script-handlers port acceptor)
-               (process-run-function
-                (format nil "Stop port ~d" port)
-                'hunchentoot:stop acceptor)
+               (let ((started nil))
+                 (process-run-function
+                  (format nil "Stop port ~d" port)
+                  (lambda ()
+                    (setq started t)
+                    (hunchentoot:stop acceptor)))
+                 (process-wait "Server stopper" (lambda () started)))
                ;; Need to make a request in order to get the server to shut down
                (ignore-errors
                  (dotimes (i 3)
