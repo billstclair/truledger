@@ -77,6 +77,15 @@
   (and (probe-file *server-config-file*)
        (read-config-from-file *server-config-file*)))
 
+(defun get-server-db-dir (config)
+  (getf config :server-db-dir))
+
+(defun get-server-port (config)
+  (getf config :server-port))
+
+(defun get-server-www-dir (config)
+  (getf config :server-www-dir))
+
 (defun write-server-config (server &key
                             (server-port *default-server-port*)
                             server-www-dir)
@@ -98,9 +107,9 @@
                      (config (read-server-config)))
   "Read the server config file, start the web server, and return the server instance.
    Signal an error if something goes wrong."
-  (let* ((db-dir (getf config :server-db-dir))
-         (server-port (getf config :server-port))
-         (server-www-dir (getf config :server-www-dir))
+  (let* ((db-dir (get-server-db-dir config))
+         (server-port (get-server-port config))
+         (server-www-dir (get-server-www-dir config))
          server)
     (unless config (error "Couldn't read server config file"))
     (setq server (make-server db-dir passphrase))
@@ -128,12 +137,31 @@
             ;; Erase the passphrase from memory
             (destroy-password buf bufsize 'mem-set-char)))))))
 
+(defun get-server-passphrase ()
+  (let (passphrase)
+    (loop
+       (setq passphrase (read-passphrase "Passphrase: "))
+       (when (eql 0 (length passphrase))
+         (return nil))
+       (when (ignore-errors
+               (let* ((config (read-server-config))
+                      (db-dir (and config (get-server-db-dir config)))
+                      (db (and db-dir (make-fsdb db-dir))))
+                 (and db (db-get db $PRIVKEY))))
+         (return passphrase))
+       (let ((again (read-passphrase "Again: ")))
+         (when (eql 0 (length again))
+           (return nil))
+         (when (equal passphrase again)
+           (return passphrase))
+         (format t "Passphrase mismatch~%")
+         (finish-output)))))
+
 (defun toplevel-function ()
   (let ((start-config-server-p nil)
         passphrase)
     (loop
-       (setq passphrase (read-passphrase "Passphrase: "))
-       (when (eql 0 (length passphrase))
+       (unless (setq passphrase (get-server-passphrase))
          (quit))
        (handler-case
            (let ((port (start-server passphrase)))
@@ -240,12 +268,28 @@
 
 (defun do-config-server ()
   (setf (hunchentoot:content-type*) "text/html")
-    (bind-parameters (submit server-db-dir server-port server-www-dir)
+    (bind-parameters (submit cancel server-db-dir server-port server-www-dir)
       (let ((err nil))
-        (cond (submit
+        (cond (cancel
+               (let ((res (whots (s)
+                            (:html
+                             (:head (:title "Config Done"))
+                             (:body
+                              "Config web server terminated.")))))
+                 (stop-web-server
+                  (hunchentoot:acceptor-port hunchentoot:*acceptor*))
+                 ;; We usually exit from toplevel-function
+                 ;; before this gets displayed in the browser.
+                 ;; Figure out how to delay sometime.
+                 (return-from do-config-server res)))
+              (submit
                (handler-case
                    (return-from do-config-server
                      (create-server-config server-db-dir server-port server-www-dir))
+                 (bad-rsa-key-or-password ()
+                   (setq err (format nil "Couldn't load private key. ~
+                                          Your passphrase may be wrong. ~
+                                          Cancel and restart to try again.")))
                  (error (c) (setq err (format nil "~a" c)))))
             (t (unless (and server-db-dir server-port server-www-dir)
                  (let* ((config (ignore-errors (read-server-config))))
@@ -270,7 +314,10 @@
                     (tr s "DB Dir:" "text" "server-db-dir" 50 server-db-dir)
                     (tr s "WWW Dir:" "text" "server-www-dir" 50 server-www-dir)
                     (tr s "Server Port:" "text" "server-port" "5" server-port)
-                    (tr s "&nbsp;" "submit" "submit" nil "Submit")
+                    (:tr (:td "&nbsp;")
+                         (:td (:input :type "submit" :name "submit" :value "Submit")
+                              " "
+                              (:input :type "submit" :name "cancel" :value "Cancel")))
                     ))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
