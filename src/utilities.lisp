@@ -134,6 +134,8 @@
   "Concatenate a bunch of strings"
   (apply #'concatenate 'string (mapcar 'string strings)))
 
+;; This should probably be smart enough to not eval PLACE twice,
+;; but I only ever use it on symbols, so it doesn't really matter.
 (defmacro dotcat (place &rest strings)
   `(setf ,place (strcat ,place ,@strings)))
 

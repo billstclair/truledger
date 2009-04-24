@@ -1,2 +1,2 @@
 #!/bin/bash
-rsyncit -av --exclude=_darcs --exclude="*.dx64fsl" ./
+rsyncit -av --exclude=_darcs --exclude="*.dx64fsl" --exclude=trubanc-app ./

@@ -23,87 +23,90 @@
   (gethash port *trubanc-ports-to-servers*))
 
 (defun (setf port-server) (server port)
-  (if port
+  (if server
       (setf (gethash port *trubanc-ports-to-servers*) server)
       (remhash port *trubanc-ports-to-servers*))
-  port)
+  server)
 
 (defun port-acceptor (port)
   (gethash port *trubanc-ports-to-acceptors*))
 
 (defun (setf port-acceptor) (acceptor port)
-  (if port
+  (if acceptor
       (setf (gethash port *trubanc-ports-to-acceptors*) acceptor)
       (remhash port *trubanc-ports-to-acceptors*))
-  port)
+  acceptor)
 
 (defun port-www-dir (port)
   (gethash port *trubanc-ports-to-www-dirs*))
 
 (defun (setf port-www-dir) (www-dir port)
-  (if port
+  (if www-dir
       (setf (gethash port *trubanc-ports-to-www-dirs*) www-dir)
       (remhash port *trubanc-ports-to-www-dirs*))
-  port)
+  www-dir)
 
 (defun web-server-active-p ()
   (> (hash-table-count *trubanc-ports-to-acceptors*) 0))
 
-(defparameter *default-server-port* 8080)
+(defmacro bind-parameters ((&rest params) &body body)
+  `(let ,(mapcar (lambda (param)
+                   `(,param (hunchentoot:parameter
+                             ,(string-downcase (string param)))))
+                 params)
+     ,@body))
 
-(defun trubanc-web-server (server &key www-dir (port *default-server-port*))
-  (setf (port-server port) server
-        (port-www-dir port) www-dir)
-  (or (port-acceptor port)
-      (let ((acceptor (make-instance 'hunchentoot:acceptor :port port)))
-        (hunchentoot:start acceptor)
-        (setf (port-acceptor port) acceptor))))
-
-(defun stop-web-server (&optional (port :all))
-  (cond ((eq port :all)
-         (let ((ports (loop
-                         for port being the hash-keys
-                         of *trubanc-ports-to-servers*
-                         collect port)))
-           (mapc 'stop-web-server ports)))
-        (t (let ((acceptor (port-acceptor port)))
-             (when acceptor
-               (setf (port-server port) nil
-                     (port-acceptor port) nil
-                     (port-www-dir port) nil)
-               (process-run-function
-                (format nil "Stop port ~d" port)
-                'hunchentoot:stop acceptor)
-               ;; The process above will hang until somebody
-               ;; makes the web server do something.
-               ;; Need to send it a "GET / HTTP/1.0" or some-such.
-               )))))
-
-(defun do-trubanc-web-server (msg debug)
-  (let* ((port (hunchentoot:acceptor-port hunchentoot:*acceptor*))
+(defun do-trubanc-web-server ()
+  (let* ((acceptor hunchentoot:*acceptor*)
+         (port (hunchentoot:acceptor-port acceptor))
          (server (port-server port)))
-    (cond (msg
-           (let ((res (process server msg)))
-             (when debug
-               (setq res (format nil "msg: <pre>~a</pre>~%response: <pre>~a</pre>~%"
-                                 msg res)))
-             res))
-          (t (do-static-file)))))
+    (bind-parameters (msg debug)
+      (setf (hunchentoot:content-type*) "text/html")
+      (cond ((and msg server)
+             (let ((res (process server msg)))
+               (when debug
+                 (setq res (format nil
+                                   "msg: <pre>~a</pre>~%response: <pre>~a</pre>~%"
+                                   msg res)))
+               res))
+            (t (do-static-file))))))
   
-(hunchentoot:define-easy-handler (trubanc-server :uri "/") (msg debug)
-  (setf (hunchentoot:content-type*) "text/html")
-  (do-trubanc-web-server msg debug))
+(defvar *web-script-handlers*
+  (make-hash-table :test 'equalp))
 
-(hunchentoot:define-easy-handler (static-file :uri 'static-file-request-p) ()
-  (do-static-file))
+(defun get-web-script-handler (script-name acceptor)
+  (gethash (list script-name acceptor) *web-script-handlers*))
+
+(defun (setf get-web-script-handler) (handler script-name acceptor)
+  (setf (gethash (list script-name acceptor) *web-script-handlers*)
+        handler))
+
+(defun remove-web-script-handlers (port acceptor)
+  (loop
+     for key being the hash-key of *web-script-handlers*
+     do
+       (when (and (eql port (car key))
+                  (eq acceptor (second key)))
+         (remhash key *web-script-handlers*))))
+
+(hunchentoot:define-easy-handler (trubanc-server :uri 'identity) ()
+  (let* ((script (hunchentoot:script-name hunchentoot:*request*))
+         (handler (get-web-script-handler script hunchentoot:*acceptor*)))
+    (cond (handler (funcall handler))
+          ((search "/.." script)
+           (abort-request))
+          (t (do-static-file)))))
+
+(defun abort-request ()
+  (setf (hunchentoot:return-code*) hunchentoot:+http-not-found+)
+  (hunchentoot:abort-request-handler))
 
 (defun do-static-file ()
   (let* ((acceptor hunchentoot:*acceptor*)
          (port (hunchentoot:acceptor-port acceptor))
          (dir (port-www-dir port)))
     (cond ((not dir)
-           #.(strcat "This is a <a href='http://trubanc.com/'>Trubanc</a>"
-                     " server with no home page."))
+           (abort-request))
           (t
            (let ((file (merge-pathnames
                         (strcat dir "/."
@@ -113,11 +116,38 @@
                   (merge-pathnames "index.html" file)
                   file)))))))
 
-(defun static-file-request-p (request)
-  (let ((script (hunchentoot:script-name request)))
-    (cond ((equal script "/") nil)
-          ((search "/.." script) nil)
-          (t t))))
+(defparameter *default-server-port* 8080)
+
+(defun trubanc-web-server (server &key www-dir (port *default-server-port*))
+  (setf (port-server port) server
+        (port-www-dir port) www-dir)
+  (or (port-acceptor port)
+      (let ((acceptor (make-instance 'hunchentoot:acceptor :port port)))
+        (setf (get-web-script-handler "/" acceptor) 'do-trubanc-web-server)
+        (hunchentoot:start acceptor)
+        (setf (port-acceptor port) acceptor))))
+
+(defun stop-web-server (&optional (port :all))
+  (cond ((eq port :all)
+         (let ((ports (loop
+                         for port being the hash-keys
+                         of *trubanc-ports-to-acceptors*
+                         collect port)))
+           (mapc 'stop-web-server ports)))
+        (t (let ((acceptor (port-acceptor port)))
+             (setf (port-server port) nil
+                   (port-acceptor port) nil
+                   (port-www-dir port) nil)
+             (when acceptor
+               (remove-web-script-handlers port acceptor)
+               (process-run-function
+                (format nil "Stop port ~d" port)
+                'hunchentoot:stop acceptor)
+               ;; Need to make a request in order to get the server to shut down
+               (ignore-errors
+                 (dotimes (i 3)
+                   (drakma:http-request (format nil "http://localhost:~d/" port))))
+               )))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

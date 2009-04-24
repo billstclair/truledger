@@ -131,21 +131,30 @@
             (destroy-password buf bufsize 'mem-set-char)))))))
 
 (defun toplevel-function ()
-  (let ((passphrase (read-passphrase "Passphrase: ")))
-    (handler-bind
-        ((error (lambda (c)
-                  (format t "Error starting server: ~a~%" c)
-                  (finish-output)
-                  ;; Doesn't work
-                  ;;(invoke-debugger c)
-                  (quit))))
-      (unwind-protect
-           (let ((port (start-server passphrase)))
-             (format t "Server started on port ~d~%" port)
-             (finish-output)
-             (process-wait "Server shutdown"
-                           (lambda () (not (web-server-active-p)))))
-        (destroy-password passphrase)))))
+  (let* ((config (read-server-config))
+         (passphrase (and config (read-passphrase "Passphrase: ")))
+         (start-config-server-p (null config)))
+    (when config
+      (handler-bind
+          ((error (lambda (c)
+                    (format t "Error starting server: ~a~%" c)
+                    (finish-output)
+                    (setq start-config-server-p t))))
+        (let ((port (start-server passphrase config)))
+          (format t "Server started on port ~d~%" port)
+          (finish-output))))
+    (destroy-password passphrase)
+    (when start-config-server-p
+      (handler-bind
+          ((error (lambda (c)
+                    (format t "Error starting config server: ~a~%" c)
+                    (finish-output)
+                    (quit))))
+        (let ((port (start-config-server)))
+          (destroy-password passphrase)
+          (format t "Config web server started on port ~d~%" port))))
+    (process-wait "Server shutdown"
+                  (lambda () (not (web-server-active-p))))))
 
 (defun save-trubanc-application (&optional (filename "trubanc-app"))
   (stop-web-server)
@@ -153,6 +162,51 @@
                     :toplevel-function #'toplevel-function
                     :prepend-kernel t
                     :clear-clos-caches t))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; The config web server
+;;;
+
+(defparameter *config-server-port* 8000)
+(defvar *config-acceptor* nil)
+
+(defun start-config-server ()
+  (let* ((port *config-server-port*)
+         (acceptor (trubanc-web-server nil :port port)))
+    (setf (get-web-script-handler "/" acceptor) 'do-config-server)
+    port))
+
+(defun tr (label type name size value)
+  (whots (s)
+    (:tr
+     (:th :align "right" (str label))
+     (:td (:input :type type :name name :size size :value value)))))
+
+(defun do-config-server ()
+  (setf (hunchentoot:content-type*) "text/html")
+    (bind-parameters (server-db-dir server-port server-www-dir)
+      (unless (and server-db-dir server-port server-www-dir)
+        (let* ((config (ignore-errors (read-server-config))))
+          (unless server-db-dir
+            (setq server-db-dir (getf config :server-db-dir)))
+          (unless server-port
+            (setq server-port (getf config :server-port *default-server-port*)))
+         (unless server-www-dir
+           (setq server-www-dir (getf config :server-www-dir)))))
+      (whots (s)
+        (:html
+         (:head
+          (:title "Trubanc Configuration"))
+         (:body
+          (:form :method "post" :action "./"
+             (:table
+              (str (tr "DB dir:" "text" "server-db-dir" 50 server-db-dir))
+              (str (tr "WWW dir:" "text" "server-www-dir" 50 server-www-dir))
+              (str (tr "Server Port:" "text" "server-port" "5" server-port))
+              (str (tr "&nbsp;" "submit" "submit" nil "Submit"))
+                )))))))
+      
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
