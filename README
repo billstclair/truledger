@@ -19,7 +19,7 @@ file, and startup the server on the port you specified.
 After you've done the configuration, you can start the server from
 "server.cfg" with:
 
-  (start-servar "passphrase")
+  (start-server "passphrase")
 
 To save an executable file:
 
