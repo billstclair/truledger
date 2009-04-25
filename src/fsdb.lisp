@@ -93,7 +93,7 @@
 (defmethod db-put ((db fsdb) key value)
   (with-fsdb-filename (db filename key)
     (if (or (null value) (equal value ""))
-        (delete-file filename)
+        (when (probe-file filename) (delete-file filename))
         (file-put-contents filename value))))
 
 (defmethod db-get ((db fsdb) key)

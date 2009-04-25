@@ -72,7 +72,7 @@
             (t (do-static-file))))))
   
 (defvar *web-script-handlers*
-  (make-hash-table :test 'equalp))
+  (make-hash-table :test 'equal))
 
 (defun get-web-script-handler (script-name acceptor)
   (gethash (list script-name acceptor) *web-script-handlers*))
@@ -96,6 +96,17 @@
           ((search "/.." script)
            (abort-request))
           (t (do-static-file)))))
+
+(defun start-simple-web-server (&optional (port 8080))
+  (stop-web-server)
+  (setq hunchentoot::*easy-handler-alist* nil)
+  (hunchentoot:define-easy-handler (simple-server :uri "/") ()
+    (setf (hunchentoot:content-type*) "text/html")
+    "Hello World!")
+  (let ((acceptor (make-instance 'hunchentoot:acceptor :port port)))
+    (setf (port-acceptor port) acceptor)
+    (hunchentoot:start acceptor)
+    port))
 
 (defun abort-request ()
   (setf (hunchentoot:return-code*) hunchentoot:+http-not-found+)
@@ -124,8 +135,9 @@
   (or (port-acceptor port)
       (let ((acceptor (make-instance 'hunchentoot:acceptor :port port)))
         (setf (get-web-script-handler "/" acceptor) 'do-trubanc-web-server)
+        (setf (port-acceptor port) acceptor)
         (hunchentoot:start acceptor)
-        (setf (port-acceptor port) acceptor))))
+        acceptor)))
 
 (defun stop-web-server (&optional (port :all))
   (cond ((eq port :all)
@@ -152,6 +164,32 @@
                  (dotimes (i 3)
                    (drakma:http-request (format nil "http://localhost:~d/" port))))
                )))))
+
+(defun send-bank-request (uri &optional msg-p)
+  (drakma:http-request (format nil "http://~a~@[?msg=(0,bankid,0):0~]" uri msg-p)))
+
+(defvar *stop-pounding-flag* nil)
+(defvar *pound-lock* (make-lock "Pound lock"))
+(defvar *pound-count* 0)
+
+(defun pound (uri &optional msg-p (thread-count 5))
+  (setq *stop-pounding-flag* nil
+        *pound-count* 0)
+  (dotimes (i thread-count)
+    (process-run-function (format nil "Pound ~d" i)
+      (lambda ()
+        (loop
+           (when *stop-pounding-flag* (return))
+           (ignore-errors
+             (send-bank-request uri msg-p)
+             (with-lock-grabbed (*pound-lock*)
+               (incf *pound-count*))))))))
+
+(defun stop-pounding ()
+  (setq *stop-pounding-flag* t))
+
+(defun pound-count ()
+  *pound-count*)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

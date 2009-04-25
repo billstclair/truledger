@@ -31,7 +31,6 @@ Distributed under the MIT license (see LICENSE file)
   :description ""
   :long-description ""
   :author "Greg Pfeil <greg@technomadic.org>"
-  :maintainer "Stelian Ionescu <sionescu@common-lisp.net>"
   ;; based on original Bordeaux-MP spec by Dan Barlow <dan@telent.net>
   ;; contributors:
   ;; Attila Lendvai <attila.lendvai@gmail.com>
@@ -46,7 +45,7 @@ Distributed under the MIT license (see LICENSE file)
   ;; Douglas Crosher <dtc@scieneer.com>
   ;; - added Scieneer Common Lisp support
   :licence "MIT"
-  :version "0.6.0"
+  :version "0.5.1"
   :components ((:module "src"
                         :serial t
                         :components
