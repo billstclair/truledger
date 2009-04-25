@@ -44,6 +44,8 @@
   (with-openssl-lock ()
     (open-ssl-add-all-algorithms)))
 
+(add-all-algorithms)
+
 ;; It's also necessary when staring a saved image.
 (add-startup-function 'add-all-algorithms)
 
