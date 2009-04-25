@@ -1,0 +1,34 @@
+See INSTALL for installation notes.
+
+All the examples in this file assume that you're in the TRUBANC package.
+
+The top-level server startup code needs to find the file "server.cfg"
+in the current directory. To create that file:
+
+  (start-config-server "passphrase")
+
+Where "passphrase" is the passphrase you want to use for the bank's
+private key.
+
+Then aim your browser at localhost:8000, and specify the database
+directory, the WWW directory, containing static html files to display
+when to "msg" parameter is given, and the port on which to start the
+server. It will create a fresh database, write the server.cfg
+file, and startup the server on the port you specified.
+
+After you've done the configuration, you can start the server from
+"server.cfg" with:
+
+  (start-servar "passphrase")
+
+To save an executable file:
+
+  (save-trubanc-application filename)
+
+Starting that executable will query for a passphrase, look for
+server.cfg in the current directory, start a server on the specified
+database, www dir, and port, if it's there, or query for the
+passphrase again and start a config server if it isn't, or if
+something else goes wrong.
+
+This is all still a work in progress, so expect lots of bugs.

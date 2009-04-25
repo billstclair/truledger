@@ -2,5 +2,4 @@
 # Usage is: "trubanc [slimeport]"
 ccl -e '(load "trubanc-loader.lisp")' \
     -e '(when (find-package :trubanc) (in-package :trubanc))' \
-    -e '(load "load-swank.lisp")' \
-    -e "(swank:create-server :port (or $1 4006) :dont-close t)"
+    -e "(trubanc-loader:load-swank $1)"

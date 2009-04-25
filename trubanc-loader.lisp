@@ -4,6 +4,7 @@
     (:use #:cl :ccl)
   (:export #:add-to-registry
            #:loadsys
+           #:load-swank
            #:*source-directory*))
 
 (in-package #:trubanc-loader)
@@ -31,6 +32,15 @@
   (apply 'add-to-registry
          (directory systems-wildcard :directories t :files nil))
   (add-to-registry *source-directory*))
+
+(defun load-swank (&optional port)
+  (when (and port (integerp port))
+    (loadsys :swank)
+    (let ((sym (find-symbol "*DEFAULT-WORKER-THREAD-BINDINGS*" :swank)))
+      (when (and sym (boundp sym) (listp (symbol-value sym)))
+        (set sym (cons (cons '*package* (find-package :trubanc))
+                       (symbol-value sym)))))
+    (funcall (find-symbol "CREATE-SERVER" :swank) :port port :dont-close t)))
 
 (loadsys :trubanc)
 

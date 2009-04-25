@@ -1,9 +1,13 @@
 ; -*- mode: lisp -*-
+(in-package #:cl-user)
 
-(load "slime/swank-loader.lisp")
-(push `(*package* . ,*package*) swank::*default-worker-thread-bindings*)
-
-;;(swank:create-server :port 4006 :dont-close t)
+(asdf:defsystem :trubanc-loader
+  :description "Loader for Trubanc system"
+  :author "Bill St. Clair <bill@billstclair.com>"
+  :version "0.1"
+  :license "Apache"
+  :components
+  ((:file "trubanc-loader")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

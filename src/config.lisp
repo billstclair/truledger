@@ -204,10 +204,9 @@
 (defparameter *config-server-port* 8000)
 (defvar *config-server-passphrase* nil)
 
-(defun start-config-server (passphrase)
+(defun start-config-server (passphrase &optional (port *config-server-port*))
   (setq *config-server-passphrase* passphrase)
-  (let* ((port *config-server-port*)
-         (acceptor (trubanc-web-server nil :port port)))
+  (let* ((acceptor (trubanc-web-server nil :port port)))
     (setf (get-web-script-handler "/" acceptor) 'do-config-server)
     port))
 
