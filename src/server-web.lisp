@@ -166,7 +166,8 @@
                )))))
 
 (defun send-bank-request (uri &optional msg-p)
-  (drakma:http-request (format nil "http://~a~@[?msg=(0,bankid,0):0~]" uri msg-p)))
+  (drakma:http-request
+   (format nil "http://~a~@[?msg=(bc50c4fd9c228a21f64d34ca644a46c1fe8520e4%2Cbankid%2C-----BEGIN+PUBLIC+KEY-----%0AMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMwfcmkk2coTuYAEbdZ5iXggObNPzbSi%0ADnVtndZFe4%2F4Xg0IQPfpQ04OkhWIftMy1OjFhGlBzzNzdW98KYwKMgsCAwEAAQ%3D%3D%0A-----END+PUBLIC+KEY-----%0A)%3A%0AsLJ9GqFjZ61fq%2FbDFL6rxpY3w2s5dWIAXJCvPKQTPEkrG%2F2I1fwxBfugBmn%2FiPwa%0AjCRtnFDnrn7Mv%2BUY%2BSH4yw%3D%3D~]" uri msg-p)))
 
 (defvar *stop-pounding-flag* nil)
 (defvar *pound-lock* (make-lock "Pound lock"))

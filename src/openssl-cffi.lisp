@@ -7,6 +7,27 @@
 
 (in-package :trubanc)
 
+(defvar *openssl-process* nil)
+
+(defvar *openssl-lock* (make-lock "OpenSSL"))
+
+(defmacro with-openssl-lock (() &body body)
+  (let ((thunk (gensym)))
+    `(flet ((,thunk () ,@body))
+       (declare (dynamic-extent #',thunk))
+       (call-with-openssl-lock #',thunk))))
+
+(defun call-with-openssl-lock (thunk)
+  (let ((process (current-process)))
+    (if (eq process *openssl-process*)
+      (funcall thunk)
+      (with-lock-grabbed (*openssl-lock* "OpenSSL Lock")
+        (unwind-protect
+             (progn
+               (setq *openssl-process* process)
+               (funcall thunk))
+          (setq *openssl-process* nil))))))
+
 (defparameter $null (null-pointer))
 
 (defcfun ("OPENSSL_add_all_algorithms_conf" open-ssl-add-all-algorithms) :void
@@ -19,10 +40,12 @@
   (load-foreign-library '(:default "libcrypto")))
 
 ;; This is necessary for reading encrypted private keys
-(open-ssl-add-all-algorithms)
+(defun add-all-algorithms ()
+  (with-openssl-lock ()
+    (open-ssl-add-all-algorithms)))
 
 ;; It's also necessary when staring a saved image.
-(add-startup-function 'open-ssl-add-all-algorithms)
+(add-startup-function 'add-all-algorithms)
 
 (defconstant $pem-string-rsa "RSA PRIVATE KEY")
 
@@ -51,13 +74,14 @@
   (buf :pointer))
 
 (defun bio-new-s-mem (&optional string)
-  (let ((res (%bio-new (%bio-s-mem))))
-    (when (null-pointer-p res)
-      (error "Can't allocate io-mem-buf"))
-    (when string
-      (with-foreign-strings ((sp string :encoding :latin-1))
-        (%bio-puts res sp)))
-    res))
+  (with-openssl-lock ()
+    (let ((res (%bio-new (%bio-s-mem))))
+      (when (null-pointer-p res)
+        (error "Can't allocate io-mem-buf"))
+      (when string
+        (with-foreign-strings ((sp string :encoding :latin-1))
+          (%bio-puts res sp)))
+      res)))
 
 (defmacro with-bio-new-s-mem ((bio &optional string) &body body)
   (let ((thunk (gensym)))
@@ -83,17 +107,19 @@
   (%bio-ctrl bio $BIO-CTRL-INFO 0 ptr))  
 
 (defun bio-get-string (bio)
-  (with-foreign-object (p :pointer)
-    (let ((len (%bio-get-mem-data bio p)))
-      (foreign-string-to-lisp
-       (mem-ref p :pointer) :count len :encoding :ascii))))
+  (with-openssl-lock ()
+    (with-foreign-object (p :pointer)
+      (let ((len (%bio-get-mem-data bio p)))
+        (foreign-string-to-lisp
+         (mem-ref p :pointer) :count len :encoding :ascii)))))
 
 (defcfun ("BIO_free" %bio-free) :int
   (a :pointer))
 
 (defun bio-free (bio)
-  (when (eql 0 (%bio-free bio))
-    (error "Error freeing bio instance")))
+  (with-openssl-lock ()
+    (when (eql 0 (%bio-free bio))
+      (error "Error freeing bio instance"))))
 
 (defcfun ("PEM_ASN1_read_bio" %pem-asn1-read-bio) :pointer
   (d2i :pointer)
@@ -145,31 +171,33 @@
 (defun decode-rsa-private-key (string &optional (password ""))
   "Convert a PEM string to an RSA structure. Free it with RSA-FREE.
    Will prompt for the password if it needs it and you provide nil."
-  (with-bio-new-s-mem (bio string)
-    (let ((res (if password
-                   (with-foreign-strings ((passp password :encoding :latin-1))
-                     (prog1 (%pem-read-bio-rsa-private-key bio $null $null passp)
-                       (destroy-password passp (length password) 'mem-set-char)))
-                   (%pem-read-bio-rsa-private-key bio))))
-      (when (null-pointer-p res)
-        (error 'bad-rsa-key-or-password
-               :format-control "Couldn't decode private key from string"))
-      res)))
+  (with-openssl-lock ()
+    (with-bio-new-s-mem (bio string)
+      (let ((res (if password
+                     (with-foreign-strings ((passp password :encoding :latin-1))
+                       (prog1 (%pem-read-bio-rsa-private-key bio $null $null passp)
+                         (destroy-password passp (length password) 'mem-set-char)))
+                     (%pem-read-bio-rsa-private-key bio))))
+        (when (null-pointer-p res)
+          (error 'bad-rsa-key-or-password
+                 :format-control "Couldn't decode private key from string"))
+        res))))
 
 ;; Could switch to PEM_write_PKCS8PrivateKey, if PHP compatibility is
 ;; no longer necessary. It's supposed to be more secure.
 (defun encode-rsa-private-key (rsa &optional password)
   "Encode an rsa private key as a PEM-encoded string."
-  (with-bio-new-s-mem (bio)
-    (let ((res (if password
-                   (with-foreign-strings ((passp password :encoding :latin-1))
-                     (prog1 (%pem-write-bio-rsa-private-key
-                             bio rsa (evp-des-ede3-cbc) passp (length password))
-                       (destroy-password passp (length password) 'mem-set-char)))
-                   (%pem-write-bio-rsa-private-key bio rsa))))
-      (when (eql res 0)
-        (error "Can't encode private key."))
-      (bio-get-string bio))))
+  (with-openssl-lock ()
+    (with-bio-new-s-mem (bio)
+      (let ((res (if password
+                     (with-foreign-strings ((passp password :encoding :latin-1))
+                       (prog1 (%pem-write-bio-rsa-private-key
+                               bio rsa (evp-des-ede3-cbc) passp (length password))
+                         (destroy-password passp (length password) 'mem-set-char)))
+                     (%pem-write-bio-rsa-private-key bio rsa))))
+        (when (eql res 0)
+          (error "Can't encode private key."))
+        (bio-get-string bio)))))
 
 (defcfun ("PEM_read_bio_RSA_PUBKEY" %pem-read-bio-rsa-pubkey) :pointer
   (bp :pointer)
@@ -184,18 +212,20 @@
 (defun decode-rsa-public-key (string)
   "Convert a PEM-encoded string to an RSA public key.
    You must RSA-FREE the result when you're done with it."
-  (with-bio-new-s-mem (bio string)
-    (let ((res (%pem-read-bio-rsa-pubkey bio $null $null $null)))
-      (when (null-pointer-p res)
-        (error "Couldn't decode public key"))
-      res)))
+  (with-openssl-lock ()
+    (with-bio-new-s-mem (bio string)
+      (let ((res (%pem-read-bio-rsa-pubkey bio $null $null $null)))
+        (when (null-pointer-p res)
+          (error "Couldn't decode public key"))
+        res))))
 
 (defun encode-rsa-public-key (rsa)
   "Encode an RSA public or private key to a PEM-encoded public key."
-  (with-bio-new-s-mem (bio)
-    (when (eql 0 (%pem-write-bio-rsa-pubkey bio rsa))
-      (error "Can't encode RSA public key"))
-    (bio-get-string bio)))
+  (with-openssl-lock ()
+    (with-bio-new-s-mem (bio)
+      (when (eql 0 (%pem-write-bio-rsa-pubkey bio rsa))
+        (error "Can't encode RSA public key"))
+      (bio-get-string bio))))
 
 (defcfun ("RSA_size" rsa-size) :int
   (rsa :pointer))
@@ -211,10 +241,11 @@
 
 (defun rsa-generate-key (keylen &optional (exponent 65537))
   "Generate an RSA private key with the given KEYLEN and exponent."
-  (let ((res (%rsa-generate-key keylen exponent $null $null)))
-    (when (null-pointer-p res)
-      (error "Couldn't generate RSA key"))
-    res))
+  (with-openssl-lock ()
+    (let ((res (%rsa-generate-key keylen exponent $null $null)))
+      (when (null-pointer-p res)
+        (error "Couldn't generate RSA key"))
+      res)))
 
 (defcfun ("SHA1" %sha1) :pointer
   (d :pointer)
@@ -229,7 +260,8 @@
   (check-type res-type (member :hex :bytes :string))
   (with-foreign-pointer (md 20)
     (with-foreign-strings ((d string :encoding :latin-1))
-      (%sha1 d (length string) md))
+      (with-openssl-lock ()
+        (%sha1 d (length string) md)))
     (let* ((byte-array-p (or (eq res-type :hex) (eq res-type :bytes)))
            (res (copy-memory-to-lisp md 20 byte-array-p)))
       (if (eq res-type :hex)
@@ -311,16 +343,17 @@
 
 (defun call-with-evp-pkey (thunk rsa-key public-p)
   (flet ((doit (thunk rsa)
-           (let ((pkey (%evp-pkey-new)))
+           (let ((pkey (with-openssl-lock () (%evp-pkey-new))))
              (unwind-protect
                   (progn
                     (when (null-pointer-p pkey)
                       (error "Can't allocate private key storage"))
-                    (when (eql 0 (%evp-pkey-set1-rsa pkey rsa))
+                    (when (eql 0 (with-openssl-lock ()
+                                   (%evp-pkey-set1-rsa pkey rsa)))
                       (error "Can't initialize private key storage"))
                     (funcall thunk pkey))
                (unless (null-pointer-p pkey)
-                 (%evp-pkey-free pkey))))))
+                 (with-openssl-lock () (%evp-pkey-free pkey)))))))
     (if public-p
         (with-rsa-public-key (rsa rsa-key) (doit thunk rsa))
         (with-rsa-private-key (rsa rsa-key) (doit thunk rsa)))))
@@ -340,51 +373,53 @@
   "Sign the string in DATA with the RSA-PRIVATE-KEY.
    Return the signature BASE64-encoded."
   (check-type data string)
-  (with-evp-pkey (pkey rsa-private-key)
-    (let ((type (%evp-sha1)))
-      (when (null-pointer-p type)
-        (error "Can't get SHA1 type structure"))
-      (with-foreign-pointer (ctx $EVP-MD-CTX-size)
-        (with-foreign-pointer (sig (1+ (%evp-pkey-size pkey)))
-          (with-foreign-pointer (siglen (foreign-type-size :unsigned-int))
-            (with-foreign-strings ((datap data :encoding :latin-1))
-              (when (or (eql 0 (%evp-sign-init ctx type))
-                        (unwind-protect
-                             (or (eql 0 (%evp-sign-update
-                                         ctx datap (length data)))
-                                 (eql 0 (%evp-sign-final ctx sig siglen pkey)))
-                          (%evp-md-ctx-cleanup ctx)))
-                (error "Error while signing"))
-              ;; Here's the result
-              (base64-encode
-               (copy-memory-to-lisp
-                sig (mem-ref siglen :unsigned-int) nil)))))))))
+  (with-openssl-lock ()
+    (with-evp-pkey (pkey rsa-private-key)
+      (let ((type (%evp-sha1)))
+        (when (null-pointer-p type)
+          (error "Can't get SHA1 type structure"))
+        (with-foreign-pointer (ctx $EVP-MD-CTX-size)
+          (with-foreign-pointer (sig (1+ (%evp-pkey-size pkey)))
+            (with-foreign-pointer (siglen (foreign-type-size :unsigned-int))
+              (with-foreign-strings ((datap data :encoding :latin-1))
+                (when (or (eql 0 (%evp-sign-init ctx type))
+                          (unwind-protect
+                               (or (eql 0 (%evp-sign-update
+                                           ctx datap (length data)))
+                                   (eql 0 (%evp-sign-final ctx sig siglen pkey)))
+                            (%evp-md-ctx-cleanup ctx)))
+                  (error "Error while signing"))
+                ;; Here's the result
+                (base64-encode
+                 (copy-memory-to-lisp
+                  sig (mem-ref siglen :unsigned-int) nil))))))))))
 
 (defun verify (data signature rsa-public-key)
   "Verify the SIGNATURE for DATA created by SIGN, using the given RSA-PUBLIC-KEY.
    The private key will work, too."
   (check-type data string)
   (check-type signature string)
-  (with-evp-pkey (pkey rsa-public-key t)
-    (let* ((type (%evp-sha1))
-           (sig (base64-decode signature))
-           (siglen (length sig)))
-      (when (null-pointer-p type)
-        (error "Can't get SHA1 type structure"))
-      (with-foreign-pointer (ctx $EVP-MD-CTX-size)
-        (with-foreign-strings ((datap data :encoding :latin-1)
-                               (sigp sig :encoding :latin-1))
-          (when (eql 0 (%evp-sign-init ctx type))
-            (error "Can't init ctx for verify"))
-          (unwind-protect
-               (progn
-                 (when (eql 0 (%evp-sign-update ctx datap (length data)))
-                   (error "Can't update ctx for signing"))
-                 (let ((res (%evp-verify-final ctx sigp siglen pkey)))
-                   (when (eql -1 res)
-                     (error "Error in verify"))
-                   (not (eql 0 res))))  ; Here's the result
-            (%evp-md-ctx-cleanup ctx)))))))
+  (with-openssl-lock ()
+    (with-evp-pkey (pkey rsa-public-key t)
+      (let* ((type (%evp-sha1))
+             (sig (base64-decode signature))
+             (siglen (length sig)))
+        (when (null-pointer-p type)
+          (error "Can't get SHA1 type structure"))
+        (with-foreign-pointer (ctx $EVP-MD-CTX-size)
+          (with-foreign-strings ((datap data :encoding :latin-1)
+                                 (sigp sig :encoding :latin-1))
+            (when (eql 0 (%evp-sign-init ctx type))
+              (error "Can't init ctx for verify"))
+            (unwind-protect
+                 (progn
+                   (when (eql 0 (%evp-sign-update ctx datap (length data)))
+                     (error "Can't update ctx for signing"))
+                   (let ((res (%evp-verify-final ctx sigp siglen pkey)))
+                     (when (eql -1 res)
+                       (error "Error in verify"))
+                     (not (eql 0 res)))) ; Here's the result
+              (%evp-md-ctx-cleanup ctx))))))))
 
 (defcfun ("ERR_get_error" %err-get-error) :unsigned-long)
 
@@ -395,14 +430,15 @@
 (defcfun ("ERR_load_crypto_strings" %err-load-crypto-strings) :void)
 
 (defun get-openssl-errors ()
-  (%err-load-crypto-strings)
-  (with-foreign-pointer (buf 120)
-    (loop
-       for e = (%err-get-error)
-       while (not (eql e 0))
-       collect (progn
-                 (%err-error-string e buf)
-                 (foreign-string-to-lisp buf :encoding :latin-1)))))
+  (with-openssl-lock ()
+    (%err-load-crypto-strings)
+    (with-foreign-pointer (buf 120)
+      (loop
+         for e = (%err-get-error)
+         while (not (eql e 0))
+         collect (progn
+                   (%err-error-string e buf)
+                   (foreign-string-to-lisp buf :encoding :latin-1))))))
 
 (defconstant $RSA-PKCS1-PADDING 1)
 (defconstant $RSA-PKCS1-PADDING-SIZE 11)
@@ -424,39 +460,41 @@
 (defun pubkey-encrypt (message pubkey)
   "PUBKEY is an RSA public key. MESSAGE is a message to encrypt.
    Returns encrypted message, base64 encoded."
-  (with-rsa-public-key (rsa pubkey)
-    (let* ((size (rsa-size rsa))
-           (msglen (length message))
-           (chars (- size $RSA-PKCS1-PADDING-SIZE))
-           (res ""))
-      (with-foreign-pointer (from chars)
-        (with-foreign-pointer (to size)
-          (loop
-             for i from 0 below msglen by chars
-             for flen = (min chars (- msglen i))
-             do
+  (with-openssl-lock ()
+    (with-rsa-public-key (rsa pubkey)
+      (let* ((size (rsa-size rsa))
+             (msglen (length message))
+             (chars (- size $RSA-PKCS1-PADDING-SIZE))
+             (res ""))
+        (with-foreign-pointer (from chars)
+          (with-foreign-pointer (to size)
+            (loop
+               for i from 0 below msglen by chars
+               for flen = (min chars (- msglen i))
+               do
                (copy-lisp-to-memory message from i (+ i flen))
                (let ((len (%rsa-public-encrypt flen from to rsa $RSA-PKCS1-PADDING)))
                  (when (< len 0)
                    (error "Errors from %rsa-public-encrypt: ~s"
                           (get-openssl-errors)))
                  (dotcat res (copy-memory-to-lisp to len nil))))))
-      (base64-encode res))))
+        (base64-encode res)))))
 
 (defun privkey-decrypt (message privkey)
   "PRIVKEY is an RSA private key. MESSAGE is a message to decrypt,
    base64-encoded. Returns decrypted message."
-  (with-rsa-private-key (rsa privkey)
-    (let* ((size (rsa-size rsa))
-           (msg (base64-decode message))
-           (msglen (length msg))
-           (res ""))
-      (with-foreign-pointer (from size)
-        (with-foreign-pointer (to size)
-          (loop
-             for i from 0 below msglen by size
-             for flen = (min size (- msglen i))
-             do
+  (with-openssl-lock ()
+    (with-rsa-private-key (rsa privkey)
+      (let* ((size (rsa-size rsa))
+             (msg (base64-decode message))
+             (msglen (length msg))
+             (res ""))
+        (with-foreign-pointer (from size)
+          (with-foreign-pointer (to size)
+            (loop
+               for i from 0 below msglen by size
+               for flen = (min size (- msglen i))
+               do
                ;; lisp-string-to-foreign didn't work here,
                ;; likely due to 0 bytes.
                (dotimes (j flen)
@@ -468,7 +506,7 @@
                    (error "Errors from %rsa-public-encrypt: ~s"
                           (get-openssl-errors)))
                  (dotcat res (copy-memory-to-lisp to len nil))))))
-      res)))
+        res))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
