@@ -210,6 +210,9 @@
            res))
     (sort res 'string-lessp)))
 
+(defun get-host-name ()
+  (usocket::get-host-name))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair

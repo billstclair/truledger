@@ -97,7 +97,11 @@
             (remove-trailing-separator (namestring (truename dir))))))
   (let* ((server-db-dir (fsdb-dir (db server)))
          (privkey (privkey server))
-         (config (sign-config `(:server-db-dir ,server-db-dir
+         (bankname (bankname server))
+         (bankurl (bankurl server))
+         (config (sign-config `(:bankname ,bankname
+                                :bankurl ,bankurl
+                                :server-db-dir ,server-db-dir
                                 :server-port ,server-port
                                 :server-www-dir ,server-www-dir)
                               privkey)))
@@ -228,7 +232,12 @@
         (strcat string #\/)
         string)))
 
-(defun create-server-config (server-db-dir server-port server-www-dir)
+(defun create-server-config (bankname bankurl server-db-dir server-port server-www-dir)
+  (check-type bankname string)
+  (check-type bankurl string)
+  (check-type server-db-dir string)
+  (check-type server-www-dir string)
+
   (create-directory (add-trailing-slash server-db-dir))
   (let ((path (probe-file server-db-dir)))
     (unless (and path (cl-fad:directory-pathname-p path))
@@ -242,7 +251,9 @@
           ((not (and port (> port 256)))
            (error "Server Port must be an integer > 256"))
           (t (let* ((passphrase *config-server-passphrase*)
-                    (server (make-server server-db-dir passphrase)))
+                    (server (make-server server-db-dir passphrase
+                                         :bankname bankname
+                                         :bankurl bankurl)))
                (write-server-config server
                                     :server-port port
                                     :server-www-dir server-www-dir)
@@ -267,7 +278,8 @@
 
 (defun do-config-server ()
   (setf (hunchentoot:content-type*) "text/html")
-    (bind-parameters (submit cancel server-db-dir server-port server-www-dir)
+    (bind-parameters (submit cancel bankname bankurl
+                             server-db-dir server-port server-www-dir)
       (let ((err nil))
         (cond (cancel
                (let ((res (whots (s)
@@ -279,26 +291,33 @@
                   (hunchentoot:acceptor-port hunchentoot:*acceptor*))
                  ;; We usually exit from toplevel-function
                  ;; before this gets displayed in the browser.
-                 ;; Figure out how to delay sometime.
+                 ;; Figure out how to delay.
                  (return-from do-config-server res)))
               (submit
                (handler-case
                    (return-from do-config-server
-                     (create-server-config server-db-dir server-port server-www-dir))
+                     (create-server-config bankname bankurl server-db-dir server-port server-www-dir))
                  (bad-rsa-key-or-password ()
                    (setq err (format nil "Couldn't load private key. ~
                                           Your passphrase may be wrong. ~
                                           Cancel and restart to try again.")))
                  (error (c) (setq err (format nil "~a" c)))))
-            (t (unless (and server-db-dir server-port server-www-dir)
+            (t (unless (and bankname bankurl server-db-dir server-port server-www-dir)
                  (let* ((config (ignore-errors (read-server-config))))
+                   (unless bankname
+                     (setq bankname (getf config :bankname "My Banc")))
                    (unless server-db-dir
                      (setq server-db-dir (getf config :server-db-dir "serverdb")))
                    (unless server-port
                      (setq server-port
                            (getf config :server-port *default-server-port*)))
                    (unless server-www-dir
-                     (setq server-www-dir (getf config :server-www-dir "www")))))))
+                     (setq server-www-dir (getf config :server-www-dir "www")))
+                   (unless bankurl
+                     (let* ((host (get-host-name))
+                            (port (unless (eql 80 server-port) server-port))
+                            (url (format nil "http://~a~@[:~d~]/" host port)))
+                       (setq bankurl (getf config :bankurl url))))))))
         (whots (s)
           (:html
            (:head
@@ -310,6 +329,8 @@
             (:p :style "color: red;" (str (or err "&nbsp;")))
             (:form :method "post" :action "./"
                    (:table
+                    (tr s "Bank Name" "text" "bankname" "20" bankname)
+                    (tr s "Bank URL:" "text" "bankurl" "30" bankurl)
                     (tr s "DB Dir:" "text" "server-db-dir" 50 server-db-dir)
                     (tr s "WWW Dir:" "text" "server-www-dir" 50 server-www-dir)
                     (tr s "Server Port:" "text" "server-port" "5" server-port)
