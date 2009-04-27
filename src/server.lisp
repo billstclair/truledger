@@ -138,7 +138,7 @@
     4) the ID of the asset issuer"
   (let* ((parser (parser server))
          (db (db server))
-         (msg (db-get db (strcat $ASSET "/" assetid))))
+         (msg (db-get db $ASSET assetid)))
     (unless msg
       (error "Uknown asset: ~%" assetid))
     (let* ((reqs (parse parser msg))
@@ -194,7 +194,7 @@
 
 (defmethod is-asset-p ((server server) assetid)
   "Returns the message defining ASSETID, or NIL, if there isn't one."
-  (db-get (db server) (strcat $ASSET "/" assetid)))
+  (db-get (db server) $ASSET assetid))
 
 (defmethod lookup-asset ((server server) assetid)
   (let ((asset (is-asset-p server assetid)))
@@ -387,7 +387,7 @@
      with inbox-key = (inbox-key id)
      with times = (db-contents db inbox-key)
      for time in times
-     for item = (db-get db (strcat inbox-key "/" time))
+     for item = (db-get db inbox-key time)
      when item
      collect item))
 
@@ -617,7 +617,7 @@
   (let* ((db (db server))
          (bankid (bankid server))
          (coupon (getarg $COUPON inargs))
-         (msg (db-get db (strcat $PUBKEYSIG "/" bankid)))
+         (msg (db-get db $PUBKEYSIG bankid))
          (args (unpack-bankmsg server msg $ATREGISTER))
          (req (getarg $MSG args))
          (res (get-parsemsg req)))
@@ -649,8 +649,7 @@
 (define-message-handler do-id $ID (server args reqs)
   "Lookup a public key."
   (declare (ignore reqs))
-  (or (db-get (db server)
-              (strcat $PUBKEYSIG "/" (getarg $ID args)))
+  (or (db-get (db server) $PUBKEYSIG (getarg $ID args))
       (error "No such public key")))
 
 (define-message-handler do-register $REGISTER (server args reqs)
@@ -1083,7 +1082,7 @@
         (let* ((bankid (bankid server))
                (time (getarg $TIME args))
                (key (outbox-key id))
-               (item (db-get db (strcat key "/" time))))
+               (item (db-get db key time)))
           (unless item
             (error "No outbox entry for time: ~s" time))
           (let ((args (unpack-bankmsg server item $ATSPEND $SPEND)))
@@ -1098,7 +1097,7 @@
                    (feeasset nil))
               (dolist (intime inbox
                        (error "Spend has already been processed"))
-                (let* ((item (or (db-get db (strcat key "/" intime))
+                (let* ((item (or (db-get db key intime)
                                  (error "Spend has already been processed")))
                        (item2 nil)
                        (args (unpack-bankmsg server item $INBOX $SPEND)))
@@ -1120,7 +1119,7 @@
                     ;; Found the inbox item corresponding to the outbox item.
                     ;; Make sure it's still there.
                     (with-db-lock (db (strcat key "/" intime))
-                      (setq item2 (db-get db (strcat key "/" intime))))
+                      (setq item2 (db-get db key intime)))
                     (unless item2
                       (error "Spend has already been processed"))
                     (when feeamt
@@ -1174,7 +1173,7 @@
            (let* ((key (inbox-key id))
                   (inbox (db-contents db key)))
              (or (dolist (time inbox nil)
-                   (let ((item (db-get db (strcat key "/" time))))
+                   (let ((item (db-get db key time)))
                      (when (search #.(strcat "," $COUPON ",") item)
                        (let ((reqs (parse parser item)))
                          (when (> (length reqs) 1)
@@ -1235,7 +1234,7 @@
         (let* ((key (storage-fee-key id))
                (asset-ids (db-contents db key)))
           (dolist (assetid asset-ids)
-            (dotcat res "." (db-get db (strcat key "/" assetid)))))
+            (dotcat res "." (db-get db key assetid))))
 
     ;; Update last time
     (db-put db (acct-last-key id) last)
@@ -1311,7 +1310,7 @@
 
     ;; Collect the inbox items being processed
     (dolist (inboxtime inboxtimes)
-      (let* ((item (db-get db (strcat inbox-key "/" inboxtime)))
+      (let* ((item (db-get db inbox-key inboxtime))
              (itemargs (unpack-bankmsg server item $INBOX t))
              (request (getarg $REQUEST itemargs)))
         (unless (or (equal (getarg $ID itemargs) id)
@@ -1656,7 +1655,7 @@
          (parser (parser server))
          (bankid (bankid server))
          (outboxkey (outbox-key id))
-         (spendmsg (or (db-get db (strcat outboxkey "/" spendtime))
+         (spendmsg (or (db-get db outboxkey spendtime)
                        (error "Can't find outbox item: ~s" spendtime)))
          (reqs (parse parser spendmsg))
          (spendargs (match-pattern parser (car reqs)))
@@ -1691,7 +1690,7 @@
              (key (storage-fee-key id))
              (assetids (db-contents db key)))
         (dolist (assetid assetids)
-          (let* ((storagefee (db-get db (strcat key "/" assetid)))
+          (let* ((storagefee (db-get db key assetid))
                  (args (unpack-bankmsg server storagefee $STORAGEFEE))
                  (amount (getarg $AMOUNT args)))
             (unless (equal assetid (getarg $ASSET args))
@@ -1723,7 +1722,7 @@
       (let ((assetid (getarg $ASSET args)))
         (unless (and assetid (> (length assetid) 0))
           (error "Illegal assetid: ~s" assetid))
-        (or (db-get db (strcat $ASSET "/" assetid))
+        (or (db-get db $ASSET assetid)
             (error "Unknown asset: ~s" assetid))))))
 
 (define-message-handler do-asset $ASSET (server args reqs)
@@ -1950,7 +1949,7 @@
              (outboxhash (db-get db (outbox-hash-key id))))
 
         (dolist (time contents)
-          (dotcat msg "." (db-get db (strcat outboxkey "/" time))))
+          (dotcat msg "." (db-get db outboxkey time)))
 
         (when outboxhash (dotcat msg "." outboxhash))
 

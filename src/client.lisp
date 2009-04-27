@@ -90,7 +90,7 @@
 
     (logout client)
 
-    (when (db-get db (strcat $PRIVKEY "/" hash))
+    (when (db-get db $PRIVKEY hash)
       (error "Passphrase already has an associated private key"))
 
     (when (integerp privkey)
@@ -111,7 +111,7 @@
   (let ((db (db client))
         (hash (passphrase-hash passphrase)))
     (decode-rsa-private-key
-     (or (db-get db (strcat $PRIVKEY "/" hash))
+     (or (db-get db $PRIVKEY hash)
          (error "No account for passphrase in database"))
      passphrase)))
 
@@ -160,7 +160,7 @@
 (defmethod user-pubkey ((client client) &optional (id (id client)))
   "Return pubkey of a user, default logged-in user"
   (let ((db (db client)))
-    (and id (db-get db (strcat $PUBKEY "/" id)))))
+    (and id (db-get db $PUBKEY id))))
 
 (defstruct bank
   id
@@ -3385,7 +3385,8 @@ class serverproxy {
 
 (defvar *insidep* nil)
 
-(defmethod db-get ((pubkeydb pubkeydb) id)
+(defmethod db-get ((pubkeydb pubkeydb) id &rest more-keys)
+  (assert (null more-keys))
   (let ((res (db-get (db pubkeydb) id)))
     (cond (res res)
           (*insidep* nil)
