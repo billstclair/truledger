@@ -101,13 +101,13 @@
            (id (pubkey-id pubkey))
            (privkey-str (encode-rsa-private-key privkey passphrase)))
       (db-put db (strcat $PRIVKEY "/" hash) privkey-str)
-      (db-put db (pubkeykey id) (format nil "~a~%" (trim pubkey)))
+      (db-put db (pubkey-key id) (format nil "~a~%" (trim pubkey)))
 
       (setf (id client) id
             (privkey client) privkey
             (pubkey client) pubkey))))
 
-(defmethod getprivkey ((client client) passphrase)
+(defmethod get-privkey ((client client) passphrase)
   (let ((db (db client))
         (hash (passphrase-hash passphrase)))
     (decode-rsa-private-key
@@ -117,7 +117,7 @@
 
 (defmethod login ((client client) passphrase)
   "Log in with the given passphrase. Error if no user associated with passphrase."
-  (let* ((privkey (getprivkey client passphrase))
+  (let* ((privkey (get-privkey client passphrase))
          (pubkey (encode-rsa-public-key privkey))
          (id (pubkey-id pubkey)))
 
@@ -131,98 +131,65 @@
       (destroy-password passphrase))
     (setf (syncedreq-p client) t))) ;; no server sync for session login
 
+(defmethod login-new-session ((client client) passphrase)
+  "Login, create a new session, and return a sessionid."
+    (login client passphrase)
+    (make-session client passphrase))
+
+(defmethod logout ((client client))
+  (when (id client)
+    (remove-session client)
+    (setf (id client) nil))
+  (let ((privkey (privkey client)))
+    (when privkey
+      (setf (privkey client) nil)
+      (rsa-free privkey))
+    (setf (bankid client) nil
+          (server client) nil)))
+
+;; All the API methods below require the user to be logged in.
+;; id and privkey must be set.
+
+(defmethod current-user ((client client))
+  "Return current user ID if logged in, otherwise nil."
+  (and (privkey client) (id client)))
+
+(defmethod require-current-user ((client client))
+  (or (current-user client) (error "Not logged in")))
+
+(defmethod user-pubkey ((client client) &optional (id (id client)))
+  "Return pubkey of a user, default logged-in user"
+  (let ((db (db client)))
+    (and id (db-get db (strcat $PUBKEY "/" id)))))
+
+(defstruct bank
+  id
+  name
+  url)
+
+(defmethod getbank ((client client) bankid &optional all)
+  "Returns a BANK instance, or NIL if it doesn't find the BANKID.
+   If ALL is true, return the bank even if the current user isn't logged in."
+  (and (or all (userreq client bankid))
+       (make-bank :id bankid
+                  :name (bankprop client $NAME bankid)
+                  :url (bankprop client $URL bankid))))
+
+(defmethod getbanks ((client client) &optional all)
+  "Return all the banks known by the current user,
+   as a list of BANK instances.
+   (BANK-PUBKEYSIG BANK) will be blank if the user has no account at BANK."
+  (let* ((db (db client))
+         (id (require-current-user client))
+         (banks (db-contents db (strcat $ACCOUNT "/" id "/" $BANK)))
+         (res nil))
+    (dolist (bank banks)
+      (let ((bank (getbank client bankid all)))
+        (when bank (push bank res))))
+
+    (sort (nreverse res) 'string-lessp :key #'bank-name)))
 #||
 ;; Continue here
-
-  // Login, create a new session, and return either
-  // an error string or an array containing the sessionid.
-  function login_new_session($passphrase) {
-    $res = $this->login($passphrase);
-    if ($res) return $res;
-    return array($this->makesession($passphrase));
-  }
-
-  function logout() {
-    $ssl = $this->ssl;
-
-    if ($this->id) $this->removesession();
-
-    $this->id = false;
-    $privkey = $this->privkey;
-    if ($privkey) {
-      $this->privkey = false;
-      $ssl->free_privkey($privkey);
-    }
-    $this->bankid = false;
-    $this->server = false;
-  }
-
-  // All the API methods below require the user to be logged in.
-  // $id and $privkey must be set.
-
-  // Return current user ID if logged in, otherwise false.
-  function current_user() {
-    return $this->privkey ? $this->id : false;
-  }
-
-  // Return pubkey of a user, default logged-in user
-  function user_pubkey($id=false) {
-    $db = $this->db;
-    $t = $this->t;
-
-    if (!$id) $id = $this->id;
-    if ($id) return $db->get($t->pubkey . "/$id");
-    return false;
-  }
-
-  function comparebanks($b1, $b2) {
-    $t = $this->t;
-
-    return $this->comparearrays($b1, $b2, array($t->NAME, $t->URL));
-  }
-
-  // Return all the banks known by the current user:
-  // array($t->BANKID => array($t->BANKID => $bankid,
-  //                           $t->NAME => $name,
-  //                           $t->URL => $url),
-  //       ...)
-  // $pubkeysig will be blank if the user has no account at the bank.
-  function getbanks($all=false) {
-    $t = $this->t;
-    $db = $this->db;
-    $id = $this->id;
-
-    if (!$this->current_user()) return "Not logged in";
-
-    $banks = $db->contents($t->ACCOUNT . "/$id/" . $t->BANK);
-    $res = array();
-    foreach ($banks as $bankid) {
-      $bank = $this->getbank($bankid, $all);
-      if ($bank) $res[$bankid] = $bank;
-    }
-
-    uasort($res, array('client', 'comparebanks'));
-
-    return $res;
-  }
-
-  // Returns  array($t->BANKID => $bankid,
-  //                $t->NAME => $name,
-  //                $t->URL => $url)
-  // or false if it doesn't find the $bankid
-  // If $all is true, return the bank even if the current user isn't logged in
-  function getbank($bankid, $all=false) {
-    $t = $this->t;
-
-    $req = $this->userreq($bankid);
-    $bank = false;
-    if ($all || !($req === false || $req === '')) {
-      $bank = array($t->BANKID => $bankid,
-                    $t->NAME => $this->bankprop($t->NAME, $bankid),
-                    $t->URL => $this->bankprop($t->URL, $bankid));
-    }
-    return $bank;
-  }
 
   // Returns true if $url might be a properly-fored URL
   function isurl($url) {
