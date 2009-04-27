@@ -356,19 +356,19 @@
           (db-put db $TIME zero)
           (db-put db $BANKID (bankmsg server $BANKID bankid))
           (db-put db $BANKURL (bankurl server))
-          (db-put db (strcat $PUBKEY "/" bankid) pubkey)
-          (db-put db (strcat $PUBKEYSIG "/" bankid)
-                  (bankmsg server $ATREGISTER
-                           (bankmsg server $REGISTER
-                                    bankid
-                                    (strcat #.(format nil "~%") pubkey)
-                                    bankname)))
+          (setf (db-get db $PUBKEY bankid) pubkey)
+          (setf (db-get db $PUBKEYSIG bankid)
+                (bankmsg server $ATREGISTER
+                         (bankmsg server $REGISTER
+                                  bankid
+                                  (strcat #.(format nil "~%") pubkey)
+                                  bankname)))
           (setf (tokenid server) tokenid)
           (db-put db $TOKENID (bankmsg server $TOKENID tokenid))
-          (db-put db (strcat $ASSET "/" tokenid)
-                  (bankmsg server $ATASSET
-                           (bankmsg server $ASSET
-                                    bankid tokenid zero zero token-name)))
+          (setf (db-get db $ASSET tokenid)
+                (bankmsg server $ATASSET
+                         (bankmsg server $ASSET
+                                  bankid tokenid zero zero token-name)))
           (db-put db $REGFEE
                   (bankmsg server $REGFEE bankid zero tokenid (regfee server)))
           (db-put db $TRANFEE
@@ -694,8 +694,8 @@
       (let* ((msg (get-parsemsg (car reqs)))
              (res (bankmsg server $ATREGISTER msg))
              (time (gettime server)))
-        (db-put db (strcat $PUBKEY "/" id) pubkey)
-        (db-put db (strcat $PUBKEYSIG "/" id) res)
+        (setf (db-get db $PUBKEY id) pubkey
+              (db-get db $PUBKEYSIG id) res)
         ;; Post the debit for the registration fee
         (when (> (bccomp regfee 0)  0)
           (let* ((spendmsg (bankmsg server
@@ -704,7 +704,7 @@
                                     (signed-spend
                                      server time id tokenid (bcsub 0 regfee)
                                      "Registration fee"))))
-            (db-put db (strcat (inbox-key id) "/" time) spendmsg)))
+            (setf (db-get db (inbox-key id) time) spendmsg)))
         ;; Mark the account as created
         (db-put db (acct-last-key id) "1")
         (db-put db (acct-req-key id) "0")
@@ -992,7 +992,7 @@
                            (bankmsg server $COUPON bankurl coupon-number
                                     assetid amount)))
                       (coupon-number-hash (sha1 coupon-number)))
-                 (db-put db (strcat $COUPON "/" coupon-number-hash) outbox-item)
+                 (setf (db-get db $COUPON coupon-number-hash) outbox-item)
                  (setq coupon
                        (bankmsg server $COUPONENVELOPE id
                                 (pubkey-encrypt
@@ -1012,7 +1012,7 @@
                   do
                     (setq balance (bankmsg server $ATBALANCE balance))
                     (dotcat res "." balance)
-                    (db-put db (strcat acctdir "/" balasset) balance))))
+                    (setf (db-get db acctdir balasset) balance))))
 
         (when fracmsg
           (let ((key (fraction-balance-key id assetid)))
@@ -1028,7 +1028,7 @@
             (db-put db (outbox-hash-key id) outboxhash-item))
 
           ;; Append spend to outbox
-          (db-put db (strcat (outbox-dir id) "/" time) outbox-item))
+          (setf (db-get db (outbox-dir id) time) outbox-item))
 
         (unless (equal id bankid)
           ;; Update balancehash
@@ -1038,7 +1038,7 @@
 
         ;; Append spend to recipient's inbox
         (when newtime
-          (db-put db (strcat (inbox-key id2) "/" newtime) inbox-item))
+          (setf (db-get db (inbox-key id2) newtime) inbox-item))
 
         ;; Force the user to do another getinbox, if anything appears
         ;; in his inbox since he last processed it.
@@ -1127,7 +1127,7 @@
                     (let* ((newtime (gettime server))
                            (item (bankmsg server $INBOX newtime msg))
                            (key (inbox-key id)))
-                      (db-put db (strcat key "/" newtime) item)
+                      (setf (db-get db key newtime) item)
                       (return item))))))))))))
 
 (define-message-handler do-couponenvelope $COUPONENVELOPE (server args reqs)
@@ -1595,7 +1595,7 @@
               for balmsg = (bankmsg server $ATBALANCE balance)
               do
                 (dotcat res "." balmsg)
-                (db-put db (strcat acctkey "/" balasset) balmsg))))
+                (setf (db-get db acctkey balasset) balmsg))))
 
     ;; Update accepted and rejected spenders' inboxes
     (dolist (inboxmsg (reverse inboxmsgs))
@@ -1609,18 +1609,18 @@
                     server (getarg $ASSET itemargs) (getarg $AMOUNT itemargs)))))
               (t
                (let ((inboxkey (inbox-key otherid)))
-                 (db-put db (strcat inboxkey "/" inboxtime) inboxmsg))))))
+                 (setf (db-get db inboxkey inboxtime) inboxmsg))))))
 
     ;; Remove no longer needed inbox and outbox entries.
     ;; Probably should have a bank config parameter to archive these somewhere.
     (let ((inboxkey (inbox-key id)))
       (dolist (inboxtime inboxtimes)
-        (db-put db (strcat inboxkey "/" inboxtime) "")))
+        (setf (db-get db inboxkey inboxtime) "")))
 
     ;; Clear processed outbox entries
     (let ((outboxkey (outbox-key id)))
       (dolist (outboxtime outboxtimes)
-        (db-put db (strcat outboxkey "/" outboxtime) "")))
+        (setf (db-get db outboxkey outboxtime) "")))
 
     (unless (equal id bankid)
       ;; Update outboxhash
@@ -1709,8 +1709,8 @@
                                        bankid time id assetid amount
                                        "Storage fees"))
                        (inbox (bankmsg server $INBOX time spend)))
-                  (db-put db (strcat key "/" assetid) storagefee)
-                  (db-put db (strcat inboxkey "/" time) inbox)))))))
+                  (setf (db-get db key assetid) storagefee)
+                  (setf (db-get db inboxkey time) inbox)))))))
       (bankmsg server $ATSTORAGEFEES (get-parsemsg (car reqs))))))
 
 (define-message-handler do-getasset $GETASSET (server args reqs)
@@ -1855,7 +1855,7 @@
           (when storage-msg
             (dotcat res "." (bankmsg server $ATSTORAGE storage-msg)))
 
-          (db-put db (strcat $ASSET "/" assetid) res)
+          (setf (db-get db $ASSET assetid) res)
 
           ;; Credit bank with tokens
           (add-to-bank-balance server tokenid tokens)
@@ -1872,7 +1872,7 @@
                   for balmsg = (bankmsg server $ATBALANCE balance)
                   do
                   (dotcat res "." balmsg)
-                  (db-put db (strcat acctkey "/" balasset) balmsg))))
+                  (setf (db-get db acctkey balasset) balmsg))))
 
           ;; Update balancehash
           (let ((balancehash-item (bankmsg server $ATBALANCEHASH balancehashmsg)))

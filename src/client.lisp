@@ -100,7 +100,7 @@
     (let* ((pubkey (encode-rsa-public-key privkey))
            (id (pubkey-id pubkey))
            (privkey-str (encode-rsa-private-key privkey passphrase)))
-      (db-put db (strcat $PRIVKEY "/" hash) privkey-str)
+      (setf (db-get db $PRIVKEY hash) privkey-str)
       (db-put db (pubkey-key id) (format nil "~a~%" (trim pubkey)))
 
       (setf (id client) id
