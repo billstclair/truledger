@@ -33,12 +33,6 @@
 (defcfun ("OPENSSL_add_all_algorithms_conf" open-ssl-add-all-algorithms) :void
   )
 
-(defparameter *libssl*
-  (load-foreign-library '(:default "libssl")))
-
-(defparameter *libcrypto*
-  (load-foreign-library '(:default "libcrypto")))
-
 ;; This is necessary for reading encrypted private keys
 (defun add-all-algorithms ()
   (with-openssl-lock ()
@@ -46,8 +40,11 @@
 
 (add-all-algorithms)
 
-;; It's also necessary when staring a saved image.
-(add-startup-function 'add-all-algorithms)
+(defun startup-openssl ()
+  #+windows (load-foreign-library "LIBEAY32.dll")
+  (open-ssl-add-all-algorithms))
+
+(add-startup-function 'startup-openssl)
 
 (defconstant $pem-string-rsa "RSA PRIVATE KEY")
 

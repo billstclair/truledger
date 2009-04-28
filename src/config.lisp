@@ -124,12 +124,14 @@
 
 (defctype size-t :unsigned-int)
 
+#-windows
 (defcfun ("readpassphrase" %read-passphrase) :pointer
   (prompt :pointer)
   (buf :pointer)
   (bufsiz size-t)
   (flags :int))
 
+#-windows
 (defun read-passphrase (prompt)
   (let ((bufsize 132)
         (flags 0))    
@@ -140,6 +142,13 @@
           (prog1 (foreign-string-to-lisp res :encoding :latin-1)
             ;; Erase the passphrase from memory
             (destroy-password buf bufsize 'mem-set-char)))))))
+
+;; Need to figure out how not to echo on Windows
+#+windows
+(defun read-passphrase (prompt)
+  (format t "~a" prompt)
+  (finish-output)
+  (read-line))
 
 (defun get-server-passphrase ()
   (let (passphrase)
@@ -162,6 +171,7 @@
          (finish-output)))))
 
 (defun toplevel-function ()
+  (run-startup-functions)
   (let ((start-config-server-p nil)
         passphrase)
     (loop

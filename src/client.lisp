@@ -190,7 +190,7 @@
 
     (sort (nreverse res) 'string-lessp :key #'bank-name)))
 
-(defun isurl-p (url)
+(defun url-p (url)
   "Returns true if $url might be a properly-fored URL."
   (and (stringp url)
        (>= (length url) 5)
@@ -198,7 +198,7 @@
            (and (>= (length url) 6)
                 (string-equal (subseq url 0 6) "https:")))))
 
-(defmethod parse-coupon ((client client) coupon)
+(defun parse-coupon (coupon)
   "Parse a coupon into bankid, url, and coupon number.
    Returns three values:
      1) bankid
@@ -219,30 +219,29 @@
            (let* ((a (explode #\, (subseq coupon 1 (1- (length coupon))))))
              (unless (eql (length a) 2)
                (error "Malformed coupon string"))
-             (values ""                 ;bankid
-                     (trim (car a))     ;url
-                     (trim (cadr a))))) ;coupon-number
+             (setq bankid ""
+                   url (trim (car a))
+                   coupon-number (trim (cadr a)))))
           (t (let* ((parse (tokenize coupon))
-                    (items (map 'vector 'cdr parse)))
+                    (items (print (map 'vector 'cdr parse))))
+               ; [$id,coupon,$bankid,
                (unless (>= (length items) 7)
                  (error "Malformed coupon message, < 7 tokens"))
-               (unless (equal (elt items 0) "(")
+               (unless (equal (elt items 0) #\()
                  (error "Message doesn't start with left paren"))
                (setq bankid (elt items 1)
                      url (elt items 5)
                      coupon-number (elt items 7))
                (unless (id-p bankid)
                  (error "Coupon bankid not an id"))
-               (unless (equal "," (aref items 2))
+               (unless (equal #\, (aref items 2))
                  (error "Coupon missing comma 1"))
                (unless (equal (elt items 3) $COUPON)
                  (error "Coupon isn't a coupon message"))
-               (unless (equal (aref items 4) ",")
-                 (error "Coupon missing comma 2"))
-               (unless (equal (aref items 6) ",")
-                 (error "Coupon missing comma 3")))))
-    (unless (isurl-p url)
-      (error "Coupon url isn't a url: $url"))
+               (unless (equal (aref items 4) #\,)
+                 (error "Coupon missing comma 2")))))
+    (unless (url-p url)
+      (error "Coupon url isn't a url: ~s" url))
     (unless (coupon-number-p coupon-number)
       (error "Coupon number malformed: ~a" coupon-number))
     (values bankid url coupon-number)))

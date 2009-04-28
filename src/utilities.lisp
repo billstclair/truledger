@@ -213,6 +213,15 @@
 (defun get-host-name ()
   (usocket::get-host-name))
 
+(defvar *startup-functions* nil)
+
+(defun add-startup-function (function)
+  (pushnew function *startup-functions*))
+
+(defun run-startup-functions ()
+  (dolist (function (reverse *startup-functions*))
+    (funcall function)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair

@@ -8,10 +8,15 @@
 (in-package :trubanc)
 
 (defvar *file-locks-lock*
-  (make-lock))
+  (make-lock "*file-locks-lock*"))
 
 (defvar *file-locks*
   (make-hash-table :test 'equal))
+
+(defun clear-file-locks ()
+  (clrhash *file-locks*))
+
+(add-startup-function 'clear-file-locks)
 
 (defclass file-lock ()
   ((syslock :initarg :syslock

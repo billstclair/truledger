@@ -18,9 +18,6 @@
 (defun arglist (x &optional include-bindings)
   (ccl:arglist x include-bindings))
 
-(defun add-startup-function (f)
-  (pushnew f ccl:*lisp-startup-functions*))
-
 (defun make-weak-hash-table ()
   (make-hash-table :test 'eq :weak t))
 
@@ -100,9 +97,6 @@
   (if mode
       (ccl:create-directory dir :mode mode)
       (ccl:create-directory dir)))
-
-(defun current-process ()
-  ccl:*current-process*)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
