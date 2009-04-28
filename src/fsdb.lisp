@@ -37,9 +37,9 @@
     (declare (ignore lock))
     (unimplemented-db-method 'db-unlock)))
 
-(defgeneric db-contents (db &optional key)
-  (:method ((db db) &optional key)
-    (declare (ignore key))
+(defgeneric db-contents (db &rest keys)
+  (:method ((db db) &rest keys)
+    (declare (ignore keys))
     (unimplemented-db-method 'db-contents)))
 
 (defgeneric db-subdir (db key)
@@ -94,17 +94,18 @@
       (funcall thunk filename key))))
 
 (defun append-db-keys (key &optional more-keys)
-  (cond ((null more-keys) key)
-        (t (let* ((len (+ (length key)
-                          (reduce #'+ more-keys :key #'length)
-                          (length more-keys)))
-                  (res (make-string len :element-type (array-element-type key)))
-                  (i -1))
-             (dolist (str (cons key more-keys))
-               (unless (eql i -1) (setf (aref res (incf i)) #\/))
-               (dotimes (j (length str))
-                 (setf (aref res (incf i)) (aref str j))))
-             res))))
+  (if (null more-keys)
+      key
+      (let* ((len (+ (length key)
+                     (reduce #'+ more-keys :key #'length)
+                     (length more-keys)))
+             (res (make-string len :element-type (array-element-type key)))
+             (i -1))
+        (dolist (str (cons key more-keys))
+          (unless (eql i -1) (setf (aref res (incf i)) #\/))
+          (dotimes (j (length str))
+            (setf (aref res (incf i)) (aref str j))))
+        res)))
 
 (defmethod db-get ((db fsdb) key &rest more-keys)
   (let ((key (append-db-keys key more-keys)))
@@ -143,8 +144,11 @@
       (file-namestring path)
       (car (last (pathname-directory path)))))
 
-(defmethod db-contents ((db fsdb) &optional key)
-  (let ((dir (directory (db-filename db (strcat key "/*.*"))
+(defmethod db-contents ((db fsdb) &rest keys)
+  (let* ((key (if keys
+                 (append-db-keys (car keys) (append (cdr keys) '("*.*")))
+                 "*.*"))
+         (dir (directory (db-filename db key)
                         :directories t
                         :all nil)))
     (mapcar 'file-namestring-or-last-directory dir)))

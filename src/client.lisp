@@ -2,7 +2,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; A Trubanc client API. Talks the protocol of server.php
+;;; A Trubanc client API. Talks the protocol of server.lisp
 ;;;
 
 (in-package :trubanc)
@@ -15,13 +15,15 @@
   ((db :type db
        :initarg :db
        :accessor db)
-   (parser :type parser
+   (parser :type (or parser null)
+           :initform nil
            :accessor parser)
-   (pubkeydb :type pubkeydb
+   (pubkeydb :type (or pubkeydb nill)
+             :initform nil
              :accessor pubkeydb)
 
   ;; Initialized by login() and newuser()
-   (id :type string
+   (id :type (or string null)
        :initform nil
        :accessor id)
    (privkey :initform nil
@@ -82,7 +84,7 @@
 
 (defmethod newuser ((client client) &key passphrase (privkey 3072))
   "Create a new user with the given passphrase, error if already there.
-   If $privkey is a string, use that as the private key.
+   If privkey is a string, use that as the private key.
    If it is an integer, default 3072, create a new private key with that many bits
    User is logged in when this returns successfully."
   (let ((db (db client))
@@ -120,7 +122,6 @@
   (let* ((privkey (get-privkey client passphrase))
          (pubkey (encode-rsa-public-key privkey))
          (id (pubkey-id pubkey)))
-
     (setf (id client) id
           (privkey client) privkey
           (pubkey client) pubkey)))
@@ -188,59 +189,66 @@
         (when bank (push bank res))))
 
     (sort (nreverse res) 'string-lessp :key #'bank-name)))
+
+(defun isurl-p (url)
+  "Returns true if $url might be a properly-fored URL."
+  (and (stringp url)
+       (>= (length url) 5)
+       (or (string-equal (subseq url 0 5) "http:")
+           (and (>= (length url) 6)
+                (string-equal (subseq url 0 6) "https:")))))
+
+(defmethod parse-coupon ((client client) coupon)
+  "Parse a coupon into bankid, url, and coupon number.
+   Returns three values:
+     1) bankid
+     2) url
+     3) coupon-number
+   Coupon can be [$url,$coupon_number] or
+   ($bankid,coupon,$url,$coupon_number,$asset,$amount,note:$note)"
+  (unless (stringp coupon)
+    (error "Coupon not a string"))
+
+  ;; Coupon can be just [$url,$coupon_number]
+  (setq coupon (trim coupon))
+  (let (bankid url coupon-number)
+    (cond ((and (> (length coupon) 0)
+                (eql (aref coupon 0) #\[))
+           (unless (eql #\] (aref coupon (1- (length coupon))))
+             (error "Malformed coupon string"))
+           (let* ((a (explode #\, (subseq coupon 1 (1- (length coupon))))))
+             (unless (eql (length a) 2)
+               (error "Malformed coupon string"))
+             (values ""                 ;bankid
+                     (trim (car a))     ;url
+                     (trim (cadr a))))) ;coupon-number
+          (t (let* ((parse (tokenize coupon))
+                    (items (map 'vector 'cdr parse)))
+               (unless (>= (length items) 7)
+                 (error "Malformed coupon message, < 7 tokens"))
+               (unless (equal (elt items 0) "(")
+                 (error "Message doesn't start with left paren"))
+               (setq bankid (elt items 1)
+                     url (elt items 5)
+                     coupon-number (elt items 7))
+               (unless (id-p bankid)
+                 (error "Coupon bankid not an id"))
+               (unless (equal "," (aref items 2))
+                 (error "Coupon missing comma 1"))
+               (unless (equal (elt items 3) $COUPON)
+                 (error "Coupon isn't a coupon message"))
+               (unless (equal (aref items 4) ",")
+                 (error "Coupon missing comma 2"))
+               (unless (equal (aref items 6) ",")
+                 (error "Coupon missing comma 3")))))
+    (unless (isurl-p url)
+      (error "Coupon url isn't a url: $url"))
+    (unless (coupon-number-p coupon-number)
+      (error "Coupon number malformed: ~a" coupon-number))
+    (values bankid url coupon-number)))
+
 #||
 ;; Continue here
-
-  // Returns true if $url might be a properly-fored URL
-  function isurl($url) {
-    return (is_string($url) &&
-            (substr($url, 0, 5) == "http:" ||
-             substr($url, 0, 6) == "https:"));
-  }
-
-  // Parse a coupon into bankid & url.
-  // Return an error string or false.
-  // Sets the $bankid, $url, & $coupon_number args to the bankid, URL
-  // and coupon number in the coupon.
-  // Coupon can be [$url,$coupon_number] or
-  // ($bankid,coupon,$url,$coupon_number,$asset,$amount,note:$note)
-  function parsecoupon($coupon, &$bankid, &$url, &$coupon_number) {
-    $t = $this->t;
-    $u = $this->u;
-    $db = $this->db;
-    $parser = $this->parser;
-
-    if (!is_string($coupon)) return 'Coupon not a string';
-
-    // Coupon can be just [$url,$coupon_number]
-    $coupon = trim($coupon);
-    if (substr($coupon, 0, 1) == '[') {
-      if (substr($coupon, -1) != ']') return "Malformed coupon string";
-      $a = explode(',', substr($coupon, 1, -1));
-      if (count($a) != 2) return "Malformed coupon string";
-      $bankid = '';
-      $url = trim($a[0]);
-      $coupon_number = trim($a[1]);
-    } else {
-      $parse = $parser->tokenize($coupon);
-      $items = array();
-      foreach ($parse as $item) $items[] = $item;
-      if ($items[0] != '(') return "Message doesn't start with left paren";
-      $bankid = $items[1];
-      if (!$u->is_id($bankid)) return "Coupon bankid not an id";
-      if ($items[2] != ',') return "Coupon missing comma 1";
-      if ($items[3] != $t->COUPON) return "Coupon isn't a coupon message";
-      if ($items[4] != ',') return "Coupon missing comma 2";
-      $url = $items[5];
-      if ($items[6] != ',') return "Coupon missing comma 3";
-      $coupon_number = $items[7];
-    }
-    if (!$this->isurl($url)) return "Coupon url isn't a url: $url";
-    if (!$u->is_coupon_number($coupon_number)) {
-      return "Coupon number malformed: $coupon_number";
-    }
-    return false;
-  }
 
   // Verify that a message is a valid coupon.
   // Check that it is actually signed by the bank that it
