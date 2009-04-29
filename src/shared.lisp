@@ -30,6 +30,23 @@
      finally
      (return (strcat msg ")"))))
 
+(defmethod makemsg ((parser parser) &rest req)
+  "Make an unsigned message from the args."
+  (let ((hash (make-hash-table :test 'equal))
+        (i -1))
+    (dolist (arg req) (setf (gethash (incf i) hash) arg))
+    (loop
+       with args = (match-pattern parser hash)
+       with msg = "("
+       with msgval = (getarg $MSG args)
+       for k from 0
+       for v = (getarg k args)
+       do
+         (unless v (return (strcat msg ")")))
+         (unless (equal msg "(")
+           (dotcat msg ","))
+         (dotcat msg (if (eq v msgval) v (escape v))))))
+
 (defun assetid (id scale precision name)
   "Return the id for an asset"
   (sha1 (format nil "~a,~a,~a,~a" id scale precision name)))

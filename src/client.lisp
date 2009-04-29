@@ -184,14 +184,14 @@
          (id (require-current-user client))
          (banks (db-contents db (strcat $ACCOUNT "/" id "/" $BANK)))
          (res nil))
-    (dolist (bank banks)
+    (dolist (bankid banks)
       (let ((bank (getbank client bankid all)))
         (when bank (push bank res))))
 
     (sort (nreverse res) 'string-lessp :key #'bank-name)))
 
 (defun url-p (url)
-  "Returns true if $url might be a properly-fored URL."
+  "Returns true if $url might be a properly-formed URL."
   (and (stringp url)
        (>= (length url) 5)
        (or (string-equal (subseq url 0 5) "http:")
@@ -210,6 +210,7 @@
     (error "Coupon not a string"))
 
   ;; Coupon can be just [$url,$coupon_number]
+  ;; or ($id,coupon,$bankurl,$coupon,$asset,$amount,note=$note)
   (setq coupon (trim coupon))
   (let (bankid url coupon-number)
     (cond ((and (> (length coupon) 0)
@@ -246,107 +247,75 @@
       (error "Coupon number malformed: ~a" coupon-number))
     (values bankid url coupon-number)))
 
+(defmethod verify-coupon ((client client) coupon bankid url)
+  "Verify that a message is a valid coupon.
+   Check that it is actually signed by the bank that it
+   claims to be from.
+   Ask the bank whether a coupon of that number exists."
+  (let ((parser (parser client))
+        coupon-number)
+    (verify-bank client url bankid)
+    (setq coupon (trim coupon))
+    (if (eql #\[ (aref coupon 0))
+        (setq coupon-number (nth-value 2 (parse-coupon coupon)))
+        (let ((args (client-unpack-bankmsg client coupon $COUPON bankid)))
+          (setq coupon-number (getarg $COUPON args))))
+    (unless (coupon-number-p coupon-number)
+      (error "Malformed coupon number: ~%" coupon-number))
+
+    (let* ((msg (strcat "(0," bankid ",0," coupon-number "):0"))
+           (server (make-instance 'server-proxy :url url :client client))
+           (msg (process server msg))
+           (reqs (parse parser msg)))
+      (match-bankreq client (car reqs) $REGISTER bankid)
+      (unless (eql 2 (length reqs))
+        (error "verifycoupon: expected 2 messages from bank"))
+      (match-bankreq client (cadr reqs) $COUPONNUMBERHASH bankid))))
+
+(defmethod verify-bank ((client client) url id)
+  "Verify that a bank matches its URL.
+   Add the bank to our database if it's not there already.
+   Error if ID is non-null and doesn't match bankid at URL.
+   Return bankid, or error."
+  (unless (url-p url)
+    (error "Not a URL: ~%" url))
+  (let* ((db (db client))
+         (urlhash (sha1 url))
+         (bankid (db-get db $BANK $BANKID urlhash)))
+    (cond (bankid
+           (when (and id (not (eql id bankid)))
+             (error "verifybank: id <> bankid"))
+           (unless id (setq id bankid)))
+          (t
+           (let* ((parser (parser client))
+                  (msg (strcat "(0," $BANKID ",0):0"));
+                  (server (make-instance 'server-proxy :url url :client client))
+                  (msg (process server msg))
+                  (save-bankid (prog1 (bankid client)
+                                 (setf (bankid client) bankid)))
+                  (args (unwind-protect (match-message parser msg)
+                          (setf (bankid client) save-bankid)))
+                  (bankid (getarg $CUSTOMER args))
+                  (pubkey (getarg $PUBKEY args))
+                  (name (getarg $NAME args)))
+             (unless (equal bankid (getarg $BANKID args))
+               (error "Bank's register message malformed"))
+             (if (not id)
+                 (setq id bankid)
+                 (unless (equal bankid id)
+                   (error "Bankid different than expected")))
+             (unless (equal (pubkey-id pubkey) bankid)
+               (error "verifybank: Bank's id doesn't match its public key"))
+             (unless (bankprop client $URL bankid)
+               ;; Initialize the bank in the database
+               (setf (db-get db $BANK $BANKID urlhash) bankid
+                     (db-get db (bankkey $URL $bankid)) url
+                     (db-get db (bankkey $NAME bankid)) name
+                     (db-get db (pubkeykey bankid))
+                     (format nil "~a~%" (trim pubkey)))))))))
+
 #||
 ;; Continue here
-
-  // Verify that a message is a valid coupon.
-  // Check that it is actually signed by the bank that it
-  // claims to be from.
-  // Ask the bank whether a coupon of that number exists.
-  function verifycoupon($coupon, $bankid, $url) {
-    $t = $this->t;
-    $u = $this->u;
-    $parser = $this->parser;
-
-    $err = $this->verifybank($url, $bankid);
-    if ($err) return "verifycoupon: $err";
-    $coupon = trim($coupon);
-    if (substr($coupon, 0, 1) == '[') {
-      $err = $this->parsecoupon($coupon, $ignore, $ignore, $coupon_number);
-      if ($err) return $err;
-    } else {
-      $args = $this->unpack_bankmsg($coupon, $t->COUPON, $bankid);
-      if (is_string($args)) return $args;
-      $coupon_number = $args[$t->COUPON];
-    }
-    if (!$u->is_coupon_number($coupon_number)) {
-      return "Malformed coupon number: $coupon_number";
-    }
-    $msg = "(0," . $t->BANKID . ",0,$coupon_number):0";
-    $server = new serverproxy($url, $this);
-    $msg = $server->process($msg);
-
-    $reqs = $parser->parse($msg);
-    if (!$reqs) return "verifycoupon: " . $parser->errmsg;
-    $args = $this->match_bankreq($reqs[0], $t->REGISTER, $bankid);
-    if (is_string($args)) return "verifycoupon: $args";
-    if (count($reqs) != 2) return "verifycoupon: expected 2 messages from bank";
-    $args = $this->match_bankreq($reqs[1], $t->COUPONNUMBERHASH, $bankid);
-    if (is_string($args)) return "$args";
-
-    return false;
-  }
-
-  // Verify that a bank matches its URL.
-  // Add the bank to our database if it's not there already
-  // Set $id arg to $bankid, if false, or
-  // compare it to the bankid returned from URL.
-  function verifybank($url, &$id) {
-    $t = $this->t;
-    $db = $this->db;
-
-    if (!$this->isurl($url)) return "Not a URL: $url";
-
-    // Hash the URL to ensure its name will work as a file name
-    $urlhash = sha1($url);
-    $urlkey = $t->BANK . '/' . $t->BANKID;
-    $bankid = $db->get("$urlkey/$urlhash");
-    if ($bankid) {
-      if ($id && $id != $bankid) return "verifybank: id <> bankid";
-      if (!$id) $id = $bankid;
-    } else {
-      $u = $this->u;
-      $ssl = $this->ssl;
-      $parser = $this->parser;
-
-      $msg = '(0,' . $t->BANKID . ',0):0';
-      $server = new serverproxy($url, $this);
-      $msg = $server->process($msg);
-      $savebankid = $this->bankid;
-      $this->bankid = $bankid;
-      $args = $u->match_message($msg);
-      $this->bankid = $savebankid;
-      if (is_string($args)) {
-        return "verifybank: Bank's bankid response error: $args";
-      }
-      $bankid = $args[$t->CUSTOMER];
-      if ($args[$t->REQUEST] != $t->REGISTER) {
-        return "Bank URL unresponsive or not a Trubanc server";
-      }
-      if ($bankid != $args[$t->BANKID]) {
-        return "Bank's register message malformed";
-      }
-      if (!$id) $id = $bankid;
-      elseif ($bankid != $id) return "Bankid different than expected";
-      $pubkey = $args[$t->PUBKEY];
-      $name = $args[$t->NAME];
-      if ($ssl->pubkey_id($pubkey) != $bankid) {
-        return "verifybank: Bank's id doesn't match its public key";
-      }
-      if ($id && $id != $bankid) return "verifybank: id <> bankid";
-      if (!$id) $id = $bankid;
-      $ourl = $this->bankprop($t->URL, $bankid);
-      if (!$ourl) {
-        // Initialize the bank in the database
-        $db->put("$urlkey/$urlhash", $bankid);
-        $db->put($this->bankkey($t->URL, $bankid), $url);
-        $db->put($this->bankkey($t->NAME, $bankid), $name);
-        $db->put($this->pubkeykey($bankid), trim($pubkey) . "\n");
-      }
-    }
-
-    return false;
-  }
 
   // Add a bank with the given $url to the database.
   // $url can be a coupon to redeem that with registration.
@@ -2372,85 +2341,62 @@
   }
 
   // End of API methods
+||#
 
-  // For utility->bankgetter
-  function bankid() {
-    return $this->bankid;
-  }
+(defun passphrase-hash (passphrase)
+  (sha1 (trim passphrase)))
 
-  function passphrasehash($passphrase) {
-    return sha1(trim($passphrase));
-  }
+(defmethod custmsg ((client client) &rest args)
+  "Create a signed customer message.
+   Takes an arbitrary number of args."
+  (let* ((id (id client))
+         (parser (parser client))
+         (privkey (privkey client))
+         (args (cons id args))
+         (msg (apply 'makemsg parser args))
+         (sig (sign msg privkey)))
+    (trim (format nil "~a:~%~a" msg sig))))
 
-  // Create a signed customer message.
-  // Takes an arbitrary number of args.
-  function custmsg() {
-    $id = $this->id;
-    $u = $this->u;
-    $ssl = $this->ssl;
-    $privkey = $this->privkey;
+(defmethod sendmsg ((client client) &rest args)
+  "Send a customer message to the server.
+   Takes an arbitrary number of args."
+  (let ((server (server client))
+        (msg (apply 'custmsg client args)))
+    (process server msg)))
 
-    $args = func_get_args();
-    $args = array_merge(array($id), $args);
-    $msg = $u->makemsg($args);
-    $sig = $ssl->sign($msg, $privkey);
-    return trim("$msg:\n$sig");
-  }
+(defmethod client-unpack-bankmsg ((client client) msg &optional request bankid)
+  "Unpack a bank message.
+   Return a string if parse error or fail from bank.
+   This is called via the $unpacker arg to utility->dirhash & balancehash."
+  (let* ((parser (parser client))
+         (reqs (parse parser msg))
+         (req (car reqs))
+         (args (match-bankreq client req request bankid)))
+    (setf (getarg $UNPACK-REQS-KEY args) reqs) ;; save parse results
+    args))
 
-  // Send a customer message to the server.
-  // Takes an arbitrary number of args.
-  function sendmsg() {
-    $server = $this->server;
+(defmethod match-bankreq ((client client) req &optional request bankid)
+  "Unpack a bank message that has already been parsed."
+  (unless bankid (setq bankid (bankid client)))
+  (let* ((parser (parser client))
+         (args (match-pattern parser req bankid)))
+    (unless (equal (getarg $CUSTOMER args) bankid)
+      (error "Return message not from bank"))
+    (when (equal (getarg $REQUEST args) $FAILED)
+      (error (format nil "Server error: ~a" (getarg $ERRMSG args))))
+    (when (and request (not (equal (getarg $REQUEST args) request)))
+      (error "Wrong return type from bank; sb: ~s, was: ~s"
+             request (getarg $REQUEST args)))
+    (let* ((msg (getarg $MSG args))
+           (msgargs (and msg (match-pattern parser (getarg $MSG args)))))
+      (when msgargs
+        (let ((msgargs-bankid (getarg $BANKID msgargs)))
+          (when (and msgargs-bankid (not (equal msgargs-bankid bankid)))
+            (error "While matching bank-wrapped msg: bankid mismatch")))
+        (setf (getarg $MSG args) msgargs)))
+    args))
 
-    $req = func_get_args();
-    $msg = call_user_func_array(array($this, 'custmsg'), $req);
-    return $server->process($msg);
-  }
-
-  // Unpack a bank message
-  // Return a string if parse error or fail from bank
-  // This is called via the $unpacker arg to utility->dirhash & balancehash
-  function unpack_bankmsg($msg, $request=false, $bankid=false) {
-    $parser = $this->parser;
-
-    $reqs = $parser->parse($msg);
-    if (!$reqs) {
-      return "In unpack_bankmsg, parse error: " . $parser->errmsg;
-    }
-
-    $req = $reqs[0];
-    $args = $this->match_bankreq($req, $request, $bankid);
-    if (!is_string($args)) {
-      $args[$this->unpack_reqs_key] = $reqs; // save parse results
-    }
-    return $args;
-  }
-
-  // Unpack a bank message that has already been parsed
-  function match_bankreq($req, $request=false, $bankid=false) {
-    $t = $this->t;
-    $u = $this->u;
-    if (!$bankid) $bankid = $this->bankid;
-
-    $args = $u->match_pattern($req, $bankid);
-    if (is_string($args)) return "While matching: $args";
-    if ($args[$t->CUSTOMER] != $bankid) return "Return message not from bank";
-    if ($args[$t->REQUEST] == $t->FAILED) return $args[$t->ERRMSG];
-    if ($request && $args[$t->REQUEST] != $request) {
-      return "Wrong return type from bank; sb: $request, was: " . $args[$t->REQUEST];
-    }
-    if (@$args[$t->MSG]) {
-      $msgargs = $u->match_pattern($args[$t->MSG]);
-      if (is_string($msgargs)) return "While matching bank-wrapped msg: $msgargs";
-      if (array_key_exists($t->BANKID, $msgargs) &&
-          $msgargs[$t->BANKID] != $bankid) {
-        return "While matching bank-wrapped msg: bankid mismatch";
-      }
-      $args[$t->MSG] = $msgargs;
-    }
-    return $args;
-  }
-
+#||
   // Get the values necessary to compute the storage fee.
   // Inputs:
   // $id - the user ID
