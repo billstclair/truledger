@@ -8,8 +8,7 @@
 (in-package :trubanc)
 
 (defun make-client (dir)
-  (let ((db (make-fsdb dir)))
-    (make-instance 'client :db db)))
+  (make-instance 'client :db (make-fsdb dir)))
 
 (defclass client ()
   ((db :type db
@@ -103,7 +102,7 @@
            (id (pubkey-id pubkey))
            (privkey-str (encode-rsa-private-key privkey passphrase)))
       (setf (db-get db $PRIVKEY hash) privkey-str)
-      (db-put db (pubkey-key id) (format nil "~a~%" (trim pubkey)))
+      (db-put db (pubkeykey id) (format nil "~a~%" (trim pubkey)))
 
       (setf (id client) id
             (privkey client) privkey
@@ -2396,257 +2395,151 @@
         (setf (getarg $MSG args) msgargs)))
     args))
 
+(defmethod client-storage-info ((client client) assetid)
+  "Get the values necessary to compute the storage fee.
+   Returns three values:
+    1) percent - The storage fee
+    2) fraction - the fraction balance for assetid
+    3) fractime - the time of the fraction"
+  (let* ((db (db client))
+         (asset (or (getasset client assetid) (return-from client-storage-info 0)))
+         (issuer (asset-issuer asset))
+         (percent (asset-percent asset)))
+    (cond ((equal issuer (id client)) 0)
+          ((or (not percent) (eql 0 (bccomp percent 0))) 0)
+          (t (let* ((key (userfractionkey client assetid))
+                    (msg (db-get db key)))
+               (if msg
+                   (let ((args (client-unpack-bankmsg client msg $ATFRACTION)))
+                     (setq args (getarg $MSG args))
+                     (values percent (getarg $AMOUNT args) (getarg $TIME args)))
+                   percent))))))
+
+(defun pubkeykey (id)
+  (append-db-keys $PUBKEY id))
+
+(defmethod bankkey ((client client) &optional prop (bankid (bankid client)))
+  (let ((key (append-db-keys $BANK bankid)))
+    (if prop
+        (append-db-keys key prop)
+        key)))
+
+(defmethod bankprop ((client client) prop &optional (bankid (bankid client)))
+  (db-get (db client) (bankkey client prop bankid)))
+
+
+(defmethod assetkey ((client client) &optional assetid)
+  (let ((key (bankkey client $ASSET)))
+    (if assetid
+        (append-db-keys key assetid )
+        key)))
+
+(defmethod assetprop ((client client) assetid)
+  (db-get (db client) (assetkey client assetid)))
+
+(defmethod tranfeekey ((client client))
+  (bankkey client $TRANFEE))
+
+(defmethod tranfee ((client client))
+  (db-get (db client) (tranfeekey client)))
+
+(defmethod regfee-key ((client client))
+  (bankkey client $REGFEE))
+
+(defmethod regfee ((client client))
+  (db-get (db client) (regfee-key client)))
+
+(defmethod userbankkey ((client client) &optional prop (bankid (bankid client)))
+  (let ((key (append-db-keys $ACCOUNT (id client) $BANK bankid)))
+    (if prop
+        (append-db-keys key prop)
+        key)))
+
+(defmethod userbankprop ((client client) &optional prop (bankid (bankid client)))
+  (db-get (db client) (userbankkey client prop bankid)))
+
+(defmethod userreqkey ((client client) &optional (bankid (bankid client)))
+  (userbankkey client $REQ bankid))
+
+(defmethod userreq ((client client) &optional (bankid (bankid client)))
+  (db-get client (userreqkey client bankid)))
+
+(defmethod usertimekey ((client client))
+  (userbankkey client $TIME))
+
+(defmethod userfractionkey ((client client) &optional assetid)
+  (let ((key (userbankkey client $FRACTION)))
+    (if assetid
+        (append-db-keys key assetid)
+        key)))
+
+(defmethod userstoragefeekey ((client client) &optional assetid)
+  (let ((key (userbankkey client $STORAGEFEE)))
+    (if assetid
+        (append-db-keys key assetid)
+        key)))
+
+(defmethod userbalancekey ((client client)  &optional acct assetid)
+  (let ((key (userbankkey client $BALANCE)))
+    (cond (acct
+           (setq key (append-db-keys key acct))
+           (if assetid
+               (append-db-keys key assetid)
+               key))
+          (t key))))
+
+(defmethod userbalance ((client client) acct assetid)
+  (userbalanceandtime client acct assetid))
+
+(defmethod userbalanceandtime ((client client) acct assetid)
+  "Returns two values: the balance and its time"
+  (when (null acct) (setq acct $MAIN))
+  (let* ((msg (db-get (db client) (userbalancekey client acct assetid))))
+    (when msg
+      (let ((args (client-unpack-bankmsg client msg $ATBALANCE)))
+        (setq args (getarg args $MSG))
+        (values (getarg $AMOUNT args) (getarg $TIME args))))))
+
+(defmethod useroutboxkey ((client client) &optional time)
+  (let ((key (userbankkey client $OUTBOX)))
+    (if time
+        (append-db-keys key time)
+        key)))
+
+(defmethod useroutbox ((client client) time)
+  (db-get (db client) (useroutboxkey client time)))
+
+(defmethod useroutboxhashkey ((client client))
+  (userbankkey client $OUTBOXHASH))
+
+(defmethod useroutboxhash ((client client))
+  (db-get (db client) (useroutboxhashkey client)))
+
+(defmethod userbalancehashkey ((client client))
+  (userbankkey client $BALANCEHASH))
+
+(defmethod userbalancehash ((client client))
+  (db-get (db client) (userbalancehashkey client)))
+
+(defmethod userinboxkey ((client client))
+  (userbankkey client $INBOX))
+
+(defmethod contactkey ((client client) &optional otherid prop)
+  (let ((key (userbankkey client $CONTACT)))
+    (cond (otherid
+           (setq key (append-db-keys key otherid))
+           (if prop
+               (append-db-keys key prop)
+               key))
+          (t key))))
+
+(defmethod contactprop ((client client) otherid prop)
+    (db-get (db client) (contactkey client otherid prop)))
+
+(defmethod userhistorykey ((client client))
+  (userbankkey client $HISTORY))
+
 #||
-  // Get the values necessary to compute the storage fee.
-  // Inputs:
-  // $id - the user ID
-  // $assetid - the asset ID
-  // Return value: storage fee $percent
-  // On output (set only if $percent != 0):
-  // $fraction - the fraction balance for $id/$assetid
-  // $fractime - the time of the fraction
-  function storageinfo($assetid, &$fraction, &$fractime) {
-    $t = $this->t;
-    $u = $this->u;
-    $parser = $this->parser;
-    $db = $this->db;
-
-    $asset = $this->getasset($assetid);
-    if (!$asset) return 0;
-    $issuer = $asset[$t->ISSUER];
-    $percent = $fraction = $fractime = 0;
-    if ($issuer == $this->id) return;
-
-    $percent = $asset[$t->PERCENT];
-        
-    if (!$percent) return;
-
-    $key = $this->userfractionkey($assetid);
-    $msg = $db->get($key);
-    if ($msg) {
-      $args = $this->unpack_bankmsg($msg, $t->ATFRACTION);
-      if (!is_string($args)) {
-        $args = $args[$t->MSG];
-        $fraction = $args[$t->AMOUNT];
-        $fractime = $args[$t->TIME];
-      }
-    }
-
-    return $percent;
-  }
-
-  function pubkey($id) {
-    $db = $this->pubkeydb;
-    return $db->get($id);
-  }
-
-  function pubkeykey($id) {
-    $t = $this->t;
-    return $t->PUBKEY . "/$id";
-  }
-
-  function bankkey($prop=false, $bankid=false) {
-    $t = $this->t;
-    if (!$bankid) $bankid = $this->bankid;
-
-    $key = $t->BANK . "/$bankid";
-    return $prop ? "$key/$prop" : $key;
-  }
-
-  function bankprop($prop, $bankid=false) {
-    $db = $this->db;
-
-    return $db->get($this->bankkey($prop, $bankid));
-  }
-
-  function assetkey($assetid=false) {
-    $t = $this->t;
-
-    $key = $this->bankkey($t->ASSET);
-    if ($assetid) $key .= "/$assetid";
-    return $key;
-  }
-
-  function assetprop($assetid) {
-    $db = $this->db;
-
-    return $db->get($this->assetkey($assetid));
-  }
-
-  function tranfeekey() {
-    $t = $this->t;
-
-    return $this->bankkey($t->TRANFEE);
-  }
-
-  function tranfee() {
-    $db = $this->db;
-
-    return $db->get($this->tranfeekey());
-  }
-
-  function regfeekey() {
-    $t = $this->t;
-
-    return $this->bankkey($t->REGFEE);
-  }
-
-  function regfee() {
-    $db = $this->db;
-
-    return $db->get($this->regfeekey());
-  }
-
-  function userbankkey($prop=false, $bankid=false) {
-    $t = $this->t;
-    $id = $this->id;
-    if (!$bankid) $bankid = $this->bankid;
-
-    $key = $t->ACCOUNT . "/$id/" . $t->BANK . "/$bankid";
-    return $prop ? "$key/$prop" : $key;
-  }
-
-  function userbankprop($prop, $bankid=false) {
-    $db = $this->db;
-
-    return $db->get($this->userbankkey($prop, $bankid));
-  }
-
-  function userreqkey($bankid=false) {
-    $t = $this->t;
-
-    return $this->userbankkey($t->REQ, $bankid);
-  }
-
-  function userreq($bankid=false) {
-    $db = $this->db;
-
-    return $db->get($this->userreqkey($bankid));
-  }
-
-  function usertimekey() {
-    $t = $this->t;
-
-    return $this->userbankkey($t->TIME);
-  }
-
-  // Called via $unpacker->balancekey() in utility->balancehash()
-  function balancekey($id) {
-    if ($id != $this->id) die("ID mismatch in client->balancekey()");
-    return $this->userbalancekey();
-  }
-
-  function userfractionkey($assetid=false) {
-    $key = $this->userbankkey($this->t->FRACTION);
-    if ($assetid) $key .= "/$assetid";
-    return $key;
-  }
-
-  function userstoragefeekey($assetid=false) {
-    $res = $this->userbankkey($this->t->STORAGEFEE);
-    if ($assetid) $res .= "/$assetid";
-    return $res;
-  }
-
-  function userbalancekey($acct=false, $assetid=false) {
-    $t = $this->t;
-
-    $key = $this->userbankkey($t->BALANCE);
-    if ($acct) {
-      $key .= "/$acct";
-      if ($assetid) $key .= "/$assetid";
-    }
-    return $key;
-  }
-
-  function userbalance($acct, $assetid) {
-    return $this->userbalanceandtime($acct, $assetid, $time);
-  }
-
-  function userbalanceandtime($acct, $assetid, &$time) {
-    $db = $this->db;
-    $t = $this->t;
-
-    $msg = $db->get($this->userbalancekey($acct, $assetid));
-    if ($msg) {
-      $args = $this->unpack_bankmsg($msg, $t->ATBALANCE);
-      if (is_string($args)) return $args;
-      $args = $args[$t->MSG];
-      $time = $args[$t->TIME];
-      return $args[$t->AMOUNT];
-    }
-    return false;
-  }
-
-  function useroutboxkey($time=false) {
-    $t = $this->t;
-
-    $key = $this->userbankkey($t->OUTBOX);
-    if ($time) $key .= "/$time";
-    return $key;
-  }
-
-  function useroutbox($time) {
-    $db = $this->db;
-
-    return $db->get($this->useroutboxkey($time));
-  }
-
-  function useroutboxhashkey() {
-    $t = $this->t;
-
-    return $this->userbankkey($t->OUTBOXHASH);
-  }
-
-  function useroutboxhash() {
-    $db = $this->db;
-
-    return $db->get($this->useroutboxhashkey());
-  }
-
-  function userbalancehashkey() {
-    $t = $this->t;
-
-    return $this->userbankkey($t->BALANCEHASH);
-  }
-
-  function userbalancehash() {
-    $db = $this->db;
-
-    return $db->get($this->userbalancehashkey());
-  }
-
-  function userinboxkey() {
-    $db = $this->db;
-    $t = $this->t;
-
-    return $this->userbankkey($t->INBOX);
-  }
-
-  function contactkey($otherid=false, $prop=false) {
-    $t = $this->t;
-
-    $res = $this->userbankkey($t->CONTACT);
-    if ($otherid) {
-      $res .= "/$otherid";
-      if ($prop) $res .= "/$prop";
-    }
-    return $res;
-  }
-
-  function contactprop($otherid, $prop) {
-    $db = $this->db;
-
-    $key = $this->contactkey($otherid, $prop);
-    return $db->get($this->contactkey($otherid, $prop));
-  }
-
-  function userhistorykey() {
-    $t = $this->t;
-
-    return $this->userbankkey($t->HISTORY);
-  }
-
   // format an asset value from the asset ID or $this->getasset($assetid)
   function format_asset_value($value, $assetid, $incnegs=true) {
     $t = $this->t;

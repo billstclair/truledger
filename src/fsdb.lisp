@@ -93,7 +93,7 @@
     (with-file-locked (filename)
       (funcall thunk filename key))))
 
-(defun append-db-keys (key &optional more-keys)
+(defun append-db-keys (key &rest more-keys)
   (if (null more-keys)
       key
       (let* ((len (+ (length key)

@@ -264,26 +264,9 @@
   "Bank sign a message."
   (signmsg (privkey server) msg))
 
-(defmethod makemsg ((server server) &rest req)
-  "Make an unsigned message from the args."
-  (let ((hash (make-hash-table :test 'equal))
-        (i -1))
-    (dolist (arg req) (setf (gethash (incf i) hash) arg))
-    (loop
-       with args = (match-pattern (parser server) hash)
-       with msg = "("
-       with msgval = (getarg $MSG args)
-       for k from 0
-       for v = (getarg k args)
-       do
-         (unless v (return (strcat msg ")")))
-         (unless (equal msg "(")
-           (dotcat msg ","))
-         (dotcat msg (if (eq v msgval) v (escape v))))))
-
 (defmethod bankmsg ((server server) &rest req)
   "Make a bank signed message from the args."
-  (banksign server (apply 'makemsg server (bankid server) req)))
+  (banksign server (apply 'makemsg (parser server) (bankid server) req)))
 
 (defun shorten-failmsg-msg (msg)
   (if (> (length msg) 1024)
