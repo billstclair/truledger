@@ -93,7 +93,7 @@
     (with-file-locked (filename)
       (funcall thunk filename key))))
 
-(defun append-db-keys (key &optional more-keys)
+(defun %append-db-keys (key &optional more-keys)
   (if (null more-keys)
       key
       (let* ((len (+ (length key)
@@ -107,15 +107,19 @@
             (setf (aref res (incf i)) (aref str j))))
         res)))
 
+(defun append-db-keys (key &rest other-keys)
+  (declare (dynamic-extent other-keys))
+  (apply '%append-db-keys key other-keys))
+
 (defmethod db-get ((db fsdb) key &rest more-keys)
-  (let ((key (append-db-keys key more-keys)))
+  (let ((key (%append-db-keys key more-keys)))
     (with-fsdb-filename (db filename key)
       (let ((res (file-get-contents filename)))
         (and (not (equal "" res))
              res)))))
 
 (defmethod (setf db-get) (value (db fsdb) key &rest more-keys)
-  (let ((key (append-db-keys key more-keys)))
+  (let ((key (%append-db-keys key more-keys)))
     (with-fsdb-filename (db filename key)
       (if (or (null value) (equal value ""))
           (when (probe-file filename) (delete-file filename))
@@ -146,7 +150,7 @@
 
 (defmethod db-contents ((db fsdb) &rest keys)
   (let* ((key (if keys
-                 (append-db-keys (car keys) (append (cdr keys) '("*.*")))
+                 (%append-db-keys (car keys) (append (cdr keys) '("*.*")))
                  "*.*"))
          (dir (directory (db-filename db key)
                         :directories t
