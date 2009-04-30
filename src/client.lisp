@@ -2539,79 +2539,84 @@
 (defmethod userhistorykey ((client client))
   (userbankkey client $HISTORY))
 
+(defmethod format-asset-value ((client client) value assetid &optional (incnegs t))
+  "Format an asset value from the asset ID or $this->getasset($assetid)"
+  (let ((asset (if (stringp assetid)
+                   (getasset assetid)
+                   assetid)))
+    (format-value
+     value (asset-scale asset) (asset-precision asset) incnegs)))
+
+(defmethod unformat-asset-value ((client client) formattedvalue assetid)
+  "Unformat an asset value from the asset ID or $this->getasset($assetid)"
+  (let ((asset (if (stringp assetid)
+                   (getasset client assetid)
+                   assetid)))
+    (unformat-value formattedvalue (asset-scale asset))))
+
+(defun fill-string (len &optional (char #\0))
+  (make-string len :initial-element char))
+
+(defun format-value (value scale precision &optional (incnegs t))
+  ;; format an asset value for user printing
+  (let ((sign 1)
+        res)
+    (when (and incnegs (< (bccomp value 0) 0))
+      (setq value (bcadd value 1)
+            sign -1))
+    (cond ((and (eql 0 (bccomp scale 0)) (eql 0 (bccomp precision 0)))
+           (setq res value))
+          ((> (bccomp scale 0) 0)
+           (let ((pow (bcpow 10 scale)))
+             (wbp (scale)
+               (setq res (bcdiv value pow))))
+           (let ((dotpos (position #\. res)))
+             (cond ((null dotpos)
+                    (unless (eql 0 (bccomp precision 0))
+                      (dotcat res "." (fill-string precision))))
+                   (t
+                    ;; Remove trailing zeroes
+                    (let ((endpos (1- (length res))))
+                      (loop
+                         while (> endpos dotpos)
+                         do
+                           (unless (eql #\0 (aref res endpos)) (return))
+                           (decf endpos))
+                      (let* ((zeroes (- precision (- endpos dotpos)))
+                             (zerostr (if (> zeroes 0) (fill-string zeroes) "")))
+                        (setq res (strcat (subseq res 0 (1+ endpos)) zerostr)))))))))
+
+    (when (and (eql 0 (bccomp value 0)) (< sign 0))
+      (setq res (strcat "-" res)))
+
+    ;; Insert commas
+    (let* ((start 0)
+           (dotpos (or (position #\. res) (length res)))
+           (len dotpos))
+      (when (eql #\- (aref res 0))
+        (incf start)
+        (decf len))
+      (loop
+         for pos = (+ len start -3)
+         while (> pos 0)
+         do
+           (setq res (strcat (subseq res 0 pos) "," (subseq res pos)))
+           (decf len 3)))
+
+    res))
+
+(defun unformat-value (formattedvalue scale)
+  (let ((value (if (eql 0 (bccomp scale 0))
+                   formattedvalue
+                   (split-decimal
+                    (wbp (scale) (bcmul formattedvalue (bcpow 10 scale)))))))
+    (if (or (< (bccomp value 0) 0)
+            (and (eql 0 (bccomp value 0))
+                 (eql #\- (aref formattedvalue 0))))
+      (bcsub value 1)
+      value)))
+
 #||
-  // format an asset value from the asset ID or $this->getasset($assetid)
-  function format_asset_value($value, $assetid, $incnegs=true) {
-    $t = $this->t;
-
-    if (is_string($assetid)) $asset = $this->getasset($assetid);
-    else $asset = $assetid;
-    if (is_string($asset)) return $value;
-    return $this->format_value($value, $asset[$t->SCALE], $asset[$t->PRECISION], $incnegs);
-  }
-
-  // Unformat an asset value from the asset ID or $this->getasset($assetid)
-  function unformat_asset_value($formattedvalue, $assetid) {
-    $t = $this->t;
-
-    if (is_string($assetid)) $asset = $this->getasset($assetid);
-    else $asset = $assetid;
-    if (is_string($asset)) return $value;
-    return $this->unformat_value($formattedvalue, $asset[$t->SCALE]);
-  }
-
-  // format an asset value for user printing
-  function format_value($value, $scale, $precision, $incnegs=true) {
-    $sign = 1;
-    if ($incnegs && bccomp($value, 0) < 0) {
-      $value = bcadd($value, 1);
-      $sign = -1;
-    }
-    if ($scale == 0 && $precision == 0) $res = $value;
-    else {
-      if ($scale > 0) {
-        $res = bcdiv($value, bcpow(10, $scale), $scale);
-      }
-      $dotpos = strpos($res, '.');
-      if ($dotpos === false) {
-        if ($precision != 0) {
-          $res .= '.' . str_repeat('0', $precision);
-        }
-      } else {
-        // Remove trailing zeroes
-        for ($endpos = strlen($res)-1; $endpos>$dotpos; $endpos--) {
-          if ($res[$endpos] != '0') break;
-        }
-        $zeroes = $precision - ($endpos - $dotpos);
-        $zerostr = ($zeroes >= 0) ? str_repeat('0', $zeroes) : '';
-        $res = substr($res, 0, $endpos+1) . $zerostr;
-      }
-    }
-    if ($value == 0 && $sign < 0) $res = "-$res";
-
-    // Insert commas
-    $start = 0;
-    if (substr($res, 0, 1) == '-') $start++;
-    $dotpos = strpos($res, '.');
-    if ($dotpos === false) $dotpos = strlen($res);
-    $len = $dotpos - $start;
-    while ($len > 3) {
-      $res = substr($res, 0, $len+$start-3) . ',' . substr($res, $len+$start-3);
-      $len -= 3;
-    }
-
-    return $res;
-  }
-
-  function unformat_value($formattedvalue, $scale) {
-    if ($scale == 0) $value = $formattedvalue;
-    else $value = bcmul($formattedvalue, bcpow(10, $scale), 0);
-    if ((bccomp($value, 0) < 0) ||
-        ($value == 0 && substr($formattedvalue, 0, 1) == '-')) {
-      $value = bcsub($value, 1);
-    }
-    return $value;
-  }
 
   // Send a t->ID command to the server, if there is one.
   // Parse out the pubkey, cache it in the database, and return it.

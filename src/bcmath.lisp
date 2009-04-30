@@ -33,8 +33,16 @@
                     0)))))
 
 (defmacro with-bcmath-precision ((precision) &body body)
-  `(let ((*bcmath-precision* ,precision))
-     ,@body))
+  (let ((thunk (gensym "THUNK")))
+    `(flet ((,thunk () ,@body))
+       (declare (dynamic-extent #',thunk))
+       (call-with-bcmath-precision #',thunk ,precision))))
+
+(defun call-with-bcmath-precision (thunk precision)
+  (when (stringp precision)
+    (setq precision (parse-integer precision :radix 10.)))
+  (let ((*bcmath-precision* precision))
+    (funcall thunk)))
 
 (defmacro wbp ((precision) &body body)
   `(with-bcmath-precision (,precision) ,@body))
@@ -88,13 +96,26 @@
         (shifter (expt 10 *bcmath-precision*)))
     (dolist (num divisors)
       (setq res (round (* res shifter) (bcshift-precision num))))
-    (bcunshift-precision res)))
+    (cond ((< res 0)
+           (strcat "-" (bcunshift-precision (- res))))
+          (t (bcunshift-precision res)))))
 
 (defun bccomp (x y)
   (let ((diff (- (bcshift-precision x) (bcshift-precision y))))
     (cond ((< diff 0) -1)
           ((eql diff 0) 0)
           (t 1))))
+
+(defun bcpow (num exponent)
+  "(expt NUM EXPONENT), but only supports integer EXPONENT >= 0"
+  (let ((res (bcshift-precision num))
+        (exp (if (stringp exponent) (parse-integer exponent) exponent)))
+    (cond ((< exp 0) (error "Only positive integer exponents supported"))
+          ((eql exp 0) "1")
+          (t (bcunshift-precision
+              (split-decimal
+               (wbp ((* *bcmath-precision* (1- exp)))
+                 (bcunshift-precision (expt res exp)))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

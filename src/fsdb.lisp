@@ -107,11 +107,12 @@
             (setf (aref res (incf i)) (aref str j))))
         res)))
 
-(defun append-db-keys (key &rest other-keys)
-  (declare (dynamic-extent other-keys))
+(defun append-db-keys (key &rest more-keys)
+  (declare (dynamic-extent more-keys))
   (apply '%append-db-keys key other-keys))
 
 (defmethod db-get ((db fsdb) key &rest more-keys)
+  (declare (dynamic-extent more-keys))
   (let ((key (%append-db-keys key more-keys)))
     (with-fsdb-filename (db filename key)
       (let ((res (file-get-contents filename)))
@@ -119,6 +120,7 @@
              res)))))
 
 (defmethod (setf db-get) (value (db fsdb) key &rest more-keys)
+  (declare (dynamic-extent more-keys))
   (let ((key (%append-db-keys key more-keys)))
     (with-fsdb-filename (db filename key)
       (if (or (null value) (equal value ""))
