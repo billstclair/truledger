@@ -2616,86 +2616,48 @@
       (bcsub value 1)
       value)))
 
+(defmethod get-pubkey-from-server ((client client) id)
+  "Send a t->ID command to the server, if there is one.
+   Parse out the pubkey, cache it in the database, and return it.
+   Return nil if there is no server or it doesn't know the id."
+  (let* ((db (db client))
+         (bankid (or (current-bank client)
+                     (return-from get-pubkey-from-server nil)))
+         (msg (sendmsg client $ID bankid id))
+         (args (getarg $MSG (client-unpack-bankmsg client msg $ATREGISTER)))
+         (pubkey (getarg $PUBKEY args))
+         (pubkeykey (pubkeykey id)))
+    (when pubkey
+      (db-put db pubkeykey pubkey)
+      pubkey)))
+
+(defmethod getreq ((client client))
+  "Get a new request"
+  (let ((db (db client))
+        (key (userreqkey client)))
+    (with-db-lock (db key)
+      (setf (db-get db key) (bcadd (db-get db key) 1)))))
+
+(defmethod client-gettime ((client client) &optional forcenew)
+  "Get a timestamp from the server"
+  (let ((db (db client))
+        (bankid (bankid client))
+        (key (usertimekey client)))
+    (with-db-lock (db key)
+      (cond (forcenew (setf (db-get db key) nil))
+            (t
+             (let ((times (db-get db key)))
+               (when times
+                 (setf times (explode #\, times)
+                       (db-get db key) (cadr times))
+                 (return-from client-gettime (car times)))))))
+    (let ((req (getreq client)))
+      (cond ((not req) nil)
+            (t (let* ((msg (sendmsg client $GETTIME bankid req))
+                      (args (client-unpack-bankmsg client msg $TIME)))
+                 (getarg $TIME args)))))))
+
 #||
-
-  // Send a t->ID command to the server, if there is one.
-  // Parse out the pubkey, cache it in the database, and return it.
-  // Return the empty string if there is no server or it doesn't know
-  // the id.
-  // If $wholemsg is true, return the $args for the whole $t->REGISTER
-  // message, intead of just the pubkey, and return an error message,
-  // instead of the empty string, if there's a problem.
-  function get_pubkey_from_server($id, $wholemsg=false) {
-    $t = $this->t;
-    $db = $this->db;
-    $bankid = $this->bankid;
-
-    if (!$this->current_bank()) {
-      return $wholemsg ? 'In get_pubkey_from_server: Bank not set' : '';
-    }
-
-    $msg = $this->sendmsg($t->ID, $bankid, $id);
-    $args = $this->unpack_bankmsg($msg, $t->ATREGISTER);
-    if (is_string($args)) return $wholemsg ? $args : '';
-    $args = $args[$t->MSG];
-    $pubkey = $args[$t->PUBKEY];
-    $pubkeykey = $this->pubkeykey($id);
-    if ($pubkey) {
-      if (!$db->get($pubkeykey)) $db->put($pubkeykey, $pubkey);
-      if ($wholemsg) return $args;
-      return $pubkey;
-    }
-    return $wholemsg ? "Can't find pubkey on server" : '';
-  }
-
-  // Get a new request
-  function getreq() {
-    $t = $this->t;
-    $db = $this->db;
-
-    $key = $this->userreqkey();
-    $lock = $db->lock($key);
-    $reqnum = $this->getreq_internal($key);
-    $db->unlock($lock);
-
-    return $reqnum;
-  }
-
-  function getreq_internal($key) {
-    $t = $this->t;
-    $db = $this->db;
-
-    $reqnum = bcadd($db->get($key), 1);
-    $db->put($key, $reqnum);
-    return $reqnum;
-  }
-
-  // Get a timestamp from the server
-  function gettime($forcenew=false) {
-    $t = $this->t;
-    $db = $this->db;
-    $bankid = $this->bankid;
-
-    $key = $this->usertimekey();
-    if ($forcenew) $db->put($key, '');
-    else {
-      $times = $db->get($key);
-      if ($times) {
-        $times = explode(',', $times);
-        $time = $times[0];
-        $db->put($key, $times[1]);
-        return $time;
-      }
-    }
-
-    $req = $this->getreq();
-    if (!$req) return false;
-    $msg = $this->sendmsg($t->GETTIME, $bankid, $req);
-    $args = $this->unpack_bankmsg($msg, $t->TIME);
-    if (is_string($args)) return false;
-    return $args[$t->TIME];
-  }
-
   // Check once per instance that the local idea of the reqnum matches
   // that at the bank.
   // If it doesn't, clear the account information, so that initbankaccts()
@@ -3237,12 +3199,11 @@ class serverproxy {
 (defvar *insidep* nil)
 
 (defmethod db-get ((pubkeydb pubkeydb) id &rest more-keys)
-  (assert (null more-keys))
-  (let ((res (db-get (db pubkeydb) id)))
-    (cond (res res)
-          (*insidep* nil)
-          (t (let ((*insidep* t))
-               (get-pubkey-from-server (client pubkeydb) id))))))
+  (assert (null more-keys) nil "PUBKEYDB takes only a single DB-GET key")
+  (or (db-get (db pubkeydb) id)
+      (and (not *insidep*)
+           (let ((*insidep* t))
+             (get-pubkey-from-server (client pubkeydb) id)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
