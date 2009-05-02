@@ -2657,211 +2657,182 @@
                       (args (client-unpack-bankmsg client msg $TIME)))
                  (getarg $TIME args)))))))
 
+(defmethod syncreq ((client client))
+  "Check once per instance that the local idea of the reqnum matches
+   that at the bank.
+   If it doesn't, clear the account information, so that initbankaccts()
+   will reinitialize.
+   Eventually, we want to compare to see if we can catch a bank error."
+  (let* ((db (db client))
+         (key (userbankkey client $REQ))
+         (reqnum (db-get db key)))
+    (when (equal reqnum "-1") (setf (syncedreq-p client) t))
+    (unless (syncedreq-p client)
+      (let* ((bankid (bankid client))
+             (msg (sendmsg client $GETREQ bankid))
+             (args (client-unpack-bankmsg client msg $REQ))
+             (newreqnum (getarg $REQ args)))
+      (unless (equal reqnum newreqnum)
+        (setq reqnum "-1")
+        (let* ((balkey (userbalancekey client))
+               (accts (db-contents db balkey)))
+          (dolist (acct accts)
+            (let* ((acctkey (append-db-keys balkey acct))
+                   (assetids (db-contents db acctkey)))
+              (dolist (assetid assetids)
+                (setf (db-get db acctkey assetid) nil)))))
+        (let* ((frackey (userfractionkey client))
+               (assetids (db-contents db frackey)))
+          (dolist (assetid assetids)
+            (setf (db-get db frackey assetid) nil)))
+        (let* ((outboxkey (useroutboxkey client))
+               (outtimes (db-contents db outboxkey)))
+          (dolist (outtime outtimes)
+            (setf (db-get outboxkey outtime) nil)))
+        (setf (db-get db (userbalancehashkey client)) nil
+              (db-get db (useroutboxhashkey client)) nil)
+        (setf (syncedreq-p client) t))))
+    reqnum))
+
+(defmethod forceinit ((client client))
+  "Force a reinit of the client database for the current user"
+  (let ((db (db client)))
+    (setf (db-get db (userreqkey client)) "0"
+          (syncedreq-p client) nil)
+    (initbankaccts client)))
+
+(defun get-inited-hash (key hash &optional (creator 'make-equal-hash))
+  "Get an object from a hash table, creating it if it's not there."
+  (or (gethash key hash)
+      (setf (gethash key hash) (funcall creator))))
+
+(defmethod initbankaccts ((client client))
+  "If we haven't yet downloaded accounts from the bank, do so now.
+   This is how a new client instance gets initialized from an existing
+   bank instance."
+  (let* ((db (db client))
+         (id (id client))
+         (bankid (bankid client))
+         (parser (parser client))
+         (reqnum (syncreq client)))
+
+    (when (equal reqnum "-1")
+      ;; Get $REQ
+      (let* ((msg (sendmsg client $GETREQ bankid))
+             (args (client-unpack-bankmsg client msg $REQ))
+             (reqnum (bcadd (getarg $REQ args) 1)))
+
+        ;; Get account balances
+        (setq msg (sendmsg client $GETBALANCE bankid reqnum))
+        (let ((reqs (parse parser msg t))
+              (balances (make-equal-hash))
+              (fractions (make-equal-hash))
+              (balancehash nil))
+          (dolist (req reqs)
+            (setq args (match-bankreq client req))
+            (let* ((request (getarg $REQUEST args))
+                   (msgargs (getarg $MSG args))
+                   (customer (and msgargs (getarg $CUSTOMER msgargs))))
+              (when (and msgargs (not (equal customer id)))
+                (error "Bank wrapped somebody else's (~a) message: ~s" customer msg))
+              (cond ((equal request $ATBALANCE)
+                     (unless (equal (getarg $REQUEST msgargs) $BALANCE)
+                       (error "Bank wrapped a non-balance request with @balance"))
+                     (let ((assetid
+                            (or (getarg $ASSET msgargs)
+                                (error "Bank wrapped balance missing asset ID")))
+                           (acct (or (getarg $ACCT msgargs) $MAIN)))
+                       (setf (gethash assetid (get-inited-hash acct balances))
+                             (get-parsemsg req))))
+                    ((equal request $ATBALANCEHASH)
+                     (unless (equal (getarg $REQUEST msgargs) $BALANCEHASH)
+                       (error "Bank wrapped a non-balancehash request with @balancehash"))
+                     (setq balancehash (get-parsemsg req)))
+                    ((equal request $ATFRACTION)
+                     (unless (equal (getarg $REQUEST msgargs) $FRACTION)
+                       (error "Bank wrapped a non-fraction request with @fraction"))
+                     (let ((assetid
+                            (or (getarg $ASSET msgargs)
+                                (error "Bank wrapped fraction missing asset ID")))
+                           (fraction (get-parsemsg req)))
+                       (setf (gethash assetid fractions) fraction))))))
+          ;; Get outbox
+          (setq reqnum (bcadd reqnum 1)
+                msg (sendmsg client $GETOUTBOX bankid reqnum))
+          (let ((reqs (parse parser msg t))
+                (outbox (make-equal-hash))
+                (outboxhash nil)
+                (outboxtime nil))
+            (dolist (req reqs)
+              (setq args (match-bankreq client req))
+              (let* ((request (getarg $REQUEST args))
+                     (msgargs (getarg $MSG args))
+                     (customer (and msgargs (getarg $CUSTOMER msgargs))))
+                (when (and msgargs (not (equal customer id)))
+                  (error "Bank wrapped somebody else's (%a) message: ~%"
+                         customer msg))
+                (cond ((equal request $ATGETOUTBOX))
+                      ((equal request $ATSPEND)
+                       (unless (equal (getarg $REQUEST msgargs) $SPEND)
+                         (error "Bank wrapped a non-spend request with @spend"))
+                       (let ((time (getarg $TIME msgargs)))
+                         (setf outboxtime time
+                               (gethash time outbox) (get-parsemsg req))))
+                      ((equal request $ATTRANFEE)
+                       (unless (equal (getarg $REQUEST msgargs) $TRANFEE)
+                         (error "Bank wrapped a non-tranfee request with @tranfee"))
+                       (let* ((time (getarg $TIME msgargs))
+                              (msg (or (gethash time outbox)
+                                       (error "No spend message for time: ~s" time))))
+                         (setf (gethash time outbox)
+                               (append-db-keys msg (get-parsemsg req)))))
+                      ((equal request $ATOUTBOXHASH)
+                       (unless (equal (getarg $REQUEST msgargs) $OUTBOXHASH)
+                         (error "Bank wrapped a non-outbox request with @outboxhash"))
+                       (setq outboxhash (get-parsemsg req)))
+                      ((equal request $COUPONENVELOPE)
+                       (unless outboxtime
+                         (error "Got a coupon envelope with no outboxtime"))
+                       (let ((msg (or (gethash outboxtime outbox)
+                                      (error "No spend message for coupon envelope"))))
+                         (setq msg (append-db-keys  msg (get-parsemsg req)))
+                         (setf (gethash outboxtime outbox) msg
+                               outboxtime nil)))
+                      (t
+                       (error "While processing getoutbox: bad request: ~s"
+                              request)))))
+
+            (when (and (not (equal id bankid))
+                       (> (hash-table-count outbox) 0)
+                       (not outboxhash))
+              (error "While procesing getoutbox: outbox items but no outboxhash"))
+
+            ;; All is well. Write the data
+            (loop
+               for acct being the hash-key using (hash-value assets) of balances
+               do
+               (loop
+                  for assetid being the hash-key using (hash-value msg) of assets
+                  do
+                  (setf (db-get db (userbalancekey client acct assetid)) msg)))
+
+            (loop
+               for assetid being the hash-key using (hash-value fraction)
+               of fractions
+               do
+               (setf (db-get db (userfractionkey client assetid)) fraction))
+
+            (setf (db-get db (userbalancehashkey client)) balancehash)
+
+            (loop
+               for time being the hash-key using (hash-value msg) of outbox
+               do
+               (setf (db-get db (useroutboxkey client time)) msg))
+
+            (setf (db-get db (useroutboxhashkey client)) outboxhash
+                  (db-get db (userreqkey client)) reqnum)))))))
+
 #||
-  // Check once per instance that the local idea of the reqnum matches
-  // that at the bank.
-  // If it doesn't, clear the account information, so that initbankaccts()
-  // will reinitialize.
-  // Eventually, we want to compare to see if we can catch a bank error.
-  function syncreq() {
-    $db = $this->db;
-    $t = $this->t;
-
-    $key = $this->userbankkey($t->REQ);
-    $reqnum = $db->get($key);
-    if ($reqnum == -1) $this->syncedreq = true;
-    if (!$this->syncedreq) {
-      $bankid = $this->bankid;
-      $msg = $this->sendmsg($t->GETREQ, $bankid);
-      $args = $this->unpack_bankmsg($msg, $t->REQ);
-      if (is_string($args)) return false;
-      $newreqnum = $args[$t->REQ];
-      if ($reqnum != $newreqnum) {
-        $reqnum = -1;
-        $balkey = $this->userbalancekey();
-        $accts = $db->contents($balkey);
-        foreach ($accts as $acct) {
-          $acctkey = "$balkey/$acct";
-          $assetids = $db->contents($acctkey);
-          foreach ($assetids as $assetid) {
-            $key = "$acctkey/$assetid";
-            $db->put($key, '');
-          }
-        }
-        $frackey = $this->userfractionkey();
-        $assetids = $db->contents($frackey);
-        foreach ($assetids as $assetid) {
-          $key = "$frackey/$assetid";
-          $db->put($key, '');
-        }
-        $outboxkey = $this->useroutboxkey();
-        $outtimes = $db->contents($outboxkey);
-        foreach ($outtimes as $outtime) {
-          $key = "$outboxkey/$outtime";
-          $db->put($key, '');
-        }
-        $db->put($this->userbalancehashkey(), '');
-        $db->put($this->useroutboxhashkey(), '');
-      }
-      $this->syncedreq = true;
-    }
-    return $reqnum;
-  }
-
-  // Force a reinit of the client database for the current user
-  function forceinit() {
-    $db = $this->db;
-
-    $db->put($this->userreqkey(), 0);
-    $this->syncedreq = false;
-    return $this->initbankaccts();
-  }
-
-  // If we haven't yet downloaded accounts from the bank, do so now.
-  // This is how a new client instance gets initialized from an existing
-  // bank instance.
-  // Return false on success or error string.
-  function initbankaccts() {
-    $t = $this->t;
-    $db = $this->db;
-    $id = $this->id;
-    $bankid = $this->bankid;
-    $parser = $this->parser;
-
-    $reqnum = $this->syncreq();
-
-    if ($reqnum == -1) {
-
-      // Get $t->REQ
-      $msg = $this->sendmsg($t->GETREQ, $bankid);
-      $args = $this->unpack_bankmsg($msg, $t->REQ);
-      if (is_string($args)) return "While getting req to initialize accounts: $args";
-      $reqnum = bcadd($args[$t->REQ], 1);
-
-      // Get account balances
-      $msg = $this->sendmsg($t->GETBALANCE, $bankid, $reqnum);
-      $reqs = $parser->parse($msg, true);
-      if (!$reqs) {
-        if ($parser->errmsg) {
-          return "While parsing getbalance: " . $parser->errmsg;
-        }
-        $reqs = array();
-      }
-      $balances = array();
-      $fractions = array();
-      $balancehash = false;
-      foreach ($reqs as $req) {
-        $args = $this->match_bankreq($req);
-        if (is_string($args)) return "While matching getbalance: $args";
-        $request = $args[$t->REQUEST];
-        $msgargs = $args[$t->MSG];
-        $customer = $msgargs[$t->CUSTOMER];
-        if ($msgargs && $customer != $id) {
-          return "Bank wrapped somebody else's ($customer) message: $msg";
-        }
-        if ($request == $t->ATBALANCE) {
-          if ($msgargs[$t->REQUEST] != $t->BALANCE) {
-            return "Bank wrapped a non-balance request with @balance";
-          }
-          $assetid = $msgargs[$t->ASSET];
-          if (!$assetid) return "Bank wrapped balance missing asset ID";
-          $acct = @$msgargs[$t->ACCT];
-          if (!$acct) $acct = $t->MAIN;
-          $balances[$acct][$assetid] = $parser->get_parsemsg($req);
-        } else if ($request == $t->ATBALANCEHASH) {
-          $balancehash = $parser->get_parsemsg($req);
-        } else if ($request == $t->ATFRACTION) {
-          if ($msgargs[$t->REQUEST] != $t->FRACTION) {
-            return "Bank wrapped a non-fraction request with @fraction";
-          }
-          $assetid = $msgargs[$t->ASSET];
-          if (!$assetid) return "Bank wrapped fraction missing asset ID";
-          $fraction = $parser->get_parsemsg($req);
-          $fractions[$assetid] = $fraction;
-        }
-      }
-
-      // Get outbox
-      $reqnum = bcadd($reqnum, 1);
-      $msg = $this->sendmsg($t->GETOUTBOX, $bankid, $reqnum);
-      $reqs = $parser->parse($msg, true);
-      if (!$reqs) return "While parsing getoutbox: " . $parser->errmsg;
-      $outbox = array();
-      $outboxhash = '';
-      $outboxtime = false;
-      foreach ($reqs as $req) {
-        $args = $this->match_bankreq($req);
-        if (is_string($args)) return "While matching getoutbox: $args";
-        $request = $args[$t->REQUEST];
-        $msgargs = @$args[$t->MSG];
-        $customer = $msgargs[$t->CUSTOMER];
-        if ($msgargs && $msgargs[$t->CUSTOMER] != $id) {
-          return "Bank wrapped somebody else's ($customer) message: $msg";
-        }
-        if ($request == $t->ATGETOUTBOX) {
-          $outboxtime = false;
-        } elseif ($request == $t->ATSPEND) {
-          if ($msgargs[$t->REQUEST] != $t->SPEND) {
-            return "Bank wrapped a non-spend request with @spend";
-          }
-          $time = $msgargs[$t->TIME];
-          $outbox_time = $time;
-          $outbox[$time] = $parser->get_parsemsg($req);
-        } elseif ($request == $t->ATTRANFEE) {
-          if ($msgargs[$t->REQUEST] != $t->TRANFEE) {
-            return "Bank wrapped a non-tranfee request with @tranfee";
-          }
-          $time = $msgargs[$t->TIME];
-          $msg = $outbox[$time];
-          if (!$msg) return "No spend message for time: $time";
-          $msg = "$msg." . $parser->get_parsemsg($req);
-          $outbox[$time] = $msg;
-        } elseif ($request == $t->ATOUTBOXHASH) {
-          if ($msgargs[$t->REQUEST] != $t->OUTBOXHASH) {
-            return "Bank wrapped a non-outbox request with @outboxhash";
-          }
-          $outboxhash = $parser->get_parsemsg($req);
-        } elseif ($request == $t->COUPONENVELOPE) {
-          if (!$outbox_time) return "Got a coupon envelope with no outboxtime";
-          $msg = $outbox[$outbox_time];
-          if (!$msg) return "No spend message for coupon envelope";
-          $msg = "$msg." . $parser->get_parsemsg($req);
-          $outbox[$outbox_time] = $msg;
-          $outbox_time = false;
-        } else {
-          return "While processing getoutbox: bad request: $request";
-        }
-      }
-
-      if ($id != $bankid && count($outbox) > 0 && !$outboxhash) {
-        return "While procesing getoutbox: outbox items but no outboxhash";
-      }
-
-      // All is well. Write the data
-      foreach ($balances as $acct => $assets) {
-        foreach ($assets as $assetid => $msg) {
-          $db->put($this->userbalancekey($acct, $assetid), $msg);
-        }
-      }
-
-      foreach ($fractions as $assetid => $fraction) {
-        $key = $this->userfractionkey($assetid);
-        $db->put($key, $fraction);
-      }
-
-      if ($balancehash) {
-        $db->put($this->userbalancehashkey(), $balancehash);
-      }
-
-      foreach ($outbox as $time => $msg) {
-        $db->put($this->useroutboxkey($time), $msg);
-      }
-      $db->put($this->useroutboxhashkey(), $outboxhash);
-      $db->put($this->userreqkey(), $reqnum);
-    }
-    return false;
-  }
-
   function balancehashmsg($time, $acctbals) {
     $u = $this->u;
     $t = $this->t;
@@ -3014,40 +2985,6 @@
     if ($value === true) $value = $db->get($key);
     else $db->put($key, $value);
     return $value;
-  }
-
-  // Account creation tokens
-  // A kluge to keep spammers out of my web client
-
-  function tokenkey($token=false) {
-    $t = $this->t;
-    
-    $key = $t->TOKEN;
-    if ($token) $key .= "/$token";
-    return $key;
-  }
-
-  function token($token, $value=false) {
-    $db = $this->db;
-
-    $key = $this->tokenkey($token);
-    if ($value === false) return $db->get($key);
-    else {
-      $db->put($key, $value);
-      return $value;
-    }
-  }
-
-  // Returns array($tok => $value, ...)
-  function gettokens() {
-    $db = $this->db;
-
-    $tokens = $db->contents($this->tokenkey());
-    $res = array();
-    foreach ($tokens as $tok) {
-      $res[$tok] = $db->get($this->tokenkey($tok));
-    }
-    return $res;
   }
 
   // Add a string to the debug output.
