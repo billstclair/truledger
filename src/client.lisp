@@ -67,7 +67,11 @@
    ;; Used to accumulate timing information from server (perf.lisp)
    (server-times :type (or hash-table null)
                  :initform nil
-                 :accessor server-times)))
+                 :accessor server-times)
+
+   ;; If non-nil, a function to call with debug strings
+   (showprocess :initform nil
+                :accessor showprocess)))
 
 (defmethod :initialize-instance :after ((client client) &rest rest)
   (declare (ignore rest))
@@ -698,7 +702,7 @@
     $db = $this->db;
 
     if (!$this->current_bank()) return "In getaccts(): Bank not set";
-    if ($err = $this->initbankaccts()) return $err;
+    if ($err = $this->init-bank-accts()) return $err;
     
     $res = $db->contents($this->userbalancekey());
     usort($res, array('client', 'compareaccts'));
@@ -1021,7 +1025,7 @@
     $db = $this->db;
 
     if (!$this->current_bank()) return "In getbalance(): Bank not set";
-    if ($err = $this->initbankaccts()) return $err;
+    if ($err = $this->init-bank-accts()) return $err;
 
     $lock = $db->lock($this->userreqkey());
     $res = $this->getbalance_internal($acct, $assetid);
@@ -1101,7 +1105,7 @@
     $db = $this->db;
 
     if (!$this->current_bank()) return "In getfraction(): Bank not set";
-    if ($err = $this->initbankaccts()) return $err;
+    if ($err = $this->init-bank-accts()) return $err;
 
     $lock = $db->lock($this->userreqkey());
     $res = $this->getfraction_internal($assetid);
@@ -1151,7 +1155,7 @@
     $db = $this->db;
 
     if (!$this->current_bank()) return "In getfraction(): Bank not set";
-    if ($err = $this->initbankaccts()) return $err;
+    if ($err = $this->init-bank-accts()) return $err;
 
     $lock = $db->lock($this->userreqkey());
     $res = $this->getstoragefee_internal($assetid);
@@ -1225,7 +1229,7 @@
     $parser = $this->parser;
 
     if (!$this->current_bank()) return "In spend(): Bank not set";
-    if ($err = $this->initbankaccts()) return $err;
+    if ($err = $this->init-bank-accts()) return $err;
 
     $parser->verifysigs(false);
 
@@ -1538,7 +1542,7 @@
     $parser = $this->parser;
 
     if (!$this->current_bank()) return "In spendreject(): Bank not set";
-    if ($err = $this->initbankaccts()) return $err;
+    if ($err = $this->init-bank-accts()) return $err;
 
     $parser->verifysigs(false);
 
@@ -1724,7 +1728,7 @@
     $db = $this->db;
 
     if (!$this->current_bank()) return "In getinbox(): Bank not set";
-    if ($err = $this->initbankaccts()) return $err;
+    if ($err = $this->init-bank-accts()) return $err;
 
     $lock = $db->lock($this->userreqkey());
     $res = $this->getinbox_internal();
@@ -1884,7 +1888,7 @@
     $parser = $this->parser;
 
     if (!$this->current_bank()) return "In processinbox(): Bank not set";
-    if ($err = $this->initbankaccts()) return $err;
+    if ($err = $this->init-bank-accts()) return $err;
 
     $parser->verifysigs(false);
 
@@ -2144,7 +2148,7 @@
     $parser = $this->parser;
 
     if (!$this->current_bank()) return "In storagefees(): Bank not set";
-    if ($err = $this->initbankaccts()) return $err;
+    if ($err = $this->init-bank-accts()) return $err;
 
     $lock = $db->lock($this->userreqkey());
     $res = $this->storagefees_internal();
@@ -2238,7 +2242,7 @@
     $db = $this->db;
 
     if (!$this->current_bank()) return "In getoutbox(): Bank not set";
-    if ($err = $this->initbankaccts()) return $err;
+    if ($err = $this->init-bank-accts()) return $err;
 
     $lock = $db->lock($this->userreqkey());
     $res = $this->getoutbox_internal();
@@ -2660,7 +2664,7 @@
 (defmethod syncreq ((client client))
   "Check once per instance that the local idea of the reqnum matches
    that at the bank.
-   If it doesn't, clear the account information, so that initbankaccts()
+   If it doesn't, clear the account information, so that init-bank-accts()
    will reinitialize.
    Eventually, we want to compare to see if we can catch a bank error."
   (let* ((db (db client))
@@ -2699,14 +2703,14 @@
   (let ((db (db client)))
     (setf (db-get db (userreqkey client)) "0"
           (syncedreq-p client) nil)
-    (initbankaccts client)))
+    (init-bank-accts client)))
 
 (defun get-inited-hash (key hash &optional (creator 'make-equal-hash))
   "Get an object from a hash table, creating it if it's not there."
   (or (gethash key hash)
       (setf (gethash key hash) (funcall creator))))
 
-(defmethod initbankaccts ((client client))
+(defmethod init-bank-accts ((client client))
   "If we haven't yet downloaded accounts from the bank, do so now.
    This is how a new client instance gets initialized from an existing
    bank instance."
@@ -2822,306 +2826,206 @@
                do
                (setf (db-get db (userfractionkey client assetid)) fraction))
 
-            (setf (db-get db (userbalancehashkey client)) balancehash)
-
             (loop
                for time being the hash-key using (hash-value msg) of outbox
                do
                (setf (db-get db (useroutboxkey client time)) msg))
 
-            (setf (db-get db (useroutboxhashkey client)) outboxhash
+            (setf (db-get db (userbalancehashkey client)) balancehash
+                  (db-get db (useroutboxhashkey client)) outboxhash
                   (db-get db (userreqkey client)) reqnum)))))))
 
-#||
-  function balancehashmsg($time, $acctbals) {
-    $u = $this->u;
-    $t = $this->t;
-    $db = $this->db;
-    $bankid = $this->bankid;
+(defmethod unpacker ((client client))
+  #'(lambda (msg) (client-unpack-bankmsg client msg)))
 
-    $hasharray = $u->balancehash($db, $this->id, $this, $acctbals);
-    $hash = $hasharray[$t->HASH];
-    $hashcnt = $hasharray[$t->COUNT];
-    $balancehash = $this->custmsg($t->BALANCEHASH, $bankid, $time, $hashcnt, $hash);
+(defmethod balancehashmsg ((client client) time acctbals)
+  (let* ((db (db client))
+         (bankid (bankid client)))
+    (multiple-value-bind (hash hashcnt)
+        (balancehash db (unpacker client) (userbalancekey client) acctbals)
+      (custmsg client $BALANCEHASH bankid time hashcnt hash))))
 
-    return $balancehash;
-  }
+(defmethod outboxhashmsg ((client client) transtime &optional newitem removed-times)
+  (let ((db (db client))
+        (bankid (bankid client)))
+    (multiple-value-bind (hash hashcnt)
+        (dirhash db (unpacker client) newitem removed-times)
+      (custmsg client $OUTBOXHASH bankid transtime hashcnt hash))))
 
+;; Web client session support
 
-  function outboxhashmsg($transtime, $newitem=false, $removed_times=false) {
-    $db = $this->db;
-    $u = $this->u;
-    $t = $this->t;
+(defun newsessionid ()
+  "Return a new, random, session ID"
+  (let ((res (bin2hex (urandom-bytes 20))))
+    (if (< (length res) 40)
+        (strcat (fill-string (- 40 (length res))) res)
+        res)))
 
-    $hasharray = $u->dirhash
-      ($db, $this->useroutboxkey(), $this, $newitem, $removed_times);
-    $hash = $hasharray[$t->HASH];
-    $hashcnt = $hasharray[$t->COUNT];
-    return $this->custmsg($this->t->OUTBOXHASH,
-                          $this->bankid,
-                          $transtime,
-                          $hashcnt,
-                          $hash);
-  }
+(defun xorcrypt (key string)
+  "xor hashed copies of KEY with STRING and return the result.
+   This is a really simple encryption that only really works if
+   KEY is known to be random, e.g. the output of (newsessionid)."
+  (let* ((key (hex2bin (sha1 key) :string))
+         (idx 0)
+         (keylen (length key))
+         (len (length string)))
+    (with-output-to-string (s)
+      (dotimes (i len)
+        (write-char (code-char
+                     (logxor (char-code (aref key idx))
+                             (char-code (aref string i))))
+                    s)
+        (incf idx)
+        (when (>= idx keylen)
+          (setq idx 0
+                key (hex2bin (sha1 key) :string)
+                keylen (length key)))))))
 
-  // Web client session support
+(defmethod usersessionkey ((client client))
+  "Return the database key for the user's session hash."
+  (append-db-keys $ACCOUNT (id client) $SESSION))
 
-  // Return a new, random, session ID
-  function newsessionid() {
-    $random = $this->random;
-    if (!$random) {
-      require_once "LoomRandom.php";
-      $random = new LoomRandom();
-      $this->random = $random;
-    }
-    $res = bin2hex($random->urandom_bytes(20));
-    if (strlen($res) < 40) $res = str_repeat("0", 40 - strlen($res)) . $res;
-    return $res;
-  }
+(defmethod usersessionhash ((client client))
+  "Return the user's session hash."
+  (db-get (db client) (usersessionkey client)))
 
-  // xor hashed copies of $key with $string and return the result.
-  // This is a really simple encryption that only really works if
-  // $key is known to be random, e.g. the output of newsessionid().
-  function xorcrypt($key, $string) {
-    $key = @pack("H*", sha1($key));
-    $idx = 0;
-    $keylen = strlen($key);
-    $len = strlen($string);
-    $res = '';
-    for ($i=0; $i<$len; $i++) {
-      $res .= chr(ord(substr($key, $idx, $idx+1)) ^ ord(substr($string, $i, $i+1)));
-      $idx++;
-      if ($idx >= $keylen) {
-        $idx = 0;
-        $key = @pack("H*", sha1($key));
-        $keylen = strlen($key);
-      }
-    }
-    return $res;
-  }
+(defun sessionkey (sessionhash)
+  "Return the database key for a session hash"
+  (append-db-keys $SESSION sessionhash))
 
-  // Return the database key for the user's session hash.
-  function usersessionkey() {
-    $t = $this->t;
-    $id = $this->id;
+(defmethod sessionpassphrase ((client client) sessionid)
+  "Return the passphrase corresponding to a session id"
+  (let* ((db (db client))
+         (passcrypt (or (db-get db (sessionkey (sha1 sessionid)))
+                        (error "No passphrase for session"))))
+    (xorcrypt sessionid passcrypt)))
 
-    return $t->ACCOUNT . "/$id/" . $t->SESSION;
-  }
+(defmethod makesession ((client client) passphrase)
+  "Create a new user session, encoding $passphrase with a new session id.
+   Return the new session id.
+   If the user already has a session stored with another session id,
+   remove that one first."
+  (let* ((db (db client))
+         (sessionid (newsessionid))
+         (passcrypt (xorcrypt sessionid passphrase))
+         (usersessionkey (usersessionkey client)))
+    (with-db-lock (db usersessionkey)
+      (let ((oldhash (db-get db usersessionkey)))
+        (when oldhash
+          (setf (db-get db (sessionkey oldhash)) nil)))
+      (let ((newhash (sha1 sessionid)))
+        (setf (db-get db (sessionkey newhash)) passcrypt
+              (db-get db usersessionkey) newhash)))
+    sessionid))
 
-  // Return the user's session hash.
-  function usersessionhash() {
-    $db = $this->db;
+(defmethod removesession ((client client))
+  "Remove the current user's session"
+  (let* ((db (db client))
+         (usersessionkey (usersessionkey client)))
+    (with-db-lock (db usersessionkey)
+      (let ((oldhash (db-get db usersessionkey)))
+        (when oldhash
+          (setf (db-get db (sessionkey oldhash)) nil
+                (db-get db usersessionkey) nil))))))
 
-    return $db->get($this->usersessionkey());
-  }
+(defmethod user-preference-key (client pref)
+  "Preferences"
+  (append-db-keys $ACCOUNT (id client) $PREFERENCE pref))
 
-  // Return the database key for a session hash
-  function sessionkey($sessionhash) {
-    $t = $this->t;
+(defmethod user-preference ((client client) pref)
+  "Get or set a user preference.
+   Include the $value to set."
+  (let* ((db (db client))
+         (key (user-preference-key client pref)))
+    (db-get db key)))
 
-    return $t->SESSION . "/$sessionhash";
-  }
+(defmethod (setf user-preference) (value (client client) pref)
+  (let* ((db (db client))
+         (key (user-preference-key client pref)))
+    (setf (db-get db key) value)))
 
-  // Return the passphrase corresponding to a session id
-  function sessionpassphrase($sessionid) {
-    $db = $this->db;
+(defmethod debugmsg ((client client) x)
+  "Add a string to the debug output.
+   Does NOT add a newline.
+   Use var_export($val, true) to dump arrays"
+  (let ((showprocess (showprocess client)))
+    (when showprocess (funcall showprocess x))))
 
-    $passcrypt = $db->get($this->sessionkey(sha1($sessionid)));
-    $passphrase = $this->xorcrypt($sessionid, $passcrypt);
-    if (!$passphrase) return "No passphrase for session";
-    return $passphrase;
-  }
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Connection to the server
+;;;
 
-  // Create a new user session, encoding $passphrase with a new session id.
-  // Return the new session id.
-  // If the user already has a session stored with another session id,
-  // remove that one first.
-  function makesession($passphrase) {
-    $db = $this->db;
+(defclass serverproxy ()
+  ((url :type string
+        :initarg :url
+        :accessor url)
+   (client :type client
+           :initarg client
+           :accessor client)))
 
-    $sessionid = $this->newsessionid();
-    $passcrypt = $this->xorcrypt($sessionid, $passphrase);
-    $usersessionkey = $this->usersessionkey();
-    $lock = $db->lock($usersessionkey);
-    $oldhash = $db->get($usersessionkey);
-    if ($oldhash) {
-      $db->put($this->sessionkey($oldhash), '');
-    }
-    $newhash = sha1($sessionid);
-    $db->put($this->sessionkey($newhash), $passcrypt);
-    $db->put($usersessionkey, $newhash);
-    $db->unlock($lock);
-    return $sessionid;
-  }
+(defun post (url &optional parameters)
+  (drakma:http-request url
+                       :method :post
+                       :parameters parameters
+                       :form-data t
+                       :close nil
+                       :keep-alive t))
 
-  // Remove the current user's session
-  function removesession() {
-    $db = $this->db;
+(defmethod process ((proxy serverproxy) msg)
+  (let* ((url (url proxy))
+         (client (client proxy)))
 
-    $usersessionkey = $this->usersessionkey();
-    $lock = $db->lock($usersessionkey);
-    $oldhash = $db->get($usersessionkey);
-    if ($oldhash) {
-      $db->put($this->sessionkey($oldhash), '');
-      $db->put($usersessionkey, '');
-    }
-    $db->unlock($lock);
-  }
+    ;; This is a kluge to get around versions of Apache that insist
+    ;; on sending "301 Moved Permanently" for directory URLs that
+    ;; are missing a trailing slash.
+    ;; Drakma can likely handle this, but I'm just copying the PHP
+    ;; code for now.
+    (unless (eql #\/ (aref url (1- (length url))))
+      (dotcat url "/"))
 
-  // Preferences
-  function userpreferencekey($pref) {
-    $t = $this->t;
-    $id = $this->id;
+    (let* ((showprocess (showprocess client))
+           (vars `(("msg" . ,msg))))
 
-    return $t->ACCOUNT . "/$id/" . $t->PREFERENCE . "/$pref";
-  }
+      (when showprocess
+        (push '("debugmsgs" . "true") vars))
 
-  // Get or set a user preference.
-  // Include the $value to set.
-  function userpreference($pref, $value=true) {
-    $db = $this->db;
+      (when showprocess
+        (debugmsg client (format nil "<b>===SENT</b>: ~a~%"
+                                 (trimmsg msg))))
 
-    $key = $this->userpreferencekey($pref);
-    if ($value === true) $value = $db->get($key);
-    else $db->put($key, $value);
-    return $value;
-  }
-
-  // Add a string to the debug output.
-  // Does NOT add a newline.
-  // Use var_export($val, true) to dump arrays
-  function debugmsg($x) {
-    $showfun = $this->showprocess;
-    if ($showfun) @$showfun($x);
-  }
-
-  function server_times() {
-    return $this->server_times;
-  }
-
-  function accumulate_server_times($times) {
-    $this->server_times = $this->accumulate_times($times, $this->server_times);
-  }
-
-  function accumulate_times($from, $into) {
-    foreach ($from as $name => $stats) {
-      $into[$name]['cnt'] = @$into[$name]['cnt'] + $stats['cnt'];
-      $into[$name]['time'] = bcadd(@$into[$name]['time'], @$stats['time'], perf_precision());
-    }
-    return $into;
-  }
-
-}
-
-class serverproxy {
-  var $url;
-  var $client;
-  var $curl;
-
-  function serverproxy($url, $client=false) {
-    $this->url = $url;
-    $this->client = $client;
-  }
-
-  function getcurl() {
-    $curl = $this->curl;
-    if (!$curl) {
-      $curl = new curl();
-      $this->curl = $curl;
-    }
-    return $curl;
-  }
-
-  // From http://us.php.net/manual/en/function.stream-context-create.php#72017
-  // May be able to optimize this (with keep-alive) by using the cURL functions
-  function post($url, $data=array()) {
-    $curl = $this->getcurl();
-    return $curl->post($url, $data);
-  }
-
-  function process($msg) {
-    $url = $this->url;
-    $client = $this->client;
-    $db = $client->db;
-
-    // This is a kluge to get around versions of Apache that insist
-    // on sending "301 Moved Permanently" for directory URLs that
-    // are missing a trailing slash.
-    // file_get_contents doesn't resend the post data in that case
-    // This will break URLs that are to files intead of directories.
-    // As part of adding a bank, I should really do the raw send without
-    // params and see if I get a 301.
-    if (substr($url,-1) != '/') $url = $url .= '/';
-
-    $vars = array('msg' => $msg);
-
-    $debugfile = '';
-    if ($client->showprocess) {
-      $vars['debugmsgs'] = 'true';
-    }
-
-    $dbgmsg = $this->trimmsg($msg);
-    $client->debugmsg("<b>===SENT</b>: $dbgmsg\n");
-
-    $res = $this->post($url, $vars);
-
-    if (substr($res, 0, 2) == '<<') {
-      $pos = strpos($res, ">>\n");
-      if ($pos === FALSE) $text = '';
-      else {
-        $text = substr($res, 2, $pos-2);
-        $res = substr($res, $pos+3);
-      }
-      if ($text) {
-        $db->put($debugfile, '');
-        $marker = "===times===\n";
-        $pos = strpos($text, $marker);
-        if (!($pos === FALSE)) {
-          $times = @unserialize(substr($text, $pos + strlen($marker)));
-          if ($times) $client->accumulate_server_times($times);
-          $text = substr($text, 0, $pos);
-        }
-        if ($text) $client->debugmsg("<b>===SERVER SAID</b>: $text");
-      }
-    }
+      (let ((res (post url vars))
+            (text nil))
+        (when (and (> (length res) 2)
+                   (equal "<<" (subseq res 0 2)))
+          (let ((pos (search #.(format nil ">>~%") res)))
+            (when pos
+              (setq text (subseq res 2 (- pos 2))
+                    res (subseq res (+ pos 3))))))
+        (when (and text showprocess)
+          (debugmsg client (format nil "<b>===SERVER SAID</b>: ~a" text)))
     
-    $dbgres = $this->trimmsg($res);
-    $client->debugmsg("<b>===RETURNED</b>: $dbgres\n");
+        (when showprocess
+          (debugmsg client (format nil "<b>===RETURNED</b>: ~a~%"
+                                   (trimmsg res))))
 
-    return $res;
-  }
+        res))))
 
-  function trimmsg($msg) {
-    $client = $this->client;
+(defun trimmsg (msg)
+  (let* ((msg (remove-signatures msg))
+         (tokens (mapcar 'cdr (tokenize msg)))
+         (res ""))
+    (dolist (token tokens)
+      (cond ((characterp token) (dotcat res (string token)))
+            ((ishex-p token) (dotcat res token))
+            (t (dotcat res "<b>" token "</b>"))))
+    res))
 
-    if ($client->showprocess) {
-      $parser = $client->parser;
-      $msg = $parser->remove_signatures($msg);
-      $tokens = $parser->tokenize($msg);
-      $res = '';
-      foreach ($tokens as $token) {
-        if (strlen($token) == 1) $res .= $token;
-        elseif ($this->ishex($token)) {
-          $res .= $token;
-        } else {
-          $res .= "<b>$token</b>";
-        }
-      }
-      return $res;
-    }
-    return $msg;
-  }
-
-  function ishex($str) {
-    $len = strlen($str);
-    for ($i=0; $i<$len; $i++) {
-      $c = substr($str, $i, 1);
-      if (strpos("0123456789abcdef", $c) === FALSE) return false;
-    }
-    return true;
-  }
-}
-||#
+(defun ishex-p (str)
+  (let ((len (length str)))
+    (dotimes (i len t)
+      (unless (position (aref str i) "0123456789abcdef")
+        (return nil)))))
 
 ;; Look up a public key, from the client database first, then from the
 ;; current bank.

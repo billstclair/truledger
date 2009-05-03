@@ -173,12 +173,12 @@
 (defun outbox-dir (id)
   (strcat (account-dir id) $OUTBOX))
 
+(defmethod unpacker ((server server))
+  #'(lambda (msg) (unpack-bankmsg server msg)))
+
 (defmethod outbox-hash ((server server) id &optional newitem removed-items)
   (let ((db (db server)))
-    (dirhash db (outbox-key id)
-             (lambda (msg) (unpack-bankmsg server msg))
-             newitem
-             removed-items)))
+    (dirhash db (outbox-key id) (unpacker server) newitem removed-items)))
 
 (defmethod outbox-hash-msg ((server server) id)
   (multiple-value-bind (hash count) (outbox-hash server id)
@@ -941,12 +941,11 @@
         (unless balancehash-req
           (error "~s missing" $BALANCEHASH))
         (multiple-value-bind (hash hashcnt)
-            (balancehash db (lambda (msg) (unpack-bankmsg server msg))
-                         (balance-key id) acctbals)
-        (unless (and (equal balancehash hash)
-                     (eql 0 (bccomp balancehash-cnt hashcnt)))
-          (error "~s mismatch, hash sb: ~s, was: ~s, count sb: ~s, was: ~s"
-                 $BALANCEHASH hash balancehash hashcnt balancehash-cnt))))
+            (balancehash db (unpacker server) (balance-key id) acctbals)
+          (unless (and (equal balancehash hash)
+                       (eql 0 (bccomp balancehash-cnt hashcnt)))
+            (error "~s mismatch, hash sb: ~s, was: ~s, count sb: ~s, was: ~s"
+                   $BALANCEHASH hash balancehash hashcnt balancehash-cnt))))
 
       ;; All's well with the world. Commit this puppy.
       ;; Eventually, the commit will be done as a second phase.
@@ -1557,13 +1556,10 @@
         (error "~s missing" $BALANCEHASH))
 
         (multiple-value-bind (hash hashcnt)
-            (balancehash db
-                         (lambda (msg) (unpack-bankmsg server msg))
-                         (balance-key id)
-                         acctbals)
-        (unless (and (equal balancehash hash)
-                     (eql 0 (bccomp balancehashcnt hashcnt)))
-          (error "~s mismatch" $BALANCEHASH))))
+            (balancehash db (unpacker server) (balance-key id) acctbals)
+          (unless (and (equal balancehash hash)
+                       (eql 0 (bccomp balancehashcnt hashcnt)))
+            (error "~s mismatch" $BALANCEHASH))))
 
     ;; All's well with the world. Commit this puppy.
     ;; Update balances.
@@ -1823,10 +1819,7 @@
         (unless balancehashreq (error "~s missing" $BALANCEHASH))
 
         (multiple-value-bind (hash hashcnt)
-            (balancehash db
-                         (lambda (msg) (unpack-bankmsg server msg))
-                         (balance-key id)
-                         acctbals)
+            (balancehash db (unpacker server) (balance-key id) acctbals)
           (unless (and (equal balancehash hash)
                        (eql 0 (bccomp balancehashcnt hashcnt)))
             (error "~s mismatch, hash: ~s, sb: ~s, count: ~s, sb: ~s"
