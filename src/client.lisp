@@ -275,7 +275,7 @@
         (error "verifycoupon: expected 2 messages from bank"))
       (match-bankreq client (cadr reqs) $COUPONNUMBERHASH bankid))))
 
-(defmethod verify-bank ((client client) url id)
+(defmethod verify-bank ((client client) url &optional id)
   "Verify that a bank matches its URL.
    Add the bank to our database if it's not there already.
    Error if ID is non-null and doesn't match bankid at URL.
@@ -317,69 +317,54 @@
                      (db-get db (pubkeykey bankid))
                      (format nil "~a~%" (trim pubkey)))))))))
 
+(defmethod addbank ((client client) url &optional name couponok)
+  "Add a bank with the given URL to the database.
+   URL can be a coupon to redeem that with registration.
+   No error, but does nothing, if the bank is already there.
+   If the bank is NOT already there, registers with the given NAME and coupon.
+   If registration fails, removes the bank and you'll have to add it again
+   after getting enough usage tokens at the bank to register.
+   Sets the client instance to use this bank until addbank() or setbank()
+   is called to change it.
+   If COUPONOK is true, does not verify a coupon with the bank before using it."
+  (let ((db (db client))
+        (bankid nil)
+        (realurl nil)
+        (coupon nil))
+    (require-current-user client)
+    (cond ((url-p url)
+           (setq realurl url
+                 bankid (verify-bank client url)))
+          (t (multiple-value-setq (bankid realurl coupon) (parse-coupon url))
+             (unless couponok
+               (verify-coupon client url bankid realurl))))
+    (let ((already-registered-p t))
+      (handler-case (setbank client bankid nil)
+        (error ()
+          (setq already-registered-p nil)))
+      (cond (already-registered-p
+             ;; User already has an account at this bank.
+             ;; Redeem the coupon
+             (when coupon
+               (redeem client coupon)))
+            (t 
+             (let ((oldbankid (bankid client))
+                   (oldserver (server client)))
+               (unwind-protect
+                    (progn
+                      (setf (bankid client) bankid
+                            url (bankprop client $URL bankid))
+                      (unless url
+                        (error "URL not stored for verified bank: ~s" bankid))
+                      (setf (server client)
+                            (make-instance 'serverproxy :url url :client client))
+                      (register client name coupon bankid))
+                 (setf (db-get db (userreqkey client bankid)) nil
+                       (bankid client) oldbankid
+                       (server client) oldserver))))))))
+
 #||
 ;; Continue here
-
-  // Add a bank with the given $url to the database.
-  // $url can be a coupon to redeem that with registration.
-  // No error, but does nothing, if the bank is already there.
-  // If the bank is NOT already there, registers with the given $name and $coupons.
-  // If registration fails, removes the bank and you'll have to add it again
-  // after getting enough usage tokens at the bank to register.
-  // Sets the client instance to use this bank until addbank() or setbank()
-  // is called to change it.
-  // If $couponok is true, does not verify a coupon with the bank before using it.
-  function addbank($url, $name='', $couponok=false) {
-    $db = $this->db;
-    $t = $this->t;
-
-    if (!$this->current_user()) return "Not logged in";
-
-    $bankid = false;
-    $realurl = false;
-    $coupon = false;
-    $err = $this->parsecoupon($url, $bankid, $realurl, $coupon_number);
-    if (is_string($err)) {
-      $err = $this->verifybank($url, $bankid);
-      if ($err) return $err;
-    } else {
-      if (!$bankid) {
-        $err = $this->verifybank($realurl, $bankid);
-        if ($err) return $err;
-      }
-      if (!$couponok) {
-        $err = $this->verifycoupon($url, $bankid, $realurl);
-        if ($err) return "$err";
-      }
-      $coupon = $coupon_number;
-    }
-    $err = $this->setbank($bankid, false);
-    if (!$err) {
-      // User already has an account at this bank.
-      // Redeem the coupon
-      $err = false;
-      if ($coupon) $err =$this->redeem($coupon);
-      return $err;
-    }
-
-    $oldbankid = $this->bankid;
-    $oldserver = $this->server;
-
-    $this->bankid = $bankid;
-    $url = $this->bankprop($t->URL, $bankid);
-    if (!$url) return "URL not stored for verified bank: $bankid";
-    $this->server = new serverproxy($url, $this);
-    $err = $this->register($name, $coupon, $bankid);
-    if ($err) {
-      $db->put($this->userreqkey($bankid), '');
-      $this->bankid = false;
-      $this->bankid = $oldbankid;
-      $this->server = $oldserver;
-      return $err;
-    }
-
-    return false;
-  }
 
   // Set the bank to the given id.
   // Sets the client instance to use this bank until addbank() or setbank()
