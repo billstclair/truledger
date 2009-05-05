@@ -363,64 +363,47 @@
                        (bankid client) oldbankid
                        (server client) oldserver))))))))
 
+(defmethod setbank ((client client) bankid &optional (check-p t))
+  "Set the bank to the given id.
+   Sets the client instance to use this bank until addbank() or setbank()
+   is called to change it, by setting $this->bankid and $this->server"
+  (let ((url (or (bankprop client $URL bankid)
+                 (error "Bank not known: ~s" bankid))))
+    (require-current-user client)
+    (unless (userbankprop client $REQ bankid)
+      (error "User not registered at bank"))
+    (setf (bankid client) bankid
+          (server client) (make-instance 'serverproxy :url url :client client))
+
+    (when check-p
+      (let* ((msg (sendmsg client $BANKID (pubkey client)))
+             (args (handler-case (match-message (parser client) msg)
+                     (error (c)
+                       (setf (bankid client) nil)
+                       (error "setbank: Bank's bankid response error: ~a" c)))))
+        (unless (equal bankid (getarg $CUSTOMER args))
+          (setf (bankid client) nil)
+          (error "Bankid changed since we last contacted this bank, old: ~s, new: ~s"
+                 bankid (getarg $CUSTOMER args)))
+        (unless (and (equal (getarg $REQUEST args) $REGISTER)
+                     (equal (getarg $BANKID args) bankid))
+          (setf (bankid client) nil)
+          (error "Bank's bankid message wrong: ~s" msg))))))
+
+(defmethod current-bank ((client client))
+  "Return current bank if the user is logged in and the bank is set, else false."
+  (and (current-user client) (server client) (bankid client)))
+
 #||
 ;; Continue here
 
-  // Set the bank to the given id.
-  // Sets the client instance to use this bank until addbank() or setbank()
-  // is called to change it, by setting $this->bankid and $this->server
-  function setbank($bankid, $check=true) {
-    $db = $this->db;
-    $t = $this->t;
-    $u = $this->u;
-
-    if (!$this->current_user()) return "Not logged in";
-
-    $url = $this->bankprop($t->URL, $bankid);
-    if (!$url) {
-      return "Bank not known: $bankid";
-    }
-
-    $req = $this->userbankprop($t->REQ, $bankid);
-    if ($req === '' || $req === false) {
-      return "User not registered at bank";
-    }
-
-    $this->bankid = $bankid;
-    $server = new serverproxy($url, $this);
-    $this->server = $server;
-
-    if ($check) {
-      $msg = $this->sendmsg($t->BANKID, $this->pubkey);
-      $args = $u->match_message($msg);
-      if (is_string($args)) {
-        $this->bankid = false;
-        return "setbank: Bank's bankid response error: $args";
-      }
-      if ($bankid != $args[$t->CUSTOMER]) {
-        $this->bankid = false;
-        $new = $args[$t->CUSTOMER];
-        return "bankid changed since we last contacted this bank, old: $bankid, new: $new";
-      }
-      if ($args[$t->REQUEST] != $t->REGISTER ||
-          $args[$t->BANKID] != $bankid) {
-        $this->bankid = false;
-        return "Bank's bankid message wrong: $msg";
-      }
-    }
-
-    return false;
-  }
-
-  // Return current bank if the user is logged in and the bank is set, else false.
-  function current_bank() {
-    if ($this->current_user() && $this->server) return $this->bankid;
-    return false;
-  }
-
-  // All the API methods below require the user to be logged and the bank to be set.
-  // Do this by calling newuser() or login(), and addbank() or setbank().
-  // $this->id, $this->privkey, $this->bankid, & $this->server must be set.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;;  All the API methods below require the user to be logged and the bank to be set.
+;;;  Do this by calling newuser() or login(), and addbank() or setbank().
+;;;  id, privkey, bankid, & server must all be set.
+;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
   // Register at the current bank.
   // No error if already registered
@@ -2878,14 +2861,14 @@
   "Return the database key for a session hash"
   (append-db-keys $SESSION sessionhash))
 
-(defmethod sessionpassphrase ((client client) sessionid)
+(defmethod session-passphrase ((client client) sessionid)
   "Return the passphrase corresponding to a session id"
   (let* ((db (db client))
          (passcrypt (or (db-get db (sessionkey (sha1 sessionid)))
                         (error "No passphrase for session"))))
     (xorcrypt sessionid passcrypt)))
 
-(defmethod makesession ((client client) passphrase)
+(defmethod make-session ((client client) passphrase)
   "Create a new user session, encoding $passphrase with a new session id.
    Return the new session id.
    If the user already has a session stored with another session id,
@@ -2903,7 +2886,7 @@
               (db-get db usersessionkey) newhash)))
     sessionid))
 
-(defmethod removesession ((client client))
+(defmethod remove-session ((client client))
   "Remove the current user's session"
   (let* ((db (db client))
          (usersessionkey (usersessionkey client)))
