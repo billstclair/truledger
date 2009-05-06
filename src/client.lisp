@@ -394,8 +394,9 @@
   "Return current bank if the user is logged in and the bank is set, else false."
   (and (current-user client) (server client) (bankid client)))
 
-#||
-;; Continue here
+(defmethod require-current-bank ((client client) &optional msg)
+  (unless (current-bank client)
+    (error (or msg "Bank not set"))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -405,264 +406,185 @@
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  // Register at the current bank.
-  // No error if already registered
-  // If not registered, and $coupons is a string or array of strings,
-  // assumes the string(s) are coupons, encrypts and signs them,
-  // and sends them to the bank with the registration request.
-  function register($name='', $coupons=false, $bankid=false) {
-    $t = $this->t;
-    $u = $this->u;
-    $db = $this->db;
-    $id = $this->id;
-    $ssl = $this->ssl;
+(defmethod register ((client client) &optional name coupons bankid)
+  "Register at the current bank.
+   No error if already registered
+   If not registered, and COUPONS is a string or array of strings,
+   assumes the string(s) are coupons, encrypts and signs them,
+   and sends them to the bank with the registration request."
+  (let ((db (db client))
+        (id (require-current-user client))
+        server)
+    (cond ((null bankid)
+           (setq bankid (bankid client)
+                 server (server client)))
+          (t 
+           (let ((url (or (bankprop client $URL)
+                          (error "In register: Unknown bankid"))))
+             (setq server (make-instance 'serverproxy :url url :client client)))))
 
-    if (!$bankid) {
-      $bankid = $this->bankid;
-      $server = $this->server;
-    } else {
-      $url = $this->bankprop($t->URL);
-      if (!$url) return "In register: Unknown bankid";
-      $server = new serverproxy($url, $this);
-    }
+    (require-current-bank client "In register(): Bank not set")
 
-    if (!$this->current_bank()) return "In register(): Bank not set";
+    ;; If already registered and we know it, nothing to do
+    (when (db-get db (userbankkey client $PUBKEYSIG bankid) id)
+      (return-from register))
 
-    // If already registered and we know it, nothing to do
-    if ($db->get($this->userbankkey($t->PUBKEYSIG, $bankid) . "/$id")) return false;
+    ;; See if bank already knows us
+    ;; Resist the urge to change this to a call to
+    ;; get-pubkey-from-server. Trust me.
+    (let* ((msg (process server (custmsg client $ID bankid id)))
+           args)
+      (handler-case
+          (setq args (client-unpack-bankmsg client msg $ATREGISTER))
+        (error ()
+          ;; Bank doesn't know us. Register with bank.
+          (setq msg (apply 'custmsg client $REGISTER bankid (pubkey id)
+                           (and name (list name))))
+          (when coupons
+            (when (stringp coupons) (setq coupons (list coupons)))
+            (let ((pubkey (db-get (pubkeydb client) bankid)))
+              (unless pubkey (error "Can't get bank public key"))
+              (dolist (coupon coupons)
+                (dotcat msg "." (custmsg client $COUPONENVELOPE bankid
+                                         (pubkey-encrypt coupon pubkey))))))
+          (setq msg (process server msg)
+                args (client-unpack-bankmsg msg $ATREGISTER))))
 
-    // See if bank already knows us
-    // Resist the urge to change this to a call to
-    // get_pubkey_from_server. Trust me.
-    $msg = $this->custmsg($t->ID, $bankid, $id);
-    $msg = $server->process($msg);
-    $args = $this->unpack_bankmsg($msg, $t->ATREGISTER);
-    if (is_string($args)) {
-      // Bank doesn't know us. Register with bank.
-      $msg = $this->custmsg($t->REGISTER, $bankid, $this->pubkey($id), $name);
-      if ($coupons) {
-        if (is_string($coupons)) $coupons = array($coupons);
-        $pubkey = $this->pubkeydb->get($bankid);
-        if (!$pubkey) return "Can't get bank public key";
-        foreach ($coupons as $coupon) {
-          $coupon = $ssl->pubkey_encrypt($coupon, $pubkey);
-          $msg .= '.' . $this->custmsg($t->COUPONENVELOPE, $bankid, $coupon);
-        }
-      }
-      $msg = $server->process($msg);
-      $args = $this->unpack_bankmsg($msg, $t->ATREGISTER);
-      if (is_string($args)) return "Registration failed: $args";
-    }
+      ;; Didn't fail. Notice registration here
+      (setq args (getarg $MSG args))
+      (unless (and (equal (getarg $CUSTOMER args) id)
+                   (equal (getarg $REQUEST args) $REGISTER)
+                   (equal (getarg $BANKID args) bankid))
+        (error "Malformed registration message"))
+      (let* ((pubkey (getarg $PUBKEY args))
+             (keyid (pubkey-id pubkey)))
+        (unless (equal keyid id)
+          (error "Server's pubkey wrong"))
+        (setf (db-get db (userbankkey client $PUBKEYSIG) id) msg
+              (db-get db (userbankkey client $REQ)) "-1")))))
 
-    // Didn't fail. Notice registration here
-    $args = $args[$t->MSG];
-    if ($args[$t->CUSTOMER] != $id ||
-        $args[$t->REQUEST] != $t->REGISTER ||
-        $args[$t->BANKID] != $bankid) return "Malformed registration message";
-    $pubkey = $args[$t->PUBKEY];
-    $keyid = $ssl->pubkey_id($pubkey);
-    if ($keyid != $id) return "Server's pubkey wrong";
-    $db->put($this->userbankkey($t->PUBKEYSIG) . "/$id", $msg);
-    $db->put($this->userbankkey($t->REQ), -1);
 
-    return false;
-  }
+(defstruct contact
+  id
+  name
+  nickname
+  note
+  contact-p)
 
-  // Get contacts for the current bank.
-  // Contacts are sorted by nickname, name, id
-  // Returns an error string or an array of items of the form:
-  //
-  //   array($t->ID => $id,
-  //         $t->NAME => $name,
-  //         $t->NICKNAME => $nickname,
-  //         $t->NOTE => $note)
-  function getcontacts() {
-    $t = $this->t;
-    $db = $this->db;
+(defun string-compare (s1 s2)
+  (cond ((string-lessp s1 s2) 1)
+        ((string-equal s1 s2) 0)
+        (t -1)))
 
-    if (!$this->current_bank()) return "In getcontacts(): Bank not set";
+(defun properties-compare (a1 a2 keys &optional (comparef 'string-compare))
+  (dolist (key keys 0)
+    (let ((res (funcall comparef (funcall key a1) (funcall key a2))))
+      (unless (eql 0 res) (return res)))))
 
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->getcontacts_internal();
-    $db->unlock($lock);
+(defun properties-lessp (a1 a2 keys &optional (comparef 'string-compare))
+  (< (properties-compare a1 a2 keys comparef) 0))
 
-    return $res;
-  }
+(defun contacts-lessp (c1 c2)
+  (properties-lessp c1 c2 '(#.$NICKNAME #.$NAME #.$ID)))
 
-  // General comparison function on array element
-  function comparearrays($a1, $a2, $keys, $comparer='strcasecmp') {
-    foreach ($keys as $key) {
-      $res = $comparer($a1[$key], $a2[$key]);
-      if ($res != 0) return $res;
-    }
-    return 0;
-  }
+(defmethod getcontacts ((client client))
+  "Get contacts for the current bank.
+   Contacts are sorted by nickname, name, id
+   Signals an error or returns a list of CONTACT instances."
+  (let ((db (db client)))
+    (require-current-bank client "In getcontacts(): Bank not set")
+    (with-db-lock (db (userreqkey client))
+      (let* ((ids (db-contents db (contactkey client)))
+             (res (loop
+                     for otherid in ids
+                     for contact = (getcontact-internal client otherid)
+                     when contact
+                     collect contact)))
+        (sort res 'contacts-lessp)))))
 
-  // For usort in getcontacts_internal
-  function comparecontacts($c1, $c2) {
-    $t = $this->t;
+(defmethod getcontact ((client client) otherid &optional add)
+  "Get a contact, by ID. Return a CONTACT instance."
+  (when (current-bank client)
+    (with-db-lock ((db client) (userreqkey client))
+      (getcontact-internal client otherid add))))
 
-    return $this->comparearrays
-      ($c1, $c2, array($t->NICKNAME, $t->NAME, $t->ID));
-  }
-
-  function getcontacts_internal() {
-    $t = $this->t;
-    $db = $this->db;
-    
-    $ids = $db->contents($this->contactkey());
-    $res = array();
-    foreach ($ids as $otherid) {
-      $contact = $this->getcontact_internal($otherid, false, false);
-      if ($contact) $res[] = $contact;
-    }
-    usort($res, array("client", "comparecontacts"));
-    return $res;
-  }
-
-  // Get a contact, by ID.
-  // Return:
-  //   array($t->ID => $id,
-  //         $t->NAME => $name,
-  //         $t->NICKNAME => $nickname,
-  //         $t->NOTE => $note,
-  //         $t->CONTACT => $iscontact)
-  // or false, if can't find that contact.
-  function getcontact($otherid, $add=false) {
-    $t = $this->t;
-    $db = $this->db;
-    
-    if (!$this->current_bank()) return false;
-
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->getcontact_internal($otherid, $add);
-    $db->unlock($lock);
-
-    return $res;
-  }
-
-  function getcontact_internal($otherid, $add=false, $probebank=true) {
-    $t = $this->t;
-    $db = $this->db;
-    
-    $pubkeysig = $this->contactprop($otherid, $t->PUBKEYSIG);
-    if (!$pubkeysig) {
-      if ($add) {
-        $this->addcontact_internal($otherid);
-        $pubkeysig = $this->contactprop($otherid, $t->PUBKEYSIG);
-      } elseif ($probebank) {
-        return $this->get_id($otherid);
-      }
-    }
-    if (!$pubkeysig) return false;
-    $res = array($t->ID => $otherid,
-                 $t->NAME => $this->contactprop($otherid, $t->NAME),
-                 $t->NICKNAME => $this->contactprop($otherid, $t->NICKNAME),
-                 $t->NOTE => $this->contactprop($otherid, $t->NOTE),
-                 $t->CONTACT => true);
-    return $res;
-  }
+(defmethod getcontact-internal ((client client) otherid &optional add (probebank t))
+  (let ((pubkeysig (contactprop client otherid $PUBKEYSIG)))
+    (unless pubkeysig
+      (cond (add
+             (addcontact-internal client otherid)
+             (setq pubkeysig (contactprop client otherid $PUBKEYSIG)))
+            (probebank
+             (multiple-value-bind (pubkeysig name) (get-id client otherid)
+               (return-from getcontact-internal
+                 (and pubkeysig (make-contact :id otherid :name name)))))))
+    (when pubkeysig
+      (make-contact
+       :id otherid
+       :name (contactprop client otherid $NAME)
+       :nickname (contactprop client otherid $NICKNAME)
+       :note (contactprop client otherid $NOTE)
+       :contact-p t))))
   
-  // Add a contact to the current bank.
-  // If it's already there, change its nickname and note, if included
-  function addcontact($otherid, $nickname=false, $note=false) {
-    $t = $this->t;
-    $db = $this->db;
+(defmethod addcontact ((client client) otherid &optional nickname note)
+  "Add a contact to the current bank.
+   If it's already there, change its nickname and note, if included."
+  (require-current-bank client)
+  (with-db-lock ((db client) (userreqkey client))
+    (addcontact-internal client otherid nickname note)))
 
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->addcontact_internal($otherid, $nickname, $note);
-    $db->unlock($lock);
+(defmethod addcontact-internal ((client client) otherid &optional nickname note)
+  (let ((db (db client))
+        pubkeysig
+        name)
+    (cond ((contactprop client otherid $PUBKEYSIG)
+           (when nickname
+             (setf (db-get db (contactkey client otherid $NICKNAME)) nickname))
+           (when note
+             (setf (db-get db (contactkey client otherid $NOTE)) note)))
+          (t
+           (multiple-value-setq (pubkeysig name) (get-id client otherid))
+           (unless pubkeysig (error "Can't find id at bank: ~s" otherid))
+           (unless nickname
+             (setq nickname (or name "anonymous")))
+           (setf (db-get db (contactkey client otherid $NICKNAME)) nickname
+                 (db-get db (contactkey client otherid $NOTE)) note
+                 (db-get db (contactkey client otherid $NAME)) name
+                 (db-get db (contactkey client otherid $PUBKEYSIG)) pubkeysig)))
+    pubkeysig))
 
-    return $res;
-  }
+(defmethod deletecontact ((client client) otherid)
+  "Delete a contact from the current bank."
+  (let ((db (db client)))
+    (with-db-lock (db (userreqkey client))
+      (let ((key (contactkey client otherid)))
+        (dolist (k (db-contents db key))
+          (setf (db-get db key k) nil))))))
 
-  function addcontact_internal($otherid, $nickname=false, $note=false) {
-    $t = $this->t;
-    $db = $this->db;
+(defmethod get-id ((client client) id)
+  "Check for an id at the bank. Return false if not there.
+   Return two values: pubkeysig & name"
+  (let ((db (db client))
+        (bankid (bankid client)))
+    (when bankid
+      (let* ((key (append-db-keys (userbankkey client $PUBKEYSIG) id))
+             (pubkeysig (db-get db key))
+             (needstore nil))
+        (unless pubkeysig
+          (setq pubkeysig (sendmsg client $ID bankid id)
+                needstore t))
+        (let ((args (ignore-errors
+                      (client-unpack-bankmsg client pubkeysig $ATREGISTER))))
+          (when args
+            (setq args (getarg $MSG args))
+            (let ((pubkey (getarg $PUBKEY args))
+                  (name (getarg $NAME args)))
+              (when (equal id (pubkey-id pubkey))
+                (when needstore (setf (db-get db key) pubkeysig))
+                (values pubkeysig name)))))))))
 
-    $pubkeydb = $this->pubkeydb;
-    $bankid = $this->bankid;
-    $ssl = $this->ssl;
-
-    if (!$this->current_bank()) return "In addcontact(): Bank not set";
-
-    if ($this->contactprop($otherid, $t->PUBKEYSIG)) {
-      if ($nickname) $db->put($this->contactkey($otherid, $t->NICKNAME), $nickname);
-      if ($note) $db->put($this->contactkey($otherid, $t->NOTE), $note);
-      return false;
-    }
-
-    $args = $this->get_id($otherid);
-    if (!$args) return "Can't find id at bank: $otherid";
-    $msg = $args[$t->MSG];
-    $name = $args[$t->NAME];
-
-    if (!$nickname) $nickname = $name ? $name : 'anonymous';
-    $db->put($this->contactkey($otherid, $t->NICKNAME), $nickname);
-    $db->put($this->contactkey($otherid, $t->NOTE), $note);
-    $db->put($this->contactkey($otherid, $t->NAME), $name);
-    $db->put($this->contactkey($otherid, $t->PUBKEYSIG), $msg);
-  }
-
-  // Delete a contact from the current bank.
-  function deletecontact($otherid) {
-    $t = $this->t;
-    $db = $this->db;
-
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->deletecontact_internal($otherid);
-    $db->unlock($lock);
-
-    return $res;
-  }
-
-  function deletecontact_internal($otherid) {
-    $t = $this->t;
-    $db = $this->db;
-
-    $key = $this->contactkey($otherid);
-    $contents = $db->contents($key);
-    foreach ($contents as $k) {
-      $db->put("$key/$k", '');
-    }
-
-    return false;
-  }
-
-  // Check for an id at the bank. Return false if not there.
-  // Return array($t->PUBKEY => $pubkey,
-  //              $t->NAME => $name)
-  function get_id($id) {
-    $t = $this->t;
-    $db = $this->db;
-    $bankid = $this->bankid;
-    $ssl = $this->ssl;
-
-    if (!$bankid) return false;
-
-    $key = $this->userbankkey($t->PUBKEYSIG) . "/$id";
-    $msg = $db->get($key);
-    $needstore = false;
-    if (!$msg) {
-      $msg = $this->sendmsg($t->ID, $bankid, $id);
-      $needstore = true;
-    }    
-    $args = $this->unpack_bankmsg($msg, $t->ATREGISTER);
-    if (is_string($args)) return false;
-    $args = $args[$t->MSG];
-    $pubkey = $args[$t->PUBKEY];
-    if ($id != $ssl->pubkey_id($pubkey)) return false;
-
-    if ($needstore) $db->put($key, $msg);
-
-    $res = array();
-    $res[$t->ID] = $args[$t->CUSTOMER];
-    $res[$t->PUBKEY] = $args[$t->PUBKEY];
-    $res[$t->NAME] = $args[$t->NAME];
-    $res[$t->MSG] = $msg;
-
-    return $res;
-  }
+#||
+;; Continue here.
 
   // GET sub-account names.
   // Returns an error string or an array of the sub-account names
