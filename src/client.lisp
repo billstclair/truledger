@@ -485,7 +485,7 @@
   (< (properties-compare a1 a2 keys comparef) 0))
 
 (defun contacts-lessp (c1 c2)
-  (properties-lessp c1 c2 '(#.$NICKNAME #.$NAME #.$ID)))
+  (properties-lessp c1 c2 '(contact-nickname contat-name contact-id)))
 
 (defmethod getcontacts ((client client))
   "Get contacts for the current bank.
@@ -583,228 +583,166 @@
                 (when needstore (setf (db-get db key) pubkeysig))
                 (values pubkeysig name)))))))))
 
+(defmethod getaccts ((client client))
+  "GET sub-account names.
+   Returns an error string or an array of the sub-account names."
+  (let ((db (db client)))
+
+    (require-current-bank client "In getaccts(): Bank not set")
+    (init-bank-accts client)
+    
+    (sort (db-contents db (userbalancekey client)) 'string-lessp)))
+
+(defstruct asset
+  id
+  assetid
+  scale
+  precision
+  name
+  issuer
+  percent)
+
+(defun asset-lessp (a1 a2)
+  (properties-lessp a1 a2 '(asset-name asset-id)))
+
+(defmethod getassets ((client client))
+  "Return the assets for which the customer has balances as
+   a list of ASSET instances."
+  (let ((db (db client))
+        (bankid (bankid client))
+        (res nil))
+    (when bankid
+      (let* ((key (userbalancekey client))
+             (accts (db-contents db key)))
+        (dolist (acct accts)
+          (let ((assetids (db-contents db key acct)))
+            (dolist (assetid assetids)
+              (let ((asset (getasset client assetid)))
+                (when asset (push asset res)))))))
+      (sort res 'asset-lessp))))
+
+(defmethod getasset ((client client) assetid &optional forceserver)
+  "Look up an asset.
+   Signals an error or returns an ASSET instance.
+   If the asset isn't found in the client database, looks it up on the
+   server, and stores it in the client database."
+  (let ((db (db client)))
+    (require-current-bank client "In getacct(): Bank not set")
+    (let ((key (assetkey client assetid)))
+      (with-db-lock (db key)
+        (let ((msg (unless forceserver (db-get db key)))
+              args)
+          (cond (msg
+                 (setq args (client-unpack-bankmsg client msg $ATASSET)))
+                (t
+                 (setq args (getasset-internal client assetid key))))
+          (let ((req (cadr (getarg $UNPACK-REQS-KEY args)))
+                (args (getarg $MSG args))
+                (percent nil)
+                (issuer nil))
+            (when req
+              (let* ((args1 (getarg $MSG (match-bankreq client req $ATSTORAGE))))
+                (setq issuer (getarg $CUSTOMER args1)
+                      percent (getarg $PERCENT args1))))
+            (make-asset
+             :id (getarg $CUSTOMER args)
+             :assetid assetid
+             :scale (getarg $SCALE args)
+             :precision (getarg $PRECISION args)
+             :name (getarg $ASSETNAME args)
+             :issuer issuer
+             :percent percent)))))))
+
+(defmethod getasset-internal ((client client) assetid key)
+  (let* ((db (db client))
+         (bankid (bankid client))
+         (req (getreq client))
+         (msg (sendmsg client $GETASSET bankid req assetid))
+         (args (client-unpack-bankmsg client msg $ATASSET))
+         (msgargs (getarg $MSG args)))
+    (unless (and (equal (getarg $REQUEST  msgargs) $ASSET)
+                 (equal (getarg $BANKID msgargs) bankid)
+                 (equal (getarg $ASSET msgargs) assetid))
+      (error "Bank wrapped wrong object with @asset"))
+    (setf (db-get db key) msg)
+    args))
+
+(defmethod addasset ((client client) scale precision assetname &optional percent)
+  (let ((db (db client)))
+    (with-db-lock (db (userreqkey client))
+      (let ((id (id client))
+            (bankid (bankid client))
+            (server (server client))
+            (parser (parser client)))
+
+        (unless (and id bankid)
+          (error "Can't add asset unless bank is set"))
+
+        (let* ((assetid (assetid id scale precision assetname))
+               (time (client-gettime client))
+               (tranfee (getfees client))
+               (tokenid (tranfee-assetid tranfee))
+               (msg (custmsg client $ASSET bankid assetid scale precision assetname))
+               (nonbankp (not (equal id bankid)))
+               (bal1 (and nonbankp
+                          (balance-amount (getbalance client $MAIN tokenid))))
+               (oldasset (ignore-errors (getasset client assetid)))
+               (bal2 nil)
+               (mainbals (make-equal-hash))
+               (acctbals (make-equal-hash $MAIN mainbals))
+               balancehash)
+          (when nonbankp
+            (let ((tokens (if oldasset 1 2))
+                  (ispos (>= (bccomp bal1 0) 0)))
+              (setq bal1 (bcsub bal1 tokens))
+              (when (and ispos (< (bccomp bal1 0) 0))
+                (error (if oldasset
+                           "You need 1 usage token to update an asset"
+                           "You need 2 usage tokens to create a new asset")))))
+          (setq bal1 (custmsg client $BALANCE bankid time tokenid bal1))
+          (unless oldasset
+            (setq bal2 (custmsg client $BALANCE bankid time assetid "-1")))
+          (when bal1
+            (setf (gethash tokenid mainbals) bal1))
+          (when bal2
+            (setf (gethash assetid mainbals) bal2))
+          (when nonbankp
+            (setq balancehash (balancehashmsg client time acctbals)))
+
+          (when percent
+            (dotcat msg "." (custmsg client $STORAGE bankid time assetid percent)))
+          (when bal1 (dotcat msg "." bal1))
+          (when bal2 (dotcat msg "." bal2))
+          (when balancehash (dotcat msg "." balancehash))
+
+          (setq msg (process server msg))
+
+          ;; Request sent. Check for error
+          (let ((reqs (parse parser msg))
+                gotbal1
+                gotbal2
+                gotstorage)
+            (dolist (req reqs)
+              (let* ((args (match-bankreq client req))
+                     (msg (get-parsemsg req))
+                     (m (trim (get-parsemsg (getarg $MSG args)))))
+                (cond ((equal m bal1) (setq gotbal1 msg))
+                      ((equal m bal2) (setq gotbal2 msg))
+                      ((equal m percent) (setq gotstorage msg)))))
+            (when (or (and bal1 (not gotbal1))
+                      (and bal2 (not gotbal2)))
+              (error "While adding asset: missing returned balance from server"))
+            (when (and percent (not gotstorage))
+              (error "While adding asset: storage fee not returned from server"))
+
+            ;; All is well. Commit the balance changes
+            (when bal1 (setf (db-get db (userbalancekey $MAIN tokenid)) gotbal1))
+            (when bal2 (setf (db-get db (userbalancekey $MAIN assetid)) gotbal2))
+            
+            (getasset client assetid t)))))))
+
 #||
 ;; Continue here.
-
-  // GET sub-account names.
-  // Returns an error string or an array of the sub-account names
-  function getaccts() {
-    $db = $this->db;
-
-    if (!$this->current_bank()) return "In getaccts(): Bank not set";
-    if ($err = $this->init-bank-accts()) return $err;
-    
-    $res = $db->contents($this->userbalancekey());
-    usort($res, array('client', 'compareaccts'));
-    return $res;
-  }
-
-  // For usort in getassets
-  function compareassets($c1, $c2) {
-    $t = $this->t;
-
-    return $this->comparearrays($c1, $c2, array($t->ASSETNAME, $t->ASSET));
-  }
-
-  // Return the assets for which the customer has balances
-  // array($assetid => <getasset() result>, ...)
-  function getassets() {
-    $db = $this->db;
-    $t = $this->t;
-
-    $res = array();
-    $bankid = $this->bankid;
-
-    if ($bankid) {
-      $key = $this->userbalancekey();
-      $accts = $db->contents($key);
-      foreach ($accts as $acct) {
-        $assetids = $db->contents("$key/$acct");
-        foreach ($assetids as $assetid) {
-          if (!isset($res[$assetid])) {
-            $asset = $this->getasset($assetid);
-            if ($asset) $res[$assetid] = $asset;
-          }
-        }
-      }
-    }
-
-    uasort($res, array("client", "compareassets"));
-    return $res;
-  }
-
-  // Look up an asset.
-  // Returns an error string or an array of items of the form:
-  //
-  //   array($t->ID => $issuerid,
-  //         $t->ASSET => $assetid,
-  //         $t->SCALE => $scale,
-  //         $t->PRECISION => $precision,
-  //         $t->ASSETNAME => $assetname,
-  //         $t->PERCENT => $percent
-  //         $t->ISSUER => $issuer)
-  //
-  // If the asset isn't found in the client database, looks it up on the
-  // server, and stores it in the client database.
-  function getasset($assetid, $forceserver=false) {
-    $t = $this->t;
-    $db = $this->db;
-
-    if (!$this->current_bank()) return "In getacct(): Bank not set";
-
-    $key = $this->assetkey($assetid);
-    $lock = $db->lock($key, true);
-    $msg = $forceserver ? false : $db->get($key);
-    if ($msg) {
-      $db->unlock($lock);
-      $args = $this->unpack_bankmsg($msg, $t->ATASSET);
-      if (is_string($args)) return "While matching asset: $args";
-    } else {
-      $args = $this->getasset_internal($assetid, $key);
-      $db->unlock($lock);
-      if (is_string($args)) return $args;
-    }
-    $reqs = @$args[$this->unpack_reqs_key][1];
-    $args = $args[$t->MSG];
-    $percent = false;
-    $issuer = false;
-    if ($reqs) {
-      $args1 = $this->match_bankreq($reqs, $t->ATSTORAGE);
-      if (is_string($args1)) return "While matching storage fee: $args1";
-      $args1 = $args1[$t->MSG];
-      $issuer = $args1[$t->CUSTOMER];
-      $percent = $args1[$t->PERCENT];
-    }
-
-    return array($t->ID => $args[$t->CUSTOMER],
-                 $t->ASSET => $assetid,
-                 $t->SCALE => $args[$t->SCALE],
-                 $t->PRECISION => $args[$t->PRECISION],
-                 $t->ASSETNAME => $args[$t->ASSETNAME],
-                 $t->ISSUER => $issuer,
-                 $t->PERCENT => $percent);
-  }
-
-  function getasset_internal($assetid, $key) {
-    $t = $this->t;
-    $db = $this->db;
-
-    $bankid = $this->bankid;
-    $req = $this->getreq();
-    if (!$req) return "Couldn't get req for getasset";
-    $msg = $this->sendmsg($t->GETASSET, $bankid, $req, $assetid);
-    $args = $this->unpack_bankmsg($msg, $t->ATASSET);
-    if (is_string($args)) return "While downloading asset: $args";
-    $msgargs = $args[$t->MSG];
-    if ($msgargs[$t->REQUEST] != $t->ASSET ||
-        $msgargs[$t->BANKID] != $bankid ||
-        $msgargs[$t->ASSET] != $assetid) {
-      return "Bank wrapped wrong object with @asset";
-    }
-    $db->put($key, $msg);
-    return $args;
-  }
-
-  function addasset($scale, $precision, $assetname, $percent=false) {
-    $t = $this->t;
-    $db = $this->db;
-
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->addasset_internal($scale, $precision, $assetname, $percent);
-    $db->unlock($lock);
-
-    if ($res) $this->forceinit();
-
-    return $res;
-  }
-
-  function addasset_internal($scale, $precision, $assetname, $percent) {
-    $t = $this->t;
-    $u = $this->u;
-    $db = $this->db;
-    $id = $this->id;
-    $bankid = $this->bankid;
-    $server = $this->server;
-    $parser = $this->parser;
-
-    if (!$id || !$bankid) return "Can't add asset unless bank is set";
-
-    $assetid = $u->assetid($id, $scale, $precision, $assetname);
-    $time = $this->gettime();
-    if (!$time) return "While adding asset: can't get timestamp";
-    $fees = $this->getfees();
-    if (is_string($fees)) return "While adding asset: $fees";
-    $tranfee = $fees[$t->TRANFEE];
-    $tokenid = $tranfee[$t->ASSET];
-    
-    $process = $this->custmsg($t->ASSET, $bankid, $assetid, $scale, $precision, $assetname);
-    $bal1 = $this->getbalance($t->MAIN, $tokenid);
-    if (is_string($bal1)) return $bal1;
-    $bal1 = $bal1[$t->AMOUNT];
-    $oldasset = $this->getasset($assetid);
-    $oldasset = !is_string($oldasset);
-    if ($id == $bankid) $bal1 = '';
-    else {
-      $tokens = !$oldasset ? 2 : 1;
-      $ispos = (bccomp($bal1, 0) >= 0);
-      $bal1 = bcsub($bal1, $tokens);
-      if ($ispos && (bccomp($bal1, 0) < 0)) {
-        if ($oldasset) return "You need 1 usage token to update an asset";
-        return "You need 2 usage tokens to create a new asset";
-      }
-      $bal1 = $this->custmsg($t->BALANCE, $bankid, $time, $tokenid, $bal1);
-    }
-    $bal2 = false;
-    if (!$oldasset) $bal2 = $this->custmsg($t->BALANCE, $bankid, $time, $assetid, -1);
-
-    $acctbals = array();
-    if ($bal1) $acctbals[$t->MAIN][$tokenid] = $bal1;
-    if ($bal2) $acctbals[$t->MAIN][$assetid] = $bal2;
-    $balancehash = $this->balancehashmsg($time, $acctbals);
-
-    $msg = $process;
-    if ($percent) {
-      $storage = $this->custmsg($t->STORAGE, $bankid, $time, $assetid, $percent);
-      $msg .= ".$storage";
-    }
-    if ($bal1) $msg .= ".$bal1";
-    if ($bal2) $msg .= ".$bal2";
-    $msg .= ".$balancehash";
-    $msg = $server->process($msg);
-
-    // Request sent. Check for error
-    $reqs = $this->parser->parse($msg);
-    if (!$reqs) return "While adding asset: " . $parser->errmsg;
-    $gotbal1 = $gotbal2 = $gotstorage = false;
-    foreach ($reqs as $req) {
-      $args = $this->match_bankreq($req);
-      if (is_string($args)) return "While adding asset: $args";
-      if ($args[$t->REQUEST] == $t->FAILED) {
-        return "Server error while adding asset: " . $args[$t->ERRMSG];
-      }
-      $msg = $parser->get_parsemsg($req);
-      $m = $args[$t->MSG];
-      $m = trim($parser->get_parsemsg($m));
-      if ($m == $bal1) $gotbal1 = $msg;
-      elseif ($m == $bal2) $gotbal2 = $msg;
-      elseif ($m == $storage) $gotstorage = $msg;
-    }
-
-    if (!(($gotbal1 || (!$bal1)) && ($gotbal2 || (!$bal2)))) {
-      return "While adding asset: missing returned balance from server";
-    }
-    if ($percent && !$gotstorage) {
-      return "While adding asset: storage fee not returned from server";
-    }
-
-    // All is well. Commit the balance changes
-    if ($bal1) $db->put($this->userbalancekey($t->MAIN, $tokenid), $gotbal1);
-    if ($bal2) $db->put($this->userbalancekey($t->MAIN, $assetid), $gotbal2);
-
-    $this->getasset($assetid, true);
-
-    return false;
-  }
 
   // Look up the transaction cost.
   // Returns an error string or an array of the form:
