@@ -681,7 +681,7 @@
         (let* ((assetid (assetid id scale precision assetname))
                (time (client-gettime client))
                (tranfee (getfees client))
-               (tokenid (tranfee-assetid tranfee))
+               (tokenid (fee-assetid tranfee))
                (msg (custmsg client $ASSET bankid assetid scale precision assetname))
                (nonbankp (not (equal id bankid)))
                (bal1 (and nonbankp
@@ -792,104 +792,70 @@
         (unless feemsg (error "No tranfee from getfees request"))
         feemsg))))
 
+(defstruct balance
+  acct
+  assetid
+  assetname
+  amount
+  time
+  formatted-amount)
+
+(defun acct-lessp (a1 a2)
+  (cond ((equal a1 a2) nil)
+        ((equal a1 $MAIN) t)
+        ((equal a2 $MAIN) nil)
+        (t (string-lessp a1 a2))))
+
+(defun balance-lessp (b1 b2)
+  (< (properties-compare a1 a2 '(balance-acct balance-assetid)) 0))
+
+(defmethod getbalance ((client client) &optional (acct t) assetid)
+  "Get user balances for all sub-accounts or just one.
+   Returns a list of (ACCT BALANCE ...) lists, where the
+   BALANCE instances are sorted by ASSETNAME and ASSETID.
+
+   The ACCT arg is T for all sub-accounts, nil for the
+   $MAIN sub-account only, or a string for that sub-account only.
+   The ASSETID arg is false for all assets or an ID for that asset only.
+
+   If you include a specific ACCT and a specific ASSETID, the result
+   is a single BALANCE instance, not a list of lists."
+  (require-current-bank client "In getbalance(): Bank not set")
+  (init-bank-accts client)
+  (with-db-lock ((db client) (userreqkey client))
+    (unless acct (setq acct $MAIN))
+    (let* ((db (db client))
+           (accts (if (stringp acct)
+                      (list acct)
+                      (db-contents db (userbalancekey client))))
+           (res nil))
+      (dolist (acct accts)
+        (let ((assetids (if assetid
+                            (list assetid)
+                            (db-contents db (userbalancekey client acct))))
+              (balances nil))
+          (dolist (assetid assetids)
+            (multiple-value-bind (amount time)
+                (userbalanceandtime client acct assetid)
+              (unless (is-numeric-p amount t)
+                (error "While gathering balances, non-numeric amount: ~s" amount))
+              (let* ((asset (getasset client assetid))
+                     (formatted-amount (format-asset-value client amount asset))
+                     (assetname (asset-name asset)))
+                (push (make-balance :acct acct
+                                    :assetid :assetid
+                                    :assetname assetname
+                                    :amount amount
+                                    :time time
+                                    :formatted-amount formatted-amount)
+                      balances))))
+          (push (cons acct (sort balances 'balance-lessp)) res)))
+      (if (and (stringp acct) assetid)
+          (cadar res)
+          (sort res 'string-lessp :key 'car)))))
+
 #||
 ;; Continue here.
-
-  // Get user balances for all sub-accounts or just one.
-  // Returns an error string or an array of items of the form:
-  //
-  //    array($acct => array($t->ASSET =>
-  //                         array($t->ASSET => $assetid,
-  //                               $t->ASSETNAME => $assetname,
-  //                               $t->AMOUNT => $amount,
-  //                               $t->TIME => $time,
-  //                               $t->FORMATTEDAMOUNT => $formattedamount),
-  //                         ...),
-  //          ...)
-  //
-  // where $assetid & $assetname describe the asset, $amount is the
-  // amount, as an integer, $formattedamount is the amount as a
-  // decimal number with the scale and precision applied, and $acct
-  // is the name of the sub-account(s).
-  //
-  // The $acct arg is true for all sub-accounts, false for the
-  // $t->MAIN sub-account only, or a string for that sub-account only.
-  // The $assetid arg is false for all asset or an ID for that asset only.
-  //
-  // If you a specific $acct and a specific $assetid, the result
-  // is an array mapping property names to values, not an array of arrays.
-  function getbalance($acct=true, $assetid=false) {
-    $t = $this->t;
-    $db = $this->db;
-
-    if (!$this->current_bank()) return "In getbalance(): Bank not set";
-    if ($err = $this->init-bank-accts()) return $err;
-
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->getbalance_internal($acct, $assetid);
-    $db->unlock($lock);
-
-    return $res;
-  }
-
-  function compareaccts($a1, $a2) {
-    $t = $this->t;
-
-    if ($a1 == $t->MAIN) {
-      if ($a2 == $t->MAIN) return 0;
-      return -1;
-    } elseif ($a2 == $t->MAIN) return 1;
-    return strcmp(strtolower($a1), strtolower($a2));
-  }
-
-  function comparebalances($b1, $b2) {
-    $t = $this->t;
-
-    return $this->comparearrays($b1, $b2, array($t->ASSETNAME, $t->ASSET));
-  }
-
-  function getbalance_internal($inacct, $inassetid) {
-    $t = $this->t;
-    $db = $this->db;
-
-    if (!$inacct) $inacct = $t->MAIN;
-    if (is_string($inacct)) $accts = array($inacct);
-    else {
-      $accts = $db->contents($this->userbalancekey());
-      usort($accts, array('client', 'compareaccts'));
-    }
-
-    $res = array();
-    foreach ($accts as $acct) {
-      if ($inassetid) $assetids = array($inassetid);
-      else $assetids = $db->contents($this->userbalancekey($acct));
-      $assets = array();
-      foreach ($assetids as $assetid) {
-        $amount = $this->userbalanceandtime($acct, $assetid, $time);
-        if (!is_numeric($amount)) return "While gathering balances: $amount";
-        $asset = $this->getasset($assetid);
-        if (is_string($asset)) {
-          $formattedamount = $amount;
-          $assetname = "Unknown asset";
-        } else {
-          $formattedamount = $this->format_asset_value($amount, $asset);
-          $assetname = $asset[$t->ASSETNAME];
-        }
-        $assets[$assetid] = array($t->ASSET => $assetid,
-                                  $t->ASSETNAME => $assetname,
-                                  $t->AMOUNT => $amount,
-                                  $t->TIME => $time,
-                                  $t->FORMATTEDAMOUNT => $formattedamount);
-      }
-      uasort($assets, array('client', 'comparebalances'));
-      $res[$acct] = $assets;
-    }
-    if (is_string($inacct) && $inassetid) {
-      if (count($res) == 0) $res = false;
-      else $res = $res[$inacct][$inassetid];
-    }
-    return $res;
-  }
 
   // Get the fraction balance for a particular assetid, or all assetids,
   // if $assetid is false. Result is:
