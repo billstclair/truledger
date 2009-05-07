@@ -626,32 +626,32 @@
    Signals an error or returns an ASSET instance.
    If the asset isn't found in the client database, looks it up on the
    server, and stores it in the client database."
-  (let ((db (db client)))
-    (require-current-bank client "In getacct(): Bank not set")
-    (let ((key (assetkey client assetid)))
-      (with-db-lock (db key)
-        (let ((msg (unless forceserver (db-get db key)))
-              args)
-          (cond (msg
-                 (setq args (client-unpack-bankmsg client msg $ATASSET)))
-                (t
-                 (setq args (getasset-internal client assetid key))))
-          (let ((req (cadr (getarg $UNPACK-REQS-KEY args)))
-                (args (getarg $MSG args))
-                (percent nil)
-                (issuer nil))
-            (when req
-              (let* ((args1 (getarg $MSG (match-bankreq client req $ATSTORAGE))))
-                (setq issuer (getarg $CUSTOMER args1)
-                      percent (getarg $PERCENT args1))))
-            (make-asset
-             :id (getarg $CUSTOMER args)
-             :assetid assetid
-             :scale (getarg $SCALE args)
-             :precision (getarg $PRECISION args)
-             :name (getarg $ASSETNAME args)
-             :issuer issuer
-             :percent percent)))))))
+  (require-current-bank client "In getacct(): Bank not set")
+  (let ((db (db client))
+        (key (assetkey client assetid)))
+    (with-db-lock (db key)
+      (let ((msg (unless forceserver (db-get db key)))
+            args)
+        (cond (msg
+               (setq args (client-unpack-bankmsg client msg $ATASSET)))
+              (t
+               (setq args (getasset-internal client assetid key))))
+        (let ((req (cadr (getarg $UNPACK-REQS-KEY args)))
+              (args (getarg $MSG args))
+              (percent nil)
+              (issuer nil))
+          (when req
+            (let* ((args1 (getarg $MSG (match-bankreq client req $ATSTORAGE))))
+              (setq issuer (getarg $CUSTOMER args1)
+                    percent (getarg $PERCENT args1))))
+          (make-asset
+           :id (getarg $CUSTOMER args)
+           :assetid assetid
+           :scale (getarg $SCALE args)
+           :precision (getarg $PRECISION args)
+           :name (getarg $ASSETNAME args)
+           :issuer issuer
+           :percent percent))))))
 
 (defmethod getasset-internal ((client client) assetid key)
   (let* ((db (db client))
@@ -741,89 +741,59 @@
             
             (getasset client assetid t)))))))
 
+(defstruct fee
+  type
+  assetid
+  amount)
+
+(defmethod getfees ((client client) &optional reload)
+  "Look up the transaction cost.
+   Returns three values (FEE instances)
+     1) tranfee
+     2) regfee
+     3) List of other fees
+   Currently, only the tranfee and regfee are supported by the server,
+   and only a single fee, in usage tokens, is charged for each.
+   So that's all the spend code handles."
+    (require-current-bank client "In getfees(): Bank not set")
+    (let ((msg (unless reload (tranfee client))))
+      (unless msg
+        (setq msg (getfees-internal client)))
+      (let* ((args (client-unpack-bankmsg client msg $TRANFEE))
+             (tranfee (make-fee :type $TRANFEE
+                                :assetid (getarg $ASSET args)
+                                :amount (getarg $AMOUNT args)))
+             regfee)
+        (setq msg (regfee client)
+              args (client-unpack-bankmsg client msg $REGFEE)
+              regfee (make-fee :type $REGFEE
+                               :assetid (getarg $ASSET args)
+                               :amount (getarg $AMOUNT args)))
+        (values tranfee regfee))))
+
+(defmethod getfees-internal ((client client))
+  (let ((db (db client))
+        (key (tranfeekey client))
+        (parser (parser client))
+        (bankid (bankid client)))
+    (with-db-lock (db key)
+      (let* ((req (getreq client))
+             (msg (sendmsg client $GETFEES bankid req))
+             (reqs (parse parser msg))
+             (feemsg nil))
+        (dolist (req reqs)
+          (let* ((args (match-bankreq client req))
+                 (request (getarg $REQUEST args)))
+            (cond ((equal request $TRANFEE)
+                   (setq feemsg (get-parsemsg req))
+                   (setf (db-get db key) feemsg))
+                  ((equal request $REGFEE)
+                   (setf (db-get db (regfee-key client)) (get-parsemsg req))))))
+        (unless feemsg (error "No tranfee from getfees request"))
+        feemsg))))
+
 #||
 ;; Continue here.
-
-  // Look up the transaction cost.
-  // Returns an error string or an array of the form:
-  //
-  //   array($t->TRANFEE => ARRAY(ARRAY($t->ASSET => $assetid,
-  //                                    $t->AMOUNT => $amount),
-  //                              ...),
-  //         $t->REGFEE => ARRAY(ARRAY($t->ASSET => $assetid,
-  //                                   $t->AMOUNT => $assetid),
-  //                             ...),
-  //         $t->FEE|<operation> => ARRAY(ARRAY($t->ASSET => $assetid,
-  //                                            $t->AMOUNT => $assetid),
-  //                                      ...),
-  //         ...)
-  //
-  // Currently, only the tranfee and regfee are supported by the server,
-  // and only a single fee, in usage tokens, is charged for each.
-  // So that's all the spend code handles.
-  //
-  // If the asset isn't found in the client database, looks it up on the
-  // server, and stores it in the client database.
-  function getfees($reload=false) {
-    $t = $this->t;
-    $db = $this->db;
-
-    if (!$this->current_bank()) return "In getfees(): Bank not set";
-
-    $key = $this->tranfeekey();
-    $lock = $db->lock($key, true);
-    $msg = $db->get($key);
-    if ($msg) {
-      $db->unlock($lock);
-      $args = $this->unpack_bankmsg($msg, $t->TRANFEE);
-      if (is_string($args)) return "While matching tranfee: $args";
-    } else {
-      $args = $this->getfees_internal($key);
-      $db->unlock($lock);
-      if (is_string($args)) return $args;
-    }
-
-    $tranfee = array($t->ASSET => $args[$t->ASSET],
-                     $t->AMOUNT => $args[$t->AMOUNT]);
-
-    $msg = $this->regfee();
-    if (!$msg) return "Regfee not initialized";
-    $args = $this->unpack_bankmsg($msg, $t->REGFEE);
-    if (is_string($args)) return "While matching regfee: $args";
-
-    $regfee = array($t->ASSET => $args[$t->ASSET],
-                    $t->AMOUNT => $args[$t->AMOUNT]);
-
-    return array($t->TRANFEE => $tranfee,
-                 $t->REGFEE => $regfee);
-  }
-
-  function getfees_internal($key) {
-    $t = $this->t;
-    $db = $this->db;
-    $parser = $this->parser;
-    $bankid = $this->bankid;
-
-    $req = $this->getreq();
-    if (!$req) return "Couldn't get req for getfees";
-    $msg = $this->sendmsg($t->GETFEES, $bankid, $req);
-    $reqs = $parser->parse($msg);
-    if (!$reqs) return "While parsing getfees return message: " . $parser->errmsg;
-    $feeargs = false;
-    foreach ($reqs as $req) {
-      $args = $this->match_bankreq($req);
-      if (is_string($args)) return "While matching getfees return: $args";
-      if ($args[$t->REQUEST] == $t->TRANFEE) {
-        $db->put($key, $parser->get_parsemsg($req));
-        $feeargs = $args;
-      } elseif ($args[$t->REQUEST] == $t->REGFEE) {
-        $db->put($this->regfeekey(), $parser->get_parsemsg($req));
-      }
-    }
-
-    if (!$feeargs) $feeargs = "No tranfee from getfees request";
-    return $feeargs;
-  }
 
   // Get user balances for all sub-accounts or just one.
   // Returns an error string or an array of items of the form:
@@ -2374,7 +2344,7 @@
 (defmethod format-asset-value ((client client) value assetid &optional (incnegs t))
   "Format an asset value from the asset ID or $this->getasset($assetid)"
   (let ((asset (if (stringp assetid)
-                   (getasset assetid)
+                   (getasset client assetid)
                    assetid)))
     (format-value
      value (asset-scale asset) (asset-precision asset) incnegs)))
