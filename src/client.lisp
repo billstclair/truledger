@@ -807,7 +807,7 @@
         (t (string-lessp a1 a2))))
 
 (defun balance-lessp (b1 b2)
-  (< (properties-compare a1 a2 '(balance-acct balance-assetid)) 0))
+  (< (properties-compare b1 b2 '(balance-acct balance-assetid)) 0))
 
 (defmethod getbalance ((client client) &optional (acct t) assetid)
   "Get user balances for all sub-accounts or just one.
@@ -854,128 +854,80 @@
           (cadar res)
           (sort res 'string-lessp :key 'car)))))
 
+(defstruct fraction
+  assetid
+  assetname
+  amount
+  scale)
+
+(defmethod getfraction ((client client) &optional assetid)
+  "Get the fraction balance for a particular assetid, or all assetids,
+   Returns a list of FRACTION instances, or a single FRACTION instance,
+   if ASSETID is specified."
+  (let ((db (db client)))
+    (require-current-bank "In getfraction(): Bank not set")
+    (init-bank-accts client)
+
+    (with-db-lock (db (userreqkey client))
+      (let ((assetids (if assetid
+                          (list assetid)
+                          (db-contents db (userfractionkey client))))
+            (res nil))
+        (dolist (assetid assetids)
+          (let* ((key (userfractionkey client assetid))
+                 (msg (db-get db key)))
+            (when msg
+              (let* ((args (getarg $MSG
+                                   (client-unpack-bankmsg client msg $ATFRACTION)))
+                     (fraction (getarg $AMOUNT args))
+                     (asset (getasset client assetid))
+                     (scale (asset-scale asset))
+                     (assetname (asset-name asset)))
+                (push (make-fraction :assetid assetid
+                                     :assetname assetname
+                                     :amount fraction
+                                     :scale scale)
+                      res)))))
+        (if assetid (car res) (nreverse res))))))
+
+(defmethod getstoragefee ((client client) &optional assetid)
+  "Get the storagefee balance for a particular assetid, or all assetids,
+   Returns a list of BALANCE instances, or a single BALANCE instance, if
+   ASSETID is specified."
+  (let ((db (db client)))
+    (require-current-bank client "In getfraction(): Bank not set")
+    (init-bank-accts client)
+
+    (with-db-lock (db (userreqkey client))
+      (let* ((key (userstoragefeekey client))
+             (assetids (if assetid
+                           (list assetid)
+                           (db-contents db key)))
+            (res nil))
+        (dolist (assetid assetids)
+          (let ((msg (db-get db key assetid)))
+            (when msg
+              (let* ((args (client-unpack-bankmsg client msg $STORAGEFEE))
+                     (time (getarg $TIME args))
+                     (assetid (getarg $ASSET args))
+                     (amount (getarg $AMOUNT args))
+                     (fraction "0"))
+                (multiple-value-setq (amount fraction)
+                  (normalize-balance amount fraction 0))
+                (when (not (eql 0 (bccomp amount 0)))
+                  (let* ((asset (getasset client assetid))
+                         (formatted-amount (format-asset-value client amount asset))
+                         (assetname (asset-name asset)))
+                    (push (make-balance :time time
+                                        :assetid assetid
+                                        :assetname assetname
+                                        :amount amount
+                                        :formatted-amount formatted-amount)
+                          res)))))))
+        (if assetid (car res) (sort res 'balance-lessp))))))
+
 #||
 ;; Continue here.
-
-  // Get the fraction balance for a particular assetid, or all assetids,
-  // if $assetid is false. Result is:
-  // array($assetid => array($t->AMOUNT => $amount,
-  //                         $t->SCALE => $scale
-  //                         $t->ASSETNAME => $assetname))
-  // Amounts are raw, not scaled.
-  // If an $assetid is specified, does not wrap the outer array around the result.
-  function getfraction($assetid=false) {
-    $t = $this->t;
-    $db = $this->db;
-
-    if (!$this->current_bank()) return "In getfraction(): Bank not set";
-    if ($err = $this->init-bank-accts()) return $err;
-
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->getfraction_internal($assetid);
-    $db->unlock($lock);
-
-    return $res;
-  }
-
-  function getfraction_internal($inassetid) {
-    $t = $this->t;
-    $db = $this->db;
-
-    if ($inassetid) $assetids = array($inassetid);
-    else $assetids = $db->contents($this->userfractionkey());
-    $res = array();
-    foreach ($assetids as $assetid) {
-      $key = $this->userfractionkey($assetid);
-      $msg = $db->get($key);
-      if ($msg) {
-        $args = $this->unpack_bankmsg($msg, $t->ATFRACTION);
-        if (is_string($args)) return "While unpacking fraction msg: $args";
-        $args = $args[$t->MSG];
-        $fraction = $args[$t->AMOUNT];
-        $asset = $this->getasset($assetid);
-        if (is_string($asset)) return "Error getting asset: $asset";
-        $scale = $asset[$t->SCALE];
-        $assetname = $asset[$t->ASSETNAME];
-        $res[$assetid] = array($t->AMOUNT => $fraction,
-                               $t->SCALE => $scale,
-                               $t->ASSETNAME => $assetname);
-      }      
-    }
-    if ($inassetid) return (@$res[$inassetid]);
-    return $res;
-  }
-
-  // Get the storagefee balance for a particular assetid, or all assetids,
-  // if $assetid is false. Result is:
-  // array($assetid => array($t->ASSET => $assetid,
-  //                         $t->ASSETNAME => $assetname
-  //                         $t->AMOUNT => $amount,
-  //                         $t->TIME => $time,
-  //                         $t->FORMATTEDAMOUNT => $formattedamount)
-  // If an $assetid is specified, does not wrap the outer array around the result.
-  function getstoragefee($assetid=false) {
-    $t = $this->t;
-    $db = $this->db;
-
-    if (!$this->current_bank()) return "In getfraction(): Bank not set";
-    if ($err = $this->init-bank-accts()) return $err;
-
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->getstoragefee_internal($assetid);
-    $db->unlock($lock);
-
-    return $res;
-  }
-
-  function getstoragefee_internal($inassetid) {
-    $t = $this->t;
-    $db = $this->db;
-    $u = $this->u;
-
-    $res = array();
-    $key = $this->userstoragefeekey();
-    if ($inassetid) $assetids = array($inassetid);
-    else $assetids = $db->contents($key);
-    foreach ($assetids as $assetid) {
-      $msg = $db->get("$key/$assetid");
-      $args = $this->unpack_bankmsg($msg, $t->STORAGEFEE);
-      if (is_string($args)) return ("Error parsing storage fee: $args");
-      $time = $args[$t->TIME];
-      $assetid = $args[$t->ASSET];
-      $amount = $args[$t->AMOUNT];
-      $amt = $amount;
-      $u->normalize_balance($amt, $fraction, 0);
-      if ($amt) {
-        $asset = $this->getasset($assetid);
-        if (is_string($asset)) {
-          $formattedamount = $amt;
-          $assetname = "Unknown asset";
-        } else {
-          $formattedamount = $this->format_asset_value($amt, $asset);
-          $assetname = $asset[$t->ASSETNAME];
-        }
-        $res[$assetid] = array($t->TIME => $time,
-                               $t->ASSET => $assetid,
-                               $t->ASSETNAME => $assetname,
-                               $t->AMOUNT => $amount,
-                               $t->TIME => $time,
-                               $t->FORMATTEDAMOUNT => $formattedamount);
-      }
-    }
-    uasort($res, array('client', 'comparebalances'));
-    if ($inassetid) {
-      if (count($res) == 0) $res = false;
-      else $res = $res[$inassetid];
-    }
-    return $res;
-  }
-
-  // Enable or disable history
-  function keephistory($enable) {
-    $this->keephistory = $enable;
-    return false;
-  }
 
   // Initiate a spend
   // $toid is the id of the recipient of the spend
