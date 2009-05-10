@@ -926,319 +926,319 @@
                           res)))))))
         (if assetid (car res) (sort res 'balance-lessp))))))
 
+(defmethod spend ((client client) toid assetid formattedamount &optional acct note)
+  "Initiate a spend
+   TOID is the id of the recipient of the spend
+     May be $COUPON to generate a coupon
+     In that case, the coupon itself can be fetched with getcoupon()
+   ASSETID is the id of the asset to spend.
+   FORMATTEDAMOUNT is the formatted amount to spend.
+   ACCT is the source sub-account, default $MAIN.
+   ACCT can also be a list: (FROMACCT TOACCT), for a transfer.
+   In that case TOID should be the logged in ID.
+   Fees are always taken from $MAIN."
+  (let ((db (db client))
+        (parser (parser client)))
+    (require-current-bank client "In spend(): Bank not set")
+    (init-bank-accts client)
+    (handler-bind
+        ((error (lambda (c)
+                  (declare (ignore c))
+                  (forceinit client))))
+      (with-verify-sigs-p (parser nil)
+        (with-db-lock (db (userreqkey client))
+          (handler-bind
+              ((error (lambda (c)
+                       (declare (ignore c))
+                       ;; Storage fee may have changed. Reload the asset.
+                       (if (reload-asset-p client assetid)
+                           (return-from spend
+                             (spend-internal
+                              client toid assetid formattedamount acct note))))))
+            (spend-internal client toid assetid formattedamount acct note)))))))
+
+(defmethod spend-internal ((client client) toid assetid formattedamount acct note)
+  (let ((db (db client))
+        (id (id client))
+        (bankid (bankid client))
+        (server (server client))
+        (parser (parser client))
+        (acct (or (if (listp acct) (car acct) acct) $MAIN))
+        (toacct (or (and (listp acct) (cadr acct)) $MAIN))
+        (amount (unformat-asset-value client formattedamount assetid))
+        oldamount
+        oldtime
+        time
+        (storagefee 0)
+        (digits 0)
+        percent
+        fraction
+        fractime
+        fracfee
+        baseoldamount
+        newamount
+        oldtoamount
+        newtoamount
+        (tranfee nil)
+        tranfee-asset
+        (tranfee-amt nil)
+        fee-balance
+        (need-fee-balance-p nil))
+
+    (assert (and (stringp acct) (stringp toacct)))
+
+    (when (and (equal id toid) (equal acct toacct))
+      (error "Transfer from and to the same acct (~s). Nothing to do."
+             acct))
+
+    (when (< (bccomp amount 0) 0)
+      (let ((bal (userbalance client acct assetid)))
+        (unless (eql 0 (bccomp bal amount))
+          (error "Negative spends must be for the whole issuer balance"))))
+
+    (multiple-value-setq (oldamount oldtime)
+      (userbalanceandtime client acct assetid))
+    (unless (is-numeric-p oldamount t)
+      (error "Error getting balance for asset in acct ~%: ~%" acct oldamount))
+
+    (setq time (client-gettime client))
+
+    (multiple-value-setq (percent fraction fractime)
+      (client-storage-info client assetid))
+    (when percent
+      (setq digits (fraction-digits percent))
+      (multiple-value-setq (fracfee fraction)
+        (storage-fee fraction fractime time percent digits))
+      (multiple-value-setq (storagefee oldamount)
+        (storage-fee oldamount oldtime time percent digits))
+      (setq storagefee (bcadd storagefee fracfee digits)
+            baseoldamount oldamount
+            oldamount (bcsub oldamount storagefee digits))
+      (multiple-value-setq (oldamount fraction)
+        (normalize-balance oldamount fraction digits)))
+
+    (setq newamount (bcsub oldamount amount))
+    (when (and (>= (bccomp oldamount 0) 0)
+               (< (bccomp newamount 0) 0))
+      (cond ((and (equal id toid)
+                  percent
+                  (<= (bccomp amount baseoldamount) 0))
+             ;; User asked to transfer less than the whole amount, but the
+             ;; storage fee put it over. Reduce amount to leave 0 in ACCT
+             (setq amount oldamount
+                   newamount 0))
+            (t (error "Insufficient balance"))))
+
+    (when (equal id toid)
+      (let (totime tofee)
+        (multiple-value-setq (oldtoamount totime)
+          (userbalanceandtime client toacct assetid))
+        (when (and percent oldtoamount)
+          (multiple-value-setq (tofee oldtoamount)
+            (storage-fee oldtoamount totime time percent digits))
+          (setq storagefee (bcadd storagefee tofee digits)
+                oldtoamount (bcsub oldtoamount tofee digits)))
+        (setq newtoamount (bcadd oldtoamount amount digits))
+        (when percent
+          (multiple-value-setq (newtoamount fraction)
+            (normalize-balance newtoamount fraction digits)))
+        (when (and (< (bccomp oldtoamount 0) 0)
+                   (>= (bccomp newtoamount 0) 0))
+          ;; This shouldn't be possible.
+          ;; If it happens, it means the asset is out of balance.
+          (error "Asset out of balance on self-spend"))))
+
+    (unless (equal id bankid)
+      (setq tranfee (getfees client)
+            tranfee-asset (fee-assetid tranfee))
+      (setq tranfee-amt
+            (if (equal id toid)
+                (if oldtoamount "0" "1")
+                (fee-amount tranfee)))
+      (cond ((and (equal tranfee-asset assetid)
+                  (equal $MAIN acct))
+             (setq newamount (bcsub newamount tranfee-amt))
+             (when (and (>= (bccomp oldamount 0) 0)
+                        (< (bccomp newamount 0) 0))
+               (error "Insufficient balance for transaction fee")))
+            ((and (equal id toid)
+                  (equal tranfee-asset assetid)
+                  (equal $MAIN toacct))
+             (setq newtoamount (bcsub newtoamount tranfee-amt))
+             (when (eql 0 (bccomp newtoamount oldtoamount))
+               (error "Transferring one token to a new acct is silly"))
+             (when (and (>= (bccomp oldtoamount 0) 0)
+                        (< (bccomp newtoamount 0) 0))
+               (error "Insufficient destination balance for transaction fee")))
+            (t
+             (let ((old-fee-balance (userbalance client $MAIN tranfee-asset)))
+               (setq fee-balance (bcsub old-fee-balance tranfee-amt)
+                     need-fee-balance-p t)
+               (when (and (>= (bccomp old-fee-balance 0) 0)
+                          (< (bccomp fee-balance 0) 0))
+                 (error "Insufficient tokens for transaction fee")))))
+
+      ;; Numbers are computed and validated.
+      ;; Create messages for server.
+      (let (spend
+            (feeandbal nil)
+            (feebal nil)
+            (feemsg nil)
+            balance
+            (tobalance nil)
+            (outboxhash nil)
+            (balancehash nil)
+            (storagefeemsg nil)
+            (fracmsg nil)
+            msg)
+        (setq spend (apply 'custmsg client $SPEND bankid time
+                           toid assetid amount (and note (list note))))
+        (when (and tranfee-amt (not (equal id toid)))
+          (setq feemsg (custmsg client $TRANFEE bankid time
+                                tranfee-asset tranfee-amt)
+                feeandbal feemsg))
+        (when need-fee-balance-p
+          (setq feebal (custmsg client $BALANCE bankid time
+                                tranfee-asset fee-balance))
+          (when feeandbal (dotcat feeandbal "."))
+          (dotcat feeandbal feebal))
+
+        (setq balance (custmsg client $BALANCE bankid time
+                               assetid newamount acct))
+        (when (equal id toid)
+          (setq tobalance (custmsg client $BALANCE bankid time
+                                   assetid newtoamount toacct)))
+        (when (and (not (equal id bankid))
+                   (not (equal id toid)))
+          (setq outboxhash (outboxhashmsg client time spend)))
+
+        ;; Compute balancehash
+        (unless (equal id bankid)
+          (let ((acctbals (make-equal-hash)))
+            (cond (feebal
+                   (cond ((equal $MAIN acct)
+                          (setf (gethash acct acctbals)
+                                (make-equal-hash assetid balance
+                                                 tranfee-asset feebal))
+                          (when tobalance
+                            (setf (gethash toacct acctbals)
+                                  (make-equal-hash assetid tobalance))))
+                         ((and (equal id toid)
+                               (equal $MAIN toacct))
+                          (setf (gethash acct acctbals)
+                                (make-equal-hash assetid balance)
+                                (gethash $MAIN acctbals)
+                                (make-equal-hash assetid tobalance
+                                                 tranfee-asset feebal)))
+                         (t
+                          (setf (gethash acct acctbals)
+                                (make-equal-hash assetid balance)
+                                (gethash $MAIN acctbals)
+                                (make-equal-hash tranfee-asset feebal)))))
+                  (t
+                   (setf (gethash acct acctbals)
+                         (make-equal-hash  assetid balance))
+                   (when tobalance
+                     (setf (gethash toacct acctbals)
+                           (make-equal-hash assetid tobalance)))))
+            (setq balancehash (balancehashmsg client time acctbals))))
+
+        ;; Prepare storage fee related message components
+        (when percent
+          (setq storagefeemsg (custmsg client $STORAGEFEE bankid time
+                                       assetid storagefee)
+                fracmsg (custmsg client $FRACTION bankid time assetid fraction)))
+
+        ;; Send request to server, and get response
+        (setq msg spend)
+        (when feeandbal (dotcat msg "." feeandbal))
+        (dotcat msg "." balance)
+        (when tobalance (dotcat msg "." tobalance))
+        (when outboxhash (dotcat msg "." outboxhash))
+        (when balancehash (dotcat msg "." balancehash))
+        (when percent (dotcat msg "." storagefeemsg "." fracmsg))
+        (setq msg (process server msg))
+
+        (let* ((reqs (parse parser msg))
+               (msgs (make-equal-hash $SPEND t
+                                      $BALANCE t))
+               (coupon nil)
+               encrypted-coupon
+               args)
+          (handler-case (match-bankreq client (car reqs) $ATSPEND)
+            (error ()
+              (let* ((args (match-bankreq client (car reqs)))
+                     (request (getarg $REQUEST args)))
+                (error "Spend request returned unknown message type: ~s"
+                       request))))
+          (when tobalance (setf (gethash tobalance msgs) t))
+          (when outboxhash (setf (gethash outboxhash msgs) t))
+          (when balancehash (setf (gethash balancehash msgs) t))
+          (when feeandbal
+            (when feemsg (setf (gethash feemsg msgs) t))
+            (when feebal (setf (gethash feebal msgs) t)))
+          (when percent
+            (setf (gethash storagefeemsg msgs) t
+                  (gethash fracmsg msgs) t))
+
+          (dolist (req reqs)
+            (setq msg (get-parsemsg req)
+                  args (match-bankreq client req))
+            (cond ((equal (getarg $REQUEST args) $COUPONENVELOPE)
+                   (when coupon
+                     (error "Multiple coupons returned from server"))
+                   (setq coupon msg
+                         encrypted-coupon (getarg $ENCRYPTEDCOUPON args)))
+                  (t
+                   (let ((m (trim (get-parsemsg (getarg $MSG args)))))
+                     (typecase (gethash m msgs)
+                       (null (error "Returned message wasn't sent: ~%" m))
+                       (string (error "Duplicate returned message: ~%" m)))
+                     (setf (gethash m msgs) msg)))))
+
+          (loop
+             for m being the hash-key using (hash-value msg) of msgs
+             do
+               (when (eq msg t)
+                 (error "Message not returned from spend: ~%" m)))
+          
+          ;; All is well. Commit this baby.
+          (setf (db-get db (userbalancekey client acct assetid))
+                (gethash balance msgs))
+          (when tobalance
+            (setf (db-get db (userbalancekey client toacct assetid))
+                  (gethash tobalance msgs)))
+          (when outboxhash
+            (setf (db-get db (useroutboxhashkey client))
+                  (gethash outboxhash msgs)))
+          (when balancehash
+            (setf (db-get db (userbalancehashkey client))
+                  (gethash balancehash msgs)))
+          (let ((spend (gethash spend msgs)))
+            (when feeandbal
+              (dotcat spend "." (gethash feemsg msgs))
+              (when feebal
+                (setf (db-get db (userbalancekey client $MAIN tranfee-asset))
+                      (gethash feebal msgs))))
+            (when coupon
+              (dotcat spend "." coupon)
+              (setf (coupon client) encrypted-coupon))
+
+            (when (and (not (equal id toid))
+                       (not (equal id bankid)))
+              (setf (db-get db (useroutboxkey client time)) spend))
+            (setf (last-spend-time client) time)
+
+            (when percent
+              (setf (db-get db (userfractionkey client assetid))
+                    (gethash fracmsg msgs)))
+
+            (when (keep-history-p client)
+              (setf (db-get db (userhistorykey client) time) spend))))))))
+
 #||
 ;; Continue here.
 
-  // Initiate a spend
-  // $toid is the id of the recipient of the spend
-  //   May be $t->COUPON to generate a coupon
-  //   In that case, the coupon itself can be fetched with getcoupon()
-  // $assetid is the id of the asset to spend
-  // $formattedamount is the formatted amount to spend
-  // $acct is the source sub-account, default $t->MAIN
-  // $acct can also be array($fromacct, $toacct), for a transfer.
-  // In that case $toid should be the logged in ID.
-  // Fees are always taken from $t->MAIN
-  function spend($toid, $assetid, $formattedamount, $acct=false, $note=false) {
-    $t = $this->t;
-    $db = $this->db;
-    $parser = $this->parser;
-
-    if (!$this->current_bank()) return "In spend(): Bank not set";
-    if ($err = $this->init-bank-accts()) return $err;
-
-    $parser->verifysigs(false);
-
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->spend_internal($toid, $assetid, $formattedamount, $acct, $note);
-    if ($res) {
-      // Storage fee may have changed. Reload the asset.
-      if ($this->reload_asset_p($assetid)) {
-        $res = $this->spend_internal($toid, $assetid, $formattedamount, $acct, $note);
-      }
-    }
-    $db->unlock($lock);
-
-    $parser->verifysigs(true);
-
-    if ($res) $this->forceinit();
-
-    return $res;
-  }
-
-  function spend_internal($toid, $assetid, $formattedamount, $acct, $note) {
-    $t = $this->t;
-    $db = $this->db;
-    $u = $this->u;
-
-    $id = $this->id;
-    $bankid = $this->bankid;
-    $server = $this->server;
-    $parser = $this->parser;
-
-    if (!$acct) $acct = $t->MAIN;
-    $toacct = $t->MAIN;
-    if (!is_string($acct)) {
-      $toacct = $acct[1];
-      $acct = $acct[0];
-      if (!(is_string($acct) && is_string($toacct))) {
-        return "Bad accts: from: $acct, to: $to_acct";
-      }
-    }
-
-    if ($id == $toid && $acct == $toacct) {
-      return "Transfer from and to the same acct ($acct). Nothing to do.";
-    }
-
-    $amount = $this->unformat_asset_value($formattedamount, $assetid);
-    if (bccomp($amount, 0) < 0) {
-      $bal = $this->userbalance($acct, $assetid);
-      if ($bal != $amount) {
-        return "Negative spends must be for the whole issuer balance";
-      }
-    }
-
-    $oldamount = $this->userbalanceandtime($acct, $assetid, $oldtime);
-    if (!is_numeric($oldamount)) {
-      return "Error getting balance for asset in acct $acct: $oldamount";
-    }
-
-    $time = $this->gettime();
-    if (!$time) return "Unable to get timestamp for transaction from bank";
-
-    $storagefee = 0;
-    $digits = 0;
-    $percent = $this->storageinfo($assetid, $fraction, $fractime);
-    if ($percent) {
-      $digits = $u->fraction_digits($percent);
-      $fracfee = $u->storagefee($fraction, $fractime, $time, $percent, $digits);
-      $storagefee = $u->storagefee($oldamount, $oldtime, $time, $percent, $digits);
-      $storagefee = bcadd($storagefee, $fracfee, $digits);
-      $baseoldamount = $oldamount;
-      $oldamount = bcsub($oldamount, $storagefee, $digits);
-      $u->normalize_balance($oldamount, $fraction, $digits);
-    }
-
-    $newamount = bcsub($oldamount, $amount);
-    if (bccomp($oldamount, 0) >= 0 &&
-        bccomp($newamount,  0) < 0) {
-      if ($id == $toid && $percent && bccomp($amount, $baseoldamount) <= 0) {
-        // User asked to transfer less than the whole amount, but the storage fee
-        // put it over. Reduce amount to leave 0 in $acct
-        $amount = $oldamount;
-        $newamount = 0;
-      } else return "Insufficient balance";
-    }
-
-    if ($id == $toid) {
-      $oldtoamount = $this->userbalanceandtime($toacct, $assetid, $totime);
-      if ($percent && $oldtoamount) {
-        $tofee = $u->storagefee($oldtoamount, $totime, $time, $percent, $digits);
-        $storagefee = bcadd($storagefee, $tofee, $digits);
-        $oldtoamount = bcsub($oldtoamount, $tofee, $digits);
-      }
-      $newtoamount = bcadd($oldtoamount, $amount, $digits);
-      if ($percent) $u->normalize_balance($newtoamount, $fraction, $digits);
-      if (bccomp($oldtoamount, 0) < 0 &&
-          bccomp($newtoamount, 0) >=0) {
-        // This shouldn't be possible.
-        // If it happens, it means the asset is out of balance.
-        return "Asset out of balance";
-      }
-    }
-
-    $tranfee = false;
-    $tranfee_amt = false;
-    $need_fee_balance = false;
-    if ($id != $bankid) {
-      $fees = $this->getfees();
-      if (is_string($fees)) return $fees;
-      $tranfee = $fees[$t->TRANFEE];
-      $tranfee_asset = $tranfee[$t->ASSET];
-      if ($id != $toid) $tranfee_amt = $tranfee[$t->AMOUNT];
-      else $tranfee_amt = ($oldtoamount === false) ? 1 : 0;
-      if ($tranfee_asset == $assetid && $t->MAIN == $acct) {
-        $newamount = bcsub($newamount, $tranfee_amt);
-        if (bccomp($oldamount, 0) >= 0 &&
-            bccomp($newamount, 0) < 0) {
-          return "Insufficient balance for transaction fee";
-        }
-      } elseif ($id == $toid && $tranfee_asset == $assetid && $t->MAIN = $toacct) {
-        $newtoamount = bcsub($newtoamount, $tranfee_amt);
-        if ($newtoamount == $oldtoamount) {
-          "Transferring one token to a new acct is silly";
-        }
-        if (bccomp($oldtoamount, 0) >= 0 &&
-            bccomp($newtoamount, 0) < 0) {
-          return "Insufficient destination balance for transaction fee";
-        }
-      } else {
-        $old_fee_balance = $this->userbalance($t->MAIN, $tranfee_asset);
-        $fee_balance = bcsub($old_fee_balance, $tranfee_amt);
-        $need_fee_balance = true; // $fee_balance could be 0
-        if (bccomp($old_fee_balance, 0) >= 0 &&
-            bccomp($fee_balance, 0) < 0) {
-          return "Insufficient tokens for transaction fee";
-        }
-      }
-    }
-
-    if ($note) $spend = $this->custmsg($t->SPEND, $bankid, $time, $toid,
-                                       $assetid, $amount, $note);
-    else $spend = $this->custmsg($t->SPEND, $bankid, $time, $toid, $assetid, $amount);
-    $feeandbal = '';
-    $feebal = false;
-    if ($tranfee_amt) {
-      if ($id != $toid) {
-        $feemsg = $this->custmsg
-          ($t->TRANFEE, $bankid, $time, $tranfee_asset, $tranfee_amt);
-        $feeandbal = $feemsg;
-      }
-      if ($need_fee_balance) {
-        $feebal = $this->custmsg
-          ($t->BALANCE, $bankid, $time, $tranfee_asset, $fee_balance);
-        if ($feeandbal) $feeandbal .= '.';
-        $feeandbal .= $feebal;
-      }
-    }      
-    $balance = $this->custmsg
-      ($t->BALANCE, $bankid, $time, $assetid, $newamount, $acct);
-    $tobalance = false;
-    if ($id == $toid) {
-      $tobalance = $this->custmsg($t->BALANCE, $bankid, $time,
-                                  $assetid, $newtoamount, $toacct);
-    }
-    $outboxhash = '';
-    if ($id != $bankid && $id != $toid) {
-      $outboxhash = $this->outboxhashmsg($time, $spend);
-    }
-
-    // Compute balancehash
-    $balancehash = false;
-    if ($id != $bankid) {
-      if ($feebal) {
-        if ($t->MAIN == $acct) {
-          $acctbals = array($acct => array($assetid => $balance,
-                                           $tranfee_asset => $feebal));
-          if ($tobalance) $acctbals[$toacct] = array($assetid => $tobalance);
-        } elseif ($id == $toid && $t->MAIN == $toacct) {
-          $acctbals = array($acct => array($assetid => $balance),
-                            $t->MAIN => array($assetid => $tobalance,
-                                              $tranfee_asset => $feebal));
-        } else {
-          $acctbals = array($acct => array($assetid => $balance),
-                            $t->MAIN => array($tranfee_asset => $feebal));
-          if ($tobalance) $acctbals[$toacct] = array($assetid => $tobalance);
-        }
-      } else {
-        $acctbals = array($acct => array($assetid => $balance));
-        if ($tobalance) $acctbals[$toacct] = array($assetid => $tobalance);
-      }
-      $balancehash = $this->balancehashmsg($time, $acctbals);
-    }
-
-    // Prepare storage fee related message components
-    if ($percent) {
-      $storagefeemsg = $this->custmsg($t->STORAGEFEE, $bankid, $time, $assetid, $storagefee);
-      $fracmsg = $this->custmsg($t->FRACTION, $bankid, $time, $assetid, $fraction);
-    }
-
-    // Send request to server, and get response
-    $msg = $spend;
-    if ($feeandbal) $msg.= ".$feeandbal";
-    $msg .= ".$balance";
-    if ($tobalance) $msg .= ".$tobalance";
-    if ($outboxhash) $msg .= ".$outboxhash";
-    if ($balancehash) $msg .= ".$balancehash";
-    if ($percent) $msg .= ".$storagefeemsg.$fracmsg";
-    $msg = $server->process($msg);
-
-    $reqs = $parser->parse($msg);
-    if (!$reqs) return "Can't parse bank return from spend: $msg";
-    $spendargs = $this->match_bankreq($reqs[0], $t->ATSPEND);
-    if (is_string($spendargs)) {
-      $args = $this->match_bankreq($reqs[0]);
-      if (is_string($args)) return $args;
-      $request = $args[$t->REQUEST];
-      if ($request = $t->FAILED) return "Spend request failed: " . $args[$t->ERRMSG];
-      return "Spend request returned unknown message type: " . $request;
-    }
-
-    $msgs = array($spend => true,
-                  $balance => true);
-    if ($tobalance) $msgs[$tobalance] = true;
-    if ($outboxhash) $msgs[$outboxhash] = true;
-    if ($balancehash) $msgs[$balancehash] = true;
-    if ($feeandbal) {
-      if ($feemsg) $msgs[$feemsg] = true;
-      if ($feebal) $msgs[$feebal] = true;
-    }
-    if ($percent) {
-      $msgs[$storagefeemsg] = true;
-      $msgs[$fracmsg] = true;
-    }
-
-    $coupon = false;
-    foreach ($reqs as $req) {
-      $msg = $parser->get_parsemsg($req);
-      $args = $this->match_bankreq($req);
-      if (is_string($args)) return "Error in spend response: $args";
-      if ($args[$t->REQUEST] == $t->COUPONENVELOPE) {
-        if ($coupon) return "Multiple coupons returned from server";
-        $coupon = $msg;
-        $encryptedcoupon = $args[$t->ENCRYPTEDCOUPON];
-      } else {
-        $m = $args[$t->MSG];
-        if (!$m) return "No wrapped message in spend return: $msg";
-        $m = trim($parser->get_parsemsg($m));
-        if (!$msgs[$m]) return "Returned message wasn't sent: '$m'";
-        if (is_string($msgs[$m])) return "Duplicate returned message: '$m'";
-        $msgs[$m] = $msg;
-      }
-    }
-
-    foreach ($msgs as $m => $msg) {
-      if ($msg === true) return "Message not returned from spend: $m";
-    }
-
-    // All is well. Commit this baby.
-    $db->put($this->userbalancekey($acct, $assetid), $msgs[$balance]);
-    if ($tobalance) {
-      $db->put($this->userbalancekey($toacct, $assetid), $msgs[$tobalance]);
-    }
-    if ($outboxhash) {
-      $db->put($this->useroutboxhashkey(), $msgs[$outboxhash]);
-    }
-    if ($balancehash) {
-      $db->put($this->userbalancehashkey(), $msgs[$balancehash]);
-    }
-    $spend = $msgs[$spend];
-    if ($feeandbal) {
-      $spend = "$spend." . $msgs[$feemsg];
-      if ($feebal) {
-        $db->put($this->userbalancekey($t->MAIN, $tranfee_asset), $msgs[$feebal]);
-      }
-    }
-    if ($coupon) {
-      $spend .= ".$coupon";
-      $this->coupon = $encryptedcoupon;
-    }
-    if ($id != $toid && $id != $bankid) {
-      $db->put($this->useroutboxkey($time), $spend);
-    }
-    $this->lastspendtime = $time;
-
-    if ($percent) {
-      $db->put($this->userfractionkey($assetid), $msgs[$fracmsg]);
-    }
-
-    if ($this->keephistory) {
-      $key = $this->userhistorykey();
-      $db->put("$key/$time", $spend);
-    }
-
-    return false;    
-  }
 
   // Reload an asset from the server.
   // Return true if the storage percent changed.
