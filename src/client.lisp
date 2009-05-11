@@ -264,7 +264,7 @@
         (let ((args (client-unpack-bankmsg client coupon $COUPON bankid)))
           (setq coupon-number (getarg $COUPON args))))
     (unless (coupon-number-p coupon-number)
-      (error "Malformed coupon number: ~%" coupon-number))
+      (error "Malformed coupon number: ~s" coupon-number))
 
     (let* ((msg (strcat "(0," bankid ",0," coupon-number "):0"))
            (server (make-instance 'server-proxy :url url :client client))
@@ -281,7 +281,7 @@
    Error if ID is non-null and doesn't match bankid at URL.
    Return bankid, or error."
   (unless (url-p url)
-    (error "Not a URL: ~%" url))
+    (error "Not a URL: ~s" url))
   (let* ((db (db client))
          (urlhash (sha1 url))
          (bankid (db-get db $BANK $BANKID urlhash)))
@@ -1000,7 +1000,7 @@
     (multiple-value-setq (oldamount oldtime)
       (userbalanceandtime client acct assetid))
     (unless (is-numeric-p oldamount t)
-      (error "Error getting balance for asset in acct ~%: ~%" acct oldamount))
+      (error "Error getting balance for asset in acct ~s: ~s" acct oldamount))
 
     (setq time (client-gettime client))
 
@@ -1193,15 +1193,15 @@
                   (t
                    (let ((m (trim (get-parsemsg (getarg $MSG args)))))
                      (typecase (gethash m msgs)
-                       (null (error "Returned message wasn't sent: ~%" m))
-                       (string (error "Duplicate returned message: ~%" m)))
+                       (null (error "Returned message wasn't sent: ~s" m))
+                       (string (error "Duplicate returned message: ~s" m)))
                      (setf (gethash m msgs) msg)))))
 
           (loop
              for m being the hash-key using (hash-value msg) of msgs
              do
                (when (eq msg t)
-                 (error "Message not returned from spend: ~%" m)))
+                 (error "Message not returned from spend: ~s" m)))
           
           ;; All is well. Commit this baby.
           (setf (db-get db (userbalancekey client acct assetid))
@@ -1237,7 +1237,7 @@
             (when (keep-history-p client)
               (setf (db-get db (userhistorykey client) time) spend))))))))
 
-(defmethod reload_asset_p ((client client) assetid)
+(defmethod reload-asset-p ((client client) assetid)
   "Reload an asset from the server.
    Return true if the storage percent changed."
   (let* ((asset (getasset client assetid))
@@ -1267,7 +1267,7 @@
          (server (server client))
          (parser (parser client))
          (msg (or (useroutbox client time)
-                  (error "No outbox entry at time: ~%" time)))
+                  (error "No outbox entry at time: ~s" time)))
          (reqs (parse parser msg)))
     (dolist (req reqs)
       (let ((args (match-bankreq client req)))
@@ -1336,183 +1336,166 @@
     (setf (coupon client) nil)
     (and coupon (privkey-decrypt coupon (privkey client)))))
 
+(defstruct inbox
+  request
+  id
+  time
+  msgtime
+  assetid
+  assetname
+  amount
+  formattedamount
+  note)
+
+(defmethod getinbox ((client client) &optional includeraw)
+  "Get the inbox contents.
+   Returns a list of INBOX instances, sorted by INBOX-TIME.
+   If INCLUDERAW is true, will return as a second value a
+   hash table mapping those instances to the raw message
+   strings from which they came.
+   INBOX-REQUEST is $SPEND, $SPENDACCEPT, or $SPENDREJECT,
+   INBOX-ID is the ID of the sender of the inbox entry,
+   INBOX-TIME is the timestamp from the bank on the inbox entry,
+   INBOX-MSGTIME is the timestamp in the sender's message,
+   INBOX-ASSETID & INBOX-ASSETNAME describe the asset being transferred,
+   INBOX-AMOUNT is the amount of the asset being transferred, as an integer,
+   INBOX-FORMATTEDAMOUNT is the amount as a decimal number with the scale
+   and precision applied,
+   INBOX-NOTE is the note that came from the sender"
+  (let ((db (db client))
+        (parser (parser client))
+        (bankid (bankid client))
+        (res nil)
+        (hash (and includeraw (make-hash-table :test 'eq)))
+        (key (userinboxkey client)))
+    (require-current-bank client "In getinbox(): Bank not set")
+    (init-bank-accts client)
+    (with-db-lock (db (userreqkey client))
+      (sync-inbox client)
+      (dolist (time (db-contents db key))
+        (let* ((msg (db-get db key time))
+               (reqs (parse parser msg)))
+          (dolist (req reqs)
+            (let* ((args (match-bankreq client req))
+                   (argstime (getarg $TIME args)))
+              (unless (equal argstime time)
+                (error "Inbox message timestamp mismatch"))
+              (setq args (getarg $MSG args))
+              (let ((request (getarg $REQUEST args))
+                    (id (getarg $CUSTOMER args))
+                    (msgtime (getarg $TIME args))
+                    (note (getarg $NOTE args))
+                    assetid
+                    amount
+                    assetname
+                    formattedamount)
+                (cond ((or (equal request $SPEND)
+                           (equal request $TRANFEE))
+                       (setq assetid (getarg $ASSET args)
+                             amount (getarg $AMOUNT args))
+                       (let ((asset (ignore-errors (getasset client assetid)))
+                             incnegs-p)
+                         (when asset
+                           (setq assetname (asset-name asset)
+                                 incnegs-p (not (equal (getarg $CUSTOMER args)
+                                                       bankid))
+                                 formattedamount (format-asset-value
+                                                  amount asset incnegs-p)))))
+                      ((or (equal request $SPENDACCEPT)
+                           (equal request $SPENDREJECT))
+                       ;; To do: Pull in data from outbox to get amounts
+                       )
+                      (t (error "Bad request in inbox: ~s" request)))
+                (push (make-inbox :request request
+                                  :id id
+                                  :time time
+                                  :msgtime msgtime
+                                  :assetid assetid
+                                  :assetname assetname
+                                  :amount amount
+                                  :formattedamount formattedamount
+                                  :note note)
+                      res)
+                (when includeraw
+                  (setf (gethash (car res) hash) msg)))))))
+      (sort res (lambda (t1 t2) (< (bccomp t1 t2) 0)) :key 'inbox-time))))
+
+(defmethod sync-inbox ((client client))
+  "Synchronize the current customer inbox with the current bank.
+   Assumes that there IS a current user and bank.
+   Does no database locking."
+  (let* ((db (db client))
+         (bankid (bankid client))
+         (parser (parser client))
+         (server (server client))
+         (req (getreq client))
+         (msg (custmsg client $GETINBOX bankid req))
+         (bankmsg (process server msg))
+         (reqs (parse parser bankmsg))
+         (inbox (make-equal-hash))
+         (times nil)
+         (storagefees (make-equal-hash))
+         (last-time nil))
+    (dolist (req reqs)
+      (let* ((args (match-bankreq client req))
+             (bankmsg (get-parsemsg req))
+             (request (getarg $REQUEST args)))
+        (cond ((equal request $ATGETINBOX)
+               (let ((retmsg (get-parsemsg (getarg $MSG args))))
+                 (unless (equal (trim retmsg) (trim msg))
+                   (error "getinbox return doesn't wrap message sent"))
+                 (setq last-time nil)))
+              ((equal request $INBOX)
+               (let ((time (getarg $TIME args)))
+                 (when (gethash time inbox)
+                   (error "getinbox return included multiple entries for time: ~s"
+                          time))
+                 (setf (gethash time inbox) bankmsg
+                       last-time time)))
+              ((equal request $ATTRANFEE)
+               (unless last-time
+                 (error "In getinbox return: @tranfee not after inbox"))
+               (setf (gethash last-time inbox)
+                     (strcat (gethash last-time inbox) "." bankmsg)
+                     last-time nil))
+              ((equal request $TIME)
+               (push (getarg $TIME args) times)
+               (setq last-time nil))
+              ((equal request $STORAGEFEE)
+               (let ((assetid (getarg $ASSET args)))
+                 (setf (gethash assetid storagefees) bankmsg)))
+              ((not (equal request $COUPONNUMBERHASH))
+               (error "Unknown request in getinbox return: ~s" request)))))
+
+    (let* ((key (userinboxkey client))
+           (keys (db-contents db key)))
+      (dolist (time keys)
+        (let ((inmsg (gethash time inbox)))
+          (if inmsg
+            (let ((msg (db-get db key time)))
+              (unless (equal msg inmsg)
+                (error "Inbox mismatch at time: ~s" time))
+              (remhash time inbox))
+            (setf (db-get db key time) nil))))
+      (loop
+         for time being the hash-key using (hash-value msg) of inbox
+         do
+           (setf (db-get db key time) msg)))
+
+    (let ((key (userstoragefeekey client)))
+      (dolist (assetid (db-contents key))
+        (unless (gethash assetid storagefees)
+          (setf (db-get db key assetid) nil)))
+      (loop
+         for assetid being the hash-key using (hash-value storagefee) of storagefees
+         do
+           (setf (db-get db key assetid) storagefee)))
+
+    (when times
+      (setf (db-get db (usertimekey client)) (implode "," times)))))
+
 #||
 ;; Continue here.
-  // Get the inbox contents.
-  // Returns an error string, or an array of inbox entries, indexed by
-  // their timestamps:
-  //
-  //   array($time => array(array($t->REQUEST => $request
-  //                              $t->ID => $fromid,
-  //                              $t->TIME => $time,
-  //                              $t->MSGTIME => $msgtime,
-  //                              $t->ASSET => $assetid,
-  //                              $t->ASSETNAME => $assetname,
-  //                              $t->AMOUNT => $amount,
-  //                              $t->FORMATTEDAMOUNT => $formattedamount,
-  //                              $t->NOTE => $note),
-  //                        ...,
-  //                        $t->MSG => $msg),
-  //          ...)
-  //
-  // Where $request is $t->SPEND, $t->SPENDACCEPT, or $t->SPENDREJECT,
-  // $fromid is the ID of the sender of the inbox entry,
-  // $time is the timestamp from the bank on the inbox entry,
-  // $msgtime is the timestamp in the sender's message,
-  // $assetid & $assetname describe the asset being transferred,
-  // $amount is the amount of the asset being transferred, as an integer,
-  // $formattedamount is the amount as a decimal number with the scale
-  // and precision applied,
-  // $note is the note that came from the sender,
-  // $msg is the raw inbox message, included only if $includeraw
-  // There will usually be two entries for a SPEND inbox entry, the SPEND
-  // and the corresponding TRANFEE.
-  // SPENDACCEPT and SPENDREJECT entries will be by themselves.
-  function getinbox($includeraw=false) {
-    $db = $this->db;
-
-    if (!$this->current_bank()) return "In getinbox(): Bank not set";
-    if ($err = $this->init-bank-accts()) return $err;
-
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->getinbox_internal();
-    $db->unlock($lock);
-
-    if ($res) $this->forceinit();
-
-    return $res;
-  }
-
-  function getinbox_internal($includeraw=false) {
-    $t = $this->t;
-    $db = $this->db;
-    $parser = $this->parser;
-
-    $err = $this->sync_inbox();
-    if ($err) return $err;
-
-    $res = array();
-    $key = $this->userinboxkey();
-    $inbox = $db->contents($key);
-    foreach ($inbox as $time) {
-      $msg = $db->get("$key/$time");
-      $reqs = $parser->parse($msg);
-      if (!$reqs) return "Inbox parsing error: $reqs";
-      $items = array();
-      foreach ($reqs as $req) {
-        $args = $this->match_bankreq($req);
-        if (is_string($args)) return "Inbox unpack error: $args";
-        if (@$args[$t->TIME] && $args[$t->TIME] != $time) {
-          return "Inbox message timestamp mismatch";
-        }
-        $args = $args[$t->MSG];
-        $request = $args[$t->REQUEST];
-        $item = array();
-        $item[$t->REQUEST] = $request;
-        $item[$t->ID] = $args[$t->CUSTOMER];
-        $item[$t->TIME] = $time;
-        $item[$t->MSGTIME] = $args[$t->TIME];
-        $item[$t->NOTE] = @$args[$t->NOTE];
-        if ($request == $t->SPEND || $request == $t->TRANFEE) {
-          $assetid = @$args[$t->ASSET];
-          $amount = @$args[$t->AMOUNT];
-          $asset = $this->getasset($assetid);
-          $item[$t->ASSET] = $assetid;
-          $item[$t->AMOUNT] = $amount;
-          if (!is_string($asset)) {
-            $item[$t->ASSETNAME] = $asset[$t->ASSETNAME];
-            $incnegs = ($args[$t->CUSTOMER] != $this->bankid);
-            $item[$t->FORMATTEDAMOUNT] =
-              $this->format_asset_value($amount, $asset, $incnegs);
-          }
-        } elseif ($request == $t->SPENDACCEPT || $request == $t->SPENDREJECT) {
-          // Pull in data from outbox to get amounts
-        } else {
-          return "Bad request in inbox: $request";
-        }
-        $items[] = $item;
-      }
-      if ($includeraw) $items[$t->MSG] = $msg;
-      $res[$time] = $items;
-    }
-
-    return $res;
-  }
-
-  // Synchronize the current customer inbox with the current bank.
-  // Return a string on error or false on success.
-  // Assumes that there IS a current user and bank.
-  // Does no database locking.
-  function sync_inbox() {
-    $t = $this->t;
-    $db = $this->db;
-
-    $bankid = $this->bankid;
-    $parser = $this->parser;
-    $server = $this->server;
-
-    $req = $this->getreq();
-    if (!$req) return "Couldn't get req for getinbox";
-    $msg = $this->custmsg($t->GETINBOX, $bankid, $req);
-    $bankmsg = $server->process($msg);
-    
-    $reqs = $parser->parse($bankmsg);
-    if (!$reqs) return "While parsing getinbox return message: " . $parser->errmsg;
-    $inbox = array();
-    $times = array();
-    $storagefees = array();
-    $last_time = false;
-    foreach ($reqs as $req) {
-      $args = $this->match_bankreq($req);
-      if (is_string($args)) return "While matching getinbox return: $args";
-      $bankmsg = $parser->get_parsemsg($req);
-      $request = $args[$t->REQUEST];
-      if ($request == $t->ATGETINBOX) {
-        $retmsg = $parser->get_parsemsg($args[$t->MSG]);
-        if (trim($retmsg) != trim($msg)) return "getinbox return doesn't wrap message sent";
-        $last_time = false;
-      } elseif ($request == $t->INBOX) {
-        $time = $args[$t->TIME];
-        if (@$inbox[$time]) return "getinbox return included multiple entries for time: $time";
-        $inbox[$time] = $bankmsg;
-        $last_time = $time;
-      } elseif ($request == $t->ATTRANFEE) {
-        if (!$last_time) return "In getinbox return: @tranfee not after inbox";
-        $inbox[$last_time] .= ".$bankmsg";
-      } elseif ($request == $t->TIME) {
-        $times[] = $args[$t->TIME];
-      } elseif ($request == $t->STORAGEFEE) {
-        $assetid = $args[$t->ASSET];
-        $storagefees[$assetid] = $bankmsg;
-      } elseif ($request != $t->COUPONNUMBERHASH) {
-        return "Unknown request in getinbox return: $request";
-      }
-    }
-
-    $key = $this->userinboxkey();
-    $keys = $db->contents($key);
-    foreach ($keys as $time) {
-      $inmsg = @$inbox[$time];
-      if ($inmsg) {
-        $msg = $db->get("$key/$time");
-        if ($msg != $inmsg) return "Inbox mismatch at time: $time";
-        unset($inbox[$time]);
-      } else {
-        $db->put("$key/$time", '');
-      }
-    }
-    foreach ($inbox as $time => $msg) {
-      $db->put("$key/$time", $msg);
-    }
-    foreach ($storagefees as $assetid => $storagefee) {
-      $key = $this->userstoragefeekey($assetid);
-      $db->put($key, $storagefee);
-    }
-    if (count($times) > 0) {
-      $db->put($this->usertimekey(), implode(',', $times));
-    }
-  }
-
   // Process the inbox contents.
   // $directions is an array of items of the form:
   //
@@ -2002,7 +1985,7 @@
          (args (cons id args))
          (msg (apply 'makemsg parser args))
          (sig (sign msg privkey)))
-    (trim (format nil "~a:~%~a" msg sig))))
+    (trim (format nil "~a:~s~%" msg sig))))
 
 (defmethod sendmsg ((client client) &rest args)
   "Send a customer message to the server.
@@ -2417,7 +2400,7 @@
                      (msgargs (getarg $MSG args))
                      (customer (and msgargs (getarg $CUSTOMER msgargs))))
                 (when (and msgargs (not (equal customer id)))
-                  (error "Bank wrapped somebody else's (%a) message: ~%"
+                  (error "Bank wrapped somebody else's (%a) message: ~s"
                          customer msg))
                 (cond ((equal request $ATGETOUTBOX))
                       ((equal request $ATSPEND)
