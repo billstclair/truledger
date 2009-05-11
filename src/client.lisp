@@ -658,7 +658,8 @@
          (bankid (bankid client))
          (req (getreq client))
          (msg (sendmsg client $GETASSET bankid req assetid))
-         (args (client-unpack-bankmsg client msg $ATASSET))
+         (args (with-verify-sigs-p ((parser client) t)
+                 (client-unpack-bankmsg client msg $ATASSET)))
          (msgargs (getarg $MSG args)))
     (unless (and (equal (getarg $REQUEST  msgargs) $ASSET)
                  (equal (getarg $BANKID msgargs) bankid)
@@ -779,7 +780,7 @@
     (with-db-lock (db key)
       (let* ((req (getreq client))
              (msg (sendmsg client $GETFEES bankid req))
-             (reqs (parse parser msg))
+             (reqs (parse parser msg t))
              (feemsg nil))
         (dolist (req reqs)
           (let* ((args (match-bankreq client req))
@@ -1159,7 +1160,7 @@
         (when percent (dotcat msg "." storagefeemsg "." fracmsg))
         (setq msg (process server msg))
 
-        (let* ((reqs (parse parser msg))
+        (let* ((reqs (parse parser msg t))
                (msgs (make-equal-hash $SPEND t
                                       $BALANCE t))
                (coupon nil)
@@ -1236,180 +1237,107 @@
             (when (keep-history-p client)
               (setf (db-get db (userhistorykey client) time) spend))))))))
 
+(defmethod reload_asset_p ((client client) assetid)
+  "Reload an asset from the server.
+   Return true if the storage percent changed."
+  (let* ((asset (getasset client assetid))
+         (percent (asset-percent asset)))
+    (setq asset (getasset client assetid t))
+    (not (equal percent (asset-percent asset)))))
+
+(defmethod spendreject ((client client) time &optional note)
+  (let ((db (db client))
+        (parser (parser client))
+        (need-init-p t))
+    (require-current-bank client "In spendreject(): Bank not set")
+    (init-bank-accts client)
+
+    (unwind-protect
+         (with-verify-sigs-p (parser nil)
+           (with-db-lock (db (userreqkey client))
+             (prog1 (spendreject-internal client time note)
+               (setq need-init-p nil))))
+      (when need-init-p
+        (forceinit client)))))
+
+(defmethod spendreject-internal ((client client) time note)
+  (let* ((db (db client))
+         (bankid (bankid client))
+         (id (id client))
+         (server (server client))
+         (parser (parser client))
+         (msg (or (useroutbox client time)
+                  (error "No outbox entry at time: ~%" time)))
+         (reqs (parse parser msg)))
+    (dolist (req reqs)
+      (let ((args (match-bankreq client req)))
+        (when (equal (getarg $REQUEST args) $COUPONENVELOPE)
+          (let ((coupon (getarg $ENCRYPTEDCOUPON args)))
+            (when coupon
+              (setq coupon (privkey-decrypt coupon (privkey client)))
+              (return-from spendreject-internal
+                (redeem client coupon))))))
+      (setq msg (apply 'custmsg client $SPENDREJECT bankid time id
+                       (and note (list note))))
+      (let* ((bankmsg (process server msg))
+             (args (with-verify-sigs-p (parser t)
+                     (client-unpack-bankmsg client bankmsg $INBOX)))
+             (time (getarg $TIME args))
+             (args2 (getarg $MSG args))
+             (msg2 (get-parsemsg args2)))
+        (unless (equal (trim msg2) (trim msg))
+          (error "Bank return didn't wrap request"))
+    (setf (db-get db (userinboxkey client) time) bankmsg)))))
+
+(defmethod gethistorytimes ((client client))
+  (let ((db (db client)))
+    (require-current-bank client "In gethistorytimes(): Bank not set")
+    (sort (db-contents db (userhistorykey client))
+          (lambda (x y) (< (bccomp y x) 0)))))
+
+(defmethod gethistoryitems ((client client) time)
+  "Get the history items for $time.
+   Return nil if there is no corresponding item.
+   Otherwise, return a list of matched inner message hash tables."
+  (let ((db (db client))
+        (parser (parser client)))
+    (require-current-bank client "In gethistoryitems(): Bank not set")
+    (let* ((msg (db-get db (userhistorykey client) time)))
+      (when msg
+        (let ((reqs (parse parser msg))
+              res)
+          (dolist (req reqs)
+            (let* ((args (match-pattern parser req))
+                   (inner (getarg $MSG args)))
+              (when inner
+                (let* ((atrequest (getarg $REQUEST args)))
+                  (setq args (match-pattern parser inner))
+                  (setf (getarg $ATREQUEST args) atrequest)))
+              (let* ((assetid (getarg $ASSET args))
+                     (amount (getarg $AMOUNT args)))
+                (when (and assetid amount)
+                  (let ((asset (getasset client assetid)))
+                         (setf (getarg $ASSETNAME args) (asset-name asset)
+                               (getarg $FORMATTEDAMOUNT args)
+                               (format-asset-value client amount asset nil)))))
+              (push args res)))
+          (nreverse res))))))
+
+(defmethod removehistoryitem ((client client) time)
+  "Remove a history item"
+  (let ((db (db client)))
+    (require-current-bank client "In removehistoryitem(): Bank not set")
+    (setf (db-get db (userhistorykey client) time) nil)))
+
+(defmethod getcoupon ((client client))
+  "Return the last coupon resulting from a spend.
+   Clear the coupon store, so you can only get the coupon once."
+  (let ((coupon (coupon client)))
+    (setf (coupon client) nil)
+    (and coupon (privkey-decrypt coupon (privkey client)))))
+
 #||
 ;; Continue here.
-
-
-  // Reload an asset from the server.
-  // Return true if the storage percent changed.
-  function reload_asset_p($assetid) {
-    $t = $this->t;
-
-    $asset = $this->getasset($assetid);
-    if (is_string($asset)) return false;
-    $percent = $asset[$t->PERCENT];
-    $asset = $this->getasset($assetid, true);
-    return ($percent != $asset[$t->PERCENT]);
-  }
-
-  function spendreject($time, $note=false) {
-    $t = $this->t;
-    $db = $this->db;
-    $parser = $this->parser;
-
-    if (!$this->current_bank()) return "In spendreject(): Bank not set";
-    if ($err = $this->init-bank-accts()) return $err;
-
-    $parser->verifysigs(false);
-
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->spendreject_internal($time, $note);
-    $db->unlock($lock);
-
-    $parser->verifysigs(true);
-
-    if ($res) $this->forceinit();
-
-    return $res;
-  }
-
-  function spendreject_internal($time, $note) {
-    $t = $this->t;
-    $db = $this->db;
-    $u = $this->u;
-
-    $bankid = $this->bankid;
-    $id = $this->id;
-    $db = $this->db;
-    $server = $this->server;
-    $parser = $this->parser;
-
-    $msg = $this->useroutbox($time);
-    if (!$msg) return "No outbox entry at time: $time";
-    $reqs = $parser->parse($msg);
-    if (!$reqs) return "In spendreject, parse error: " . $parser->errmsg;
-    foreach ($reqs as $req) {
-      $args = $this->match_bankreq($req);
-      if (is_string($args)) return $args;
-      if ($args[$t->REQUEST] == $t->COUPONENVELOPE) {
-        $coupon = $args[$t->ENCRYPTEDCOUPON];
-        if ($coupon) {
-          $coupon = $this->ssl->privkey_decrypt($coupon, $this->privkey);
-          return $this->redeem($coupon);
-        }
-      }
-    }
-
-    if ($note) {
-      $msg = $this->custmsg($t->SPENDREJECT, $bankid, $time, $id, $note);
-    } else {
-      $msg = $this->custmsg($t->SPENDREJECT, $bankid, $time, $id);
-    }
-
-    $bankmsg = $server->process($msg);
-    $args = $this->unpack_bankmsg($bankmsg, $t->INBOX);
-    if (is_string($args)) return $args;
-
-    $time = $args[$t->TIME];
-    $args = $args[$t->MSG];
-    $msg2 = $parser->get_parsemsg($args);
-    if (trim($msg2) != trim($msg)) return "Bank return didn't wrap request";
-    $key = $this->userinboxkey();
-    $db->put("$key/$time", $bankmsg);
-
-    return false;
-  }
-
-  function bccompnot($x, $y) {
-    return bccomp($y, $x);
-  }
-
-  function gethistorytimes() {
-    $t = $this->t;
-    $db = $this->db;
-
-    if (!$this->current_bank()) return "In gethistorytimes(): Bank not set";
-
-    $key = $this->userhistorykey();
-    $res = $db->contents($key);
-    usort($res, array($this, 'bccompnot'));
-
-    return $res;
-  }
-
-  // Get the history items for $time.
-  // Return false if there is no corresponding item.
-  // Otherwise, return an array of matched inner message arrays.
-  // Return an error string if there is an error parsing or matching.
-  function gethistoryitems($time) {
-    $t = $this->t;
-    $u = $this->u;
-    $db = $this->db;
-    $parser = $this->parser;
-
-    if (!$this->current_bank()) return "In gethistoryitems(): Bank not set";
-
-    $key = $this->userhistorykey();
-    $msg = $db->get("$key/$time");
-    if (!$msg) return false;
-
-    $reqs = $parser->parse($msg);
-    if (!$reqs) return "While parsing history item: " . $parser->errmsg;
-    $res = array();
-    foreach ($reqs as $req) {
-      $args = $u->match_pattern($req);
-      if (is_string($args)) return "While matching history item: " . $args;
-      $inner = @$args[$t->MSG];
-      if ($inner) {
-        $atrequest = $args[$t->REQUEST];
-        $args = $u->match_pattern($inner);
-        if (is_string($args)) return "While matching inner history item: $args";
-        $args[$t->ATREQUEST] = $atrequest;
-      }
-      $assetid = @$args[$t->ASSET];
-      $amount = @$args[$t->AMOUNT];
-      if ($assetid && !($amount === false)) {
-        $asset = $this->getasset($assetid);
-        if (!is_string($asset)) {
-          $args[$t->ASSETNAME] = $asset[$t->ASSETNAME];
-          $incnegs = false;
-          $args[$t->FORMATTEDAMOUNT] =
-            $this->format_asset_value($amount, $asset, $incnegs);
-        } else {
-          $args[$t->ASSETNAME] = $assetid;
-          $args[$t->FORMATTEDAMOUNT] = $amount;
-        }
-      }
-      $res[] = $args;
-    }
-    return $res;
-  }
-
-  // Remove a history item
-  function removehistoryitem($time) {
-    $t = $this->t;
-    $db = $this->db;
-    $parser = $this->parser;
-
-    if (!$this->current_bank()) return "In removehistoryitem(): Bank not set";
-
-    $key = $this->userhistorykey();
-    $db->put("$key/$time", '');
-
-    return false;
-  }
-
-  // Return the last coupon resulting from a spend.
-  // Clear the coupon store, so you can only get the coupon once.
-  function getcoupon() {
-    $ssl = $this->ssl;
-    $privkey = $this->privkey;
-
-    $coupon = $this->coupon;
-    $this->coupon = false;
-    return $ssl->privkey_decrypt($coupon, $privkey);
-  }
-
   // Get the inbox contents.
   // Returns an error string, or an array of inbox entries, indexed by
   // their timestamps:
