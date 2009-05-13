@@ -824,36 +824,39 @@
   (require-current-bank client "In getbalance(): Bank not set")
   (init-bank-accts client)
   (with-db-lock ((db client) (userreqkey client))
-    (unless acct (setq acct $MAIN))
-    (let* ((db (db client))
-           (accts (if (stringp acct)
-                      (list acct)
-                      (db-contents db (userbalancekey client))))
-           (res nil))
-      (dolist (acct accts)
-        (let ((assetids (if assetid
-                            (list assetid)
-                            (db-contents db (userbalancekey client acct))))
-              (balances nil))
-          (dolist (assetid assetids)
-            (multiple-value-bind (amount time)
-                (userbalanceandtime client acct assetid)
-              (unless (is-numeric-p amount t)
-                (error "While gathering balances, non-numeric amount: ~s" amount))
-              (let* ((asset (getasset client assetid))
-                     (formatted-amount (format-asset-value client amount asset))
-                     (assetname (asset-name asset)))
-                (push (make-balance :acct acct
-                                    :assetid :assetid
-                                    :assetname assetname
-                                    :amount amount
-                                    :time time
-                                    :formatted-amount formatted-amount)
-                      balances))))
-          (push (cons acct (sort balances 'balance-lessp)) res)))
-      (if (and (stringp acct) assetid)
-          (cadar res)
-          (sort res 'string-lessp :key 'car)))))
+    (getbalance-internal client acct assetid)))
+
+(defmethod getbalance-internal ((client client) acct assetid)
+  (unless acct (setq acct $MAIN))
+  (let* ((db (db client))
+         (accts (if (stringp acct)
+                    (list acct)
+                    (db-contents db (userbalancekey client))))
+         (res nil))
+    (dolist (acct accts)
+      (let ((assetids (if assetid
+                          (list assetid)
+                          (db-contents db (userbalancekey client acct))))
+            (balances nil))
+        (dolist (assetid assetids)
+          (multiple-value-bind (amount time)
+              (userbalanceandtime client acct assetid)
+            (unless (is-numeric-p amount t)
+              (error "While gathering balances, non-numeric amount: ~s" amount))
+            (let* ((asset (getasset client assetid))
+                   (formatted-amount (format-asset-value client amount asset))
+                   (assetname (asset-name asset)))
+              (push (make-balance :acct acct
+                                  :assetid :assetid
+                                  :assetname assetname
+                                  :amount amount
+                                  :time time
+                                  :formatted-amount formatted-amount)
+                    balances))))
+        (push (cons acct (sort balances 'balance-lessp)) res)))
+    (if (and (stringp acct) assetid)
+        (cadar res)
+        (sort res 'string-lessp :key 'car))))
 
 (defstruct fraction
   assetid
@@ -1345,7 +1348,8 @@
   assetname
   amount
   formattedamount
-  note)
+  note
+  items)
 
 (defmethod getinbox ((client client) &optional includeraw)
   "Get the inbox contents.
@@ -1361,64 +1365,78 @@
    INBOX-AMOUNT is the amount of the asset being transferred, as an integer,
    INBOX-FORMATTEDAMOUNT is the amount as a decimal number with the scale
    and precision applied,
-   INBOX-NOTE is the note that came from the sender"
+   INBOX-NOTE is the note that came from the sender
+   INBOX-ITEMS is other items from the same inbox entry, e.g. fees."
+  (let ((db (db client)))
+    (require-current-bank client "In getinbox(): Bank not set")
+    (init-bank-accts client)
+    (with-db-lock (db (userreqkey client))
+      (getinbox-internal client includeraw))))
+
+(defmethod getinbox-internal ((client client) includeraw)
   (let ((db (db client))
         (parser (parser client))
         (bankid (bankid client))
         (res nil)
         (hash (and includeraw (make-hash-table :test 'eq)))
         (key (userinboxkey client)))
-    (require-current-bank client "In getinbox(): Bank not set")
-    (init-bank-accts client)
-    (with-db-lock (db (userreqkey client))
-      (sync-inbox client)
-      (dolist (time (db-contents db key))
-        (let* ((msg (db-get db key time))
-               (reqs (parse parser msg)))
-          (dolist (req reqs)
-            (let* ((args (match-bankreq client req))
-                   (argstime (getarg $TIME args)))
-              (unless (equal argstime time)
-                (error "Inbox message timestamp mismatch"))
-              (setq args (getarg $MSG args))
-              (let ((request (getarg $REQUEST args))
-                    (id (getarg $CUSTOMER args))
-                    (msgtime (getarg $TIME args))
-                    (note (getarg $NOTE args))
-                    assetid
-                    amount
-                    assetname
-                    formattedamount)
-                (cond ((or (equal request $SPEND)
-                           (equal request $TRANFEE))
-                       (setq assetid (getarg $ASSET args)
-                             amount (getarg $AMOUNT args))
-                       (let ((asset (ignore-errors (getasset client assetid)))
-                             incnegs-p)
-                         (when asset
-                           (setq assetname (asset-name asset)
-                                 incnegs-p (not (equal (getarg $CUSTOMER args)
-                                                       bankid))
-                                 formattedamount (format-asset-value
-                                                  amount asset incnegs-p)))))
-                      ((or (equal request $SPENDACCEPT)
-                           (equal request $SPENDREJECT))
-                       ;; To do: Pull in data from outbox to get amounts
-                       )
-                      (t (error "Bad request in inbox: ~s" request)))
-                (push (make-inbox :request request
-                                  :id id
-                                  :time time
-                                  :msgtime msgtime
-                                  :assetid assetid
-                                  :assetname assetname
-                                  :amount amount
-                                  :formattedamount formattedamount
-                                  :note note)
-                      res)
-                (when includeraw
-                  (setf (gethash (car res) hash) msg)))))))
-      (sort res (lambda (t1 t2) (< (bccomp t1 t2) 0)) :key 'inbox-time))))
+    (sync-inbox client)
+    (dolist (time (db-contents db key))
+      (let* ((msg (db-get db key time))
+             (reqs (parse parser msg)))
+        (dolist (req reqs)
+          (let* ((args (match-bankreq client req))
+                 (argstime (getarg $TIME args)))
+            (unless (equal argstime time)
+              (error "Inbox message timestamp mismatch"))
+            (setq args (getarg $MSG args))
+            (let ((request (getarg $REQUEST args))
+                  (id (getarg $CUSTOMER args))
+                  (msgtime (getarg $TIME args))
+                  (note (getarg $NOTE args))
+                  assetid
+                  amount
+                  assetname
+                  formattedamount
+                  last-item)
+              (cond ((or (equal request $SPEND)
+                         (equal request $TRANFEE))
+                     (setq assetid (getarg $ASSET args)
+                           amount (getarg $AMOUNT args))
+                     (let ((asset (ignore-errors (getasset client assetid)))
+                           incnegs-p)
+                       (when asset
+                         (setq assetname (asset-name asset)
+                               incnegs-p (not (equal (getarg $CUSTOMER args)
+                                                     bankid))
+                               formattedamount (format-asset-value
+                                                amount asset incnegs-p)))))
+                    ((or (equal request $SPENDACCEPT)
+                         (equal request $SPENDREJECT))
+                     ;; To do: Pull in data from outbox to get amounts
+                     )
+                    (t (error "Bad request in inbox: ~s" request)))
+              (let ((item (make-inbox :request request
+                                      :id id
+                                      :time time
+                                      :msgtime msgtime
+                                      :assetid assetid
+                                      :assetname assetname
+                                      :amount amount
+                                      :formattedamount formattedamount
+                                      :note note)))
+                (cond ((equal request $SPEND)
+                       (push item res)
+                       (setq last-item nil))
+                      ((equal request $TRANFEE)
+                       (unless last-item
+                         (error "tranfee without matching spend"))
+                       (push tranfee (inbox-items last-item)))
+                      (t (push item res)
+                         (setq last-item nil)))
+              (when (and includeraw (eq (car res) item))
+                (setf (gethash item hash) msg))))))))
+    (sort res (lambda (t1 t2) (< (bccomp t1 t2) 0)) :key 'inbox-time)))
 
 (defmethod sync-inbox ((client client))
   "Synchronize the current customer inbox with the current bank.
@@ -1492,170 +1510,157 @@
            (setf (db-get db key assetid) storagefee)))
 
     (when times
-      (setf (db-get db (usertimekey client)) (implode "," times)))))
+      (setf (db-get db (usertimekey client)) (apply 'implode "," times)))))
+
+(defstruct process-inbox
+  time                                  ;timestamp in the inbox
+  request                               ;$SPENDACCEPT, SPENDREJECT, or nil
+  note                                  ;note for accept or reject
+  acct)                                ;Account into which to transfer
+
+(defmethod processinbox ((client client) directions)
+  "Process the inbox contents.
+   DIRECTIONS is a list of PROCESS-INBOX instances."
+  (let ((db (db client))
+        (parser (parser client))
+        (need-init-p t))
+    (require-current-bank client "In processinbox(): Bank not set")
+    (init-bank-accts client)
+
+    (unwind-protect
+         (with-verify-sigs-p (parser nil)
+           (with-db-lock (db (userreqkey client))
+             (prog1 (processinbox-internal client directions nil)
+               (setq need-init-p nil))))
+      (when need-init-p (forceinit client)))))
+
+(defmethod processinbox-internal ((client client) directions recursive)
+  (let ((db (db client))
+        (bankid (bankid client))
+        (server (server client))
+        (parser (parser client))
+        inbox inbox-msgs
+        outbox outbox-msgs
+        (balance (getbalance-internal client t false))
+        (timelist "")
+        (deltas (make-equal-hash)) ;(acct => (asset => delta, ...), ...) 
+        (outbox-deletions nil)
+        (msg "")
+        (msgs nil)
+        (history "")
+        (hist "")
+        (charges (make-equal-hash)))
+    (multiple-value-setq (inbox inbox-msgs)
+      (getinbox-internal client (keep-history-p client)))
+    (multiple-value-setq (outbox outbox-msgs)
+      (getoutbox-internal (keep-history-p client)))
+    (dolist (dir directions)
+      (let* ((time (process-inbox-time dir))
+             (request (process-inbox-request dir))
+             (note (process-inbox-note dir))
+             (acct (or (process-inbox-acct dir) $MAIN))
+             (in (or (find time inbox :test 'equal :key 'inbox-time)
+                     (error "No inbox entry for time: ~s" time)))
+             (fee (car (inbox-items in))) ;change this when I add multiple fees
+             (inmsg (and inbox-msgs (gethash in inbox-msgs)))
+             (trans (client-gettime client))
+             (inreq (inbox-request in))
+             (delta (get-inited-hash acct deltas)))
+
+        (unless (equal "" timelist) (dotcat timelist "|"))
+        (dotcat timelist time)
+
+        (cond ((equal inreq $SPEND)
+               (let ((id (inbox-id in))
+                     (assetid (inbox-assetid in))
+                     (msgtime (inbox-msgtime in))
+                     (amount (inbox-amount in)))
+                 (unless (equal msg "") (dotcat msg "."))
+                 (cond ((equal request $SPENDACCEPT)
+                        (do-storagefee client charges amount msgtime trans assetid)
+                        (setf (gethash assetid delta)
+                              (bcadd (gethash assetid delta 0) amount))
+                        (let ((smsg (custmsg client $SPENDACCEPT bankid
+                                             msgtime id note)))
+                          (setf (gethash smsg msgs) t)
+                          (dotcat msg smsg)
+                          (when inmsg
+                            (dotcat hist "." smsg "." inmsg))))
+                       ((equal request $SPENDREJECT)
+                        (when fee
+                          (let ((feeasset (inbox-assetid fee)))
+                            (setf (gethash feeasset delta)
+                                  (bcadd (gethash feeasset delta 0)
+                                         (inbox-amount fee)))))
+                        (let ((smsg (custmsg client $SPENDREJECT bankid
+                                             msgtime id note)))
+                          (setf (gethash smsg msgs) t)
+                          (dotcat msg smsg))
+                        (when inmsg
+                          (dotcat hist "." smsg "." inmsg)))
+                       (t (error "Illegal request for spend: ~s" request)))))
+              ((or (equal inreq $SPENDACCEPT) (equal inreq $SPENDREJECT))
+               (let* ((msgtime (inbox-msgtime in))
+                      (outspend (or (find msgtime outbox
+                                          :test 'equal :key 'outbox-time)
+                                    (error "Can't find outbox for ~s at time ~s"
+                                           inreq msgtime)))
+                      (outfee (car (outbox-items outspend)))
+                      (outmsg (and outbox-msgs (gethash outspend outbox-msgs))))
+                 (push msgtime outbox-deletions)
+                 (cond ((equal inreq $SPENDREJECT)
+                        ;; For rejected spends, we get our money back
+                        (let ((assetid (outbox-assetid outspend))
+                              (amount (outbox-amount outspend)))
+                          (do-storagefee client charges amount msgtime trans assetid)
+                          (setf (gethash assetid delta)
+                                (bcadd (gethash assetid delta 0) amount))))
+                       (outfee
+                        ;; For accepted spends, we get our tranfee back
+                        (let ((feeasset (outbox-assetid outfee)))
+                          (setf (gethash feeasset delta)
+                              (bcadd (gethash feeasset delta 0)
+                                     (outbox-amount outfee))))))
+                 (when outmsg
+                   (dotcat hist "." inmsg "." outmsg))))
+              (t "Unrecognized inbox request: ~s" inreq))))
+
+    (let ((pmsg (custmsg client $PROCESSINBOX bankid trans timelist))
+          (acctbals (make-equal-hash)))
+      (setf (gethash pmsg msgs) t)
+      (setq msg (if (equal msg "") pmsg (dotcat msg "." pmsg)))
+      (when (keep-history-p client)
+        (setq history (strcat pmsg hist)))
+
+      ;; Compute fees for new balance files
+      (let* ((tranfee (getfees client))
+             (feeasset (fee-assetid tranfee))
+             (delta-main (get-inited-hash $MAIN deltas)))
+        (loop
+           for acct being the hash-key using (hash-value amounts) of deltas
+           for bals = (cdr (assoc acct balance :test 'equal))
+           do
+           (loop
+              for assetid being the hash-key using (hash-value amount) of amounts
+              for oldbal = (find assetid bals
+                                 :test 'equal :key 'balance-assetid)
+              for oldamount = (and oldbal (balance-amount oldbal))
+              do
+              (when (and oldamount (> (bccomp oldamount 0) 0))
+                (let ((oldtime (balance-time oldbal)))
+                  (setf oldamount (do-storagefee
+                                      client charges oldamount oldtime trans assetid)
+                        (balance-amount oldbal) oldamount))
+                (unless (eql 0 (bccomp oldamount 0))
+                  (setf (gethash feeasset delta-main)
+                        (bcsub (gethash feeasset delta-main 0) 1)))))))
+
+)))
 
 #||
 ;; Continue here.
-  // Process the inbox contents.
-  // $directions is an array of items of the form:
-  //
-  //  array($t->TIME => $time,
-  //        $t->REQUEST => $request,
-  //        $t->NOTE => $note,
-  //        $t->ACCOUNT => $acct)
-  //
-  // where $time is a timestamp in the inbox,
-  // $request is $t->SPENDACCEPT or $t->SPENDREJECT, or omitted for
-  // processing an accept or reject from a former spend recipient,
-  // $note is the note to go with the accept or reject, and
-  // $acct is the account into which to transfer the funds (default: main).
 
-  function processinbox($directions) {
-    $db = $this->db;
-    $parser = $this->parser;
-
-    if (!$this->current_bank()) return "In processinbox(): Bank not set";
-    if ($err = $this->init-bank-accts()) return $err;
-
-    $parser->verifysigs(false);
-
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->processinbox_internal($directions, false);
-    $db->unlock($lock);
-
-    $parser->verifysigs(true);
-
-    if ($res) $this->forceinit();
-
-    return $res;
-  }
-
-  function processinbox_internal($directions, $recursive) {
-    $t = $this->t;
-    $db = $this->db;
-
-    $bankid = $this->bankid;
-    $server = $this->server;
-    $parser = $this->parser;
-
-    $inbox = $this->getinbox_internal($this->keephistory);
-    $outbox = $this->getoutbox_internal($this->keephistory);
-    $balance = $this->getbalance_internal(true, false);
-
-    $timelist = '';
-    $deltas = array(); // array($acct => array($asset => $delta, ...), ...)
-    $outbox_deletions = array(); // array($timestamp, ...)
-
-    $msg = '';
-    $msgs = array();
-
-    $history = '';
-    $hist = '';
-
-    $charges = array();
-
-    foreach ($directions as $dir) {
-      $time = $dir[$t->TIME];
-      $request = @$dir[$t->REQUEST];
-      $note = @$dir[$t->NOTE];
-      $acct = @$dir[$t->ACCT];
-      if (!$acct) $acct = $t->MAIN;
-
-      if ($timelist) $timelist .= '|';
-      $timelist .= $time;
-
-      $ins = $inbox[$time];
-      if (!$ins) return "No inbox entry for time: $time";
-
-      $in = $ins[0];
-      $fee = @$ins[1];        // will need generalization when I add multiple fees
-      $inmsg = $ins[$t->MSG];
-
-      $trans = $this->gettime();
-
-      $inreq = $in[$t->REQUEST];
-      if ($inreq == $t->SPEND) {
-        $id = $in[$t->ID];
-        $assetid = $in[$t->ASSET];
-        $msgtime = $in[$t->MSGTIME];
-        $amount = $in[$t->AMOUNT];
-        if ($msg != '') $msg .= '.';
-        if ($request == $t->SPENDACCEPT) {
-          $this->do_storagefee($charges, $amount, $msgtime, $trans, $assetid);
-          $deltas[$acct][$assetid] =
-            bcadd(@$deltas[$acct][$assetid], $amount);
-          $smsg = $this->custmsg($t->SPENDACCEPT, $bankid, $msgtime, $id, $note);
-          $msgs[$smsg] = true;
-          $msg .= $smsg;
-          if ($inmsg) $hist .= ".$smsg.$inmsg";
-        } elseif ($request == $t->SPENDREJECT) {
-          if ($fee) {
-            $deltas[$acct][$fee[$t->ASSET]] =
-              bcadd(@$deltas[$acct][$fee[$t->ASSET]], $fee[$t->AMOUNT]);
-          }
-          $smsg = $this->custmsg($t->SPENDREJECT, $bankid, $msgtime, $id, $note);
-          $msgs[$smsg] = true;
-          $msg .= $smsg;
-          if ($inmsg) $hist .= ".$smsg.$inmsg";
-        } else {
-          return "Illegal request for spend: $request";
-        }
-      } elseif ($inreq == $t->SPENDACCEPT || $inreq == $t->SPENDREJECT) {
-        $msgtime = $in[$t->MSGTIME];
-        $out = $outbox[$msgtime];
-        if (!$out) return "Can't find outbox for $inreq at time $msgtime";
-        $outbox_deletions[] = $msgtime;
-        $outspend = $out[0];
-        $outfee = $out[1];      // change when we have more than one fee
-        if ($inreq == $t->SPENDREJECT) {
-          // For rejected spends, we get our money back
-          $assetid = $outspend[$t->ASSET];
-          $amount = $outspend[$t->AMOUNT];
-          $this->do_storagefee($charges, $amount, $msgtime, $trans, $assetid);
-          $deltas[$acct][$assetid] = bcadd(@$deltas[$acct][$assetid], $amount);
-          // And we have to pay for storage on the amount.
-        } elseif ($outfee) {
-          // For accepted spends, we get our tranfee back
-          $deltas[$t->MAIN][$outfee[$t->ASSET]] =
-            bcadd(@$deltas[$t->MAIN][$outfee[$t->ASSET]], $outfee[$t->AMOUNT]);
-        }
-        $outmsg = $out[$t->MSG];
-        if ($outmsg) $hist .= ".$inmsg.$outmsg";
-      } else {
-        return "Unrecognized inbox request: $inreq";
-      }
-    }
-
-    $pmsg = $this->custmsg($t->PROCESSINBOX, $bankid, $trans, $timelist);
-    $msgs[$pmsg] = true;
-
-    if ($msg) $msg = "$pmsg.$msg";
-    else $msg = $pmsg;
-
-    if ($this->keephistory) $history = "$pmsg$hist";
-
-    $acctbals = array();
-
-    // Compute fees for new balance files
-    $fees = $this->getfees();
-    if (is_string($fees)) return $fees;
-    $tranfee = $fees[$t->TRANFEE];
-    $feeasset = $tranfee[$t->ASSET];
-    foreach ($deltas as $acct => $amounts) {
-      foreach ($amounts as $asset => $amount) {
-        $oldamount = @$balance[$acct][$asset][$t->AMOUNT];
-        if (bccomp($oldamount, 0) != 0) {
-          $oldtime = $balance[$acct][$asset][$t->TIME];
-          $this->do_storagefee($charges, $oldamount, $oldtime, $trans, $asset);
-          $balance[$acct][$asset][$t->AMOUNT] = $oldamount;
-        }
-        if ((!$oldamount) && !($oldamount==="0")) {
-          $deltas[$t->MAIN][$feeasset] = bcsub($deltas[$t->MAIN][$feeasset], 1);
-        }
-      }
-    }
-
-    // Create balance, outboxhash, and balancehash messages
+      ;; Create balance, outboxhash, and balancehash messages
     foreach ($deltas as $acct => $amounts) {
       foreach ($amounts as $asset => $amount) {
         $oldamount = @$balance[$acct][$asset][$t->AMOUNT];
@@ -1767,6 +1772,7 @@
 
     return false;
   }
+
 
   // Tell server to move storage fees to inbox
   // You need to call getinbox to see the new data (via its call to sync_inbox).
