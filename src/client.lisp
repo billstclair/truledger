@@ -1431,7 +1431,7 @@
                       ((equal request $TRANFEE)
                        (unless last-item
                          (error "tranfee without matching spend"))
-                       (push tranfee (inbox-items last-item)))
+                       (push item (inbox-items last-item)))
                       (t (push item res)
                          (setq last-item nil)))
               (when (and includeraw (eq (car res) item))
@@ -1577,7 +1577,9 @@
                      (amount (inbox-amount in)))
                  (unless (equal msg "") (dotcat msg "."))
                  (cond ((equal request $SPENDACCEPT)
-                        (do-storagefee client charges amount msgtime trans assetid)
+                        (setq amount
+                              (do-storagefee
+                                  client charges amount msgtime trans assetid))
                         (setf (gethash assetid delta)
                               (bcadd (gethash assetid delta 0) amount))
                         (let ((smsg (custmsg client $SPENDACCEPT bankid
@@ -1612,7 +1614,9 @@
                         ;; For rejected spends, we get our money back
                         (let ((assetid (outbox-assetid outspend))
                               (amount (outbox-amount outspend)))
-                          (do-storagefee client charges amount msgtime trans assetid)
+                          (setq amount
+                                (do-storagefee
+                                    client charges amount msgtime trans assetid))
                           (setf (gethash assetid delta)
                                 (bcadd (gethash assetid delta 0) amount))))
                        (outfee
@@ -1768,213 +1772,191 @@
         (let ((key (userhistorykey client)))
           (setf (db-get db key trans) history)))))))
 
-#||
-;; Continue here.
+(defmethod storagefees ((client client))
+  "Tell server to move storage fees to inbox
+   You need to call getinbox to see the new data (via its call to sync_inbox)."
+  (let ((db (db client)))
+    (require-current-bank client "In storagefees(): Bank not set")
+    (init-bank-accts client)
+    (with-db-lock (db (userreqkey client))
+      (let* ((bankid (bankid client))
+             (server (server client))
+             (req (getreq client))
+             (msg (custmsg client $STORAGEFEES bankid req))
+             (bankmsg (process server msg))
+             (args (client-unpack-bankmsg client bankmsg))
+             (request (getarg $REQUEST args)))
+        (unless (equal request $ATSTORAGEFEES)
+          (error "Unknown response type: ~s" request))))))
 
-  // Tell server to move storage fees to inbox
-  // You need to call getinbox to see the new data (via its call to sync_inbox).
-  function storagefees() {
-    $db = $this->db;
-    $parser = $this->parser;
+(defstruct assetinfo
+  percent
+  fraction
+  storagefee
+  digits)
 
-    if (!$this->current_bank()) return "In storagefees(): Bank not set";
-    if ($err = $this->init-bank-accts()) return $err;
+(defmethod do-storagefee ((client client) charges amount msgtime time assetid)
+  "Add storage fee for AMOUNT/MSGTIME to
+   (STORAGEINFO-STORAGEFEE (GETHASH ASSETID CHARGES))
+   and set (STORAGEINFO-FRACTION (GETHASH ASSETID CHARGES))
+   to the fractional balance.
+   Return the updated AMOUNT."
+  (when (> (bccomp amount 0) 0)
+    (let ((assetinfo (gethash assetid charges))
+          (digits nil)
+          (fracfee nil))
+      (unless assetinfo
+        (multiple-value-bind (percent fraction fractime)
+            (client-storage-info client assetid)
+        (when percent
+          (setq digits (fraction-digits percent)
+                fracfee 0)
+          (when fraction
+            (multiple-value-setq (fracfee fraction)
+              (storage-fee fraction fractime time percent digits))))
+        (setf assetinfo (make-assetinfo
+                         :percent percent
+                         :fraction fraction
+                         :storagefee fracfee
+                         :digits digits)
+              (gethash assetid charges) assetinfo)))
+      (let ((percent (assetinfo-percent assetinfo)))
+        (when percent
+          (let ((digits (assetinfo-digits assetinfo))
+                (storagefee (assetinfo-storagefee assetinfo))
+                (fraction (assetinfo-fraction assetinfo))
+                fee)
+            (wbp (digits)
+              (multiple-value-setq (fee amount)
+                (storage-fee amount msgtime time percent digits))
+              (setf (assetinfo-storagefee assetinfo) (bcadd storagefee fee)
+                    amount (bcsub amount fee))
+              (multiple-value-setq (amount fraction)
+                (normalize-balance amount fraction digits))
+              (setf (assetinfo-fraction assetinfo) fraction)))))))
+  amount)
 
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->storagefees_internal();
-    $db->unlock($lock);
+(defstruct outbox
+  time
+  request
+  assetid
+  assetname
+  amount
+  formattedamount
+  note
+  items
+  coupons)
 
-    return $res;
-  }
+(defmethod getoutbox ((client client) &optional includeraw)
+  "Get the outbox contents.
+   Returns an error string or the outbox contents as a list of
+   OUTBOX instances
+   TIME is the timestamp of the outbox entry.
+   REQUEST is $SPEND, $TRANFEE, or $COUPONENVELOPE.
+   ASSETID is the ID of the asset transferred.
+   ASSETNAME is the name of ASSETID.
+   AMOUNT is the amount transferred.
+   FORMATTEDAMOUNT is amount formatted for output.
+   NOTE is the transfer note, omitted for tranfee.
+   ITEMS is a list of OUTBOX instances for the fees for this spend.
+   COUPONs is a list of coupons in this spend."
+  (let ((db (db client)))
+    (require-current-bank client "In getoutbox(): Bank not set")
+    (init-bank-accts client)
+    (with-db-lock (db (userreqkey client))
+      (getoutbox-internal client includeraw))))
 
-  function storagefees_internal() {
-    $t = $this->t;
-    $bankid = $this->bankid;
-    $server = $this->server;
+(defmethod getoutbox-internal ((client client) &optional includeraw)
+  (let* ((db (db client))
+         (parser (parser client))
+         (bankid (bankid client))
+         (res nil)
+         (msgs (make-hash-table :test 'eq))
+         (key (useroutboxkey client))
+         (outbox (db-contents key)))
+    (dolist (time outbox)
+      (let* ((msg (db-get db key time))
+             (reqs (parse parser msg t))
+             (item nil)
+             (items nil)
+             (coupons nil))
+        (dolist (req reqs)
+          (let* ((args (match-bankreq client req))
+                 request
+                 (incnegs t)
+                 (assetid (getarg $ASSET args))
+                 (amount (getarg $AMOUNT args))
+                 assetname
+                 formattedamount
+                 id
+                 outbox)
+            (unless (equal request $COUPONENVELOPE)
+              (setq args (getarg $MSG args))
+              (unless (equal (getarg $TIME args) time)
+                (error "Outbox message timestamp mismatch")))
+            (setq id (getarg $ID args)
+                  request (getarg $REQUEST args))
+            (when (equal id bankid) (setq incnegs nil))
+            (when assetid
+              (let ((asset (getasset client assetid)))
+                (setq assetname (asset-name asset)
+                      formattedamount (format-asset-value
+                                       client amount asset incnegs))))
+            (setq outbox
+                  (make-outbox
+                   :time time
+                   :request request
+                   :assetid assetid
+                   :assetname assetname
+                   :amount amount
+                   :formattedamount formattedamount))
 
-    $req = $this->getreq();
-    $msg = $this->custmsg($t->STORAGEFEES, $bankid, $req);
+            (cond ((equal request $SPEND)
+                   (when item
+                     (error "More than on spend message in an outbox item")
+                     (setf item outbox
+                           (outbox-note item) (getarg $NOTE args))))
+                  ((equal request $TRANFEE)
+                   (push outbox items))
+                  ((equal request $COUPONENVELOPE)
+                   (let* ((coupon (privkey-decrypt
+                                   (or (getarg $ENCRYPTEDCOUPON args)
+                                       (error "No encryptedcoupon in a coupon"))
+                                   (privkey client)))
+                          (args (client-unpack-bankmsg client coupon $COUPON))
+                          (url (getarg $BANKURL args))
+                          (coupon-number (getarg $COUPON args)))
+                     (push (format nil "[~a, ~a]" url coupon-number)
+                           coupons)))
+                  (t (error "Bad request in outbox: ~s" request)))))
+        (unless item
+          (error "No spend found in outbox item"))
+        (setf (outbox-items item) items
+              (outbox-coupons item) coupons)
+        (push item res)
+        (when includeraw
+          (setf (gethash item msgs) msg))))
+    (sort res (lambda (x y) (< (bccomp x y) 0))
+          :key 'outbox-time)))
 
-    $bankmsg = $server->process($msg);
+(defmethod redeem ((client client) coupon)
+  "Redeem a coupon
+   If successful, add an inbox entry for the coupon spend and return false.
+   If fails, return error message.
+   Needs an option to process the coupon, intead of just adding it to
+   the inbox."
+  (let* ((bankid (bankid client))
+         (pubkey (or (db-get (pubkeydb client) bankid)
+                     (error "Can't get bank public key")))
+         (coupon (pubkey-encrypt coupon pubkey))
+         (msg (sendmsg client $COUPONENVELOPE bankid coupon)))
+    (client-unpack-bankmsg client msg $ATCOUPONENVELOPE))
+  nil)
 
-    $args = $this->unpack_bankmsg($bankmsg);
-    if (is_string($args)) return "Server error: $args";
-    $request = $args[$t->REQUEST];
-    if ($request != $t->ATSTORAGEFEES) return "Unknown response type: $request";
-
-    return false;
-  }
-
-  // Add storage fee for $amount/$msgtime to $charges[$assetid]['storagefee']
-  // and set $charges[$assetid]['fraction'] to the fractional balance.
-  function do_storagefee(&$charges, &$amount, $msgtime, $time, $assetid) {
-    $u = $this->u;
-
-    if (bccomp($amount, 0) > 0) {
-      $assetinfo = @$charges[$assetid];
-      if (!$assetinfo) {
-        $assetinfo = array();
-        $percent = $this->storageinfo($assetid, $fraction, $fractime);
-        if ($percent) {
-          $digits = $u->fraction_digits($percent);
-          if ($fraction) {
-            $fracfee = $u->storagefee($fraction, $fractime, $time, $percent, $digits);
-          } else $fracfee = 0;
-          $assetinfo['percent'] = $percent;
-          $assetinfo['fraction'] = bcsub($fraction, $fracfee, $digits);
-          $assetinfo['storagefee'] = $fracfee;
-          $assetinfo['digits'] = $digits;
-        }
-        $charges[$assetid] = $assetinfo;
-      }
-      $percent = @$assetinfo['percent'];
-      if ($percent) {
-        $digits = $assetinfo['digits'];
-        $fee = $u->storagefee($amount, $msgtime, $time, $percent, $digits);
-        $storagefee = bcadd($assetinfo['storagefee'], $fee, $digits);
-        $assetinfo['storagefee'] = $storagefee;
-        $amount = bcsub($amount, $fee, $digits);
-        $fraction = $assetinfo['fraction'];
-        $u->normalize_balance($amount, $fraction, $digits);
-        $assetinfo['fraction'] = $fraction;
-        $charges[$assetid] = $assetinfo;
-      }
-    }
-  }
-
-  // Get the outbox contents.
-  // Returns an error string or the outbox contents as an array of
-  // of the form:
-  //
-  //   array($time => array(array($t->REQUEST => $request,
-  //                              $t->TIME => $time,
-  //                              $t->ID => $recipientid,
-  //                              $t->NOTE => $note,
-  //                              $t->ASSET => $assetid,
-  //                              $t->ASSETNAME => $assetname,
-  //                              $t->AMOUNT => $amount,
-  //                              $t->FORMATTEDAMOUNT => formattedamount),
-  //                        ...),
-  //         ...)
-  //
-  // $time is the timestamp of the outbox entry
-  // $request is $t->SPEND, $t->TRANFEE, or $t->COUPONENVELOPE
-  // $recipientid is the recipient for spend, or omitted for tranfee
-  // $assetid is the ID of the asset transferred
-  // $assetname is the name of $assetid
-  // $amount is the amount transferred
-  // $formattedamount is $amount formatted for output
-  // $note is the transfer note, omitted for tranfee
-  //
-  // If $request is $t->COUPONENVELOPE, then $t->COUPON indexes the coupon itself,
-  // as text, and the rest of the fields are unpopulated.
-  function getoutbox() {
-    $db = $this->db;
-
-    if (!$this->current_bank()) return "In getoutbox(): Bank not set";
-    if ($err = $this->init-bank-accts()) return $err;
-
-    $lock = $db->lock($this->userreqkey());
-    $res = $this->getoutbox_internal();
-    $db->unlock($lock);
-
-    return $res;
-  }
-
-  function getoutbox_internal($includeraw=false) {
-    $t = $this->t;
-    $db = $this->db;
-    $parser = $this->parser;
-
-    $res = array();
-    $key = $this->useroutboxkey();
-    $outbox = $db->contents($key);
-    foreach ($outbox as $time) {
-      $msg = $db->get("$key/$time");
-      $reqs = $parser->parse($msg, true);
-      $items = array();
-      if (!$reqs) return "In getoutbox, parse error: " . $parser->errmsg;
-      foreach ($reqs as $req) {
-        $args = $this->match_bankreq($req);
-        if (is_string($args)) return $args;
-        $request = $args[$t->REQUEST];
-        if ($request != $t->COUPONENVELOPE) {
-          $args = $args[$t->MSG];
-          $request = $args[$t->REQUEST];
-          if ($args[$t->TIME] != $time) {
-            return "Outbox message timestamp mismatch";
-          }
-        }
-        $item = array();
-        $item[$t->REQUEST] = $request;
-        $item[$t->TIME] = $time;
-        $incnegs = false;
-        if ($request == $t->SPEND) {
-          $item[$t->ID] = $args[$t->ID];
-          $item[$t->NOTE] = @$args[$t->NOTE];
-          $incnegs = ($args[$t->ID] != $this->bankid);
-        } elseif ($request == $t->TRANFEE) {
-          // Nothing special to do here
-        } elseif ($request == $t->COUPONENVELOPE) {
-          $coupon = $args[$t->ENCRYPTEDCOUPON];
-          if ($coupon) {
-            $coupon = $this->ssl->privkey_decrypt($coupon, $this->privkey);
-            $args = $this->unpack_bankmsg($coupon, $t->COUPON);
-            if (is_string($args)) $coupon = "Coupon malformed: $coupon";
-            else {
-              $url = $args[$t->BANKURL];
-              $coupon_number = $args[$t->COUPON];
-              $coupon = "[$url, $coupon_number]";
-            }
-            $item[$t->COUPON] = $coupon;
-          }
-        } else {
-          return "Bad request in outbox: $request";
-        }
-        $assetid = $args[$t->ASSET];
-        $amount = $args[$t->AMOUNT];
-        if ($assetid) {
-          $asset = $this->getasset($assetid);
-          $item[$t->ASSET] = $assetid;
-          $item[$t->AMOUNT] = $amount;
-          if (!is_string($asset)) {
-            $item[$t->ASSETNAME] = $asset[$t->ASSETNAME];
-            $item[$t->FORMATTEDAMOUNT] =
-              $this->format_asset_value($amount, $asset, $incnegs);
-          }
-        }
-        $items[] = $item;
-        if ($includeraw) $items[$t->MSG] = $msg;
-      }
-      $res[$time] = $items;
-    }
-
-    uksort($res, 'bccomp');
-    return $res;
-  }
-
-  // Redeem a coupon
-  // If successful, add an inbox entry for the coupon spend and return false.
-  // If fails, return error message.
-  // Needs an option to process the coupon, intead of just adding it to
-  // the inbox.
-  function redeem($coupon) {
-    $t = $this->t;
-    $bankid = $this->bankid;
-    $ssl = $this->ssl;
-
-    $pubkey = $this->pubkeydb->get($bankid);
-    if (!$pubkey) return "Can't get bank public key";
-    
-    $coupon = $ssl->pubkey_encrypt($coupon, $pubkey);
-    $msg = $this->sendmsg($t->COUPONENVELOPE, $bankid, $coupon);
-    $args = $this->unpack_bankmsg($msg, $t->ATCOUPONENVELOPE);
-    if (is_string($args)) return "Redeem: $args";
-    return false;
-  }
-
-  // End of API methods
-||#
+;;;
+;;; End of API methods
+;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun passphrase-hash (passphrase)
   (sha1 (trim passphrase)))
