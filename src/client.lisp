@@ -1539,9 +1539,10 @@
         (bankid (bankid client))
         (server (server client))
         (parser (parser client))
+        (trans (client-gettime client))
         inbox inbox-msgs
         outbox outbox-msgs
-        (balance (getbalance-internal client t false))
+        (balance (getbalance-internal client t nil))
         (timelist "")
         (deltas (make-equal-hash)) ;(acct => (asset => delta, ...), ...) 
         (outbox-deletions nil)
@@ -1563,7 +1564,6 @@
                      (error "No inbox entry for time: ~s" time)))
              (fee (car (inbox-items in))) ;change this when I add multiple fees
              (inmsg (and inbox-msgs (gethash in inbox-msgs)))
-             (trans (client-gettime client))
              (inreq (inbox-request in))
              (delta (get-inited-hash acct deltas)))
 
@@ -1595,9 +1595,9 @@
                         (let ((smsg (custmsg client $SPENDREJECT bankid
                                              msgtime id note)))
                           (setf (gethash smsg msgs) t)
-                          (dotcat msg smsg))
-                        (when inmsg
-                          (dotcat hist "." smsg "." inmsg)))
+                          (dotcat msg smsg)
+                          (when inmsg
+                            (dotcat hist "." smsg "." inmsg))))
                        (t (error "Illegal request for spend: ~s" request)))))
               ((or (equal inreq $SPENDACCEPT) (equal inreq $SPENDREJECT))
                (let* ((msgtime (inbox-msgtime in))
@@ -1626,7 +1626,10 @@
               (t "Unrecognized inbox request: ~s" inreq))))
 
     (let ((pmsg (custmsg client $PROCESSINBOX bankid trans timelist))
-          (acctbals (make-equal-hash)))
+          (acctbals (make-equal-hash))
+          (outboxhash nil)
+          (balancehash nil)
+          (fracmsgs nil))
       (setf (gethash pmsg msgs) t)
       (setq msg (if (equal msg "") pmsg (dotcat msg "." pmsg)))
       (when (keep-history-p client)
@@ -1641,7 +1644,7 @@
            for bals = (cdr (assoc acct balance :test 'equal))
            do
            (loop
-              for assetid being the hash-key using (hash-value amount) of amounts
+              for assetid being the hash-key of amounts
               for oldbal = (find assetid bals
                                  :test 'equal :key 'balance-assetid)
               for oldamount = (and oldbal (balance-amount oldbal))
@@ -1655,124 +1658,118 @@
                   (setf (gethash feeasset delta-main)
                         (bcsub (gethash feeasset delta-main 0) 1)))))))
 
-)))
+      ;; Create balance, outboxhash, and balancehash messages
+      (loop
+         for acct being the hash-key using (hash-value amounts) of deltas
+         for bals = (cdr (assoc acct balance :test 'equal))
+         for acctbal = (get-inited-hash acct acctbals)
+         do
+         (loop
+            for assetid being the hash-key using (hash-value amount) of amounts
+            for bal = (find assetid bals :test 'equal :key 'balance-assetid)
+            for oldamount = (if bal (balance-amount bal) 0)
+            for sum = (bcadd oldamount amount)
+            for balmsg = (custmsg client $BALANCE bankid trans assetid sum acct)
+            do
+              (setf (gethash balmsg msgs) t
+                    (gethash assetid acctbal) balmsg)
+              (dotcat msg "." balmsg)))
+
+      (when outbox-deletions
+        (setf outboxhash (outboxhashmsg client trans nil outbox-deletions)
+              (gethash outboxhash msgs) t)
+        (dotcat msg "." outboxhash))
+
+      (setf balancehash (balancehashmsg client trans acctbals)
+            (gethash balancehash msgs) t)
+      (dotcat msg "." balancehash)
+
+      ;; Add storage and fraction messages
+      (loop
+         for assetid being the hash-key using (hash-value assetinfo) of charges
+         for percent = (assetinfo-percent assetinfo)
+         do
+           (when percent
+             (let* ((storagefee (assetinfo-storagefee assetinfo))
+                    (fraction (assetinfo-fraction  assetinfo))
+                    (storagefeemsg (custmsg client $STORAGEFEE bankid
+                                            trans assetid storagefee))
+                    (fracmsg (custmsg client $FRACTION bankid
+                                      trans assetid fraction)))
+               (setf (gethash storagefeemsg msgs) t
+                     (gethash fracmsg msgs) t
+                     (gethash assetid fracmsgs) fracmsg)
+               (dotcat msg "." storagefeemsg "." fracmsg))))
+
+    ;; Send request to server
+    (setq msg (process server msg))
+
+    ;; Validate return from server
+    (let* ((reqs (parse parser msg t)))
+      (handler-case (match-bankreq client (car reqs) $ATPROCESSINBOX)
+        (error ()
+          (let ((args
+                 (handler-case (match-bankreq client (car reqs))
+                   (error (c)
+                     (unless recursive
+                       (with-verify-sigs-p (parser t)
+                         ;; Force reload of balances and outbox
+                         (forceinit client)
+                         ;; Force reload of assets
+                         (loop
+                            for assetid being the hash-keys of
+                            charges
+                            do
+                            (reload-asset-p client assetid)))
+                       (return-from processinbox-internal
+                         (processinbox-internal client directions t)))
+                     (error "Error from processinbox request: ~a" c)))))
+            (error "Processinbox request returned unknown message type: ~s"
+                   (getarg $REQUEST args)))))
+      (dolist (req reqs)
+        (let* ((msg (get-parsemsg req))
+               (args (match-bankreq client req))
+               (m (trim (get-parsemsg (getarg $MSG args))))
+               (msgm (gethash m msgs)))
+          (unless msgm (error "Returned message wasn't sent: ~s" m))
+          (when (stringp msgm) (error "Duplicate returned message: ~s" m))
+          (setf (gethash m msgs) msg)))
+
+      (loop
+         for m being the hash-key using (hash-value msg) of msgs
+         do
+           (when (eq msg t)
+             (error "Message not returned from processinbox: ~s" m)))
+
+      ;; Commit to database
+      (loop
+         for acct being the hash-key using (hash-value bals) of acctbals
+         do
+         (loop
+            for asset being the hash-key using (hash-value balmsg) of bals
+            do
+              (setf (db-get db (userbalancekey client acct asset))
+                    (gethash balmsg msgs))))
+
+      (loop
+         for assetid being the hash-key using (hash-value fracmsg) of fracmsgs
+         for key = (userfractionkey client assetid)
+         do
+           (setf (db-get db key) (gethash fracmsg msgs)))
+
+      (when outboxhash
+        (dolist (outbox-time outbox-deletions)
+          (setf (db-get db (useroutboxkey client outbox-time)) nil))
+        (setf (db-get db (useroutboxhashkey client)) (gethash outboxhash msgs)))
+
+      (setf (db-get db (userbalancehashkey client)) (gethash balancehash msgs))
+
+      (when history
+        (let ((key (userhistorykey client)))
+          (setf (db-get db key trans) history)))))))
 
 #||
 ;; Continue here.
-
-      ;; Create balance, outboxhash, and balancehash messages
-    foreach ($deltas as $acct => $amounts) {
-      foreach ($amounts as $asset => $amount) {
-        $oldamount = @$balance[$acct][$asset][$t->AMOUNT];
-        $amount = bcadd($oldamount, $amount);
-        $balmsg = $this->custmsg($t->BALANCE, $bankid, $trans, $asset, $amount, $acct);
-        $msgs[$balmsg] = true;
-        $acctbals[$acct][$asset] = $balmsg;
-        $msg = $msg . ".$balmsg";
-      }
-    }
-
-    if (count($outbox_deletions) > 0) {
-      $outboxhash = $this->outboxhashmsg($trans, false, $outbox_deletions);
-      $msgs[$outboxhash] = true;
-      $msg = $msg . ".$outboxhash";
-    } else $outboxhash = false;
-
-    $balancehash = $this->balancehashmsg($trans, $acctbals);
-    $msgs[$balancehash] = true;
-    $msg = $msg . ".$balancehash";
-
-    // Add storage and fraction messages
-    $fracmsgs = array();
-    foreach ($charges as $assetid => $assetinfo) {
-      $percent = @$assetinfo['percent'];
-      if ($percent) {
-        $storagefee = $assetinfo['storagefee'];
-        $fraction = $assetinfo['fraction'];
-        $storagefeemsg = $this->custmsg($t->STORAGEFEE, $bankid, $trans, $assetid, $storagefee);
-        $msgs[$storagefeemsg] = true;
-        $fracmsg = $this->custmsg($t->FRACTION, $bankid, $trans, $assetid, $fraction);
-        $msgs[$fracmsg] = true;
-        $msg .= ".$storagefeemsg.$fracmsg";
-        $fracmsgs[$assetid] = $fracmsg;
-      }
-    }
-
-    // Send request to server
-    $msg = $server->process($msg);
-
-    // Validate return from server
-    $reqs = $parser->parse($msg, true);
-    if (!$reqs) return "Can't parse bank return from processinbox: $msg";
-    $args = $this->match_bankreq($reqs[0], $t->ATPROCESSINBOX);
-    if (is_string($args)) {
-      $args = $this->match_bankreq($reqs[0]);
-      if (is_string($args)) {
-        if (!$recursive) {
-
-          $parser->verifysigs(true);
-
-          // Force reload of balances and outbox
-          if ($err = $this->forceinit()) return $err;
-          // Force reload of assets
-          foreach ($charges as $assetid => $assetinfo) {
-            $this->reload_asset_p($assetid);
-          }
-
-          $parser->verifysigs(false);
-
-          return $this->processinbox_internal($directions, true);
-        }
-        return "Error from processinbox request: $args";
-      }
-      return "Processinbox request returned unknown message type: " . $request;
-    }
-
-    foreach ($reqs as $req) {
-      $msg = $parser->get_parsemsg($req);
-      $args = $this->match_bankreq($req);
-      if (is_string($args)) return "Error in processinbox response: $args";
-      $m = $args[$t->MSG];
-      if (!$m) return "No wrapped message in processinbox return: $msg";
-      $m = trim($parser->get_parsemsg($m));
-      if (!$msgs[$m]) return "Returned message wasn't sent: '$m'";
-      if (is_string($msgs[$m])) return "Duplicate returned message: '$m'";
-      $msgs[$m] = $msg;
-    }
-
-    foreach ($msgs as $m => $msg) {
-      if ($msg === true) return "Message not returned from processinbox: $m";
-    }
-
-    // Commit to database
-    foreach ($acctbals as $acct => $bals) {
-      foreach ($bals as $asset => $balmsg) {
-        $db->put($this->userbalancekey($acct, $asset), $msgs[$balmsg]);
-      }
-    }
-
-    foreach($fracmsgs as $assetid => $fracmsg) {
-      $key = $this->userfractionkey($assetid);
-      $db->put($key, $msgs[$fracmsg]);
-    }
-
-    if ($outboxhash) {
-      foreach($outbox_deletions as $outbox_time) {
-        $db->put($this->useroutboxkey($outbox_time), '');
-      }
-      $db->put($this->useroutboxhashkey(), $msgs[$outboxhash]);
-    }
-
-    $db->put($this->userbalancehashkey(), $msgs[$balancehash]);
-
-    if ($history) {
-      $key = $this->userhistorykey();
-      $db->put("$key/$trans", $history);
-    }
-
-    return false;
-  }
-
 
   // Tell server to move storage fees to inbox
   // You need to call getinbox to see the new data (via its call to sync_inbox).
