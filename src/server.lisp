@@ -5,7 +5,7 @@
 ;;; The Trubanc server
 ;;;
 
-(in-package :trubanc)
+(in-package :trubanc-server)
 
 (defun make-server (dir passphrase &key (bankname "") (bankurl ""))
   "Create a Trubanc server instance."
@@ -60,8 +60,6 @@
    (debugstr :type string
              :initform ""
              :accessor debugstr)))
-
-(defconstant $UNPACK-REQS-KEY "unpack-reqs")
 
 (defmethod initialize-instance :after ((server server) &key db passphrase)
   (let ((pubkeydb (db-subdir db $PUBKEY)))

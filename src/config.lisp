@@ -95,10 +95,10 @@
     (when dir
       (setq server-www-dir
             (remove-trailing-separator (namestring (truename dir))))))
-  (let* ((server-db-dir (fsdb-dir (db server)))
-         (privkey (privkey server))
-         (bankname (bankname server))
-         (bankurl (bankurl server))
+  (let* ((server-db-dir (fsdb-dir (trubanc-server:db server)))
+         (privkey (trubanc-server:privkey server))
+         (bankname (trubanc-server:bankname server))
+         (bankurl (trubanc-server:bankurl server))
          (config (sign-config `(:bankname ,bankname
                                 :bankurl ,bankurl
                                 :server-db-dir ,server-db-dir
@@ -116,8 +116,8 @@
          (server-www-dir (get-server-www-dir config))
          server)
     (unless config (error "Couldn't read server config file"))
-    (setq server (make-server db-dir passphrase))
-    (unless (verify-config config (privkey server))
+    (setq server (trubanc-server:make-server db-dir passphrase))
+    (unless (verify-config config (trubanc-server:privkey server))
       (error "Failed to verify configuration signature"))
     (trubanc-web-server server :www-dir server-www-dir :port server-port)
     server-port))
@@ -261,9 +261,10 @@
           ((not (and port (> port 256)))
            (error "Server Port must be an integer > 256"))
           (t (let* ((passphrase *config-server-passphrase*)
-                    (server (make-server server-db-dir passphrase
-                                         :bankname bankname
-                                         :bankurl bankurl)))
+                    (server (trubanc-server:make-server
+                             server-db-dir passphrase
+                             :bankname bankname
+                             :bankurl bankurl)))
                (write-server-config server
                                     :server-port port
                                     :server-www-dir server-www-dir)

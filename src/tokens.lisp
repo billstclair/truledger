@@ -5,7 +5,7 @@
 ;;; tokenize the protocol strings
 ;;;
 
-(in-package :trubanc)
+(in-package :trubanc-tokens)
 
 ;; db file & directory names
 (defconstant $TIME "time")
@@ -109,6 +109,9 @@
 (defconstant $FORMATTEDAMOUNT "formattedamount")
 (defconstant $MSGTIME "msgtime")
 (defconstant $ATREQUEST "@request")
+
+;; Marker in hash tables
+(defconstant $UNPACK-REQS-KEY "unpack-reqs")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

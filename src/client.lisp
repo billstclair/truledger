@@ -5,7 +5,7 @@
 ;;; A Trubanc client API. Talks the protocol of server.lisp
 ;;;
 
-(in-package :trubanc)
+(in-package :trubanc-client)
 
 (defun make-client (dir)
   (make-instance 'client :db (make-fsdb dir)))
@@ -261,7 +261,7 @@
     (setq coupon (trim coupon))
     (if (eql #\[ (aref coupon 0))
         (setq coupon-number (nth-value 2 (parse-coupon coupon)))
-        (let ((args (client-unpack-bankmsg client coupon $COUPON bankid)))
+        (let ((args (unpack-bankmsg client coupon $COUPON bankid)))
           (setq coupon-number (getarg $COUPON args))))
     (unless (coupon-number-p coupon-number)
       (error "Malformed coupon number: ~s" coupon-number))
@@ -435,7 +435,7 @@
     (let* ((msg (process server (custmsg client $ID bankid id)))
            args)
       (handler-case
-          (setq args (client-unpack-bankmsg client msg $ATREGISTER))
+          (setq args (unpack-bankmsg client msg $ATREGISTER))
         (error ()
           ;; Bank doesn't know us. Register with bank.
           (setq msg (apply 'custmsg client $REGISTER bankid (pubkey id)
@@ -448,7 +448,7 @@
                 (dotcat msg "." (custmsg client $COUPONENVELOPE bankid
                                          (pubkey-encrypt coupon pubkey))))))
           (setq msg (process server msg)
-                args (client-unpack-bankmsg msg $ATREGISTER))))
+                args (unpack-bankmsg msg $ATREGISTER))))
 
       ;; Didn't fail. Notice registration here
       (setq args (getarg $MSG args))
@@ -574,7 +574,7 @@
           (setq pubkeysig (sendmsg client $ID bankid id)
                 needstore t))
         (let ((args (ignore-errors
-                      (client-unpack-bankmsg client pubkeysig $ATREGISTER))))
+                      (unpack-bankmsg client pubkeysig $ATREGISTER))))
           (when args
             (setq args (getarg $MSG args))
             (let ((pubkey (getarg $PUBKEY args))
@@ -633,7 +633,7 @@
       (let ((msg (unless forceserver (db-get db key)))
             args)
         (cond (msg
-               (setq args (client-unpack-bankmsg client msg $ATASSET)))
+               (setq args (unpack-bankmsg client msg $ATASSET)))
               (t
                (setq args (getasset-internal client assetid key))))
         (let ((req (cadr (getarg $UNPACK-REQS-KEY args)))
@@ -659,7 +659,7 @@
          (req (getreq client))
          (msg (sendmsg client $GETASSET bankid req assetid))
          (args (with-verify-sigs-p ((parser client) t)
-                 (client-unpack-bankmsg client msg $ATASSET)))
+                 (unpack-bankmsg client msg $ATASSET)))
          (msgargs (getarg $MSG args)))
     (unless (and (equal (getarg $REQUEST  msgargs) $ASSET)
                  (equal (getarg $BANKID msgargs) bankid)
@@ -680,7 +680,7 @@
           (error "Can't add asset unless bank is set"))
 
         (let* ((assetid (assetid id scale precision assetname))
-               (time (client-gettime client))
+               (time (gettime client))
                (tranfee (getfees client))
                (tokenid (fee-assetid tranfee))
                (msg (custmsg client $ASSET bankid assetid scale precision assetname))
@@ -760,13 +760,13 @@
     (let ((msg (unless reload (tranfee client))))
       (unless msg
         (setq msg (getfees-internal client)))
-      (let* ((args (client-unpack-bankmsg client msg $TRANFEE))
+      (let* ((args (unpack-bankmsg client msg $TRANFEE))
              (tranfee (make-fee :type $TRANFEE
                                 :assetid (getarg $ASSET args)
                                 :amount (getarg $AMOUNT args)))
              regfee)
         (setq msg (regfee client)
-              args (client-unpack-bankmsg client msg $REGFEE)
+              args (unpack-bankmsg client msg $REGFEE)
               regfee (make-fee :type $REGFEE
                                :assetid (getarg $ASSET args)
                                :amount (getarg $AMOUNT args)))
@@ -882,7 +882,7 @@
                  (msg (db-get db key)))
             (when msg
               (let* ((args (getarg $MSG
-                                   (client-unpack-bankmsg client msg $ATFRACTION)))
+                                   (unpack-bankmsg client msg $ATFRACTION)))
                      (fraction (getarg $AMOUNT args))
                      (asset (getasset client assetid))
                      (scale (asset-scale asset))
@@ -911,7 +911,7 @@
         (dolist (assetid assetids)
           (let ((msg (db-get db key assetid)))
             (when msg
-              (let* ((args (client-unpack-bankmsg client msg $STORAGEFEE))
+              (let* ((args (unpack-bankmsg client msg $STORAGEFEE))
                      (time (getarg $TIME args))
                      (assetid (getarg $ASSET args))
                      (amount (getarg $AMOUNT args))
@@ -1005,7 +1005,7 @@
     (unless (is-numeric-p oldamount t)
       (error "Error getting balance for asset in acct ~s: ~s" acct oldamount))
 
-    (setq time (client-gettime client))
+    (setq time (gettime client))
 
     (multiple-value-setq (percent fraction fractime)
       (client-storage-info client assetid))
@@ -1284,7 +1284,7 @@
                        (and note (list note))))
       (let* ((bankmsg (process server msg))
              (args (with-verify-sigs-p (parser t)
-                     (client-unpack-bankmsg client bankmsg $INBOX)))
+                     (unpack-bankmsg client bankmsg $INBOX)))
              (time (getarg $TIME args))
              (args2 (getarg $MSG args))
              (msg2 (get-parsemsg args2)))
@@ -1539,7 +1539,7 @@
         (bankid (bankid client))
         (server (server client))
         (parser (parser client))
-        (trans (client-gettime client))
+        (trans (gettime client))
         inbox inbox-msgs
         outbox outbox-msgs
         (balance (getbalance-internal client t nil))
@@ -1784,7 +1784,7 @@
              (req (getreq client))
              (msg (custmsg client $STORAGEFEES bankid req))
              (bankmsg (process server msg))
-             (args (client-unpack-bankmsg client bankmsg))
+             (args (unpack-bankmsg client bankmsg))
              (request (getarg $REQUEST args)))
         (unless (equal request $ATSTORAGEFEES)
           (error "Unknown response type: ~s" request))))))
@@ -1923,7 +1923,7 @@
                                    (or (getarg $ENCRYPTEDCOUPON args)
                                        (error "No encryptedcoupon in a coupon"))
                                    (privkey client)))
-                          (args (client-unpack-bankmsg client coupon $COUPON))
+                          (args (unpack-bankmsg client coupon $COUPON))
                           (url (getarg $BANKURL args))
                           (coupon-number (getarg $COUPON args)))
                      (push (format nil "[~a, ~a]" url coupon-number)
@@ -1950,7 +1950,7 @@
                      (error "Can't get bank public key")))
          (coupon (pubkey-encrypt coupon pubkey))
          (msg (sendmsg client $COUPONENVELOPE bankid coupon)))
-    (client-unpack-bankmsg client msg $ATCOUPONENVELOPE))
+    (unpack-bankmsg client msg $ATCOUPONENVELOPE))
   nil)
 
 ;;;
@@ -1979,7 +1979,7 @@
         (msg (apply 'custmsg client args)))
     (process server msg)))
 
-(defmethod client-unpack-bankmsg ((client client) msg &optional request bankid)
+(defmethod unpack-bankmsg ((client client) msg &optional request bankid)
   "Unpack a bank message.
    Return a string if parse error or fail from bank.
    This is called via the $unpacker arg to utility->dirhash & balancehash."
@@ -2026,7 +2026,7 @@
           (t (let* ((key (userfractionkey client assetid))
                     (msg (db-get db key)))
                (if msg
-                   (let ((args (client-unpack-bankmsg client msg $ATFRACTION)))
+                   (let ((args (unpack-bankmsg client msg $ATFRACTION)))
                      (setq args (getarg $MSG args))
                      (values percent (getarg $AMOUNT args) (getarg $TIME args)))
                    percent))))))
@@ -2112,7 +2112,7 @@
   (when (null acct) (setq acct $MAIN))
   (let* ((msg (db-get (db client) (userbalancekey client acct assetid))))
     (when msg
-      (let ((args (client-unpack-bankmsg client msg $ATBALANCE)))
+      (let ((args (unpack-bankmsg client msg $ATBALANCE)))
         (setq args (getarg args $MSG))
         (values (getarg $AMOUNT args) (getarg $TIME args))))))
 
@@ -2240,7 +2240,7 @@
          (bankid (or (current-bank client)
                      (return-from get-pubkey-from-server nil)))
          (msg (sendmsg client $ID bankid id))
-         (args (getarg $MSG (client-unpack-bankmsg client msg $ATREGISTER)))
+         (args (getarg $MSG (unpack-bankmsg client msg $ATREGISTER)))
          (pubkey (getarg $PUBKEY args))
          (pubkeykey (pubkeykey id)))
     (when pubkey
@@ -2254,7 +2254,7 @@
     (with-db-lock (db key)
       (setf (db-get db key) (bcadd (db-get db key) 1)))))
 
-(defmethod client-gettime ((client client) &optional forcenew)
+(defmethod gettime ((client client) &optional forcenew)
   "Get a timestamp from the server"
   (let ((db (db client))
         (bankid (bankid client))
@@ -2266,11 +2266,11 @@
                (when times
                  (setf times (explode #\, times)
                        (db-get db key) (cadr times))
-                 (return-from client-gettime (car times)))))))
+                 (return-from gettime (car times)))))))
     (let ((req (getreq client)))
       (cond ((not req) nil)
             (t (let* ((msg (sendmsg client $GETTIME bankid req))
-                      (args (client-unpack-bankmsg client msg $TIME)))
+                      (args (unpack-bankmsg client msg $TIME)))
                  (getarg $TIME args)))))))
 
 (defmethod syncreq ((client client))
@@ -2286,7 +2286,7 @@
     (unless (syncedreq-p client)
       (let* ((bankid (bankid client))
              (msg (sendmsg client $GETREQ bankid))
-             (args (client-unpack-bankmsg client msg $REQ))
+             (args (unpack-bankmsg client msg $REQ))
              (newreqnum (getarg $REQ args)))
       (unless (equal reqnum newreqnum)
         (setq reqnum "-1")
@@ -2335,7 +2335,7 @@
     (when (equal reqnum "-1")
       ;; Get $REQ
       (let* ((msg (sendmsg client $GETREQ bankid))
-             (args (client-unpack-bankmsg client msg $REQ))
+             (args (unpack-bankmsg client msg $REQ))
              (reqnum (bcadd (getarg $REQ args) 1)))
 
         ;; Get account balances
@@ -2448,7 +2448,7 @@
                   (db-get db (userreqkey client)) reqnum)))))))
 
 (defmethod unpacker ((client client))
-  #'(lambda (msg) (client-unpack-bankmsg client msg)))
+  #'(lambda (msg) (unpack-bankmsg client msg)))
 
 (defmethod balancehashmsg ((client client) time acctbals)
   (let* ((db (db client))

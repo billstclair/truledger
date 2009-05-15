@@ -5,8 +5,104 @@
 ;;; Trubanc package definition
 ;;;
 
+(cl:defpackage :trubanc-tokens
+  (:use :cl)
+  (:export
+   #:$TIME
+   #:$PRIVKEY
+   #:$BANKID
+   #:$TOKENID
+   #:$REGFEE
+   #:$TRANFEE
+   #:$FEE
+   #:$PUBKEY
+   #:$PUBKEYSIG
+   #:$ASSET
+   #:$STORAGE
+   #:$STORAGEFEE
+   #:$FRACTION
+   #:$ACCOUNT
+   #:$LAST
+   #:$REQ
+   #:$BALANCE
+   #:$MAIN
+   #:$OUTBOX
+   #:$OUTBOXHASH
+   #:$INBOX
+   #:$COUPON
+   #:$ID
+   #:$REGISTER
+   #:$FAILED
+   #:$REASON
+   #:$GETREQ
+   #:$GETTIME
+   #:$GETFEES
+   #:$SPEND
+   #:$GETINBOX
+   #:$PROCESSINBOX
+   #:$STORAGEFEES
+   #:$SPENDACCEPT
+   #:$SPENDREJECT
+   #:$AFFIRM
+   #:$GETASSET
+   #:$GETOUTBOX
+   #:$GETBALANCE
+   #:$COUPONENVELOPE
+   #:$ATREGISTER
+   #:$ATOUTBOXHASH
+   #:$ATSTORAGE
+   #:$ATSTORAGEFEE
+   #:$ATFRACTION
+   #:$ATBALANCE
+   #:$ATSPEND
+   #:$ATTRANFEE
+   #:$ATASSET
+   #:$ATGETINBOX
+   #:$ATPROCESSINBOX
+   #:$ATSTORAGEFEES
+   #:$ATSPENDACCEPT
+   #:$ATSPENDREJECT
+   #:$ATGETOUTBOX
+   #:$ATBALANCEHASH
+   #:$ATCOUPON
+   #:$ATCOUPONENVELOPE
+   #:$CUSTOMER
+   #:$REQUEST
+   #:$NAME
+   #:$NOTE
+   #:$ACCT
+   #:$OPERATION
+   #:$TRAN
+   #:$AMOUNT
+   #:$ASSETNAME
+   #:$SCALE
+   #:$PRECISION
+   #:$PERCENT
+   #:$TIMELIST
+   #:$HASH
+   #:$MSG
+   #:$ERRMSG
+   #:$BALANCEHASH
+   #:$COUNT
+   #:$BANKURL
+   #:$ENCRYPTEDCOUPON
+   #:$COUPONNUMBERHASH
+   #:$ISSUER
+   #:$BANK
+   #:$URL
+   #:$NICKNAME
+   #:$CONTACT
+   #:$SESSION
+   #:$PREFERENCE
+   #:$TOKEN
+   #:$HISTORY
+   #:$FORMATTEDAMOUNT
+   #:$MSGTIME
+   #:$ATREQUEST
+   #:$UNPACK-REQS-KEY))
+
 (cl:defpackage :trubanc
-  (:use :cl :cffi :cl-base64 :cl-who)
+  (:use :cl :cffi :cl-base64 :cl-who :trubanc-tokens)
   (:export
 
    ;; openssl-cffi.lisp
@@ -19,14 +115,29 @@
    #:sha1
    #:sign
    #:verify
+   #:privkey-decrypt
+   #:pubkey-encrypt
+   #:pubkey-bits
+   #:with-rsa-private-key
+   #:pubkey-id
+   #:id-p
+   #:destroy-password
+
+   ;; loomrandom.lisp
+   #:urandom-bytes
+   #:random-id
 
    ;; locks.lisp
    #:file-lock
    #:grab-file-lock
+   #:with-lock-grabbed
+   #:make-lock
    #:release-file-lock
    #:with-file-locked
 
    ;; fsdb.lisp
+   #:db
+   #:make-fsdb
    #:fsdb
    #:db-put
    #:db-get
@@ -34,6 +145,40 @@
    #:db-unlock
    #:db-contents
    #:db-subdir
+   #:append-db-keys
+
+   ;; parser.lisp
+   #:parser
+   #:getarg
+   #:match-args
+   #:parse
+   #:patterns
+   #:get-parsemsg
+   #:with-db-lock
+   #:match-pattern
+   #:with-verify-sigs-p
+   #:parser-always-verify-sigs-p
+   #:match-message
+   #:tokenize
+   #:remove-signatures
+
+   ;; bcmath.lisp
+   #:bccomp
+   #:bcsub
+   #:bcadd
+   #:bcpow
+   #:bcmul
+   #:scale
+   #:wbp
+   #:split-decimal
+   #:bcdiv
+   #:digits
+   #:is-numeric-p
+
+   ;; timestamp.lisp
+   #:timestamp
+   #:next
+   #:strip-fract
 
    ;; utilities.lisp
    #:file-get-contents
@@ -45,7 +190,150 @@
    #:copy-memory-to-lisp
    #:base64-encode
    #:base64-decode
-   ))
+   #:strcat
+   #:dotcat
+   #:balancehash
+   #:assetid
+   #:make-equal-hash
+   #:normalize-balance
+   #:fraction-digits
+   #:storage-fee
+   #:explode
+   #:coupon-number-p
+   #:dirhash
+   #:process-run-function
+   #:process-wait
+   #:process-run-function
+   #:simple-makemsg
+   #:makemsg
+   #:implode
+   #:explode))
+
+(cl:defpackage :trubanc-server
+  (:use :cl :cffi :cl-base64 :cl-who :trubanc :trubanc-tokens)
+  (:export
+   #:process
+   #:make-server
+   #:privkey
+   #:make-server
+   #:bankurl
+   #:bankname
+   #:privkey
+   #:db))
+
+(cl:defpackage :trubanc-client
+  (:use :cl :cffi :cl-base64 :cl-who :trubanc :trubanc-tokens)
+  (:export
+   #:make-client
+   #:newuser
+   #:get-privkey
+   #:login
+   #:login-with-sessionid
+   #:login-new-session
+   #:logout
+   #:the
+   #:user-pubkey
+   #:bank
+   #:bank-id
+   #:bank-name
+   #:bank-url
+   #:getbank
+   #:getbanks
+   #:url-p
+   #:parse-coupon
+   #:verify-coupon
+   #:verify-bank
+   #:addbank
+   #:setbank
+   #:current-bank
+   #:register
+   #:contact
+   #:contact-id
+   #:contact-name
+   #:contact-nickname
+   #:contact-note
+   #:contact-contact-p
+   #:getcontacts
+   #:getcontact
+   #:addcontact
+   #:deletecontact
+   #:get-id
+   #:getaccts
+   #:asset
+   #:asset-id
+   #:asset-assetid
+   #:asset-scale
+   #:asset-precision
+   #:asset-name
+   #:asset-issuer
+   #:asset-percent
+   #:getassets
+   #:getasset
+   #:addasset
+   #:fee
+   #:fee-type
+   #:fee-assetid
+   #:fee-amount
+   #:getfees
+   #:balance
+   #:balance-acct
+   #:balance-assetid
+   #:balance-assetname
+   #:balance-amount
+   #:balance-time
+   #:balance-formatted-amount
+   #:getbalance
+   #:fraction
+   #:fraction-assetid
+   #:fraction-assetname
+   #:fraction-amount
+   #:fraction-scale
+   #:getfraction
+   #:getstoragefee
+   #:spend
+   #:spendreject
+   #:gethistorytimes
+   #:gethistoryitems
+   #:removehistoryitem
+   #:getcoupon
+   #:inbox
+   #:inbox-request
+   #:inbox-id
+   #:inbox-time
+   #:inbox-msgtime
+   #:inbox-assetid
+   #:inbox-assetname
+   #:inbox-amount
+   #:inbox-formattedamount
+   #:inbox-note
+   #:inbox-items
+   #:getinbox
+   #:process-inbox
+   #:process-inbox-time
+   #:process-inbox-request
+   #:process-inbox-note
+   #:process-inbox-acct
+   #:processinbox
+   #:storagefees
+   #:assetinfo
+   #:assetinfo-percent
+   #:assetinfo-fraction
+   #:assetinfo-storagefee
+   #:assetinfo-digits
+   #:outbox
+   #:outbox-time
+   #:outbox-request
+   #:outbox-assetid
+   #:outbox-assetname
+   #:outbox-amount
+   #:outbox-formattedamount
+   #:outbox-note
+   #:outbox-items
+   #:outbox-coupons
+   #:getoutbox
+   #:redeem))
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
