@@ -241,7 +241,7 @@
 
 (defun is-acct-name-p (acct)
   (and (stringp acct)
-       (every 'is-alphanumeric-p acct)))
+       (every #'is-alphanumeric-p acct)))
 
 (defun pubkey-id (pubkey)
   (sha1 (trim pubkey)))
@@ -264,7 +264,7 @@
 
 (defmethod bankmsg ((server server) &rest req)
   "Make a bank signed message from the args."
-  (banksign server (apply 'makemsg (parser server) (bankid server) req)))
+  (banksign server (apply #'makemsg (parser server) (bankid server) req)))
 
 (defun shorten-failmsg-msg (msg)
   (if (> (length msg) 1024)
@@ -274,7 +274,7 @@
 (defmethod failmsg ((server server) &rest req)
   (when (stringp (car req))
     (setf (car req) (shorten-failmsg-msg (car req))))
-  (banksign server (apply 'simple-makemsg (bankid server) $FAILED req)))
+  (banksign server (apply #'simple-makemsg (bankid server) $FAILED req)))
 
 
 (defmethod unpack-bankmsg ((server server) msg &optional type subtype idx)
@@ -406,8 +406,8 @@
             (dolist (v times)
               (when (equal v time)
                 (setq res time
-                      times (delete v times :test 'equal)
-                      q (apply 'implode #\, times))
+                      times (delete v times :test #'equal)
+                      q (apply #'implode #\, times))
                 (db-put db key q)))))
         (unless res (error "Timestamp not enqueued: ~s" time))
         (when (> (bccomp (get-universal-time) (bcadd time (* 10 60)))
@@ -578,7 +578,7 @@
 ;;;  Request processing
 ;;;
  
-(defvar *message-handlers* (make-hash-table :test 'equal))
+(defvar *message-handlers* (make-equal-hash))
 
 (defun get-message-handler (message)
   (or (gethash message *message-handlers*)
@@ -1955,7 +1955,7 @@
                       (,$ASSET . (,$BANKID ,$ASSET ,$SCALE ,$PRECISION ,$ASSETNAME))
                       (,$GETOUTBOX . ,(gethash $GETOUTBOX patterns))
                       (,$GETBALANCE . (,$BANKID ,$REQ (,$ACCT) (,$ASSET)))))
-             (commands (make-hash-table :test 'equal)))
+             (commands (make-hash-table :test #'equal)))
       (loop
          for (name . pattern) in names
          do

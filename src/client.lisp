@@ -191,7 +191,7 @@
       (let ((bank (getbank client bankid all)))
         (when bank (push bank res))))
 
-    (sort (nreverse res) 'string-lessp :key #'bank-name)))
+    (sort (nreverse res) #'string-lessp :key #'bank-name)))
 
 (defun url-p (url)
   "Returns true if $url might be a properly-formed URL."
@@ -227,7 +227,7 @@
                    url (trim (car a))
                    coupon-number (trim (cadr a)))))
           (t (let* ((parse (tokenize coupon))
-                    (items (print (map 'vector 'cdr parse))))
+                    (items (print (map #'vector #'cdr parse))))
                ; [$id,coupon,$bankid,
                (unless (>= (length items) 7)
                  (error "Malformed coupon message, < 7 tokens"))
@@ -438,7 +438,7 @@
           (setq args (unpack-bankmsg client msg $ATREGISTER))
         (error ()
           ;; Bank doesn't know us. Register with bank.
-          (setq msg (apply 'custmsg client $REGISTER bankid (pubkey id)
+          (setq msg (apply #'custmsg client $REGISTER bankid (pubkey id)
                            (and name (list name))))
           (when coupons
             (when (stringp coupons) (setq coupons (list coupons)))
@@ -476,12 +476,12 @@
         ((string-equal s1 s2) 0)
         (t -1)))
 
-(defun properties-compare (a1 a2 keys &optional (comparef 'string-compare))
+(defun properties-compare (a1 a2 keys &optional (comparef #'string-compare))
   (dolist (key keys 0)
     (let ((res (funcall comparef (funcall key a1) (funcall key a2))))
       (unless (eql 0 res) (return res)))))
 
-(defun properties-lessp (a1 a2 keys &optional (comparef 'string-compare))
+(defun properties-lessp (a1 a2 keys &optional (comparef #'string-compare))
   (< (properties-compare a1 a2 keys comparef) 0))
 
 (defun contacts-lessp (c1 c2)
@@ -500,7 +500,7 @@
                      for contact = (getcontact-internal client otherid)
                      when contact
                      collect contact)))
-        (sort res 'contacts-lessp)))))
+        (sort res #'contacts-lessp)))))
 
 (defmethod getcontact ((client client) otherid &optional add)
   "Get a contact, by ID. Return a CONTACT instance."
@@ -591,7 +591,7 @@
     (require-current-bank client "In getaccts(): Bank not set")
     (init-bank-accts client)
     
-    (sort (db-contents db (userbalancekey client)) 'string-lessp)))
+    (sort (db-contents db (userbalancekey client)) #'string-lessp)))
 
 (defstruct asset
   id
@@ -619,7 +619,7 @@
             (dolist (assetid assetids)
               (let ((asset (getasset client assetid)))
                 (when asset (push asset res)))))))
-      (sort res 'asset-lessp))))
+      (sort res #'asset-lessp))))
 
 (defmethod getasset ((client client) assetid &optional forceserver)
   "Look up an asset.
@@ -853,10 +853,10 @@
                                   :time time
                                   :formatted-amount formatted-amount)
                     balances))))
-        (push (cons acct (sort balances 'balance-lessp)) res)))
+        (push (cons acct (sort balances #'balance-lessp)) res)))
     (if (and (stringp acct) assetid)
         (cadar res)
-        (sort res 'string-lessp :key 'car))))
+        (sort res #'string-lessp :key #'car))))
 
 (defstruct fraction
   assetid
@@ -928,7 +928,7 @@
                                         :amount amount
                                         :formatted-amount formatted-amount)
                           res)))))))
-        (if assetid (car res) (sort res 'balance-lessp))))))
+        (if assetid (car res) (sort res #'balance-lessp))))))
 
 (defmethod spend ((client client) toid assetid formattedamount &optional acct note)
   "Initiate a spend
@@ -1095,7 +1095,7 @@
             (storagefeemsg nil)
             (fracmsg nil)
             msg)
-        (setq spend (apply 'custmsg client $SPEND bankid time
+        (setq spend (apply #'custmsg client $SPEND bankid time
                            toid assetid amount (and note (list note))))
         (when (and tranfee-amt (not (equal id toid)))
           (setq feemsg (custmsg client $TRANFEE bankid time
@@ -1280,7 +1280,7 @@
               (setq coupon (privkey-decrypt coupon (privkey client)))
               (return-from spendreject-internal
                 (redeem client coupon))))))
-      (setq msg (apply 'custmsg client $SPENDREJECT bankid time id
+      (setq msg (apply #'custmsg client $SPENDREJECT bankid time id
                        (and note (list note))))
       (let* ((bankmsg (process server msg))
              (args (with-verify-sigs-p (parser t)
@@ -1378,7 +1378,7 @@
         (parser (parser client))
         (bankid (bankid client))
         (res nil)
-        (hash (and includeraw (make-hash-table :test 'eq)))
+        (hash (and includeraw (make-hash-table :test #'eq)))
         (key (userinboxkey client)))
     (sync-inbox client)
     (dolist (time (db-contents db key))
@@ -1436,7 +1436,7 @@
                          (setq last-item nil)))
               (when (and includeraw (eq (car res) item))
                 (setf (gethash item hash) msg))))))))
-    (sort res (lambda (t1 t2) (< (bccomp t1 t2) 0)) :key 'inbox-time)))
+    (sort res (lambda (t1 t2) (< (bccomp t1 t2) 0)) :key #'inbox-time)))
 
 (defmethod sync-inbox ((client client))
   "Synchronize the current customer inbox with the current bank.
@@ -1510,7 +1510,7 @@
            (setf (db-get db key assetid) storagefee)))
 
     (when times
-      (setf (db-get db (usertimekey client)) (apply 'implode "," times)))))
+      (setf (db-get db (usertimekey client)) (apply #'implode "," times)))))
 
 (defstruct process-inbox
   time                                  ;timestamp in the inbox
@@ -1560,7 +1560,7 @@
              (request (process-inbox-request dir))
              (note (process-inbox-note dir))
              (acct (or (process-inbox-acct dir) $MAIN))
-             (in (or (find time inbox :test 'equal :key 'inbox-time)
+             (in (or (find time inbox :test #'equal :key #'inbox-time)
                      (error "No inbox entry for time: ~s" time)))
              (fee (car (inbox-items in))) ;change this when I add multiple fees
              (inmsg (and inbox-msgs (gethash in inbox-msgs)))
@@ -1604,7 +1604,7 @@
               ((or (equal inreq $SPENDACCEPT) (equal inreq $SPENDREJECT))
                (let* ((msgtime (inbox-msgtime in))
                       (outspend (or (find msgtime outbox
-                                          :test 'equal :key 'outbox-time)
+                                          :test #'equal :key #'outbox-time)
                                     (error "Can't find outbox for ~s at time ~s"
                                            inreq msgtime)))
                       (outfee (car (outbox-items outspend)))
@@ -1645,12 +1645,12 @@
              (delta-main (get-inited-hash $MAIN deltas)))
         (loop
            for acct being the hash-key using (hash-value amounts) of deltas
-           for bals = (cdr (assoc acct balance :test 'equal))
+           for bals = (cdr (assoc acct balance :test #'equal))
            do
            (loop
               for assetid being the hash-key of amounts
               for oldbal = (find assetid bals
-                                 :test 'equal :key 'balance-assetid)
+                                 :test #'equal :key #'balance-assetid)
               for oldamount = (and oldbal (balance-amount oldbal))
               do
               (when (and oldamount (> (bccomp oldamount 0) 0))
@@ -1665,12 +1665,12 @@
       ;; Create balance, outboxhash, and balancehash messages
       (loop
          for acct being the hash-key using (hash-value amounts) of deltas
-         for bals = (cdr (assoc acct balance :test 'equal))
+         for bals = (cdr (assoc acct balance :test #'equal))
          for acctbal = (get-inited-hash acct acctbals)
          do
          (loop
             for assetid being the hash-key using (hash-value amount) of amounts
-            for bal = (find assetid bals :test 'equal :key 'balance-assetid)
+            for bal = (find assetid bals :test #'equal :key #'balance-assetid)
             for oldamount = (if bal (balance-amount bal) 0)
             for sum = (bcadd oldamount amount)
             for balmsg = (custmsg client $BALANCE bankid trans assetid sum acct)
@@ -1871,7 +1871,7 @@
          (parser (parser client))
          (bankid (bankid client))
          (res nil)
-         (msgs (make-hash-table :test 'eq))
+         (msgs (make-hash-table :test #'eq))
          (key (useroutboxkey client))
          (outbox (db-contents key)))
     (dolist (time outbox)
@@ -1937,7 +1937,7 @@
         (when includeraw
           (setf (gethash item msgs) msg))))
     (sort res (lambda (x y) (< (bccomp x y) 0))
-          :key 'outbox-time)))
+          :key #'outbox-time)))
 
 (defmethod redeem ((client client) coupon)
   "Redeem a coupon
@@ -1968,7 +1968,7 @@
          (parser (parser client))
          (privkey (privkey client))
          (args (cons id args))
-         (msg (apply 'makemsg parser args))
+         (msg (apply #'makemsg parser args))
          (sig (sign msg privkey)))
     (trim (format nil "~a:~s~%" msg sig))))
 
@@ -1976,7 +1976,7 @@
   "Send a customer message to the server.
    Takes an arbitrary number of args."
   (let ((server (server client))
-        (msg (apply 'custmsg client args)))
+        (msg (apply #'custmsg client args)))
     (process server msg)))
 
 (defmethod unpack-bankmsg ((client client) msg &optional request bankid)
@@ -2317,7 +2317,7 @@
           (syncedreq-p client) nil)
     (init-bank-accts client)))
 
-(defun get-inited-hash (key hash &optional (creator 'make-equal-hash))
+(defun get-inited-hash (key hash &optional (creator #'make-equal-hash))
   "Get an object from a hash table, creating it if it's not there."
   (or (gethash key hash)
       (setf (gethash key hash) (funcall creator))))
@@ -2625,7 +2625,7 @@
 
 (defun trimmsg (msg)
   (let* ((msg (remove-signatures msg))
-         (tokens (mapcar 'cdr (tokenize msg)))
+         (tokens (mapcar #'cdr (tokenize msg)))
          (res ""))
     (dolist (token tokens)
       (cond ((characterp token) (dotcat res (string token)))

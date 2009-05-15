@@ -204,13 +204,15 @@
    #:process-run-function
    #:process-wait
    #:process-run-function
+   #:create-directory
+   #:recursive-delete-directory
    #:simple-makemsg
    #:makemsg
    #:implode
    #:explode))
 
 (cl:defpackage :trubanc-server
-  (:use :cl :cffi :cl-base64 :cl-who :trubanc :trubanc-tokens)
+  (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)
   (:export
    #:process
    #:make-server
@@ -222,7 +224,7 @@
    #:db))
 
 (cl:defpackage :trubanc-client
-  (:use :cl :cffi :cl-base64 :cl-who :trubanc :trubanc-tokens)
+  (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)
   (:export
    #:make-client
    #:newuser
@@ -333,6 +335,8 @@
    #:getoutbox
    #:redeem))
 
+(cl:defpackage :trubanc-test
+  (:use :cl :trubanc :trubanc-tokens :trubanc-client))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

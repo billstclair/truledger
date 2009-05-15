@@ -98,6 +98,10 @@
       (ccl:create-directory dir :mode mode)
       (ccl:create-directory dir)))
 
+(defun recursive-delete-directory (path &rest rest &key if-does-not-exist)
+  (declare (ignore if-does-not-exist))
+  (apply #'ccl::recursive-delete-directory path rest))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair
