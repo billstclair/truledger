@@ -56,8 +56,7 @@
   (make-instance 'fsdb :dir dir))
 
 (defclass fsdb (db)
-  ((dir :type string
-        :initarg :dir
+  ((dir :initarg :dir
         :accessor fsdb-dir)))
 
 (defmethod print-object ((db fsdb) stream)
@@ -66,8 +65,9 @@
 
 (defmethod initialize-instance :after ((db fsdb) &rest ignore)
   (declare (ignore ignore))
-  (ignore-errors (create-directory (strcat (fsdb-dir db) "/")))
-  (let* ((dir (remove-trailing-separator (namestring (truename (fsdb-dir db))))))
+  (let ((dir (ensure-directory-pathname (fsdb-dir db))))
+    (ignore-errors (create-directory dir))
+    (setq dir (remove-trailing-separator (namestring (truename (fsdb-dir db)))))
     (setf (fsdb-dir db) dir)))
 
 (defun normalize-key (key)

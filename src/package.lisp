@@ -206,6 +206,7 @@
    #:process-run-function
    #:create-directory
    #:recursive-delete-directory
+   #:ensure-directory-pathname
    #:simple-makemsg
    #:makemsg
    #:implode

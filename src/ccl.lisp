@@ -102,6 +102,9 @@
   (declare (ignore if-does-not-exist))
   (apply #'ccl::recursive-delete-directory path rest))
 
+(defun ensure-directory-pathname (path)
+  (ccl::ensure-directory-pathname path))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair
