@@ -219,6 +219,14 @@
    #:pubkey
    #:server
    #:bankid
+   #:tokenid
+   #:process
+   #:privkey
+   #:make-server
+   #:bankurl
+   #:bankname
+   #:privkey
+   #:db
 
    ;; server-web.lisp
    #:trubanc-web-server
@@ -304,6 +312,8 @@
    #:balance-amount
    #:balance-time
    #:balance-formatted-amount
+   #:getreq
+   #:gettime
    #:getbalance
    #:fraction
    #:fraction-assetid

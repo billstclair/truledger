@@ -63,7 +63,7 @@
     (bind-parameters (msg debug)
       (setf (hunchentoot:content-type*) "text/html")
       (cond ((and msg server)
-             (let ((res (trubanc-server:process server msg)))
+             (let ((res (process server msg)))
                (when debug
                  (setq res (format nil
                                    "msg: <pre>~a</pre>~%response: <pre>~a</pre>~%"

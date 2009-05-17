@@ -46,7 +46,7 @@
     (unless dont-erase
       (ignore-errors (recursive-delete-directory server-dir))
       (ignore-errors (recursive-delete-directory client-dir)))
-    (setf (server ts) (trubanc-server:make-server
+    (setf (server ts) (make-server
                        server-dir passphrase
                        :bankname "Test Bank"
                        :bankurl (format nil "http://localhost:~d/" port))
@@ -61,22 +61,23 @@
 (defmethod stop-test-web-server ((ts test-state))
   (stop-web-server (port ts)))
 
-(defmethod init-bank-acct ((ts test-state))
+(defmethod login-bank ((ts test-state))
   (let* ((server (server ts))
          (client (client ts))
          (bankid (bankid server))
          (passphrase (passphrase ts)))
     (handler-case (login client passphrase)
       (error ()
-        (let ((privkey (trubanc-server::privkey server)))
+        (let ((privkey (decode-rsa-private-key
+                        (encode-rsa-private-key (privkey server)))))
           (newuser client
                    :passphrase passphrase
                    :privkey privkey))))
     (handler-case (setbank client bankid)
       (error ()
-        (addbank client (trubanc-server::bankurl server))
+        (addbank client (bankurl server))
         (let ((balance (getbalance client))
-              (tokenid (trubanc-server::tokenid server)))
+              (tokenid (tokenid server)))
           (loop
              for (acct . bals) in balance
              do
@@ -93,6 +94,21 @@
                    (assert (equal formatted-amount "-0"))))))))
     (id client)))
   
+(defmethod login-user ((ts test-state) passphrase &optional (name passphrase))
+  (let ((client (client ts))
+        (server (server ts)))
+    (handler-case (login client passphrase)
+      (error ()
+        (newuser client :passphrase passphrase :privkey 512)))
+    (handler-case (setbank client (bankid server))
+      (error ()
+        (handler-case (addbank client (bankurl server) name)
+          (error ()
+            (let ((id (id client)))
+              (login-bank ts)
+              (spend client id (tokenid server) "200" nil "Welcome to my bank")
+              (login client passphrase)
+              (addbank client (bankurl server) name))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

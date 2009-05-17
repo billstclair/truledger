@@ -312,13 +312,15 @@
   "Initialize the database, if it needs initializing."
   (let ((db (db server)))
     (if (db-get db $PRIVKEY)
-        (setf (privkey server) (decode-rsa-private-key
-                                (db-get db $PRIVKEY) passphrase)
-              (bankid server) (unpack-bank-param server $BANKID)
-              (bankurl server) (db-get db $BANKURL)
-              (tokenid server) (unpack-bank-param server $TOKENID)
-              (regfee server) (unpack-bank-param server $REGFEE $AMOUNT)
-              (tranfee server) (unpack-bank-param server $TRANFEE $AMOUNT))
+        (let* ((privkey (decode-rsa-private-key (db-get db $PRIVKEY) passphrase))
+               (pubkey (encode-rsa-public-key privkey))
+               (bankid (pubkey-id pubkey)))
+          (setf (privkey server) privkey
+                (bankid server) bankid
+                (bankurl server) (db-get db $BANKURL)
+                (tokenid server) (unpack-bank-param server $TOKENID)
+                (regfee server) (unpack-bank-param server $REGFEE $AMOUNT)
+                (tranfee server) (unpack-bank-param server $TRANFEE $AMOUNT)))
         ;; http://www.rsa.com/rsalabs/node.asp?id=2004 recommends that 3072-bit
         ;; RSA keys are equivalent to 128-bit symmetric keys, and they should be
         ;; secure past 2031.
