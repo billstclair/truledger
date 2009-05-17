@@ -201,6 +201,7 @@
    #:explode
    #:coupon-number-p
    #:dirhash
+   #:all-processes
    #:process-run-function
    #:process-wait
    #:process-run-function
@@ -210,7 +211,18 @@
    #:simple-makemsg
    #:makemsg
    #:implode
-   #:explode))
+   #:explode
+
+   ;; client.lisp & server.lisp
+   #:id
+   #:privkey
+   #:pubkey
+   #:server
+   #:bankid
+
+   ;; server-web.lisp
+   #:trubanc-web-server
+   #:stop-web-server))
 
 (cl:defpackage :trubanc-server
   (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)
@@ -228,6 +240,13 @@
   (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)
   (:export
    #:make-client
+   #:syncedreq-p
+   #:showprocess-p
+   #:coupon
+   #:last-spend-time
+   #:keep-history-p
+   #:server-times
+   #:showprocess
    #:newuser
    #:get-privkey
    #:login

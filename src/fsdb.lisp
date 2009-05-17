@@ -109,7 +109,7 @@
 
 (defun append-db-keys (key &rest more-keys)
   (declare (dynamic-extent more-keys))
-  (apply '%append-db-keys key more-keys))
+  (%append-db-keys key more-keys))
 
 (defmethod db-get ((db fsdb) key &rest more-keys)
   (declare (dynamic-extent more-keys))

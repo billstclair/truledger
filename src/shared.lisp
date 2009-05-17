@@ -57,6 +57,7 @@
 (defun patterns ()
   (or *patterns*
       (let ((patterns `(;; Customer messages
+                        (,$ID . (,$BANKID ,$ID))
                         (,$BALANCE .
                          (,$BANKID ,$TIME ,$ASSET ,$AMOUNT (,$ACCT)))
                         (,$OUTBOXHASH . (,$BANKID ,$TIME ,$COUNT ,$HASH))

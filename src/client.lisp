@@ -14,8 +14,7 @@
   ((db :type db
        :initarg :db
        :accessor db)
-   (parser :type (or parser null)
-           :initform nil
+   (parser :type parser
            :accessor parser)
    (pubkeydb :type (or pubkeydb nill)
              :initform nil
@@ -31,8 +30,7 @@
            :accessor pubkey)
 
    ;; initialized by setbank() and addbank()
-   (server :type (or server null)
-           :initform nil
+   (server :initform nil
            :accessor server)
    (bankid :type (or string null)
            :initform nil
@@ -73,15 +71,15 @@
    (showprocess :initform nil
                 :accessor showprocess)))
 
-(defmethod :initialize-instance :after ((client client) &rest rest)
+(defmethod initialize-instance :after ((client client) &rest rest)
   (declare (ignore rest))
   (setf (pubkeydb client)
         (make-instance 'pubkeydb
                        :client client
                        :db (db-subdir (db client) $PUBKEY))
         (parser client)
-        (make-instance 'parser :keydb (pubkeydb client)))
-  (setf (parser-always-verify-sigs-p (parser client)) t))
+        (make-instance 'parser :keydb (pubkeydb client))
+        (parser-always-verify-sigs-p (parser client)) t))
 
 ;; API Methods
 
@@ -267,7 +265,7 @@
       (error "Malformed coupon number: ~s" coupon-number))
 
     (let* ((msg (strcat "(0," bankid ",0," coupon-number "):0"))
-           (server (make-instance 'server-proxy :url url :client client))
+           (server (make-instance 'serverproxy :url url :client client))
            (msg (process server msg))
            (reqs (parse parser msg)))
       (match-bankreq client (car reqs) $REGISTER bankid)
@@ -292,7 +290,7 @@
           (t
            (let* ((parser (parser client))
                   (msg (strcat "(0," $BANKID ",0):0"));
-                  (server (make-instance 'server-proxy :url url :client client))
+                  (server (make-instance 'serverproxy :url url :client client))
                   (msg (process server msg))
                   (save-bankid (prog1 (bankid client)
                                  (setf (bankid client) bankid)))
@@ -312,10 +310,11 @@
              (unless (bankprop client $URL bankid)
                ;; Initialize the bank in the database
                (setf (db-get db $BANK $BANKID urlhash) bankid
-                     (db-get db (bankkey $URL $bankid)) url
-                     (db-get db (bankkey $NAME bankid)) name
+                     (db-get db (bankkey client $URL bankid)) url
+                     (db-get db (bankkey client $NAME bankid)) name
                      (db-get db (pubkeykey bankid))
-                     (format nil "~a~%" (trim pubkey)))))))))
+                     (format nil "~a~%" (trim pubkey))))
+             bankid)))))
 
 (defmethod addbank ((client client) url &optional name couponok)
   "Add a bank with the given URL to the database.
@@ -349,19 +348,22 @@
                (redeem client coupon)))
             (t 
              (let ((oldbankid (bankid client))
-                   (oldserver (server client)))
+                   (oldserver (server client))
+                   (ok nil))
+               (setf (bankid client) bankid
+                     url (bankprop client $URL bankid))
                (unwind-protect
                     (progn
-                      (setf (bankid client) bankid
-                            url (bankprop client $URL bankid))
                       (unless url
                         (error "URL not stored for verified bank: ~s" bankid))
                       (setf (server client)
                             (make-instance 'serverproxy :url url :client client))
-                      (register client name coupon bankid))
-                 (setf (db-get db (userreqkey client bankid)) nil
-                       (bankid client) oldbankid
-                       (server client) oldserver))))))))
+                      (register client name coupon bankid)
+                      (setq ok t))
+                 (unless ok
+                   (setf (db-get db (userreqkey client bankid)) nil
+                         (bankid client) oldbankid
+                         (server client) oldserver)))))))))
 
 (defmethod setbank ((client client) bankid &optional (check-p t))
   "Set the bank to the given id.
@@ -2573,7 +2575,7 @@
         :initarg :url
         :accessor url)
    (client :type client
-           :initarg client
+           :initarg :client
            :accessor client)))
 
 (defun post (url &optional parameters)
@@ -2641,7 +2643,7 @@
 
 ;; Look up a public key, from the client database first, then from the
 ;; current bank.
-(defclass pubkeydb ()
+(defclass pubkeydb (db)
   ((client :type client
            :initarg :client
            :accessor client)
