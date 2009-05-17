@@ -13,8 +13,8 @@
 (defparameter *www-dir*
   (directory-namestring (merge-pathnames "../www/" *test-pathname*)))
 
-(defun make-test-state (db-dir &rest rest &key dont-erase passphrase port)
-  (declare (ignore dont-erase passphrase port))
+(defun make-test-state (db-dir &rest rest &key dont-erase passphrase port no-network-p)
+  (declare (ignore dont-erase passphrase port no-network-p))
   (apply #'make-instance 'test-state
          :db-dir db-dir
          rest))        
@@ -34,12 +34,15 @@
            :initform nil)))
 
 (defmethod initialize-instance :after ((ts test-state) &key
-                                       dont-erase)
+                                       dont-erase
+                                       (no-network-p t))
   (let* ((db-dir (ensure-directory-pathname (db-dir ts)))
          (port (port ts))
          (passphrase (passphrase ts))
          (server-dir (merge-pathnames "serverdb" db-dir))
          (client-dir (merge-pathnames "clientdb" db-dir)))
+    (unless no-network-p
+      (stop-web-server port))
     (unless dont-erase
       (ignore-errors (recursive-delete-directory server-dir))
       (ignore-errors (recursive-delete-directory client-dir)))
@@ -47,9 +50,10 @@
                        server-dir passphrase
                        :bankname "Test Bank"
                        :bankurl (format nil "http://localhost:~d/" port))
-          (client ts) (make-client client-dir))
-    (stop-web-server port)
-    (start-test-web-server ts)))
+          (client ts) (make-client client-dir
+                                   :test-server (and no-network-p (server ts))))
+    (unless no-network-p
+      (start-test-web-server ts))))
 
 (defmethod start-test-web-server ((ts test-state))
   (trubanc-web-server (server ts) :www-dir *www-dir* :port (port ts)))
@@ -60,6 +64,7 @@
 (defmethod init-bank-acct ((ts test-state))
   (let* ((server (server ts))
          (client (client ts))
+         (bankid (bankid server))
          (passphrase (passphrase ts)))
     (handler-case (login client passphrase)
       (error ()
@@ -67,10 +72,26 @@
           (newuser client
                    :passphrase passphrase
                    :privkey privkey))))
-    (handler-case (setbank client (bankid server))
+    (handler-case (setbank client bankid)
       (error ()
-        (addbank client (trubanc-server::bankurl server))))
-    (id client)))    
+        (addbank client (trubanc-server::bankurl server))
+        (let ((balance (getbalance client))
+              (tokenid (trubanc-server::tokenid server)))
+          (loop
+             for (acct . bals) in balance
+             do
+               (unless (equal acct $MAIN)
+                 (error "Found non-main acct: ~s" acct))
+               (dolist (bal bals)
+                 (let ((assetid (balance-assetid bal))
+                       (assetname (balance-assetname bal))
+                       (amount (balance-amount bal))
+                       (formatted-amount (balance-formatted-amount bal)))
+                   (assert (equal tokenid assetid))
+                   (assert (equal assetname "Test Bank Usage Tokens"))
+                   (assert (equal amount "-1"))
+                   (assert (equal formatted-amount "-0"))))))))
+    (id client)))
   
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

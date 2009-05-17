@@ -57,22 +57,27 @@
 (defun patterns ()
   (or *patterns*
       (let ((patterns `(;; Customer messages
+                        (,$BANKID . (,$PUBKEY (,$COUPON)))
                         (,$ID . (,$BANKID ,$ID))
                         (,$BALANCE .
                          (,$BANKID ,$TIME ,$ASSET ,$AMOUNT (,$ACCT)))
                         (,$OUTBOXHASH . (,$BANKID ,$TIME ,$COUNT ,$HASH))
                         (,$BALANCEHASH . (,$BANKID ,$TIME ,$COUNT ,$HASH))
+                        (,$GETFEES . (,$BANKID ,$REQ (,$OPERATION)))
                         (,$SPEND .
                          (,$BANKID ,$TIME ,$ID ,$ASSET ,$AMOUNT (,$NOTE)))
+                        (,$GETASSET . (,$BANKID ,$REQ ,$ASSET))
                         (,$ASSET .
                          (,$BANKID ,$ASSET ,$SCALE ,$PRECISION ,$ASSETNAME))
                         (,$STORAGE . (,$BANKID ,$TIME ,$ASSET ,$PERCENT))
                         (,$STORAGEFEE . (,$BANKID ,$TIME ,$ASSET ,$AMOUNT))
                         (,$FRACTION . (,$BANKID ,$TIME ,$ASSET ,$AMOUNT))
                         (,$REGISTER . (,$BANKID ,$PUBKEY (,$NAME)))
+                        (,$GETREQ . (,$BANKID))
                         (,$SPENDACCEPT . (,$BANKID ,$TIME ,$ID (,$NOTE)))
                         (,$SPENDREJECT . (,$BANKID ,$TIME ,$ID (,$NOTE)))
                         (,$GETOUTBOX .(,$BANKID ,$REQ))
+                        (,$GETBALANCE . (,$BANKID ,$REQ (,$ACCT) (,$ASSET)))
                         (,$GETINBOX . (,$BANKID ,$REQ))
                         (,$PROCESSINBOX . (,$BANKID ,$TIME ,$TIMELIST))
                         (,$STORAGEFEES . (,$BANKID ,$REQ))
@@ -82,7 +87,6 @@
                         ;; Bank signed messages
                         (,$FAILED . (,$MSG ,$ERRMSG))
                         (,$TOKENID . (,$TOKENID))
-                        (,$BANKID . (,$BANKID))
                         (,$REGFEE . (,$BANKID ,$TIME ,$ASSET ,$AMOUNT))
                         (,$TRANFEE . (,$BANKID ,$TIME ,$ASSET ,$AMOUNT))
                         (,$TIME . (,$ID ,$TIME))

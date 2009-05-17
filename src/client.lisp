@@ -7,8 +7,8 @@
 
 (in-package :trubanc-client)
 
-(defun make-client (dir)
-  (make-instance 'client :db (make-fsdb dir)))
+(defun make-client (dir &rest rest)
+  (apply 'make-instance 'client :db (make-fsdb dir) rest))
 
 (defclass client ()
   ((db :type db
@@ -32,6 +32,9 @@
    ;; initialized by setbank() and addbank()
    (server :initform nil
            :accessor server)
+   (test-server :initform nil
+                :initarg :test-server
+                :accessor test-server)
    (bankid :type (or string null)
            :initform nil
            :accessor bankid)
@@ -299,6 +302,9 @@
                   (bankid (getarg $CUSTOMER args))
                   (pubkey (getarg $PUBKEY args))
                   (name (getarg $NAME args)))
+             (when (equal $FAILED (getarg $REQUEST args))
+               (error "Failed to register at bank: ~s"
+                      (or (getarg $ERRMSG args) msg)))
              (unless (equal bankid (getarg $BANKID args))
                (error "Bank's register message malformed"))
              (if (not id)
@@ -440,7 +446,7 @@
           (setq args (unpack-bankmsg client msg $ATREGISTER))
         (error ()
           ;; Bank doesn't know us. Register with bank.
-          (setq msg (apply #'custmsg client $REGISTER bankid (pubkey id)
+          (setq msg (apply #'custmsg client $REGISTER bankid (pubkey client)
                            (and name (list name))))
           (when coupons
             (when (stringp coupons) (setq coupons (list coupons)))
@@ -450,7 +456,7 @@
                 (dotcat msg "." (custmsg client $COUPONENVELOPE bankid
                                          (pubkey-encrypt coupon pubkey))))))
           (setq msg (process server msg)
-                args (unpack-bankmsg msg $ATREGISTER))))
+                args (unpack-bankmsg client msg $ATREGISTER))))
 
       ;; Didn't fail. Notice registration here
       (setq args (getarg $MSG args))
@@ -849,7 +855,7 @@
                    (formatted-amount (format-asset-value client amount asset))
                    (assetname (asset-name asset)))
               (push (make-balance :acct acct
-                                  :assetid :assetid
+                                  :assetid assetid
                                   :assetname assetname
                                   :amount amount
                                   :time time
@@ -1503,7 +1509,7 @@
            (setf (db-get db key time) msg)))
 
     (let ((key (userstoragefeekey client)))
-      (dolist (assetid (db-contents key))
+      (dolist (assetid (db-contents db key))
         (unless (gethash assetid storagefees)
           (setf (db-get db key assetid) nil)))
       (loop
@@ -1875,7 +1881,7 @@
          (res nil)
          (msgs (make-hash-table :test #'eq))
          (key (useroutboxkey client))
-         (outbox (db-contents key)))
+         (outbox (db-contents db key)))
     (dolist (time outbox)
       (let* ((msg (db-get db key time))
              (reqs (parse parser msg t))
@@ -1972,7 +1978,7 @@
          (args (cons id args))
          (msg (apply #'makemsg parser args))
          (sig (sign msg privkey)))
-    (trim (format nil "~a:~s~%" msg sig))))
+    (trim (format nil "~a:~a~%" msg sig))))
 
 (defmethod sendmsg ((client client) &rest args)
   "Send a customer message to the server.
@@ -2115,7 +2121,7 @@
   (let* ((msg (db-get (db client) (userbalancekey client acct assetid))))
     (when msg
       (let ((args (unpack-bankmsg client msg $ATBALANCE)))
-        (setq args (getarg args $MSG))
+        (setq args (getarg $MSG args))
         (values (getarg $AMOUNT args) (getarg $TIME args))))))
 
 (defmethod useroutboxkey ((client client) &optional time)
@@ -2588,7 +2594,8 @@
 
 (defmethod process ((proxy serverproxy) msg)
   (let* ((url (url proxy))
-         (client (client proxy)))
+         (client (client proxy))
+         (test-server (test-server client)))
 
     ;; This is a kluge to get around versions of Apache that insist
     ;; on sending "301 Moved Permanently" for directory URLs that
@@ -2608,7 +2615,9 @@
         (debugmsg client (format nil "<b>===SENT</b>: ~a~%"
                                  (trimmsg msg))))
 
-      (let ((res (post url vars))
+      (let ((res (if test-server
+                     (trubanc-server:process test-server msg)
+                     (post url vars)))
             (text nil))
         (when (and (> (length res) 2)
                    (equal "<<" (subseq res 0 2)))

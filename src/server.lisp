@@ -1939,25 +1939,26 @@
 (defun server-commands ()
   (or *server-commands*
       (let* ((patterns (patterns))
-             (names `((,$BANKID . (,$PUBKEY (,$COUPON)))
-                      (,$ID . (,$BANKID ,$ID))
-                      (,$REGISTER . ,(gethash $REGISTER patterns))
-                      (,$GETREQ . (,$BANKID))
-                      (,$GETTIME . (,$BANKID ,$REQ))
-                      (,$GETFEES . (,$BANKID ,$REQ (,$OPERATION)))
-                      (,$SPEND . ,(gethash $SPEND patterns))
-                      (,$SPENDREJECT . ,(gethash $SPENDREJECT patterns))
-                      (,$COUPONENVELOPE . ,(gethash $COUPONENVELOPE patterns))
-                      (,$GETINBOX . ,(gethash $GETINBOX patterns))
-                      (,$PROCESSINBOX . ,(gethash $PROCESSINBOX patterns))
-                      (,$STORAGEFEES . ,(gethash $STORAGEFEES patterns))
-                      (,$GETASSET . (,$BANKID ,$REQ ,$ASSET))
-                      (,$ASSET . (,$BANKID ,$ASSET ,$SCALE ,$PRECISION ,$ASSETNAME))
-                      (,$GETOUTBOX . ,(gethash $GETOUTBOX patterns))
-                      (,$GETBALANCE . (,$BANKID ,$REQ (,$ACCT) (,$ASSET)))))
+             (names `(,$BANKID
+                      ,$ID
+                      ,$REGISTER
+                      ,$GETREQ
+                      ,$GETTIME
+                      ,$GETFEES
+                      ,$SPEND
+                      ,$SPENDREJECT
+                      ,$COUPONENVELOPE
+                      ,$GETINBOX
+                      ,$PROCESSINBOX
+                      ,$STORAGEFEES
+                      ,$GETASSET
+                      ,$ASSET
+                      ,$GETOUTBOX
+                      ,$GETBALANCE))
              (commands (make-hash-table :test #'equal)))
       (loop
-         for (name . pattern) in names
+         for name in names
+         for pattern =  (gethash name patterns)
          do
            (setf (gethash name commands) pattern))
       (setq *server-commands* commands))))
@@ -1970,7 +1971,8 @@
 (defmethod process ((server server) msg)
   "Process a message and return the response.
    This is usually all you'll call from outside."
-  (handler-case (process-internal server msg)
+  (handler-case
+      (process-internal server msg)
     (error (c)
       (failmsg server msg (format nil "~a" c)))))
 
@@ -1987,7 +1989,10 @@
            (args-bankid (getarg $BANKID args))
            (note (getarg $NOTE args))
            (handler (get-message-handler request)))
-      (unless (or (null args-bankid) (equal args-bankid (bankid server)))
+      (unless (or (null args-bankid)
+                  (and (equal "0" args-bankid)
+                       (equal $BANKID (getarg $REQUEST args)))
+                  (equal args-bankid (bankid server)))
         (error "bankid mismatch"))
       (when (> (length note) 4096)
         (error "Note too long. Max: 4096 chars"))
