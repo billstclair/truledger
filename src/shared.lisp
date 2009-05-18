@@ -30,6 +30,11 @@
      finally
      (return (strcat msg ")"))))
 
+(defun as-string (x)
+  (cond ((stringp x) x)
+        ((integerp x) (format nil "~a" x))
+        (t (error "Can't coerce ~s to a string" x))))
+
 (defmethod makemsg ((parser parser) &rest req)
   "Make an unsigned message from the args."
   (let ((hash (make-hash-table :test 'equal))
@@ -45,7 +50,7 @@
          (unless v (return (strcat msg ")")))
          (unless (equal msg "(")
            (dotcat msg ","))
-         (dotcat msg (if (eq v msgval) v (escape v))))))
+         (dotcat msg (if (eq v msgval) (as-string v) (escape (as-string v)))))))
 
 (defun assetid (id scale precision name)
   "Return the id for an asset"

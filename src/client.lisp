@@ -1173,8 +1173,7 @@
              (msgs (make-equal-hash spend t
                                     balance t))
              (coupon nil)
-             encrypted-coupon
-             args)
+             encrypted-coupon)
         (handler-case (match-bankreq client (car reqs) $ATSPEND)
           (error ()
             (let* ((args (match-bankreq client (car reqs)))
@@ -1522,7 +1521,7 @@
   time                                  ;timestamp in the inbox
   request                               ;$SPENDACCEPT, SPENDREJECT, or nil
   note                                  ;note for accept or reject
-  acct)                                ;Account into which to transfer
+  acct)                                 ;Account into which to transfer
 
 (defmethod processinbox ((client client) directions)
   "Process the inbox contents.
@@ -1553,14 +1552,14 @@
         (deltas (make-equal-hash)) ;(acct => (asset => delta, ...), ...) 
         (outbox-deletions nil)
         (msg "")
-        (msgs nil)
+        (msgs (make-equal-hash))
         (history "")
         (hist "")
         (charges (make-equal-hash)))
     (multiple-value-setq (inbox inbox-msgs)
       (getinbox-internal client (keep-history-p client)))
     (multiple-value-setq (outbox outbox-msgs)
-      (getoutbox-internal (keep-history-p client)))
+      (getoutbox-internal client (keep-history-p client)))
     (dolist (dir directions)
       (let* ((time (process-inbox-time dir))
              (request (process-inbox-request dir))
@@ -1641,7 +1640,7 @@
           (balancehash nil)
           (fracmsgs nil))
       (setf (gethash pmsg msgs) t)
-      (setq msg (if (equal msg "") pmsg (dotcat msg "." pmsg)))
+      (setq msg (if (equal msg "") pmsg (dotcat pmsg "." msg)))
       (when (keep-history-p client)
         (setq history (strcat pmsg hist)))
 
@@ -1659,14 +1658,14 @@
                                  :test #'equal :key #'balance-assetid)
               for oldamount = (and oldbal (balance-amount oldbal))
               do
-              (when (and oldamount (> (bccomp oldamount 0) 0))
-                (let ((oldtime (balance-time oldbal)))
-                  (setf oldamount (do-storagefee
-                                      client charges oldamount oldtime trans assetid)
-                        (balance-amount oldbal) oldamount))
-                (unless (eql 0 (bccomp oldamount 0))
+                (when (and oldamount (> (bccomp oldamount 0) 0))
+                  (let ((oldtime (balance-time oldbal)))
+                    (setf oldamount (do-storagefee
+                                        client charges oldamount oldtime trans assetid)
+                          (balance-amount oldbal) oldamount)))
+                (unless oldamount
                   (setf (gethash feeasset delta-main)
-                        (bcsub (gethash feeasset delta-main 0) 1)))))))
+                        (bcsub (gethash feeasset delta-main 0) 1))))))
 
       ;; Create balance, outboxhash, and balancehash messages
       (loop
@@ -1711,11 +1710,9 @@
                      (gethash assetid fracmsgs) fracmsg)
                (dotcat msg "." storagefeemsg "." fracmsg))))
 
-    ;; Send request to server
-    (setq msg (process server msg))
-
-    ;; Validate return from server
-    (let* ((reqs (parse parser msg t)))
+    (let* ((retmsg (process server msg)) ;send request to server
+           (reqs (parse parser retmsg t)))
+      ;; Validate return from server
       (handler-case (match-bankreq client (car reqs) $ATPROCESSINBOX)
         (error ()
           (let ((args
@@ -1726,24 +1723,25 @@
                          ;; Force reload of balances and outbox
                          (forceinit client)
                          ;; Force reload of assets
-                         (loop
-                            for assetid being the hash-keys of
-                            charges
-                            do
-                            (reload-asset-p client assetid)))
-                       (return-from processinbox-internal
-                         (processinbox-internal client directions t)))
+                         (when charges
+                           (loop
+                              for assetid being the hash-keys of
+                              charges
+                              do
+                                (reload-asset-p client assetid)))
+                         (return-from processinbox-internal
+                           (processinbox-internal client directions t))))
                      (error "Error from processinbox request: ~a" c)))))
             (error "Processinbox request returned unknown message type: ~s"
                    (getarg $REQUEST args)))))
       (dolist (req reqs)
-        (let* ((msg (get-parsemsg req))
+        (let* ((reqmsg (get-parsemsg req))
                (args (match-bankreq client req))
                (m (trim (get-parsemsg (getarg $MSG args))))
                (msgm (gethash m msgs)))
           (unless msgm (error "Returned message wasn't sent: ~s" m))
           (when (stringp msgm) (error "Duplicate returned message: ~s" m))
-          (setf (gethash m msgs) msg)))
+          (setf (gethash m msgs) reqmsg)))
 
       (loop
          for m being the hash-key using (hash-value msg) of msgs
@@ -1761,11 +1759,12 @@
               (setf (db-get db (userbalancekey client acct asset))
                     (gethash balmsg msgs))))
 
-      (loop
-         for assetid being the hash-key using (hash-value fracmsg) of fracmsgs
-         for key = (userfractionkey client assetid)
-         do
-           (setf (db-get db key) (gethash fracmsg msgs)))
+      (when fracmsgs
+        (loop
+           for assetid being the hash-key using (hash-value fracmsg) of fracmsgs
+           for key = (userfractionkey client assetid)
+           do
+           (setf (db-get db key) (gethash fracmsg msgs))))
 
       (when outboxhash
         (dolist (outbox-time outbox-deletions)
@@ -2425,8 +2424,9 @@
                               request)))))
 
             (when (and (not (equal id bankid))
-                       (> (hash-table-count outbox) 0)
-                       (not outboxhash))
+                       (not outboxhash)
+                       outbox
+                       (> (hash-table-count outbox) 0))
               (error "While procesing getoutbox: outbox items but no outboxhash"))
 
             ;; All is well. Write the data

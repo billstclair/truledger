@@ -110,6 +110,21 @@
               (login client passphrase)
               (addbank client (bankurl server) name))))))))
 
+(defmethod accept-inbox ((ts test-state))
+  (let* ((client (client ts))
+         (inbox (getinbox client))
+         (directions))
+    (dolist (item inbox)
+      (push (make-process-inbox
+             :time (inbox-time item)
+             :request $SPENDACCEPT
+             :note (format nil "Accepting ~a"
+                           (or (inbox-msgtime item) (inbox-time item))))
+            directions))
+    (processinbox client directions)))
+             
+    
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair

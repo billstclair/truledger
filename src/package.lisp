@@ -340,6 +340,7 @@
    #:inbox-note
    #:inbox-items
    #:getinbox
+   #:make-process-inbox
    #:process-inbox
    #:process-inbox-time
    #:process-inbox-request
