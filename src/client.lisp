@@ -1388,11 +1388,11 @@
     (sync-inbox client)
     (dolist (time (db-contents db key))
       (let* ((msg (db-get db key time))
-             (reqs (parse parser msg)))
+             (reqs (parse parser msg))
+             last-item)
         (dolist (req reqs)
           (let* ((args (match-bankreq client req))
-                 (argstime (getarg $TIME args))
-                 last-item)
+                 (argstime (getarg $TIME args)))
             (unless (or (null argstime) (equal argstime time))
               (error "Inbox message timestamp mismatch"))
             (setq args (getarg $MSG args))
@@ -1887,10 +1887,10 @@
              (coupons nil))
         (dolist (req reqs)
           (let* ((args (match-bankreq client req))
-                 request
+                 (request (getarg $REQUEST args))
                  (incnegs t)
-                 (assetid (getarg $ASSET args))
-                 (amount (getarg $AMOUNT args))
+                 assetid
+                 amount
                  assetname
                  formattedamount
                  id
@@ -1900,7 +1900,9 @@
               (unless (equal (getarg $TIME args) time)
                 (error "Outbox message timestamp mismatch")))
             (setq id (getarg $ID args)
-                  request (getarg $REQUEST args))
+                  request (getarg $REQUEST args)
+                  assetid (getarg $ASSET args)
+                  amount (getarg $AMOUNT args))
             (when (equal id bankid) (setq incnegs nil))
             (when assetid
               (let ((asset (getasset client assetid)))
@@ -1918,9 +1920,9 @@
 
             (cond ((equal request $SPEND)
                    (when item
-                     (error "More than on spend message in an outbox item")
-                     (setf item outbox
-                           (outbox-note item) (getarg $NOTE args))))
+                     (error "More than on spend message in an outbox item"))
+                   (setf item outbox
+                         (outbox-note item) (getarg $NOTE args)))
                   ((equal request $TRANFEE)
                    (push outbox items))
                   ((equal request $COUPONENVELOPE)

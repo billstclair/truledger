@@ -7,14 +7,18 @@
 
 (in-package :trubanc-server)
 
-(defun make-server (dir passphrase &key (bankname "") (bankurl ""))
+(defun make-server (dir passphrase &key
+                    (bankname "")
+                    (bankurl "")
+                    (privkey-size 3072))
   "Create a Trubanc server instance."
   (let ((db (make-fsdb dir)))
     (make-instance 'server
                    :db db
                    :passphrase passphrase
                    :bankname bankname
-                   :bankurl bankurl)))
+                   :bankurl bankurl
+                   :privkey-size privkey-size)))
 
 (defclass server ()
   ((db :type db
@@ -46,6 +50,9 @@
             :initarg :tranfee
             :initform "2"
             :accessor tranfee)
+   (privkey-size :accessor privkey-size
+                 :initarg :privkey-size
+                 :initform 3072)
    (privkey :accessor privkey)
    (bankid :type (or string null)
            :initform nil
@@ -324,7 +331,7 @@
         ;; http://www.rsa.com/rsalabs/node.asp?id=2004 recommends that 3072-bit
         ;; RSA keys are equivalent to 128-bit symmetric keys, and they should be
         ;; secure past 2031.
-        (let* ((privkey (rsa-generate-key 3072))
+        (let* ((privkey (rsa-generate-key (or (privkey-size server) 3072)))
                (privkey-text (encode-rsa-private-key privkey passphrase))
                (pubkey (encode-rsa-public-key privkey))
                (bankid (pubkey-id pubkey))

@@ -49,7 +49,8 @@
     (setf (server ts) (make-server
                        server-dir passphrase
                        :bankname "Test Bank"
-                       :bankurl (format nil "http://localhost:~d/" port))
+                       :bankurl (format nil "http://localhost:~d/" port)
+                       :privkey-size 512)
           (client ts) (make-client client-dir
                                    :test-server (unless network-p (server ts))))
     (when network-p
@@ -128,37 +129,62 @@
 (defmethod spend-test ((ts test-state) &optional (tokens-p t))
   (declare (ignore tokens-p))
   (let* ((john (prog1 (login-user ts "john") (accept-inbox ts)))
-         (bill (prog1 (login-user ts "bill") (accept-inbox ts)))
+         (bill (login-user ts "bill"))
          (client (client ts))
          (fee (getfees client))
          (fee-asset (fee-assetid fee))
          (fee-amount (fee-amount fee))
-         (bill-bals (cdar (getbalance client $MAIN)))
-         (bill-token-bal (find fee-asset bill-bals
-                               :test #'equal
-                               :key #'balance-assetid))
-         (bill-tokens (balance-amount bill-token-bal)))
-    (spend client john fee-asset "10" nil (strcat john bill))
-    (setq bill-bals (cdar (getbalance client $MAIN))
-          bill-token-bal (find fee-asset bill-bals
-                               :test #'equal
-                               :key #'balance-assetid))
-    (assert (eql 0 (bccomp (balance-amount bill-token-bal)
-                           (bcsub bill-tokens 10 fee-amount)))
+         bals
+         bill-tokens)
+    (flet ((getbal (asset &optional (getbalance-p t))
+             (when (or (null bals) getbalance-p)
+               (setq bals (cdar (getbalance client $MAIN))))
+             (let ((bal (find asset bals
+                              :test #'equal
+                              :key #'balance-assetid)))
+               (and bal (balance-amount bal))))
+           (give-tokens (user amount &optional id)
+             (unless id
+               (setq id (login-user ts user)))
+             (login-bank ts)
+             (spend client id fee-asset amount)
+             (login-user ts user)
+             (accept-inbox ts)))
+
+      ;; Make sure bill has enough tokens
+      (give-tokens "bill" "12" bill)
+
+      ;; Spend 10 tokens from bill to john. John accepts.
+      (setq bill-tokens (getbal fee-asset))
+      (spend client john fee-asset "10" nil (strcat john bill))
+      (assert (eql 0 (bccomp (getbal fee-asset)
+                             (bcsub bill-tokens 10 fee-amount)))
             nil
             "Balance mismatch after spend")
-    (login-user ts "john")
-    (accept-inbox ts)
-    (login-user ts "bill")
-    (accept-inbox ts)
-    (setq bill-bals (cdar (getbalance bill-bals))
-          bill-token-bal (find fee-asset bill-bals
-                               :test #'equal
-                               :key #'balance-assetid))
-    (assert (eql 0 (bccomp (balance-amount bill-token-bal)
-                           (bcsub bill-tokens 10)))
+      (login-user ts "john")
+      (accept-inbox ts)
+      (login-user ts "bill")
+      (accept-inbox ts)
+      (assert (eql 0 (bccomp (getbal fee-asset)
+                             (bcsub bill-tokens 10)))
+              nil
+              "Balance mismatch after accept")
+
+      ;; Spend 10 tokens from bill to john. John rejects
+      (setq bill-tokens (getbal fee-asset))
+      (spend client john fee-asset "10" nil (strcat john bill))
+      (assert (eql 0 (bccomp (getbal fee-asset)
+                             (bcsub bill-tokens 10 fee-amount)))
             nil
-            "Balance mismatch after accept")))
+            "Balance mismatch after spend")
+      (login-user ts "john")
+      (accept-inbox ts nil)
+      (login-user ts "bill")
+      (accept-inbox ts)
+      (assert (eql 0 (bccomp (getbal fee-asset)
+                             (bcsub bill-tokens 2)))
+              nil
+              "Balance mismatch after accept"))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
