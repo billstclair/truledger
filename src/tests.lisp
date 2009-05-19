@@ -13,8 +13,8 @@
 (defparameter *www-dir*
   (directory-namestring (merge-pathnames "../www/" *test-pathname*)))
 
-(defun make-test-state (db-dir &rest rest &key dont-erase passphrase port no-network-p)
-  (declare (ignore dont-erase passphrase port no-network-p))
+(defun make-test-state (db-dir &rest rest &key dont-erase passphrase port network-p)
+  (declare (ignore dont-erase passphrase port network-p))
   (apply #'make-instance 'test-state
          :db-dir db-dir
          rest))        
@@ -35,13 +35,13 @@
 
 (defmethod initialize-instance :after ((ts test-state) &key
                                        dont-erase
-                                       (no-network-p t))
+                                       (network-p nil))
   (let* ((db-dir (ensure-directory-pathname (db-dir ts)))
          (port (port ts))
          (passphrase (passphrase ts))
          (server-dir (merge-pathnames "serverdb" db-dir))
          (client-dir (merge-pathnames "clientdb" db-dir)))
-    (unless no-network-p
+    (when network-p
       (stop-web-server port))
     (unless dont-erase
       (ignore-errors (recursive-delete-directory server-dir))
@@ -51,8 +51,8 @@
                        :bankname "Test Bank"
                        :bankurl (format nil "http://localhost:~d/" port))
           (client ts) (make-client client-dir
-                                   :test-server (and no-network-p (server ts))))
-    (unless no-network-p
+                                   :test-server (unless network-p (server ts))))
+    (when network-p
       (start-test-web-server ts))))
 
 (defmethod start-test-web-server ((ts test-state))
@@ -108,22 +108,57 @@
               (login-bank ts)
               (spend client id (tokenid server) "200" nil "Welcome to my bank")
               (login client passphrase)
-              (addbank client (bankurl server) name))))))))
+              (addbank client (bankurl server) name))))))
+    (id client)))
 
-(defmethod accept-inbox ((ts test-state))
+(defmethod accept-inbox ((ts test-state) &optional (accept-p t))
   (let* ((client (client ts))
          (inbox (getinbox client))
          (directions))
     (dolist (item inbox)
       (push (make-process-inbox
              :time (inbox-time item)
-             :request $SPENDACCEPT
-             :note (format nil "Accepting ~a"
+             :request (if accept-p $SPENDACCEPT $SPENDREJECT)
+             :note (format nil "~a ~a"
+                           (if accept-p "Accepting" "Rejecting")
                            (or (inbox-msgtime item) (inbox-time item))))
             directions))
     (processinbox client directions)))
              
-    
+(defmethod spend-test ((ts test-state) &optional (tokens-p t))
+  (declare (ignore tokens-p))
+  (let* ((john (prog1 (login-user ts "john") (accept-inbox ts)))
+         (bill (prog1 (login-user ts "bill") (accept-inbox ts)))
+         (client (client ts))
+         (fee (getfees client))
+         (fee-asset (fee-assetid fee))
+         (fee-amount (fee-amount fee))
+         (bill-bals (cdar (getbalance client $MAIN)))
+         (bill-token-bal (find fee-asset bill-bals
+                               :test #'equal
+                               :key #'balance-assetid))
+         (bill-tokens (balance-amount bill-token-bal)))
+    (spend client john fee-asset "10" nil (strcat john bill))
+    (setq bill-bals (cdar (getbalance client $MAIN))
+          bill-token-bal (find fee-asset bill-bals
+                               :test #'equal
+                               :key #'balance-assetid))
+    (assert (eql 0 (bccomp (balance-amount bill-token-bal)
+                           (bcsub bill-tokens 10 fee-amount)))
+            nil
+            "Balance mismatch after spend")
+    (login-user ts "john")
+    (accept-inbox ts)
+    (login-user ts "bill")
+    (accept-inbox ts)
+    (setq bill-bals (cdar (getbalance bill-bals))
+          bill-token-bal (find fee-asset bill-bals
+                               :test #'equal
+                               :key #'balance-assetid))
+    (assert (eql 0 (bccomp (balance-amount bill-token-bal)
+                           (bcsub bill-tokens 10)))
+            nil
+            "Balance mismatch after accept")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

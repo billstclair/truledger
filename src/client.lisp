@@ -1391,8 +1391,9 @@
              (reqs (parse parser msg)))
         (dolist (req reqs)
           (let* ((args (match-bankreq client req))
-                 (argstime (getarg $TIME args)))
-            (unless (equal argstime time)
+                 (argstime (getarg $TIME args))
+                 last-item)
+            (unless (or (null argstime) (equal argstime time))
               (error "Inbox message timestamp mismatch"))
             (setq args (getarg $MSG args))
             (let ((request (getarg $REQUEST args))
@@ -1402,8 +1403,7 @@
                   assetid
                   amount
                   assetname
-                  formattedamount
-                  last-item)
+                  formattedamount)
               (cond ((or (equal request $SPEND)
                          (equal request $TRANFEE))
                      (setq assetid (getarg $ASSET args)
@@ -1432,7 +1432,7 @@
                                       :note note)))
                 (cond ((equal request $SPEND)
                        (push item res)
-                       (setq last-item nil))
+                       (setq last-item item))
                       ((equal request $TRANFEE)
                        (unless last-item
                          (error "tranfee without matching spend"))
@@ -2465,9 +2465,10 @@
 
 (defmethod outboxhashmsg ((client client) transtime &optional newitem removed-times)
   (let ((db (db client))
-        (bankid (bankid client)))
+        (bankid (bankid client))
+        (key (useroutboxkey client)))
     (multiple-value-bind (hash hashcnt)
-        (dirhash db (unpacker client) newitem removed-times)
+        (dirhash db key (unpacker client) newitem removed-times)
       (custmsg client $OUTBOXHASH bankid transtime hashcnt hash))))
 
 ;; Web client session support
