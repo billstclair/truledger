@@ -692,7 +692,8 @@
                (msg (custmsg client $ASSET bankid assetid scale precision assetname))
                (nonbankp (not (equal id bankid)))
                (bal1 (and nonbankp
-                          (balance-amount (getbalance client $MAIN tokenid))))
+                          (balance-amount (or (getbalance client $MAIN tokenid)
+                                              (error "No token balance")))))
                (oldasset (ignore-errors (getasset client assetid)))
                (bal2 nil)
                (mainbals (make-equal-hash))
@@ -743,8 +744,10 @@
               (error "While adding asset: storage fee not returned from server"))
 
             ;; All is well. Commit the balance changes
-            (when bal1 (setf (db-get db (userbalancekey $MAIN tokenid)) gotbal1))
-            (when bal2 (setf (db-get db (userbalancekey $MAIN assetid)) gotbal2))
+            (when bal1
+              (setf (db-get db (userbalancekey client $MAIN tokenid)) gotbal1))
+            (when bal2
+              (setf (db-get db (userbalancekey client $MAIN assetid)) gotbal2))
             
             (getasset client assetid t)))))))
 
@@ -847,19 +850,21 @@
         (dolist (assetid assetids)
           (multiple-value-bind (amount time)
               (userbalanceandtime client acct assetid)
-            (unless (is-numeric-p amount t)
-              (error "While gathering balances, non-numeric amount: ~s" amount))
-            (let* ((asset (getasset client assetid))
-                   (formatted-amount (format-asset-value client amount asset))
-                   (assetname (asset-name asset)))
-              (push (make-balance :acct acct
-                                  :assetid assetid
-                                  :assetname assetname
-                                  :amount amount
-                                  :time time
-                                  :formatted-amount formatted-amount)
-                    balances))))
-        (push (cons acct (sort balances #'balance-lessp)) res)))
+            (when amount
+              (unless (is-numeric-p amount t)
+                (error "While gathering balances, non-numeric amount: ~s" amount))
+              (let* ((asset (getasset client assetid))
+                     (formatted-amount (format-asset-value client amount asset))
+                     (assetname (asset-name asset)))
+                (push (make-balance :acct acct
+                                    :assetid assetid
+                                    :assetname assetname
+                                    :amount amount
+                                    :time time
+                                    :formatted-amount formatted-amount)
+                      balances)))))
+        (when balances
+          (push (cons acct (sort balances #'balance-lessp)) res))))
     (if (and (stringp acct) assetid)
         (cadar res)
         (sort res #'string-lessp :key #'car))))
@@ -1001,6 +1006,9 @@
       (error "Transfer from and to the same acct (~s). Nothing to do."
              acct))
 
+    ;; Must get time before accessing balances since GETTIME may FORCEINIT.
+    (setq time (gettime client))
+
     (when (< (bccomp amount 0) 0)
       (let ((bal (userbalance client acct assetid)))
         (unless (eql 0 (bccomp bal amount))
@@ -1010,8 +1018,6 @@
       (userbalanceandtime client acct assetid))
     (unless (is-numeric-p oldamount t)
       (error "Error getting balance for asset in acct ~s: ~s" acct oldamount))
-
-    (setq time (gettime client))
 
     (multiple-value-setq (percent fraction fractime)
       (client-storage-info client assetid))
@@ -2193,7 +2199,8 @@
            (let ((pow (bcpow 10 scale)))
              (wbp (scale)
                (setq res (bcdiv value pow))))
-           (let ((dotpos (position #\. res)))
+           (let ((dotpos (position #\. res))
+                 (precision (parse-integer precision)))
              (cond ((null dotpos)
                     (unless (eql 0 (bccomp precision 0))
                       (dotcat res "." (fill-string precision))))
@@ -2274,11 +2281,15 @@
                  (setf times (explode #\, times)
                        (db-get db key) (cadr times))
                  (return-from gettime (car times)))))))
-    (let ((req (getreq client)))
-      (cond ((not req) nil)
-            (t (let* ((msg (sendmsg client $GETTIME bankid req))
-                      (args (unpack-bankmsg client msg $TIME)))
-                 (getarg $TIME args)))))))
+    (flet ((get-time-args ()
+             (let* ((req (getreq client))
+                    (msg (sendmsg client $GETTIME bankid req)))
+               (unpack-bankmsg client msg $TIME))))
+      (let ((args (handler-case (get-time-args)
+                    (error ()
+                      (forceinit client)
+                      (get-time-args)))))
+        (getarg $TIME args)))))
 
 (defmethod syncreq ((client client))
   "Check once per instance that the local idea of the reqnum matches
@@ -2323,11 +2334,6 @@
     (setf (db-get db (userreqkey client)) "0"
           (syncedreq-p client) nil)
     (init-bank-accts client)))
-
-(defun get-inited-hash (key hash &optional (creator #'make-equal-hash))
-  "Get an object from a hash table, creating it if it's not there."
-  (or (gethash key hash)
-      (setf (gethash key hash) (funcall creator))))
 
 (defmethod init-bank-accts ((client client))
   "If we haven't yet downloaded accounts from the bank, do so now.

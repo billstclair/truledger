@@ -130,6 +130,11 @@
          (setf (gethash key hash) value)))
     hash))
 
+(defun get-inited-hash (key hash &optional (creator #'make-equal-hash))
+  "Get an object from a hash table, creating it if it's not there."
+  (or (gethash key hash)
+      (setf (gethash key hash) (funcall creator))))
+
 (defun strcat (&rest strings)
   "Concatenate a bunch of strings"
   (apply #'concatenate 'string (mapcar 'string strings)))

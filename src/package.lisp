@@ -195,6 +195,7 @@
    #:balancehash
    #:assetid
    #:make-equal-hash
+   #:get-inited-hash
    #:normalize-balance
    #:fraction-digits
    #:storage-fee
