@@ -7,6 +7,9 @@
 
 (in-package :trubanc)
 
+;; This noticeably speeds things up
+(ccl:egc nil)
+
 (defun run-program (program args &key input output)
   (ccl:run-program program args :input input :output output))
 

@@ -182,7 +182,7 @@
    (BANK-PUBKEYSIG BANK) will be blank if the user has no account at BANK."
   (let* ((db (db client))
          (id (require-current-user client))
-         (banks (db-contents db (strcat $ACCOUNT "/" id "/" $BANK)))
+         (banks (db-contents db $ACCOUNT id $BANK))
          (res nil))
     (dolist (bankid banks)
       (let ((bank (getbank client bankid all)))
@@ -1290,18 +1290,18 @@
             (when coupon
               (setq coupon (privkey-decrypt coupon (privkey client)))
               (return-from spendreject-internal
-                (redeem client coupon))))))
-      (setq msg (apply #'custmsg client $SPENDREJECT bankid time id
-                       (and note (list note))))
-      (let* ((bankmsg (process server msg))
-             (args (with-verify-sigs-p (parser t)
-                     (unpack-bankmsg client bankmsg $INBOX)))
-             (time (getarg $TIME args))
-             (args2 (getarg $MSG args))
-             (msg2 (get-parsemsg args2)))
-        (unless (equal (trim msg2) (trim msg))
-          (error "Bank return didn't wrap request"))
-    (setf (db-get db (userinboxkey client) time) bankmsg)))))
+                (redeem client coupon)))))))
+    (setq msg (apply #'custmsg client $SPENDREJECT bankid time id
+                     (and note (list note))))
+    (let* ((bankmsg (process server msg))
+           (args (with-verify-sigs-p (parser t)
+                   (unpack-bankmsg client bankmsg $INBOX)))
+           (time (getarg $TIME args))
+           (args2 (getarg $MSG args))
+           (msg2 (get-parsemsg args2)))
+      (unless (equal (trim msg2) (trim msg))
+        (error "Bank return didn't wrap request"))
+      (setf (db-get db (userinboxkey client) time) bankmsg))))
 
 (defmethod gethistorytimes ((client client))
   (let ((db (db client)))
@@ -2414,7 +2414,7 @@
                               (msg (or (gethash time outbox)
                                        (error "No spend message for time: ~s" time))))
                          (setf (gethash time outbox)
-                               (append-db-keys msg (get-parsemsg req)))))
+                               (strcat msg "." (get-parsemsg req)))))
                       ((equal request $ATOUTBOXHASH)
                        (unless (equal (getarg $REQUEST msgargs) $OUTBOXHASH)
                          (error "Bank wrapped a non-outbox request with @outboxhash"))

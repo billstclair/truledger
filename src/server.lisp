@@ -86,34 +86,34 @@
         res))))
 
 (defun account-dir (id)
-  (strcat $ACCOUNT "/" id  "/"))
+  (append-db-keys $ACCOUNT id))
 
 (defun acct-last-key (id)
-  (strcat (account-dir id) $LAST))
+  (append-db-keys (account-dir id) $LAST))
 
 (defmethod get-acct-last ((server server) id)
   (db-get (db server) (acct-last-key id)))
 
 (defun acct-req-key (id)
-  (strcat (account-dir id) $REQ))
+  (append-db-keys (account-dir id) $REQ))
 
 (defmethod get-acct-req ((server server) id)
   (db-get (db server) (acct-req-key id)))
 
 (defun acct-time-key (id)
-  (strcat (account-dir id) $TIME))
+  (append-db-keys (account-dir id) $TIME))
 
 (defun balance-key (id)
-  (strcat (account-dir id) $BALANCE))
+  (append-db-keys (account-dir id) $BALANCE))
 
 (defun acct-balance-key (id &optional (acct $MAIN))
-  (strcat (balance-key id) "/" acct))
+  (append-db-keys (balance-key id) acct))
 
 (defun asset-balance-key (id asset &optional (acct $MAIN))
-  (strcat (acct-balance-key id acct) "/" asset))
+  (append-db-keys (acct-balance-key id acct) asset))
 
 (defun fraction-balance-key (id asset)
-  (strcat (account-dir id) $FRACTION "/" asset))
+  (append-db-keys (account-dir id) $FRACTION asset))
 
 (defmethod asset-balance ((server server) id asset &optional (acct "main"))
   (let* ((key (asset-balance-key id asset acct))
@@ -123,13 +123,13 @@
         (unpack-bankmsg server msg $ATBALANCE $BALANCE $AMOUNT))))
 
 (defun outbox-key (id)
-  (strcat (account-dir id) $OUTBOX))
+  (append-db-keys (account-dir id) $OUTBOX))
 
 (defun outbox-hash-key (id)
-  (strcat (account-dir id) $OUTBOXHASH))
+  (append-db-keys (account-dir id) $OUTBOXHASH))
 
 (defun inbox-key (id)
-  (strcat (account-dir id) $INBOX))
+  (append-db-keys (account-dir id) $INBOX))
 
 (defmethod storage-info ((server server) id assetid)
   "Get the values necessary to compute the storage fee.
@@ -170,13 +170,13 @@
             (values percent fraction fractime issuer)))))))
 
 (defun storage-fee-key (id &optional assetid)
-  (let ((res (strcat (account-dir id) $STORAGEFEE)))
+  (let ((res (append-db-keys (account-dir id) $STORAGEFEE)))
     (if assetid
-        (strcat res "/" assetid)
+        (append-db-keys res assetid)
         res)))
 
 (defun outbox-dir (id)
-  (strcat (account-dir id) $OUTBOX))
+  (append-db-keys (account-dir id) $OUTBOX))
 
 (defmethod unpacker ((server server))
   #'(lambda (msg) (unpack-bankmsg server msg)))
@@ -195,7 +195,7 @@
              hash)))
 
 (defun balance-hash-key (id)
-  (strcat (account-dir id) $BALANCEHASH))
+  (append-db-keys (account-dir id) $BALANCEHASH))
 
 (defmethod is-asset-p ((server server) assetid)
   "Returns the message defining ASSETID, or NIL, if there isn't one."
@@ -612,7 +612,7 @@
     (when coupon
       ;; Validate a coupon number
       (let* ((coupon-number-hash (sha1 coupon))
-             (key (strcat $COUPON "/" coupon-number-hash))
+             (key (append-db-keys $COUPON coupon-number-hash))
              (coupon (db-get db key)))
         (unless coupon
           (error "Coupon invalid or already redeemed"))
@@ -1084,12 +1084,11 @@
                    (feeamt nil)
                    (feeasset nil))
               (dolist (intime inbox
-                       (error "Spend has already been processed"))
-                (let* ((item (or (db-get db key intime)
-                                 (error "Spend has already been processed")))
+                       (error "Time not found in inbox: ~s" time))
+                (let* ((item (db-get db key intime))
                        (item2 nil)
-                       (args (unpack-bankmsg server item $INBOX $SPEND)))
-                  (when (equal (getarg $TIME args) time)
+                       (args (and item (unpack-bankmsg server item $INBOX $SPEND))))
+                  (when (and args (equal (getarg $TIME args) time))
                     ;; Calculate the fee, if there is one
                     (let* ((reqs (getarg $UNPACK-REQS-KEY args))
                            (req (second reqs)))
@@ -1110,14 +1109,14 @@
                       (setf item2 (db-get db key intime)
                             (db-get db key intime) nil))
                     (unless item2
-                      (error "Spend has already been processed"))
+                      (error "Recipient inbox item removed during spend-reject processing"))
                     (when feeamt
                       (add-to-bank-balance server feeasset feeamt))
                     (let* ((newtime (gettime server))
                            (item (bankmsg server $INBOX newtime msg))
                            (key (inbox-key id)))
                       (setf (db-get db key newtime) item)
-                      (return item))))))))))))
+                      (return-from do-spendreject item))))))))))))
 
 (define-message-handler do-couponenvelope $COUPONENVELOPE (server args reqs)
   "Redeem coupon by moving it from coupon/<coupon> to the customer inbox.
@@ -1152,7 +1151,7 @@
           (setq coupon-number (getarg $COUPON args))))
 
       (let* ((coupon-number-hash (sha1 coupon-number))
-             (key (strcat $COUPON "/" coupon-number-hash))
+             (key (append-db-keys $COUPON coupon-number-hash))
              (outbox-item nil))
         (with-db-lock (db key)
           (setq outbox-item (db-get db key))
@@ -1194,7 +1193,7 @@
                (setq feereq (second reqs)
                      feemsg (get-parsemsg feereq))
                (dotcat inbox-item "." feemsg))
-             (let ((key (strcat (inbox-key id) "/" newtime)))
+             (let ((key (append-db-keys (inbox-key id) newtime)))
                (db-put db key inbox-item)))))))))
 
 (define-message-handler do-getinbox $GETINBOX (server args reqs)
@@ -1575,7 +1574,7 @@
     (let ((balancekey (balance-key id)))
       (loop
          for acct being the hash-key using (hash-value balances) of acctbals
-         for acctkey = (strcat balancekey "/" acct)
+         for acctkey = (append-db-keys balancekey acct)
          do
            (loop
               for balasset being the hash-key using (hash-value balance)
@@ -1849,7 +1848,7 @@
           (let ((balancekey (balance-key id)))
             (loop
                for acct being the hash-key using (hash-value balances) of acctbals
-               for acctkey = (strcat balancekey "/" acct)
+               for acctkey = (append-db-keys balancekey acct)
                do
                (loop
                   for balasset being the hash-key using (hash-value balance)
@@ -1886,7 +1885,7 @@
             (t (let* ((balancekey (balance-key id))
                       (acctnames (db-contents db balancekey)))
                  (dolist (name acctnames)
-                   (push (strcat balancekey "/" name) acctkeys))
+                   (push (append-db-keys balancekey name) acctkeys))
                  (setf acctkeys (nreverse acctkeys)))))
 
       (dolist (acctkey acctkeys)
@@ -1896,7 +1895,7 @@
                   (db-contents db acctkey))
               assetkeys nil)
         (dolist (name assetnames)
-          (push (strcat acctkey "/" name) assetkeys))
+          (push (append-db-keys acctkey name) assetkeys))
         (dolist (assetkey assetkeys)
           (let ((bal (db-get db assetkey)))
             (when bal
