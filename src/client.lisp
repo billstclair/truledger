@@ -2322,7 +2322,7 @@
         (let* ((outboxkey (useroutboxkey client))
                (outtimes (db-contents db outboxkey)))
           (dolist (outtime outtimes)
-            (setf (db-get outboxkey outtime) nil)))
+            (setf (db-get db outboxkey outtime) nil)))
         (setf (db-get db (userbalancehashkey client)) nil
               (db-get db (useroutboxhashkey client)) nil)
         (setf (syncedreq-p client) t))))

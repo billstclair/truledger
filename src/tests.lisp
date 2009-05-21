@@ -126,6 +126,16 @@
             directions))
     (processinbox client directions)))
              
+(defmethod cancel-outbox ((ts test-state))
+  (let* ((client (client ts))
+         (outbox (getoutbox client)))
+    (dolist (item outbox)
+      (when (equal (outbox-request item) $SPEND)
+        (let ((time (outbox-time item)))
+          (spendreject client time)
+          (accept-inbox ts)
+          (return time))))))
+
 (defmethod spend-tokens-test ((ts test-state))
   (let* ((john (prog1 (login-user ts "john") (accept-inbox ts)))
          (bill (login-user ts "bill"))
@@ -183,7 +193,23 @@
       (assert (eql 0 (bccomp (getbal fee-asset)
                              (bcsub bill-tokens 2)))
               nil
-              "Balance mismatch after accept"))))
+              "Balance mismatch after accept")
+
+      ;; Spend 10 tokens from bill to john. Bill cancels
+      (setq bill-tokens (getbal fee-asset))
+      (format t "Tokens before cancel test: ~s~%" bill-tokens)
+      (spend client john fee-asset "10" nil (strcat john bill))
+      (assert (eql 0 (bccomp (getbal fee-asset)
+                             (bcsub bill-tokens 10 fee-amount)))
+            nil
+            "Balance mismatch after spend")
+      (format t "Tokens before cancel-outbox: ~s~%" (getbal fee-asset))
+      (cancel-outbox ts)
+      (format t "Tokens after cancel-outbox: ~s~%" (getbal fee-asset))
+      (assert (eql 0 (bccomp (getbal fee-asset)
+                             (bcsub bill-tokens 2)))
+              nil
+              "Balance mismatch after cancel"))))
 
 (defmethod bill-goldgrams-assetid ((ts test-state))
   (login-user ts "bill")
@@ -247,27 +273,29 @@
                                     (bcsub bill-grams 10)))))
               nil
               "Balance mismatch after accept")
-)))
 
-#||
-
-      ;; Spend 10 tokens from bill to john. John rejects
-      (setq bill-tokens (getbal fee-asset))
-      (spend client john fee-asset "10" nil (strcat john bill))
-      (assert (eql 0 (bccomp (getbal fee-asset)
-                             (bcsub bill-tokens 10 fee-amount)))
+      ;; Spend 10 goldgrams from bill to john. John rejects
+      (setq bill-tokens (getbal fee-asset)
+            bill-grams (getbal assetid nil))
+      (spend client john assetid "10" nil (strcat john bill))
+      (assert (and (eql 0 (bccomp (getbal fee-asset)
+                                  (bcsub bill-tokens fee-amount)))
+                   (eql 0 (wbp (scale)
+                            (bccomp (getbal assetid nil)
+                                    (bcsub bill-grams 10)))))
             nil
             "Balance mismatch after spend")
       (login-user ts "john")
       (accept-inbox ts nil)
       (login-user ts "bill")
       (accept-inbox ts)
-      (assert (eql 0 (bccomp (getbal fee-asset)
-                             (bcsub bill-tokens 2)))
+      (assert (and (eql 0 (bccomp (getbal fee-asset)
+                                  (bcsub bill-tokens 2)))
+                   (eql 0 (wbp (scale)
+                            (bccomp (getbal assetid nil) bill-grams))))
               nil
-              "Balance mismatch after accept"))))
-
-||#
+              "Balance mismatch after reject")
+)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

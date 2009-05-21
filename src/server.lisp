@@ -733,7 +733,7 @@
           (do-spend-internal server args reqs)))
 
       ;; This is outside the customer lock to avoid deadlock with the issuer account.
-      (when storagefee
+      (when (and issuer storagefee digits)
         (post-storage-fee server assetid issuer storagefee digits))
 
       res)))
@@ -1106,8 +1106,9 @@
                                   feeamt (getarg $AMOUNT args))))))
                     ;; Found the inbox item corresponding to the outbox item.
                     ;; Make sure it's still there.
-                    (with-db-lock (db (strcat key "/" intime))
-                      (setq item2 (db-get db key intime)))
+                    (with-db-lock (db (append-db-keys key intime))
+                      (setf item2 (db-get db key intime)
+                            (db-get db key intime) nil))
                     (unless item2
                       (error "Spend has already been processed"))
                     (when feeamt
@@ -1239,11 +1240,13 @@
       (with-db-lock (db (acct-time-key id))
         (multiple-value-setq (res charges)
           (do-processinbox-internal server args reqs))))
+      
     (loop
        for assetid being the hash-key using (hash-value assetinfo) of charges
        for issuer = (storage-info-issuer assetinfo)
        for storage-fee = (storage-info-fee assetinfo)
        for digits = (storage-info-digits assetinfo)
+       when (and issuer storage-fee digits)
        do
          (post-storage-fee server assetid issuer storage-fee digits))
 
