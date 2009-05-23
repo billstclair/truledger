@@ -98,40 +98,33 @@
 ;;;
 ;;; We use a customized pprint dispatch table to do it for us.
 
-(declaim (special *sldb-string-length*))
-(declaim (special *sldb-bitvector-length*))
+(defvar *sldb-string-length* nil)
+(defvar *sldb-bitvector-length* nil)
 
 (defvar *sldb-pprint-dispatch-table*
   (let ((initial-table (copy-pprint-dispatch nil))
         (result-table  (copy-pprint-dispatch nil)))
     (flet ((sldb-bitvector-pprint (stream bitvector)
              ;;; Truncate bit-vectors according to *SLDB-BITVECTOR-LENGTH*.
-             (if (or (not *print-array*) (not *print-length*))
-                 (let ((*print-pprint-dispatch* initial-table))
-                   (write bitvector :stream stream))
+             (if (not *sldb-bitvector-length*)
+                 (write bitvector :stream stream :circle nil
+                        :pprint-dispatch initial-table)
                  (loop initially (write-string "#*" stream)
                        for i from 0 and bit across bitvector do
                        (when (= i *sldb-bitvector-length*)
                          (write-string "..." stream)
                          (loop-finish))
-                       (write bit :stream stream))))
+                       (write-char (if (= bit 0) #\0 #\1) stream))))
            (sldb-string-pprint (stream string)
              ;;; Truncate strings according to *SLDB-STRING-LENGTH*.
-             (cond ((or (not *print-array*) (not *print-length*))
-                    (let ((*print-pprint-dispatch* initial-table))
-                      (write string :stream stream)))
-                   ((not *print-escape*)
+             (cond ((not *print-escape*)
                     (write-string string stream))
+                   ((not *sldb-string-length*)
+                    (write string :stream stream :circle nil
+                           :pprint-dispatch initial-table))
                    (t
-                    (loop initially (write-char #\" stream)
-                          for i from 0 and char across string do
-                          (cond ((= i *sldb-string-length*)
-                                 (write-string "..." stream)
-                                 (loop-finish))
-                                ((char= char #\")
-                                 (write-string "\\\"" stream))
-                                (t (write-char char stream)))
-                          finally (write-char #\" stream))))))
+                    (escape-string string stream
+                                   :length *sldb-string-length*)))))
       (set-pprint-dispatch 'bit-vector #'sldb-bitvector-pprint 0 result-table)
       (set-pprint-dispatch 'string #'sldb-string-pprint 0 result-table)
       result-table)))
@@ -156,18 +149,15 @@
 
 (defvar *backtrace-pprint-dispatch-table*
   (let ((table (copy-pprint-dispatch nil)))
-    (flet ((escape-string (stream string)
+    (flet ((print-string (stream string)
              (cond (*print-escape* 
-                    (write-char #\" stream)
-                    (loop for c across string do
-                          (case c
-                            (#\" (write-string "\\\"" stream))
-                            (#\newline (write-string "\\n" stream))
-                            (#\return (write-string "\\r" stream))
-                            (t (write-char c stream))))
-                    (write-char #\" stream))
+                    (escape-string string stream
+                                   :map '((#\" . "\\\"")
+                                          (#\\ . "\\\\")
+                                          (#\newline . "\\n")
+                                          (#\return . "\\r"))))
                    (t (write-string string stream)))))
-      (set-pprint-dispatch 'string  #'escape-string 0 table)
+      (set-pprint-dispatch 'string  #'print-string 0 table)
       table)))
 
 (defvar *backtrace-printer-bindings*
@@ -1171,7 +1161,7 @@ The processing is done in the extent of the toplevel restart."
        :presentation-start :presentation-end
        :new-package :new-features :ed :%apply :indentation-update
        :eval :eval-no-wait :background-message :inspect :ping
-       :y-or-n-p :read-string :read-aborted)
+       :y-or-n-p :read-from-minibuffer :read-string :read-aborted)
       &rest _)
      (declare (ignore _))
      (encode-message event (current-socket-io)))
@@ -1830,7 +1820,18 @@ NIL if streams are not globally redirected.")
         (question (apply #'format nil format-string arguments)))
     (force-output)
     (send-to-emacs `(:y-or-n-p ,(current-thread-id) ,tag ,question))
-    (caddr (wait-for-event `(:emacs-return ,tag result)))))
+    (third (wait-for-event `(:emacs-return ,tag result)))))
+
+(defun read-from-minibuffer-in-emacs (prompt &optional initial-value)
+  "Ask user a question in Emacs' minibuffer. Returns \"\" when user
+entered nothing, returns NIL when user pressed C-g."
+  (check-type prompt string) (check-type initial-value (or null string))
+  (let ((tag (make-tag)))
+    (force-output)
+    (send-to-emacs `(:read-from-minibuffer ,(current-thread-id) ,tag
+                                           ,prompt ,initial-value))
+    (third (wait-for-event `(:emacs-return ,tag result)))))
+
 
 (defun process-form-for-emacs (form)
   "Returns a string which emacs will read as equivalent to
@@ -2292,6 +2293,23 @@ aborted and return immediately with the output written so far."
           (funcall function stream)
           (finish-output stream)
           (subseq buffer 0 fill-pointer))))))
+
+(defun escape-string (string stream &key length (map '((#\" . "\\\"")
+                                                       (#\\ . "\\\\"))))
+  "Write STRING to STREAM surronded by double-quotes.
+LENGTH -- if non-nil truncate output after LENGTH chars.
+MAP -- rewrite the chars in STRING according to this alist."
+  (let ((limit (or length array-dimension-limit)))
+    (write-char #\" stream)
+    (loop for c across string 
+          for i from 0 do
+          (when (= i limit)
+            (write-string "..." stream)
+            (return))
+          (let ((probe (assoc c map)))
+            (cond (probe (write-string (cdr probe) stream))
+                  (t (write-char c stream)))))
+    (write-char #\" stream)))
 
 (defun package-string-for-prompt (package)
   "Return the shortest nickname (or canonical name) of PACKAGE."
@@ -3212,6 +3230,7 @@ DSPEC is a string and LOCATION a source location. NAME is a string."
   (verbose *inspector-verbose*)
   (parts (make-array 10 :adjustable t :fill-pointer 0))
   (actions (make-array 10 :adjustable t :fill-pointer 0))
+  metadata-plist
   content
   next previous)
 
@@ -3228,15 +3247,22 @@ DSPEC is a string and LOCATION a source location. NAME is a string."
       (reset-inspector)
       (inspect-object (eval (read-from-string string))))))
 
+(defun ensure-istate-metadata (o indicator default)
+  (with-struct (istate. object metadata-plist) *istate*
+    (assert (eq object o))
+    (let ((data (getf metadata-plist indicator default)))
+      (setf (getf metadata-plist indicator) data)
+      data)))
+
 (defun inspect-object (o)
-  (let ((previous *istate*)
-        (content (emacs-inspect/printer-bindings o)))
-    (unless (find o *inspector-history*)
-      (vector-push-extend o *inspector-history*))
-    (setq *istate* (make-inspector-state :object o :previous previous 
-                                         :content content))
-    (if previous (setf (istate.next previous) *istate*))
-    (istate>elisp *istate*)))
+  ;; Set *ISTATE* first so EMACS-INSPECT can possibly look at it.
+  (setq *istate* (make-inspector-state :object o :previous *istate*))
+  (setf (istate.content *istate*) (emacs-inspect/printer-bindings o))
+  (unless (find o *inspector-history*)
+    (vector-push-extend o *inspector-history*))
+  (let ((previous (istate.previous *istate*)))
+    (if previous (setf (istate.next previous) *istate*)))
+  (istate>elisp *istate*))
 
 (defun emacs-inspect/printer-bindings (object)
   (let ((*print-lines* 1) (*print-right-margin* 75)

@@ -12,7 +12,7 @@
 @set EDITION 3.0-alpha
 @set SLIMEVER 3.0-alpha
 @c @set UPDATED @today{}
-@set UPDATED @code{$Date: 2009-03-12 15:41:15 $}
+@set UPDATED @code{$Date: 2009-05-18 12:54:09 $}
 @set TITLE SLIME User Manual
 @settitle @value{TITLE}, version @value{EDITION}
 
@@ -656,6 +656,12 @@ Temporary buffers containing Lisp symbols use @code{slime-mode} in
 addition to any special mode of their own. This makes the usual
 @SLIME{} commands available for describing symbols, looking up
 function definitions, and so on.
+
+@vindex slime-description-autofocus
+Initial focus of those ``description'' buffers depends on the variable
+@code{slime-description-autofocus}. If @code{nil} (the default),
+description buffers do not receive focus automatically, and vice
+versa.
 
 @c ----------------------- 
 @node Inferior-lisp

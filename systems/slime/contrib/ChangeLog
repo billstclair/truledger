@@ -1,3 +1,133 @@
+2009-05-20  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	* swank-arglists.lisp (arglist-dispatch [define-compiler-macro]):
+	guard against when we're in the body of a compiler-macro
+	definition for a function not yet compiled into the image.
+
+2009-05-20  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	* slime-fontifying-fu.el (slime-search-for-suppressed-forms):
+	Retrieve match data early now that `slime-current-parser-state'
+	does not save it anymore.
+
+2009-05-17  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	* slime-fontifying-fu.el (slime-search-for-suppressed-forms):
+	Shadow SBCL-specific #!+, #!- conditionals correctly.
+	(slime-compute-region-for-font-lock): Fix small thinko.
+
+2009-05-16  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	* slime-fontifying-fu.el (slime-beginning-of-tlf): Make sure to
+	skip outside of comments and strings first.
+
+2009-05-16  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	Optimize font-lock-magic.
+
+	* slime-fontifying-fu.el (slime-search-suppressed-forms-match-data):
+	New var, to inhibit consing.
+	(slime-search-suppressed-forms-internal): Use it.
+	(slime-extend-region-for-font-lock): Do not call
+	`slime-connected-p', it's not needed in this place.
+	(slime-search-directly-preceding-reader-conditional): Do not use
+	`values', and `multiple-value-bind'.
+	(slime-beginning-of-tlf): When we know the current paren depth,
+	use it to jump directly over all parens rather than jumping to
+	each open paren in turn.
+	(slime-compute-region-for-font-lock): Use it.
+
+2009-05-15  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	* slime-fontifying-fu.el (slime-search-suppressed-forms-internal):
+	Use `slime-reader-conditionals-regexp'.
+	(slime-search-directly-preceding-reader-conditional): Catch scan
+	errors due to improper feature expressions.
+
+2009-05-15  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	* slime-repl.el (with-canonicalized-slime-repl-buffer): XEmacs
+	chokes on symbol-names with an initial dot.
+
+	Patch by François-René Rideau.
+
+2009-05-15  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	Moved font-lock-magic from slime.el to slime-fontifying-fu.el.
+
+	N.B. slime-fontifying-fu is automatically loaded by
+	slime-fancy. I.e. if you use slime-fancy, font-lock-magic will be
+	enabled for just like before.
+
+	* slime-fontifying-fu.el (slime-highlight-suppressed-forms),
+	(slime-reader-conditional-face),
+	(slime-search-suppressed-forms-internal),
+	(slime-search-suppressed-forms),
+	(slime-search-directly-preceding-reader-conditional),
+	(slime-extend-region-for-font-lock),
+	(slime-compute-region-for-font-lock),
+	(slime-activate-font-lock-magic): Moved here.
+
+2009-05-14  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	Optionally sort slots displayed for STANDARD-OBJECTS not
+	alphabetically, but by inheritance. That is group the slots
+	according to the class they're direct slots of.
+
+	* swank-fancy-inspector.lisp ([struct] inspector-checklist): New
+	slot `count'.
+	(make-checklist-button): Adapted accordingly.
+	(reinitialize-checklist): New.
+	(box, ref, (setf ref)): New.
+	(all-slots-for-inspector): Add button to group slots by
+	inheritance rather than alphabetically. Adapted accordingly.
+	(list-all-slots-by-inheritance): New. Does the bulk work.
+	(make-slot-listing): Factored out from `all-slots-for-inspector'.
+	(slot-home-class-using-class): New helper.
+	(stable-sort-by-inheritance): Also new.
+
+2009-05-08  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	The inspector page for standard-objects does not append
+	"[set value]" and "[make unbound]" buttons after each entry
+	anymore. Instead we use a checklist.
+
+	* swank-fancy-inspector.lisp ([struct] inspector-checklist): New.
+	(make-checklist-button): New.
+	(do-checklist): New.
+	(slot-value-for-inspector): Previously `inspect-slot-for-emacs'.
+	(query-and-set-slot): New.
+	(all-slots-for-inspector): Adapted for changes described above.
+
+2009-05-02  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	* slime-autodoc.el (slime-fontify-string): Deactivate autodoc
+	itself in the temporary help buffer. And deactivate slime's
+	font-lock magic.
+
+2009-05-01  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	* slime-parse.el (slime-parse-extended-operator/check-type):
+	Forgot to delete debugging code.
+
+2009-04-30  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	* slime-parse.el (slime-parse-extended-operator/check-type): New.
+	(slime-parse-extended-operator/the): New.
+	(slime-extended-operator-name-parser-alist): Add entries for
+	CHECK-TYPE, TYPEP, and THE.
+	([tesŧ] enclosing-form-specs.1): Add tests for the new entries.
+
+	Adapted from patch by Stas Boukarev.
+
+2009-04-30  Tobias C. Rittweiler  <tcr@freebits.de>
+
+	* slime-parse.el (slime-parse-extended-operator/proclaim): New.
+	(slime-extended-oprator-name-parser-alist): Adapt the entry for
+	PROCLAIM.
+
+	Adapted from patch by Stas Boukarev.
+
 2009-04-21  Tobias C. Rittweiler  <tcr@freebits.de>
 
 	* slime-indentantion-fu.el (slime-update-local-indentation): Save
@@ -159,7 +289,7 @@
 	anymore.
 	([test] enclosing-context.1): Adapted due to the changes.
 
-2009-02-25  Lu�s Oliveira  <loliveira@common-lisp.net>
+2009-02-25  Luís Oliveira  <loliveira@common-lisp.net>
 
 	* slime-compiler-notes-tree.el: Fix typo in the `provide' form.
 
@@ -504,7 +634,7 @@
 
 	* slime-fancy.el: Add slime-fontifying-fu.
 
-2008-08-20  Lu�s Oliveira  <loliveira@common-lisp.net>
+2008-08-20  Luís Oliveira  <loliveira@common-lisp.net>
 
 	* contrib/slime-indentation.el: fix indentation of IF forms.
 
@@ -591,7 +721,7 @@
 	(slime-qualify-cl-symbol-name): Moved back to `slime.el' as
 	they're still used there.
 
-2008-04-17  G�bor Melis <mega@retes.hu>
+2008-04-17  Gábor Melis <mega@retes.hu>
 
 	* swank-fancy-inspector.lisp (inspect-slot-for-emacs):
 	slime-read-object has been gone for a long time, replaced with

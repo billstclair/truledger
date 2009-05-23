@@ -327,7 +327,8 @@ PROPERTIES specifies any default face properties."
                   '(:bold t))
   (frame-line     "function names and arguments in the backtrace")
   (restartable-frame-line
-   "frames which are surely restartable")
+   "frames which are surely restartable"
+   '(:foreground "lime green"))
   (non-restartable-frame-line
    "frames which are surely not restartable")
   (detailed-frame-line
@@ -733,6 +734,9 @@ corresponding values in the CDR of VALUE."
 Single-line messages use the echo area."
   (apply slime-message-function format args))
 
+(defun slime-display-warning (message &rest args)
+  (display-warning '(slime warning) (apply #'format message args)))
+
 (when (or (featurep 'xemacs))
   (setq slime-message-function 'slime-format-display-message))
 
@@ -792,6 +796,27 @@ It should be used for \"background\" messages such as argument lists."
                            (or (position ?\n string) most-positive-fixnum)
                            (1- (frame-width)))))
 
+(defun slime-bug (message &rest args)
+  (slime-display-warning 
+"%S:%d:%d (pt=%d).
+%s
+
+This is a bug in Slime itself. Please report this to the
+mailinglist slime-devel@common-lisp.net and include your Emacs
+version, the guilty Lisp source file, the header of this
+message, and the following backtrace.
+
+Backtrace:
+%s
+--------------------------------------------------------------
+"
+   (buffer-name)
+   (line-number-at-pos)
+   (current-column)
+   (point)
+   (apply #'format message args)
+   (with-output-to-string (backtrace))))
+
 ;; Interface
 (defun slime-set-truncate-lines ()
   "Apply `slime-truncate-lines' to the current buffer."
@@ -829,6 +854,12 @@ positions before and after executing BODY."
 	 (add-text-properties ,start (point) ,props)))))
 
 (put 'slime-propertize-region 'lisp-indent-function 1)
+
+(defun slime-add-face (face string)
+  (add-text-properties 0 (length string) (list 'face face) string)
+  string)
+
+(put 'slime-add-face 'lisp-indent-function 1)
 
 ;; Interface
 (defsubst slime-insert-propertized (props &rest args)
@@ -2367,6 +2398,8 @@ Debugged requests are ignored."
                                msg))
           ((:emacs-channel-send id msg)
            (slime-send `(:emacs-channel-send ,id ,msg)))
+          ((:read-from-minibuffer thread tag prompt initial-value)
+           (slime-read-from-minibuffer-for-swank thread tag prompt initial-value))
           ((:y-or-n-p thread tag question)
            (slime-y-or-n-p thread tag question))
           ((:emacs-return-string thread tag string)
@@ -2724,8 +2757,11 @@ compile with a debug setting of that number."
         (:warning             (incf nwarnings))
         (:style-warning       (incf nstyle-warnings))
         (:note                (incf nnotes))))
-    (message "Compilation %s:%s%s%s%s%s"
-             (if successp "finished" "failed")
+    (message "%s:%s%s%s%s%s"
+             (if successp 
+                 "Compilation finished" 
+                 (slime-add-face '(:foreground "Red")
+                   "Compilation failed"))
              (slime-note-count-string "error" nerrors)
              (slime-note-count-string "warning" nwarnings)
              (slime-note-count-string "style-warning" nstyle-warnings t)
@@ -2913,7 +2949,7 @@ Each newlines and following indentation is replaced by a single space."
                (save-excursion
                  (slime-goto-source-location location)
                  (list (or (buffer-file-name) (buffer-name))
-                       (slime-line-number-at-pos)
+                       (line-number-at-pos)
                        (1+ (current-column)))))
            (format "%s:%d:%d: " (or filename "") line col)))
         (t "")))
@@ -4039,6 +4075,11 @@ This is for use in the implementation of COMMON-LISP:ED."
 (defun slime-y-or-n-p (thread tag question)
   (slime-dispatch-event `(:emacs-return ,thread ,tag ,(y-or-n-p question))))
 
+(defun slime-read-from-minibuffer-for-swank (thread tag prompt initial-value)
+  (let ((answer (condition-case nil 
+                    (slime-read-from-minibuffer prompt initial-value)
+                  (quit nil))))
+    (slime-dispatch-event `(:emacs-return ,thread ,tag ,answer))))
 
 ;;;; Interactive evaluation.
 
@@ -4106,10 +4147,17 @@ inserted in the current buffer."
   (slime-eval-async form (slime-rcurry #'slime-show-description
                                        (slime-current-package))))
 
+(defvar slime-description-autofocus nil
+  "If NIL (the default) Slime description buffers do not grab
+focus automatically.")
+
 (defun slime-show-description (string package)
-  (slime-with-popup-buffer ("*SLIME Description*" package)
-    (princ string)
-    (goto-char (point-min))))
+  ;; So we can have one description buffer open per connection. Useful
+  ;; for comparing the output of DISASSEMBLE across implementations.
+  (let ((bufname (format "*SLIME Description <%s>*" (slime-connection-name))))
+    (slime-with-popup-buffer (bufname package t slime-description-autofocus)
+      (princ string)
+      (goto-char (point-min)))))
 
 (defun slime-last-expression ()
   (buffer-substring-no-properties
@@ -5195,10 +5243,6 @@ CL:MACROEXPAND."
 
 (put 'in-sldb-face 'lisp-indent-function 1)
 
-(defun slime-add-face (face string)
-  (add-text-properties 0 (length string) (list 'face face) string)
-  string)
-
 
 ;;;;; sldb-mode
 
@@ -5477,6 +5521,9 @@ RESTARTS should be a list ((NAME DESCRIPTION) ...)."
 (defun sldb-frame.plist (frame)
   (destructuring-bind (_ _ &optional plist) frame plist))
 
+(defun sldb-frame-restartable-p (frame)
+  (and (plist-get (sldb-frame.plist frame) :restartable) t))
+
 (defun sldb-prune-initial-frames (frames)
   "Return the prefix of FRAMES to initially present to the user.
 Regexp heuristics are used to avoid showing SWANK-internal frames."
@@ -5504,9 +5551,9 @@ If MORE is non-nil, more frames are on the Lisp stack."
     (insert "\n")))
 
 (defun sldb-compute-frame-face (frame)
-  (ecase (plist-get (sldb-frame.plist frame) :restartable)
-    ((nil) 'sldb-frame-line-face)
-    ((t) 'sldb-restartable-frame-line-face)))
+  (if (sldb-frame-restartable-p frame)
+      'sldb-restartable-frame-line-face
+      'sldb-frame-line-face))
 
 (defun sldb-insert-frame (frame &optional face)
   "Insert FRAME with FACE at point.
@@ -5759,7 +5806,10 @@ The details include local variable bindings and CATCH-tags."
     (slime-save-coordinates start
       (delete-region start end)
       (slime-propertize-region `(frame ,frame details-visible-p t)
-        (sldb-insert-frame frame 'sldb-detailed-frame-line-face)
+        (sldb-insert-frame frame (if (sldb-frame-restartable-p frame)
+                                     'sldb-restartable-frame-line-face
+                                     ;; FIXME: can we somehow merge the two?
+                                     'sldb-detailed-frame-line-face))
         (let ((indent1 "      ")
               (indent2 "        "))
           (insert indent1 (in-sldb-face section
@@ -6325,7 +6375,7 @@ position of point in the current buffer."
   ;; narrowed the buffer.
   (save-restriction
     (widen)
-    (cons (slime-line-number-at-pos)
+    (cons (line-number-at-pos)
           (current-column))))
 
 (defun slime-inspector-operate-on-point ()
@@ -6661,62 +6711,6 @@ Only considers buffers that are not already visible."
                   (null (get-buffer-window buffer 'visible)))
         return buffer
         finally (error "Can't find unshown buffer in %S" mode)))
-
-
-;;;; Font Lock
-
-(defcustom slime-highlight-suppressed-forms t
-  "Display forms disabled by reader conditionals as comments."
-  :type '(choice (const :tag "Enable" t) (const :tag "Disable" nil))
-  :group 'slime-mode)
-
-(defface slime-reader-conditional-face
-  (if (slime-face-inheritance-possible-p)
-    '((t (:inherit font-lock-comment-face)))
-  '((((background light)) (:foreground "DimGray" :bold t))
-    (((background dark)) (:foreground "LightGray" :bold t))))
-  "Face for compiler notes while selected."
-  :group 'slime-mode-faces)
-
-(defun slime-search-suppressed-forms (limit)
-  "Find reader conditionalized forms where the test is false."
-  (when (and slime-highlight-suppressed-forms
-             (slime-connected-p)
-	     (re-search-forward "^\\([^;\n]*?[ \t(]\\)?#[-+]" limit t))
-    (ignore-errors
-      (let* ((start (- (point) 2))
-             (char (char-before))
-             (e (read (current-buffer)))
-             (val (slime-eval-feature-conditional e)))
-        (when (<= (point) limit)
-          (if (or (and (eq char ?+) (not val))
-                  (and (eq char ?-) val))
-              (progn 
-                (forward-sexp) (backward-sexp)
-                (slime-forward-sexp)
-                (assert (<= (point) limit))
-                (let ((md (match-data)))
-                  (fill md nil)
-                  (setf (first md) start)
-                  (setf (second md) (point))
-                  (set-match-data md)
-                  t))
-            (slime-search-suppressed-forms limit)))))))
-
-(defun slime-activate-font-lock-magic ()
-  (if (featurep 'xemacs)
-      (let ((pattern `((slime-search-suppressed-forms
-                        (0 slime-reader-conditional-face t)))))
-        (dolist (sym '(lisp-font-lock-keywords
-                       lisp-font-lock-keywords-1
-                       lisp-font-lock-keywords-2))
-          (set sym (append (symbol-value sym) pattern))))
-    (font-lock-add-keywords
-     'lisp-mode
-     `((slime-search-suppressed-forms 0 ,''slime-reader-conditional-face t)))))
-
-(when slime-highlight-suppressed-forms
-  (slime-activate-font-lock-magic))
 
 
 ;;;; Indentation
@@ -7366,6 +7360,107 @@ BODY returns true if the check succeeds."
     (slime-check-fancy-symbol-name (+ (point-min) 2) symbol-name)
     (erase-buffer)
     ))
+
+(defun* slime-initialize-lisp-buffer-for-test-suite 
+    (&key (font-lock-magic t) (autodoc t))
+  (let ((hook lisp-mode-hook))
+    (unwind-protect
+         (progn 
+           (set (make-local-variable 'slime-highlight-suppressed-forms)
+                font-lock-magic)
+           (setq lisp-mode-hook nil)
+           (lisp-mode)
+           (slime-mode 1)
+           (when (boundp 'slime-autodoc-mode)
+             (if autodoc
+                 (slime-autodoc-mode 1)
+                 (slime-autodoc-mode -1))))
+      (setq lisp-mode-hook hook))))
+
+(def-slime-test font-lock-magic (buffer-content)
+    "Some testing for the font-lock-magic. *YES* should be
+    highlighted as a suppressed form, *NO* should not."
+
+    '(("(defun *NO* (x y) (+ x y))")
+      ("(defun *NO*")
+      ("*NO*) #-(and) (*YES*) (*NO* *NO*")
+      ("\(
+\(defun *NO*")
+      ("\)
+\(defun *NO*
+    \(
+\)")
+      ("#+#.foo
+\(defun *NO* (x y) (+ x y))")
+      ("#+#.foo
+\(defun *NO* (x ")
+      ("#+(
+\(defun *NO* (x ")
+      ("#+(test)
+\(defun *NO* (x ")
+
+      ("(eval-when (...)
+\(defun *NO* (x ")
+
+      ("(eval-when (...)
+#+(and)
+\(defun *NO* (x ")
+
+      ("#-(and) (defun *YES* (x y) (+ x y))")
+      ("
+#-(and) (defun *YES* (x y) (+ x y))
+#+(and) (defun *NO* (x y) (+ x y))")
+
+      ("#+(and) (defun *NO* (x y) #-(and) (+ *YES* y))")
+      ("#| #+(or) |# *NO*")
+      ("#| #+(or) x |# *NO*")
+      ("*NO* \"#| *NO* #+(or) x |# *NO*\" *NO*")
+      ("#+#.foo (defun foo (bar))
+#-(and) *YES* *NO* bar
+")
+      ("#+(foo) (defun foo (bar))
+#-(and) *YES* *NO* bar")
+      ("#| #+(or) |# *NO* foo
+#-(and) *YES* *NO*")
+      ("#- (and)
+\(*YES*)
+\(*NO*)
+#-(and)
+\(*YES*)
+\(*NO*)")
+      ("#+nil (foo)
+
+#-(and)
+#+nil (
+       asdf *YES* a
+            fsdfad)
+
+\( asdf *YES*
+
+       )
+\(*NO*)
+
+")
+      )
+  (slime-check-top-level)
+  (with-temp-buffer
+    (insert buffer-content)
+    (slime-initialize-lisp-buffer-for-test-suite
+     :autodoc t :font-lock-magic t)
+    ;; Can't use `font-lock-fontify-buffer' because for the case when
+    ;; `jit-lock-mode' is enabled. Jit-lock-mode fontifies only on
+    ;; actual display.
+    (font-lock-default-fontify-buffer)
+    (when (search-backward "*NO*" nil t)
+      (slime-test-expect "Not suppressed by reader conditional?"
+                         'slime-reader-conditional-face
+                         (get-text-property (point) 'face)
+                         #'(lambda (x y) (not (eq x y)))))
+    (goto-char (point-max))
+    (when (search-backward "*YES*" nil t)
+      (slime-test-expect "Suppressed by reader conditional?"
+                         'slime-reader-conditional-face
+                         (get-text-property (point) 'face)))))
 
 (def-slime-test narrowing ()
     "Check that narrowing is properly sustained."
@@ -8158,7 +8253,7 @@ within. This includes nested comments (#| ... |#)."
   (when (looking-at slime-reader-conditionals-regexp)
     (goto-char (match-end 0))
     (let* ((plus-conditional-p (eq (char-before) ?+))
-           (result (slime-eval-feature-conditional (read (current-buffer)))))
+           (result (slime-eval-feature-expression (read (current-buffer)))))
       (unless (if plus-conditional-p result (not result))
         ;; skip this sexp
         (slime-forward-sexp)))))
@@ -8170,16 +8265,23 @@ within. This includes nested comments (#| ... |#)."
                 name 
               (concat ":" name)))))
 
-(defun slime-eval-feature-conditional (e)
+(put 'slime-unknown-feature-expression
+     'error-conditions '(slime-unknown-feature-expression error))
+
+(defun slime-eval-feature-expression (e)
   "Interpret a reader conditional expression."
-  (if (symbolp e)
-      (memq (slime-keywordify e) (slime-lisp-features))
-    (funcall (ecase (slime-keywordify (car e))
-               (:and #'every)
-               (:or #'some)
-               (:not (lambda (f l) (not (apply f l)))))
-             #'slime-eval-feature-conditional
-             (cdr e))))
+  (cond ((symbolp e)
+         (memq (slime-keywordify e) (slime-lisp-features)))
+        ((and (consp e) (symbolp (car e)))
+         (funcall (let ((head (slime-keywordify (car e))))
+                    (case head
+                      (:and #'every)
+                      (:or #'some)
+                      (:not (lambda (f l) (not (apply f l))))
+                      (t (signal 'slime-unknown-feature-expression head))))
+                  #'slime-eval-feature-expression
+                  (cdr e)))
+        (t (signal 'slime-unknown-feature-expression e))))
 
 ;;;;; Extracting Lisp forms from the buffer or user
 
@@ -8189,7 +8291,7 @@ within. This includes nested comments (#| ... |#)."
          (slime-region-for-defun-at-point)))
 
 (defun slime-region-for-defun-at-point ()
-  "Return the start and end position of the toplevel form at point."
+  "Return the start and end position of defun at point."
   (save-excursion
     (save-match-data
       (end-of-defun)
@@ -8268,7 +8370,13 @@ The result is unspecified if there isn't a symbol under the point."
     ;;           (>= (point) slime-repl-input-start-mark))
     ;;  (narrow-to-region slime-repl-input-start-mark (point-max)))
     (save-excursion
-      (let ((string (thing-at-point 'slime-symbol)))
+      (let ((string (or (thing-at-point 'slime-symbol)
+                        ;; Sometimes we can be too good, e.g.  in "|#
+                        ;; (defun foo () (getf" the above would return
+                        ;; nil because the vertical bar is not
+                        ;; terminated. The user probably wants "getf"
+                        ;; nontheless.
+                        (thing-at-point 'symbol))))
         (and string
              ;; (thing-at-point 'symbol) returns "" instead of nil
              ;; when called from an empty (or narrowed-to-empty)
@@ -8326,13 +8434,13 @@ The result is unspecified if there isn't a symbol under the point."
 
 (if (and (featurep 'emacs) (>= emacs-major-version 22))
     ;;  N.B. The 2nd, and 6th return value cannot be relied upon.
-    (defun slime-current-parser-state ()
+    (defsubst slime-current-parser-state ()
       ;; `syntax-ppss' does not save match data as it invokes
       ;; `beginning-of-defun' implicitly which does not save match
       ;; data. This issue has been reported to the Emacs maintainer on
       ;; Feb27.
-      (save-match-data (syntax-ppss)))
-    (defun slime-current-parser-state ()
+      (syntax-ppss))
+    (defsubst slime-current-parser-state ()
       (let ((original-pos (point)))
         (save-excursion
           (beginning-of-defun)
@@ -8392,12 +8500,6 @@ will return \"\"."
 (put 'slime-DEFMACRO-if-undefined 'lisp-indent-function 2)
 (put 'slime-indulge-pretty-colors 'slime-DEFMACRO-if-undefined t)
 
-(defmacro slime-defmacro-if-undefined (name &rest rest)
-  `(unless (fboundp ',name)
-     (defmacro ,name ,@rest)))
-
-(put 'slime-defmacro-if-undefined 'lisp-indent-function 2)
-
 
 (defvar slime-accept-process-output-supports-floats 
   (ignore-errors (accept-process-output nil 0.0) t))
@@ -8439,12 +8541,13 @@ for (somewhat) better multiframe support."
       (apply #'run-mode-hooks hooks)
     (apply #'run-hooks hooks)))
 
-(defun slime-line-number-at-pos ()
-  (cond ((fboundp 'line-number-at-pos)
-         (line-number-at-pos))  ; Emacs 22
-        ((fboundp 'line-number)
-         (line-number))         ; XEmacs
-        (t (1+ (count-lines 1 (point-at-bol))))))
+(if (featurep 'xemacs)
+  (slime-DEFUN-if-undefined line-number-at-pos (&optional pos)
+     (line-number pos))
+  (slime-DEFUN-if-undefined line-number-at-pos (&optional pos)
+     (save-excursion
+       (when pos (goto-char pos))
+       (1+ (count-lines 1 (point-at-bol))))))
 
 (defun slime-local-variable-p (var &optional buffer)
   (local-variable-p var (or buffer (current-buffer)))) ; XEmacs
@@ -8543,7 +8646,7 @@ Unless optional argument INPLACE is non-nil, return a new string."
       (if (eq (aref newstr i) fromchar)
 	  (aset newstr i tochar)))
     newstr))
-
+                          
 (slime-DEFUN-if-undefined count-screen-lines 
   (&optional beg end count-final-newline window)
   (unless beg
@@ -8671,6 +8774,11 @@ If they are not, position point at the first syntax error found."
 (slime-DEFUN-if-undefined set-process-coding-system 
     (process &optional decoding encoding))
 
+(slime-DEFUN-if-undefined display-warning  
+                          (type message &optional level buffer-name)
+  (slime-display-message (apply #'format (concat "Warning (%s): " message) type args)
+                         "*Warnings*"))
+
 (unless (boundp 'temporary-file-directory)
   (defvar temporary-file-directory
     (file-name-as-directory
@@ -8763,7 +8871,14 @@ If they are not, position point at the first syntax error found."
           slime-tree-insert
           slime-symbol-constituent-at
           slime-beginning-of-symbol
-          slime-end-of-symbol)))
+          slime-end-of-symbol
+          ;; Used implicitly during fontification:
+          slime-current-parser-state
+          slime-eval-feature-expression
+          slime-forward-sexp
+          slime-forward-cruft
+          slime-forward-any-comment
+          )))
 
 (provide 'slime)
 (run-hooks 'slime-load-hook)

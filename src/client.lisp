@@ -696,6 +696,7 @@
                                               (error "No token balance")))))
                (oldasset (ignore-errors (getasset client assetid)))
                (bal2 nil)
+               (storage nil)
                (mainbals (make-equal-hash))
                (acctbals (make-equal-hash $MAIN mainbals))
                balancehash)
@@ -718,7 +719,8 @@
             (setq balancehash (balancehashmsg client time acctbals)))
 
           (when percent
-            (dotcat msg "." (custmsg client $STORAGE bankid time assetid percent)))
+            (setq storage (custmsg client $STORAGE bankid time assetid percent))
+            (dotcat msg "." storage))
           (when bal1 (dotcat msg "." bal1))
           (when bal2 (dotcat msg "." bal2))
           (when balancehash (dotcat msg "." balancehash))
@@ -736,7 +738,7 @@
                      (m (trim (get-parsemsg (getarg $MSG args)))))
                 (cond ((equal m bal1) (setq gotbal1 msg))
                       ((equal m bal2) (setq gotbal2 msg))
-                      ((equal m percent) (setq gotstorage msg)))))
+                      ((equal m storage) (setq gotstorage msg)))))
             (when (or (and bal1 (not gotbal1))
                       (and bal2 (not gotbal2)))
               (error "While adding asset: missing returned balance from server"))
@@ -2031,10 +2033,10 @@
     2) fraction - the fraction balance for assetid
     3) fractime - the time of the fraction"
   (let* ((db (db client))
-         (asset (or (getasset client assetid) (return-from client-storage-info 0)))
+         (asset (or (getasset client assetid) (return-from client-storage-info nil)))
          (issuer (asset-issuer asset))
          (percent (asset-percent asset)))
-    (cond ((equal issuer (id client)) 0)
+    (cond ((equal issuer (id client)) nil)
           ((or (not percent) (eql 0 (bccomp percent 0))) nil)
           (t (let* ((key (userfractionkey client assetid))
                     (msg (db-get db key)))

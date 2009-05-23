@@ -220,16 +220,18 @@
             nil
             "Balance mismatch after cancel")))
 
-(defmethod bill-goldgrams-assetid ((ts test-state))
+(defmethod bill-goldgrams-assetid ((ts test-state) &optional (percent nil))
   (login-user ts "bill")
   (accept-inbox ts)
   (let* ((client (client ts))
          (precision "7")
          (scale "3")
          (name "Bill GoldGrams")
-         (assetid (assetid (id client) precision scale name)))
-    (asset-assetid (or (ignore-errors (getasset client assetid))
-                       (addasset client precision scale name)))))
+         (assetid (assetid (id client) precision scale name))
+         (asset (ignore-errors (getasset client assetid))))
+    (unless (and asset (equal percent (asset-percent asset)))
+      (addasset client precision scale name percent))
+    assetid))
 
 (defmethod spend-goldgrams-test ((ts test-state))
   (let* ((john (prog1 (login-user ts "john") (accept-inbox ts)))
@@ -306,6 +308,28 @@
             nil
             "Balance mismatch after reject")
     ))
+
+(defmethod spend-storage-test ((ts test-state))
+  (let* ((john (prog1 (login-user ts "john") (accept-inbox ts)))
+         (client (client ts))
+         (percent "1.0")
+         (assetid (bill-goldgrams-assetid ts percent))
+         (scale (asset-scale (getasset client assetid)))
+         (formatted-amount "100")
+         (amount (bcmul formatted-amount (bcpow 10 scale)))
+         john-grams
+         john-fraction)
+
+    amount john-grams john-fraction
+
+    ;; Make sure bill has enough tokens
+    (give-tokens ts "bill" "4")
+
+    ;; First spend to John to ensure he has goldgrams
+    (spend client john assetid formatted-amount)
+    (login-user ts "john")
+    (accept-inbox ts)
+    (getbalance client $MAIN)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
