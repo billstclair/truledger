@@ -1,5 +1,4 @@
 /.cvsignore/1.5/Sun Apr  8 19:23:57 2007//
-/ChangeLog/1.1769/Thu May 21 09:41:50 2009//
 /HACKING/1.9/Mon Mar 24 00:20:12 2008//
 /NEWS/1.11/Fri Jan  2 21:57:13 2009//
 /PROBLEMS/1.8/Sun Nov 20 23:31:56 2005//
@@ -21,7 +20,6 @@
 /swank-gray.lisp/1.19/Sun Aug 31 11:58:01 2008//
 /swank-lispworks.lisp/1.129/Thu Jan 15 17:07:21 2009//
 /swank-loader.lisp/1.90/Thu Jan  8 16:20:14 2009//
-/swank-openmcl.lisp/1.171/Tue May 19 09:51:55 2009//
 /swank-sbcl.lisp/1.241/Sat May  9 19:26:00 2009//
 /swank-scl.lisp/1.32/Sat Jan 10 12:25:16 2009//
 /swank-source-file-cache.lisp/1.10/Sat May  9 19:26:00 2009//
@@ -31,4 +29,7 @@
 /test-all.sh/1.2/Mon Aug 29 20:02:58 2005//
 /test.sh/1.21/Sun Oct 26 21:17:58 2008//
 /xref.lisp/1.2/Mon May 17 00:25:24 2004//
-D
+D/contrib////
+D/doc////
+/ChangeLog/1.1770/Sat May 23 19:36:13 2009//
+/swank-openmcl.lisp/1.172/Sat May 23 19:38:21 2009//

@@ -234,7 +234,7 @@
   (wbp (digits)
     (cond ((eql 0 (bccomp percent 0))
            (values "0" balance))
-          (t (let* ((secs-per-year-pct (* 60 60 24 365 100))
+          (t (let* ((secs-per-year-pct #.(* 60 60 24 365 100))
                     (fee (bcdiv (bcmul balance
                                        percent
                                        (wbp (0) (bcsub now baltime)))
@@ -243,7 +243,7 @@
                       (setq fee  "0"))
                      ((> (bccomp fee balance) 0)
                       (setq fee balance)))
-               (values (bcsub balance fee) fee))))))
+               (values fee (bcsub balance fee)))))))
 
 (defun normalize-balance (balance fraction digits)
   "Add together BALANCE & FRACTION, to DIGITS precision.

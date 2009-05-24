@@ -16,7 +16,7 @@
        :accessor db)
    (parser :type parser
            :accessor parser)
-   (pubkeydb :type (or pubkeydb nill)
+   (pubkeydb :type (or pubkeydb null)
              :initform nil
              :accessor pubkeydb)
 
@@ -882,7 +882,7 @@
    Returns a list of FRACTION instances, or a single FRACTION instance,
    if ASSETID is specified."
   (let ((db (db client)))
-    (require-current-bank "In getfraction(): Bank not set")
+    (require-current-bank client "In getfraction(): Bank not set")
     (init-bank-accts client)
 
     (with-db-lock (db (userreqkey client))
@@ -1018,22 +1018,24 @@
 
     (multiple-value-setq (oldamount oldtime)
       (userbalanceandtime client acct assetid))
-    (unless (is-numeric-p oldamount t)
-      (error "Error getting balance for asset in acct ~s: ~s" acct oldamount))
+    (cond (oldamount
+           (unless (is-numeric-p oldamount t)
+             (error "Error getting balance for asset in acct ~s: ~s" acct oldamount))
 
-    (multiple-value-setq (percent fraction fractime)
-      (client-storage-info client assetid))
-    (when percent
-      (setq digits (fraction-digits percent))
-      (multiple-value-setq (fracfee fraction)
-        (storage-fee fraction fractime time percent digits))
-      (multiple-value-setq (storagefee oldamount)
-        (storage-fee oldamount oldtime time percent digits))
-      (setq storagefee (bcadd storagefee fracfee digits)
-            baseoldamount oldamount
-            oldamount (bcsub oldamount storagefee digits))
-      (multiple-value-setq (oldamount fraction)
-        (normalize-balance oldamount fraction digits)))
+           (multiple-value-setq (percent fraction fractime)
+             (client-storage-info client assetid))
+           (when percent
+             (setq digits (fraction-digits percent))
+             (multiple-value-setq (fracfee fraction)
+               (storage-fee fraction fractime time percent digits))
+             (multiple-value-setq (storagefee oldamount)
+               (storage-fee oldamount oldtime time percent digits))
+             (wbp (digits)
+               (setq storagefee (bcadd storagefee fracfee)
+                     baseoldamount oldamount))
+             (multiple-value-setq (oldamount fraction)
+               (normalize-balance oldamount fraction digits))))
+          (t (setq oldamount "0")))
 
     (setq newamount (bcsub oldamount amount))
     (when (and (>= (bccomp oldamount 0) 0)
@@ -1054,9 +1056,10 @@
         (when (and percent oldtoamount)
           (multiple-value-setq (tofee oldtoamount)
             (storage-fee oldtoamount totime time percent digits))
-          (setq storagefee (bcadd storagefee tofee digits)
-                oldtoamount (bcsub oldtoamount tofee digits)))
-        (setq newtoamount (bcadd oldtoamount amount digits))
+          (wbp (digits)
+            (setq storagefee (bcadd storagefee tofee)
+                  oldtoamount (bcsub oldtoamount tofee))
+            (setq newtoamount (bcadd oldtoamount amount digits))))
         (when percent
           (multiple-value-setq (newtoamount fraction)
             (normalize-balance newtoamount fraction digits)))
@@ -1713,6 +1716,7 @@
                                             trans assetid storagefee))
                     (fracmsg (custmsg client $FRACTION bankid
                                       trans assetid fraction)))
+               (unless fracmsgs (setq fracmsgs (make-equal-hash)))
                (setf (gethash storagefeemsg msgs) t
                      (gethash fracmsg msgs) t
                      (gethash assetid fracmsgs) fracmsg)
@@ -1842,10 +1846,10 @@
             (wbp (digits)
               (multiple-value-setq (fee amount)
                 (storage-fee amount msgtime time percent digits))
-              (setf (assetinfo-storagefee assetinfo) (bcadd storagefee fee)
-                    amount (bcsub amount fee))
-              (multiple-value-setq (amount fraction)
-                (normalize-balance amount fraction digits))
+              (setf (assetinfo-storagefee assetinfo) (bcadd storagefee fee))
+              (when fraction
+                (multiple-value-setq (amount fraction)
+                  (normalize-balance amount fraction digits)))
               (setf (assetinfo-fraction assetinfo) fraction)))))))
   amount)
 
@@ -2037,14 +2041,14 @@
          (issuer (asset-issuer asset))
          (percent (asset-percent asset)))
     (cond ((equal issuer (id client)) nil)
-          ((or (not percent) (eql 0 (bccomp percent 0))) nil)
+          ((not percent) nil)
           (t (let* ((key (userfractionkey client assetid))
                     (msg (db-get db key)))
                (if msg
-                   (let ((args (unpack-bankmsg client msg $ATFRACTION)))
-                     (setq args (getarg $MSG args))
+                   (let ((args (getarg $MSG (unpack-bankmsg
+                                             client msg $ATFRACTION))))
                      (values percent (getarg $AMOUNT args) (getarg $TIME args)))
-                   percent))))))
+                   (values percent "0" "0")))))))
 
 (defun pubkeykey (id)
   (append-db-keys $PUBKEY id))

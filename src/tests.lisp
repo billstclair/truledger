@@ -71,6 +71,18 @@
 (defmethod getbalance ((ts test-state) &optional acct assetid)
   (getbalance (client ts) acct assetid))
 
+(defmethod getfraction ((ts test-state) &optional assetid)
+  (getfraction (client ts) assetid))
+
+(defmethod getstoragefee ((ts test-state) &optional assetid)
+  (getstoragefee (client ts) assetid))
+
+(defmethod id ((ts test-state))
+  (id (client ts)))
+
+(defmethod getassets ((ts test-state))
+  (getassets (client ts)))
+
 (defmethod login-bank ((ts test-state))
   (let* ((server (server ts))
          (client (client ts))
@@ -314,22 +326,67 @@
          (client (client ts))
          (percent "1.0")
          (assetid (bill-goldgrams-assetid ts percent))
+         (bill (id client))
          (scale (asset-scale (getasset client assetid)))
          (formatted-amount "100")
-         (amount (bcmul formatted-amount (bcpow 10 scale)))
-         john-grams
-         john-fraction)
-
-    amount john-grams john-fraction
+         (amount (bcmul formatted-amount (bcpow 10 scale))))
+    (declare (ignore amount))
 
     ;; Make sure bill has enough tokens
     (give-tokens ts "bill" "4")
 
-    ;; First spend to John to ensure he has goldgrams
+    ;; Spend to John. He accepts.
+    (spend client john assetid (bcadd formatted-amount 1))
+    (login-user ts "john")
+    (sleep 1)
+    (accept-inbox ts)
+    (login-user ts "bill")
+    (accept-inbox ts)
+
+    ;; Spend to John. He rejects
     (spend client john assetid formatted-amount)
     (login-user ts "john")
+    (sleep 1)
+    (accept-inbox ts nil)
+    (login-user ts "bill")
     (accept-inbox ts)
-    (getbalance client $MAIN)))
+
+    ;; Spend to John. Cancel the spend.
+    (spend client john assetid formatted-amount)
+    (cancel-outbox ts)
+    (accept-inbox ts)
+
+    ;; Make sure john has enough tokens
+    (give-tokens ts "john" "4")
+
+    ;; Spend from John. Cancel the spend.
+    (spend client bill assetid formatted-amount)
+    (sleep 1)
+    (cancel-outbox ts)
+    (accept-inbox ts)
+
+    ;; Spend from John. Bill rejects.
+    (spend client bill assetid formatted-amount)
+    (login-user ts "bill")
+    (accept-inbox ts nil)
+    (sleep 1)
+    (login-user ts "john")
+    (accept-inbox ts)
+    
+    ;; Spend from John. Bill accepts
+    (spend client bill assetid formatted-amount)
+    (login-user ts "bill")
+    (accept-inbox ts)
+    (login-user ts "john")
+    (accept-inbox ts)
+
+    (let ((bill-bal (progn (login-user ts "bill")
+                           (getbalance client $MAIN assetid)))
+          (bill-fee (getstoragefee client assetid))
+          (john-bal (progn (login-user ts "john")
+                           (getbalance client $MAIN assetid)))
+          (john-frac (getfraction client assetid)))
+      (values bill-bal bill-fee john-bal john-frac))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

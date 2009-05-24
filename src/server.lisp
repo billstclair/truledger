@@ -144,30 +144,30 @@
   (let* ((parser (parser server))
          (db (db server))
          (msg (db-get db $ASSET assetid)))
-    (unless msg
-      (error "Uknown asset: ~%" assetid))
-    (let* ((reqs (parse parser msg))
-           (req (cadr reqs)))
-      (unless req (return-from storage-info nil))
+    (when msg
+      (let* ((reqs (parse parser msg))
+             (req (cadr reqs)))
+        (unless req (return-from storage-info nil))
 
-      (let ((args (match-pattern parser req)))
-        (unless (equal (getarg $REQUEST args) $ATSTORAGE)
-          (return-from storage-info nil))
-        (setq req (getarg $MSG args)
-              args (match-pattern parser req))
-        (unless (equal (getarg $REQUEST args) $STORAGE)
-          (return-from storage-info nil))
-        (let ((issuer (getarg $CUSTOMER args))
-              (percent (getarg $PERCENT args)))
-          (let* ((fraction nil)
-                 (fractime nil)
-                 (key (fraction-balance-key id assetid))
-                 (msg (db-get db key)))
-            (when msg
-              (setq args (unpack-bankmsg server msg $ATFRACTION $FRACTION)
-                    fraction (getarg $AMOUNT args)
-                    fractime (getarg $TIME args)))
-            (values percent fraction fractime issuer)))))))
+        (let ((args (match-pattern parser req)))
+          (unless (equal (getarg $REQUEST args) $ATSTORAGE)
+            (return-from storage-info nil))
+          (setq req (getarg $MSG args)
+                args (match-pattern parser req))
+          (unless (equal (getarg $REQUEST args) $STORAGE)
+            (return-from storage-info nil))
+          (let ((issuer (getarg $CUSTOMER args)))
+            (unless (equal issuer id)
+              (let* ((percent (getarg $PERCENT args))
+                     (fraction "0")
+                     (fractime "0")
+                     (key (fraction-balance-key id assetid))
+                     (msg (db-get db key)))
+                (when msg
+                  (setq args (unpack-bankmsg server msg $ATFRACTION $FRACTION)
+                        fraction (getarg $AMOUNT args)
+                        fractime (getarg $TIME args)))
+                (values percent fraction fractime issuer)))))))))
 
 (defun storage-fee-key (id &optional assetid)
   (let ((res (append-db-keys (account-dir id) $STORAGEFEE)))
@@ -522,20 +522,23 @@
 
        (let* ((asset-balance-key (asset-balance-key id asset acct))
               (acctmsg (db-get db asset-balance-key)))
-         (if (not acctmsg)
-             (unless (equal id bankid)
-               (setf (balance-state-tokens state)
-                     (bcadd (balance-state-tokens state) 1)))
-             (let* ((acctargs (unpack-bankmsg server acctmsg $ATBALANCE $BALANCE))
-                    (amount (getarg $AMOUNT acctargs)))
-               (setf (gethash asset bals) (bcadd (gethash asset bals 0) amount))
-               (when (< (bccomp amount 0) 0)
-                 (when (gethash asset (balance-state-oldneg state))
-                   (error "Account corrupted. ~
+         (cond ((not acctmsg)
+                (unless (equal id bankid)
+                  (setf (balance-state-tokens state)
+                        (bcadd (balance-state-tokens state) 1)))
+                (compute-storage-charges server id state asset nil nil))
+               (t (let* ((acctargs
+                          (unpack-bankmsg server acctmsg $ATBALANCE $BALANCE))
+                         (amount (getarg $AMOUNT acctargs)))
+                    (setf (gethash asset bals) (bcadd (gethash asset bals 0) amount))
+                    (when (< (bccomp amount 0) 0)
+                      (when (gethash asset (balance-state-oldneg state))
+                        (error "Account corrupted. ~
                            Multiple negative balances for asset: ~s"
-                          asset))
-                 (setf (gethash asset (balance-state-oldneg state)) acct))
-               (compute-storage-charges server id state asset amount acctargs)))))))
+                               asset))
+                      (setf (gethash asset (balance-state-oldneg state)) acct))
+                    (compute-storage-charges
+                     server id state asset amount acctargs))))))))
 
 (defstruct storage-info
   percent
@@ -565,7 +568,7 @@
                 (setf (storage-info-fee asset-info)
                       (storage-fee fraction fractime time percent digits)))
               (setf (storage-info-digits asset-info) digits))))))
-    (when asset-info
+    (when (and asset-info amount)
       (let ((percent (storage-info-percent asset-info)))
         (when (and percent (> (bccomp amount 0) 0))
           (let* ((digits (storage-info-digits asset-info))
@@ -573,7 +576,8 @@
                  (time (balance-state-time state))
                  (fee (storage-fee amount accttime time percent digits)))
             (setf (storage-info-fee asset-info)
-                  (bcadd (storage-info-fee asset-info) fee digits))))))))
+                  (wbp (digits)
+                    (bcadd (storage-info-fee asset-info) fee)))))))))
 
 (defmethod debugmsg ((server server) msg)
   (when (debugmsgs-p server)
@@ -878,13 +882,14 @@
                 storagefee (storage-info-fee assetinfo)
                 fraction (storage-info-fraction assetinfo)
                 digits (storage-info-digits assetinfo))
-          (let* ((bal (bcsub (gethash assetid bals 0) storagefee digits)))
+          (let* ((bal (wbp (digits)
+                        (bcsub (gethash assetid bals 0) storagefee))))
             (multiple-value-setq (bal fraction)
               (normalize-balance bal fraction digits))
             (setf (gethash assetid bals) bal)
-            (unless (eql 0 (bccomp fraction fracamt))
+            (unless (eql 0 (bccomp fraction (or fracamt 0)))
               (error "Fraction amount was: ~s, sb: ~s" fracamt fraction))
-            (unless (eql 0 (bccomp storagefee storageamt))
+            (unless (eql 0 (bccomp storagefee (or storageamt 0)))
               (error "Storage fee was: ~s, sb: ~s" storageamt storagefee))))
 
         (when (and (not storagefee) (or storagemsg fracmsg))
@@ -1053,7 +1058,7 @@
                            (equal (getarg $BANKID args) bankid)
                            (equal (getarg $ASSET args) assetid))
                 (error "Storage fee message malformed"))
-              (setq storage-fee (bcadd storage-fee amount digits)))))
+              (setq storage-fee (wbp (digits) (bcadd storage-fee amount))))))
         (let* ((time (gettime server))
                (storage-msg (bankmsg server $STORAGEFEE
                                      bankid time assetid storage-fee)))
@@ -1483,11 +1488,12 @@
          when assetinfo
          do
          (let ((percent (storage-info-percent assetinfo)))
-           (when (and percent (not (eql 0 (bccomp percent 0))))
+           (when percent
              (let* ((digits (storage-info-digits assetinfo))
                     (itemfee (storage-fee itemamt itemtime time percent digits))
-                    (storagefee (bcadd (storage-info-fee assetinfo)
-                                       itemfee digits)))
+                    (storagefee (wbp (digits)
+                                  (bcadd (storage-info-fee assetinfo)
+                                         itemfee))))
                (setf (storage-info-fee assetinfo) storagefee)))))
 
       (loop
@@ -1497,10 +1503,11 @@
          do
            (let* ((digits (storage-info-digits assetinfo))
                   (storagefee (storage-info-fee assetinfo))
-                  (bal (bcsub (gethash itemasset bals 0) storagefee digits))
-                  (fraction (bcadd (gethash itemasset fractions 0)
-                                   (storage-info-fraction assetinfo)
-                                   digits)))
+                  (bal (wbp (digits)
+                         (bcsub (gethash itemasset bals 0) storagefee)))
+                  (fraction (wbp (digits)
+                              (bcadd (gethash itemasset fractions 0)
+                                     (storage-info-fraction assetinfo)))))
              (multiple-value-setq (bal fraction)
                (normalize-balance bal fraction digits))
              (setf (gethash itemasset bals) bal
@@ -1513,7 +1520,7 @@
        of storageamts
        for storagefee = (gethash storageasset storagefees)
        do
-         (unless (eql 0 (bccomp storageamt storagefee))
+         (unless (and storagefee (eql 0 (bccomp storageamt storagefee)))
            (error "Storage fee mismatch, sb: ~s, was: ~s" storageamt storagefee))
          (remhash storageasset storagefees))
     (unless (eql 0 (hash-table-count storagefees))
@@ -1991,6 +1998,7 @@
          (reqs (parse parser msg))
          (request (gethash 1 (car reqs)))
          (pattern (gethash request (server-commands))))
+    (declare (special *break-in-sldb*))
     (unless pattern
       (error "Unknown request: ~s" request))
     (setq pattern (append `(,$CUSTOMER ,$REQUEST) pattern))
