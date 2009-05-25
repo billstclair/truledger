@@ -65,12 +65,14 @@
   "Shift a string or integer to the right *bcmath-precision* places.
    Return a string."
   (when (integerp x) (setq x (format nil "~d" x)))
-  (if (eql *bcmath-precision* 0)
-      x
-      (let* ((diff (- (length x) *bcmath-precision*)))
-        (if (> diff 0)
-            (strcat (subseq x 0 diff) "." (subseq x diff))
-            (strcat "0." (zero-string (- diff)) x)))))
+  (let ((len (length x)))
+    (cond ((eql *bcmath-precision* 0) x)
+          ((and (> len 0) (eql #\- (elt x 0)))
+           (strcat "-" (bcunshift-precision (subseq x 1))))
+          (t (let* ((diff (- (length x) *bcmath-precision*)))
+               (if (> diff 0)
+                   (strcat (subseq x 0 diff) "." (subseq x diff))
+                   (strcat "0." (zero-string (- diff)) x)))))))
 
 (defun bcadd (&rest numbers)
   (bcunshift-precision (apply '+ (mapcar 'bcshift-precision numbers))))
