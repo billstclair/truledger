@@ -1,35 +1,16 @@
 ; -*- mode: lisp -*-
-(in-package #:cl-user)
 
-(asdf:defsystem :trubanc
-  :description "An anoymous digitally-signed vault and trading system"
-  :author "Bill St. Clair <bill@billstclair.com>"
-  :version "0.1"
-  :license "Apache"
-  :depends-on (cffi cl-base64 cl-who hunchentoot drakma)
-  :components
-  ((:module src
-    :serial t
-    :components
-    ((:file "package")
-     (:file "ccl")
-     (:file "utilities")
-     (:file "openssl-cffi")
-     (:file "file-locks")
-     (:file "fsdb")
-     (:file "bcmath")
-     (:file "tokens")
-     (:file "parser")
-     (:file "shared")
-     (:file "loomrandom")
-     (:file "timestamp")
-     (:file "server")
-     (:file "client")
-     (:file "client-web")
-     (:file "server-web")
-     (:file "config")
-     (:file "tests")
-     ))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; The Trubanc client web server
+;;;
+
+(in-package :trubanc-client)
+
+
+;; Called from do-trubanc-client in server-web.lisp
+(defun web-server ()
+  "Hello from the Trubanc web client")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

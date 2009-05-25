@@ -365,7 +365,8 @@
    #:outbox-items
    #:outbox-coupons
    #:getoutbox
-   #:redeem))
+   #:redeem
+   #:web-server))
 
 (cl:defpackage :trubanc-test
   (:use :cl :trubanc :trubanc-tokens :trubanc-client))

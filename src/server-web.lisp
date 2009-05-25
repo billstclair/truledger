@@ -69,16 +69,23 @@
                                    "msg: <pre>~a</pre>~%response: <pre>~a</pre>~%"
                                    msg res)))
                res))
+            ((not server)
+             (hunchentoot:redirect "/client/"))
             (t (do-static-file))))))
+
+(defvar *last-uri* nil)
+
+(defun do-trubanc-web-client ()
+  (trubanc-client:web-server))
   
 (defvar *web-script-handlers*
   (make-hash-table :test 'equal))
 
-(defun get-web-script-handler (script-name acceptor)
-  (gethash (list script-name acceptor) *web-script-handlers*))
+(defun get-web-script-handler (port script-name acceptor)
+  (gethash (list port script-name acceptor) *web-script-handlers*))
 
-(defun (setf get-web-script-handler) (handler script-name acceptor)
-  (setf (gethash (list script-name acceptor) *web-script-handlers*)
+(defun (setf get-web-script-handler) (handler port script-name acceptor)
+  (setf (gethash (list port script-name acceptor) *web-script-handlers*)
         handler))
 
 (defun remove-web-script-handlers (port acceptor)
@@ -86,27 +93,18 @@
      for key being the hash-key of *web-script-handlers*
      do
        (when (and (eql port (car key))
-                  (eq acceptor (second key)))
+                  (eq acceptor (third key)))
          (remhash key *web-script-handlers*))))
 
 (hunchentoot:define-easy-handler (trubanc-server :uri 'identity) ()
   (let* ((script (hunchentoot:script-name hunchentoot:*request*))
-         (handler (get-web-script-handler script hunchentoot:*acceptor*)))
+         (acceptor hunchentoot:*acceptor*)
+         (port (hunchentoot:acceptor-port acceptor))
+         (handler (get-web-script-handler port script acceptor)))
     (cond (handler (funcall handler))
           ((search "/.." script)
            (abort-request))
           (t (do-static-file)))))
-
-(defun start-simple-web-server (&optional (port 8080))
-  (stop-web-server)
-  (setq hunchentoot::*easy-handler-alist* nil)
-  (hunchentoot:define-easy-handler (simple-server :uri "/") ()
-    (setf (hunchentoot:content-type*) "text/html")
-    "Hello World!")
-  (let ((acceptor (make-instance 'hunchentoot:acceptor :port port)))
-    (setf (port-acceptor port) acceptor)
-    (hunchentoot:start acceptor)
-    port))
 
 (defun abort-request ()
   (setf (hunchentoot:return-code*) hunchentoot:+http-not-found+)
@@ -129,12 +127,17 @@
 
 (defparameter *default-server-port* 8080)
 
-(defun trubanc-web-server (server &key www-dir (port *default-server-port*))
+(defun trubanc-web-server (server &key (www-dir "www") (port *default-server-port*))
   (setf (port-server port) server
         (port-www-dir port) www-dir)
   (or (port-acceptor port)
       (let ((acceptor (make-instance 'hunchentoot:acceptor :port port)))
-        (setf (get-web-script-handler "/" acceptor) 'do-trubanc-web-server)
+        (setf (get-web-script-handler port "/" acceptor)
+              'do-trubanc-web-server
+              (get-web-script-handler port "/client" acceptor)
+              #'(lambda () (hunchentoot:redirect "/client/"))
+              (get-web-script-handler port "/client/" acceptor)
+              'do-trubanc-web-client)
         (setf (port-acceptor port) acceptor)
         (hunchentoot:start acceptor)
         acceptor)))
