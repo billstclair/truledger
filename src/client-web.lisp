@@ -127,33 +127,52 @@
   (unless *bankname* (setq *bankname* "Trubanc"))
   (unless *menu* (setq *menu* ""))
 
-  (who (s *html-output*)
+  (who (*html-output*)
     (:html
      (:head
-      (:title (write-string *title* s))
+      (:title (str *title*))
       (:meta :name "viewport" :content "width=device-width")
       (:link :rel "apple-touch-icon" :href="../site-icon.ico")
       (:link :rel "shortcut icon" :href "../site-icon.ico"))
      (:body
-      :onload (or *onload* "")
+      :onload *onload*)
       (:p
        (:a :href="../"
            (:img :style "vertical-align: middle;border: 1px white"
                  :src "../trubanc-logo-50x49.gif"
                  :alt "Trubanc" :width "50" :height="49"))
-       (write-string " " s) 
-       (:b (write-string *bankname* s))
-       (when *menu* (format s "&nbsp;&nbsp;~a" *menu*)))
-      (bankline)
-      (idcode)
-      (write-string *body* s)
-      (when *debugstr* (write-string *debugstr* s))))))
+       " "
+       (:b (str *bankname*))
+       (when *menu*
+         (str "&nbsp;&nbsp;") (str *menu*)))
+      (write-bankline)
+      (write-idcode)
+      (str *body*)
+      (str *debugstr*))))
 
-(defun bankline ()
-  )
+(defun write-bankline ()
+  (let ((bankid (bankid *client*)))
+    (when bankid
+      (let ((bank (getbank *client* bankid)))
+        (when bank
+          (let ((name (bank-name bank))
+                (url (bank-url bank)))
+            (who (*html-output*)
+              (:b "Bank: ") (esc name)
+              (:a :href url (str url))
+              (:br))))))))
 
-(defun idcode ()
-  )
+(defun write-idcode ()
+  (let ((id (and *client* (id *client*))))
+    (when id
+      (multiple-value-bind (pubkeysig name) (get-id *client* id)
+        (declare (ignore pubkeysig))
+        (when name
+          (who (*html-output*)
+            (:b "Account name: ") (esc name)
+            (:br)
+            (:b "Your ID: ") (str id)
+            (:br)))))))
 
 (defun draw-login (&optional key)
   (let ((page (hunchentoot:parameter "page")))
@@ -163,7 +182,7 @@
   (setq *menu* nil
         *onload* "document.forms[0].passphrase.focus()")
 
-  (who (s *html-output*)
+  (who (*html-output*)
     (:form :method "post" :action "./" :autocomplete "off"
            (:input :type "hidden" :name "cmd" :value "login")
            (:table
@@ -177,17 +196,73 @@
             (:tr
              (:td)
              (:td :style "color: red"
-                  (write-string (or *error* "&nbsp;") s))))
+                  (str (or *error* "&nbsp;")))))
            (:a :href "./?cmd=register"
                "Register a new account"))))
 
+(defun draw-register (&key key)
+
+  (settitle "Register")
+  (setq *menu* ""
+        *onload* "document.forms[0].passphrase.focus()")
+
+  (let* ((keysize (or (ignore-errors
+                        (parse-integer (hunchentoot:parameter "page")))
+                      3072)))
+    (flet ((keysize-option (size)
+             (let ((size-str (format nil "~d" size)))
+               (who (*html-output*)
+                 (:option :value size-str :selected (equal keysize size)
+                          (str size-str))))))
+      (who (*html-output*)
+        (:form :method "post" :action "./" :autocomplete "off"
+               (:input :type "hidden" :name "cmd" :value "login")
+               (:table
+                (:tr
+                 (:td (:b "Passphrase:"))
+                 (:td (:input :type "password" :name "passphrase" :size "50")
+                      (:input :type "submit" :name "login" :value "Login")
+                      (:input :type "hidden" :name "page" :value "register")))
+                (:tr
+                 (:td)
+                 (:td :style "color: red"
+                      (str (or *error* "&nbsp;"))))
+                (:tr
+                 (:td (:b "Verification:"))
+                 (:td (:input :type "password" :name "passphrase2" :size "50")))
+                (:tr
+                 (:td (:b "Coupon:"))
+                 (:td (:input :type "text" :name "coupon" :size "64")))
+                (:tr
+                 (:td (:b "Account Name" (:br) "(Optional):"))
+                 (:td (:input :type "text" :name "name" :size "40")))
+                (:tr
+                 (:td (:b "Key size:"))
+                 (:td
+                  (:select :name "keysize"
+                           (mapc #'keysize-option '(512 1024 2048 3072 4096)))
+                  (:input :type "submit" :name "newacct" :value "Create account")
+                  (:input :type "submit" :name "showkey" :value "Show key")))
+                (:tr
+                 (:td)
+                 (:td
+                  "To generate a new private key, leave the area below blank, enter a
+passphrase, the passphrase again to verify, a bank coupon, an optional
+account name, a key size, and click the \"Create account\" button. To
+use an existing private key, paste the private key below, enter its
+passphrase above, a bank coupon, an optional account name, and click
+the \"Create account\" button.  To show your encrypted private key,
+enter its passphrase, and click the \"Show key\" button. Warning: if you
+forget your passphrase, <b>nobody can recover it, ever</b>."))
+                (:tr
+                 (:td)
+                 (:td (:textarea :name "privkey" :cols "64" :rows "42"
+                                 (esc key))))))))))
+
+(defun settitle (subtitle)
+  (setq *title* (format nil "~a - Trubanc Client" subtitle)))
+
 #||
-
-function settitle($subtitle) {
-  global $title;
-
-  $title = "$subtitle - Trubanc Client";
-}
 
 function menuitem($cmd, $text, $highlight) {
   $res = "<a href=\"./?cmd=$cmd\">";
@@ -645,114 +720,6 @@ function do_toggleinstructions() {
   hideinstructions(hideinstructions() ? '' : 'hide');
   if ($page == 'history') draw_history();
   else draw_balance();
-}
-
-function draw_register($key=false) {
-
-  global $title, $menu, $body, $onload;
-  global $keysize, $require_tokens;
-  global $error;
-
-  $key = hsc($key);
-
-  settitle('Register');
-  $menu = '';
-  $onload = "document.forms[0].passphrase.focus()";
-
-  if (!$keysize) $keysize = 3072;
-  $sel = ' selected="selected"';
-  $sel512 = ($keysize == 512) ? $sel : '';
-  $sel1024 = ($keysize == 1024) ? $sel : '';
-  $sel2048 = ($keysize == 2048) ? $sel : '';
-  $sel3072 = ($keysize == 3072) ? $sel : '';
-  $sel4096 = ($keysize == 4096) ? $sel : '';
-
-  $body = <<<EOT
-<form method="post" action="./" autocomplete="off">
-<input type="hidden" name="cmd" value="login"/>
-<table>
-<tr>
-<td><b>Passphrase:</b></td>
-<td><input type="password" name="passphrase" size="50"/>
-<input type="submit" name="login" value="Login"/></td>
-<input type="hidden" name="page" value="register"/>
-</tr><tr>
-<td></td>
-<td style="color: red">$error&nbsp;</td>
-</tr><tr>
-<td><b>Verification:</b></td>
-<td><input type="password" name="passphrase2" size="50"/>
-</tr><tr>
-<td><b>Coupon:</b></td>
-<td><input type="text" name="coupon" size="64"/></td>
-</tr><tr>
-<td><b>Account Name<br/>(Optional):</b></td>
-<td><input type="text" name="name" size="40"/></td>
-</tr><tr>
-<td><b>Key size:</b></td>
-<td>
-<select name="keysize">
-<option value="512"$sel512>512</option>
-<option value="1024"$sel1024>1024</option>
-<option value="2048"$sel2048>2048</option>
-<option value="3072"$sel3072>3072</option>
-<option value="4096"$sel4096>4096</option>
-</select>
-<input type="submit" name="newacct" value="Create account"/>
-<input type="submit" name="showkey" value="Show key"/></td>
-</tr><tr>
-<td></td>
-<td>
-To generate a new private key, leave the area below blank, enter a
-passphrase, the passphrase again to verify, a bank coupon, an optional
-account name, a key size, and click the "Create account" button. To
-use an existing private key, paste the private key below, enter its
-passphrase above, a bank coupon, an optional account name, and click
-the "Create account" button.  To show your encrypted private key,
-enter its passphrase, and click the "Show key" button. Warning: if you
-forget your passphrase, <b>nobody can recover it, ever</b>.
-</td>
-</tr><tr>
-<td></td>
-<td><textarea name="privkey" cols="64" rows="42">$key</textarea></td>
-</table>
-
-EOT;
-}
-
-function bankline() {
-  global $client;
-  
-  $t = $client->t;
-  $bankid = $client->bankid;
-
-  $bankline = '';
-  if ($bankid) {
-    $bank = $client->getbank($bankid);
-
-    if ($bank) {
-      $name = $bank[$t->NAME];
-      $url = $bank[$t->URL];
-      $bankline = "<b>Bank:</b> $name <a href=\"$url\">$url</a><br/>\n";
-    }
-  }
-  return $bankline;
-}
-
-function idcode() {
-  global $client;
-
-  $id = '';
-  if ($client) $id = $client->id;
-  if (!$id) return '';
-  $args = $client->get_id($id);
-  if ($args) {
-    $t = $client->t;
-    $name = $args[$t->NAME];
-    if ($name) $res = "<b>Account name:</b> $name<br/>\n";
-  }
-  $res .= "<b>Your ID:</b> $id<br/>\n";
-  return $res;
 }
 
 function init-bank($reporterror=false) {
