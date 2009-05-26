@@ -197,6 +197,8 @@
    #:make-equal-hash
    #:get-inited-hash
    #:normalize-balance
+   #:who
+   #:whots
    #:fraction-digits
    #:storage-fee
    #:explode
@@ -231,7 +233,8 @@
 
    ;; server-web.lisp
    #:trubanc-web-server
-   #:stop-web-server))
+   #:stop-web-server
+   #:bind-parameters))
 
 (cl:defpackage :trubanc-server
   (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)
@@ -366,6 +369,11 @@
    #:outbox-coupons
    #:getoutbox
    #:redeem
+   #:user-preference))
+
+(cl:defpackage :trubanc-client-web
+  (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens :trubanc-client)
+  (:export
    #:web-server))
 
 (cl:defpackage :trubanc-test

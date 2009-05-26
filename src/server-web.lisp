@@ -76,7 +76,7 @@
 (defvar *last-uri* nil)
 
 (defun do-trubanc-web-client ()
-  (trubanc-client:web-server))
+  (trubanc-client-web:web-server))
   
 (defvar *web-script-handlers*
   (make-hash-table :test 'equal))
