@@ -18,7 +18,10 @@
 (defvar *error*)
 (defvar *bankline*)
 (defvar *bankname*)
+(defvar *session*)
 (defvar *html-output*)
+
+(defparameter *require-coupon* nil)
 
 (defparameter *default-menuitems*
   '(('balance "Balance")
@@ -34,11 +37,6 @@
 (defun hsc (x)
   (hunchentoot:escape-for-html x))
 
-(defun debugmsg (x)
-  "Add a string to the debug output.
-   Does NOT add a newline."
-  (debugmsg *client*))
-
 ;; Called from do-trubanc-client in server-web.lisp
 ;; Returns a string with the contents of the client web page.
 (defun web-server ()
@@ -49,23 +47,23 @@
         (*bankline* "")
         (*bankname* nil)
         (*debugstr* nil)
-        (cmd (hunchentoot:parameter "cmd"))
-        (session (hunchentoot:cookie-in "session")))
+        (*session* (hunchentoot:cookie-in "session"))
+        (cmd (hunchentoot:parameter "cmd")))
     
     (when (hunchentoot:cookie-in "debug")
       (setf *debugstr* ""
             (showprocess *client*) 'append-debug))
 
-    (when session
-      (setq session (hunchentoot:cookie-value session))
+    (when *session*
+      (setq *session* (hunchentoot:cookie-value *session*))
       (handler-case
-          (progn (login-with-sessionid *client* session)
+          (progn (login-with-sessionid *client* *session*)
                  (setq cmd "balance"))
         (error (c)
           (hunchentoot:set-cookie "session" :value nil)
           (setq *error* (format nil "Session login error: ~a" c)
                 cmd "logout"
-                session nil))))
+                *session* nil))))
 
     (cond ((id *client*)
            (let ((keephistory (user-preference *client* "keephistory")))
@@ -108,7 +106,7 @@
                           ((equal cmd "admins") (draw-admin))
                           ((equal cmd "coupon") (draw-coupon))
                           ((equal cmd "history") (draw-history))
-                          (session (draw-balance))
+                          (*session* (draw-balance))
               
                           (t (draw-login))))))
 
@@ -183,31 +181,31 @@
         *onload* "document.forms[0].passphrase.focus()")
 
   (who (*html-output*)
-    (:form :method "post" :action "./" :autocomplete "off"
-           (:input :type "hidden" :name "cmd" :value "login")
-           (:table
-            (:tr
-             (:td (:b "Passphrase:"))
-             (:td (:input
-                   :type "password" :name "passphrase" :size "50")
-                  " "
-                  (:input
-                   :type "submit" :name "login" :value "Login")))
-            (:tr
-             (:td)
-             (:td :style "color: red"
-                  (str (or *error* "&nbsp;")))))
-           (:a :href "./?cmd=register"
-               "Register a new account"))))
+    (:form
+     :method "post" :action "./" :autocomplete "off"
+     (:input :type "hidden" :name "cmd" :value "login")
+     (:table
+      (:tr
+       (:td (:b "Passphrase:"))
+       (:td (:input
+             :type "password" :name "passphrase" :size "50")
+            " "
+            (:input
+             :type "submit" :name "login" :value "Login")))
+      (:tr
+       (:td)
+       (:td :style "color: red"
+            (str (or *error* "&nbsp;")))))
+     (:a :href "./?cmd=register"
+         "Register a new account"))))
 
-(defun draw-register (&key key)
-
+(defun draw-register (&optional key)
   (settitle "Register")
   (setq *menu* ""
         *onload* "document.forms[0].passphrase.focus()")
 
   (let* ((keysize (or (ignore-errors
-                        (parse-integer (hunchentoot:parameter "page")))
+                        (parse-integer (hunchentoot:parameter "keysize")))
                       3072)))
     (flet ((keysize-option (size)
              (let ((size-str (format nil "~d" size)))
@@ -215,38 +213,39 @@
                  (:option :value size-str :selected (equal keysize size)
                           (str size-str))))))
       (who (*html-output*)
-        (:form :method "post" :action "./" :autocomplete "off"
-               (:input :type "hidden" :name "cmd" :value "login")
-               (:table
-                (:tr
-                 (:td (:b "Passphrase:"))
-                 (:td (:input :type "password" :name "passphrase" :size "50")
-                      (:input :type "submit" :name "login" :value "Login")
-                      (:input :type "hidden" :name "page" :value "register")))
-                (:tr
-                 (:td)
-                 (:td :style "color: red"
-                      (str (or *error* "&nbsp;"))))
-                (:tr
-                 (:td (:b "Verification:"))
-                 (:td (:input :type "password" :name "passphrase2" :size "50")))
-                (:tr
-                 (:td (:b "Coupon:"))
-                 (:td (:input :type "text" :name "coupon" :size "64")))
-                (:tr
-                 (:td (:b "Account Name" (:br) "(Optional):"))
-                 (:td (:input :type "text" :name "name" :size "40")))
-                (:tr
-                 (:td (:b "Key size:"))
-                 (:td
-                  (:select :name "keysize"
-                           (mapc #'keysize-option '(512 1024 2048 3072 4096)))
-                  (:input :type "submit" :name "newacct" :value "Create account")
-                  (:input :type "submit" :name "showkey" :value "Show key")))
-                (:tr
-                 (:td)
-                 (:td
-                  "To generate a new private key, leave the area below blank, enter a
+        (:form
+         :method "post" :action "./" :autocomplete "off"
+         (:input :type "hidden" :name "cmd" :value "login")
+         (:table
+          (:tr
+           (:td (:b "Passphrase:"))
+           (:td (:input :type "password" :name "passphrase" :size "50")
+                (:input :type "submit" :name "login" :value "Login")
+                (:input :type "hidden" :name "page" :value "register")))
+          (:tr
+           (:td)
+           (:td :style "color: red"
+                (str (or *error* "&nbsp;"))))
+          (:tr
+           (:td (:b "Verification:"))
+           (:td (:input :type "password" :name "passphrase2" :size "50")))
+          (:tr
+           (:td (:b "Coupon:"))
+           (:td (:input :type "text" :name "coupon" :size "64")))
+          (:tr
+           (:td (:b "Account Name" (:br) "(Optional):"))
+           (:td (:input :type "text" :name "name" :size "40")))
+          (:tr
+           (:td (:b "Key size:"))
+           (:td
+            (:select :name "keysize"
+                     (mapc #'keysize-option '(512 1024 2048 3072 4096)))
+            (:input :type "submit" :name "newacct" :value "Create account")
+            (:input :type "submit" :name "showkey" :value "Show key")))
+          (:tr
+           (:td)
+           (:td
+            "To generate a new private key, leave the area below blank, enter a
 passphrase, the passphrase again to verify, a bank coupon, an optional
 account name, a key size, and click the \"Create account\" button. To
 use an existing private key, paste the private key below, enter its
@@ -254,145 +253,114 @@ passphrase above, a bank coupon, an optional account name, and click
 the \"Create account\" button.  To show your encrypted private key,
 enter its passphrase, and click the \"Show key\" button. Warning: if you
 forget your passphrase, <b>nobody can recover it, ever</b>."))
-                (:tr
-                 (:td)
-                 (:td (:textarea :name "privkey" :cols "64" :rows "42"
-                                 (esc key))))))))))
+          (:tr
+           (:td)
+           (:td (:textarea :name "privkey" :cols "64" :rows "42"
+                           (esc key))))))))))
 
 (defun settitle (subtitle)
   (setq *title* (format nil "~a - Trubanc Client" subtitle)))
 
+(defun menuitem (cmd text highlight)
+  (whots (s)
+    (:a :href (format nil "./?cmd=~a" cmd)
+        (str (and (equal cmd highlight) "<b>"))
+        (str text)
+        (str (and (equal cmd highlight) "</b>")))))
+
+(defun setmenu (&optional highlight (menuitems *default-menuitems*))
+  (setq *menu* nil)
+  (cond ((and highlight *client* (bankid *client*))
+         (loop
+            for (cmd . text) in menuitems
+            do
+            (when (or (not (equal cmd "admins"))
+                      (and *client*
+                           (bankid *client*)
+                           (equal (id *client*) (bankid *client*))))
+              (if *menu*
+                  (dotcat *menu* "&nbsp;&nbsp")
+                  (setq *menu* ""))
+              (dotcat *menu* (menuitem cmd text highlight)))))
+        (t (setq *menu* (menuitem "logout" "Logout"  nil))))
+  *menu*)
+
+(defun do-logout ()
+  (when *session*
+    (logout *client*))
+  (hunchentoot:set-cookie "session" :value nil)
+  (setq *bankline* nil
+        *error* nil)
+  (draw-login))
+
+;; Here from the login page when the user presses one of the buttons
+(defun do-login ()
+  (bind-parameters (passphrase passphrase2 coupon name keysize login
+                               newacct showkey privkey)
+
+    (when showkey
+      (let ((key (ignore-errors (get-privkey *client* passphrase))))
+        (unless key (setq *error* "No key for passphrase"))
+        (return-from do-login (draw-login key))))
+
+    (when newacct
+      (setq login nil)
+      (cond ((not passphrase)
+             (setq *error* "Passphrase may not be blank"))
+            ((and (not privkey) (not (equal passphrase passphrase2)))
+             (setq *error* "Passphrase didn't match Verification"))
+            (privkey
+             ;; Support adding a passphrase to a private key without one
+             (ignore-errors
+               (with-rsa-private-key (pk privkey)
+                 (unless (equal passphrase passphrase2)
+                   (setq *error* "Passphrase didn't match Verification")
+                   (return-from do-login (draw-login)))
+                 (setq privkey (encode-rsa-private-key pk passphrase)))))
+            (t (setq privkey keysize)))
+
+      (cond (coupon
+             (handler-case
+                 (multiple-value-bind (bankid url)
+                     (parse-coupon coupon)
+                   (handler-case (verify-coupon *client* coupon bankid url)
+                     (error (c) (setq *error* (princ c)))))
+               (error ()
+                 ;; See if "coupon" is just a URL, meaning the user
+                 ;; already has an account at that bank.
+                 (handler-case (verify-bank *client* coupon)
+                   (error (c) (setq *error* (format nil "Invalid coupon: ~a" c)))))))
+            ((and *require-coupon* (not privkey))
+             (setq *error* "Bank coupon required for registration")))
+
+      (unless *error*
+        (handler-case
+            (progn
+              (newuser *client* :passphrase passphrase :privkey privkey)
+              (setq login t))
+          (error (c)
+            (setq *error* (princ c))))))
+
+    (when login
+      (handler-case
+          (let ((session (login-new-session *client* passphrase)))
+            ;; Hunchentoot doesn't appear to have a way to tell
+            ;; if the client is accepting cookies.
+            (hunchentoot:set-cookie "session" :value session)
+            (when newacct
+              (addbank *client* coupon name t)
+              (init-bank)
+              (return-from do-login
+                (if (bankid *client*)
+                    (draw-balance)
+                    (draw-banks)))))
+        (error (c)
+          (setq *error* (format nil "Login error: ~a" c)))))
+
+    (draw-login)))
+
 #||
 
-function menuitem($cmd, $text, $highlight) {
-  $res = "<a href=\"./?cmd=$cmd\">";
-  if ($cmd == $highlight) $res .= '<b>';
-  $res .= $text;
-  if ($cmd == $highlight) $res .= '</b>';
-  $res .= '</a>';
-  return $res;
-}
-
-function setmenu($highlight=false, $menuitems=false) {
-  global $menu, $default_menuitems;
-  global $client;
-
-  if (!$menuitems) $menuitems = $default_menuitems;
-
-  $menu = '';
-  if ($highlight && $client->bankid) {
-    foreach ($menuitems as $cmd => $text) {
-      if ($cmd != 'admins' ||
-          ($client->bankid && $client->id == $client->bankid)) {
-        if ($menu) $menu .= '&nbsp;&nbsp';
-        $menu .= menuitem($cmd, $text, $highlight);
-      }
-    }
-  } else {
-    $menu .= menuitem('logout', 'Logout', false);
-  }
-}
-
-function do_logout() {
-  global $session, $client, $bankline, $error;
-
-  if ($session) $client->logout();
-  setcookie('session', false);
-  $bankline = '';
-  $error = '';
-  draw_login();
-}
-
-// Here from the login page when the user presses one of the buttons
-function do_login() {
-  global $title, $body, $onload;
-  global $keysize, $require_coupon;
-  global $error;
-  global $client, $ssl;
-
-  $t = $client->t;
-
-  $passphrase = mqpost('passphrase');
-  $passphrase2 = mqpost('passphrase2');
-  $coupon = mqpost('coupon');
-  $name = mqpost('name');
-  $keysize = mqpost('keysize');
-  $login = mqpost('login');
-  $newacct = mqpost('newacct');
-  $showkey = mqpost('showkey');
-
-  if ($showkey) {
-    $key = $client->getprivkey($passphrase);
-    if (!$key) $error = "No key for passphrase";
-    draw_login($key);
-    return;
-  } elseif ($newacct) {
-    $login = false;
-    $privkey = mqpost('privkey');
-    if (!$passphrase) {
-      $error = "Passphrase may not be blank";
-    } elseif (!$privkey && $passphrase != $passphrase2) {
-      $error = "Passphrase didn't match Verification";
-    } else {
-      if ($privkey) {
-        // Support adding a passphrase to a private key without one
-        $pk = $ssl->load_private_key($privkey);
-        if ($pk) {
-          if ($passphrase != $passphrase2) {
-            $error = "Passphrase didn't match Verification";
-            draw_login();
-            return;
-          }
-          openssl_pkey_export($pk, $privkey, $passphrase);
-          openssl_free_key($pk);
-        }
-      } else $privkey = $keysize;
-
-      if ($coupon) {
-        $err = $client->parsecoupon($coupon, $bankid, $url, $coupon_number);
-        if ($err) {
-          // See if "coupon" is just a URL, meaning the user
-          // already has an account at that bank.
-          $err2 = $client->verifybank($coupon, $bankid);
-          if ($err2) $error = "Invalid coupon: $err";
-        } else {
-          $error = $client->verifycoupon($coupon, $bankid, $url);
-        }
-      } elseif ($require_coupon && !privkey) {
-        $error = "Bank coupon required for registration";
-      }
-
-      if (!$error) {
-        $error = $client->newuser($passphrase, $privkey);
-        if (!$error) $login = true;
-      }
-    }
-  }
-
-  if ($login) {
-    $session = $client->login_new_session($passphrase);
-    if (is_string($session)) {
-      $error = "Login error: $session";
-    } else {
-      $session = $session[0];
-      if (!setcookie('session', $session)) {
-        $error = "You must enable cookies to use this client";
-      } else {
-        if ($newacct) {
-          $error = $client->addbank($coupon, $name, true);
-        }
-        if (!$error) {
-          setbank();
-          if ($client->bankid) draw_balance();
-          else draw_banks();
-          return;
-        }
-      }
-    }
-  }
-
-  draw_login();
-}
 
 // Here to change banks or add a new bank
 function do_bank() {
