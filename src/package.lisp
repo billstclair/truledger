@@ -105,6 +105,12 @@
   (:use :cl :cffi :cl-base64 :cl-who :trubanc-tokens)
   (:export
 
+   ;; ccl.lisp
+   #:quit
+   #:df
+   #:arglist
+   #:gc
+
    ;; openssl-cffi.lisp
    #:decode-rsa-private-key
    #:encode-rsa-private-key
@@ -230,6 +236,7 @@
    #:bankname
    #:privkey
    #:db
+   #:finalize
 
    ;; server-web.lisp
    #:trubanc-web-server

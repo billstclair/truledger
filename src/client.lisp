@@ -79,6 +79,12 @@
         (make-instance 'parser :keydb (pubkeydb client))
         (parser-always-verify-sigs-p (parser client)) t))
 
+(defmethod finalize ((client client))
+  (let ((privkey (privkey client)))
+    (when privkey
+      (setf (privkey client) nil)
+      (rsa-free privkey))))
+
 ;; API Methods
 
 (defmethod newuser ((client client) &key passphrase (privkey 3072))

@@ -7,19 +7,10 @@
 
 (in-package :trubanc-client-web)
 
-
-(defvar *debugstr*)
-(defvar *client*)
-(defvar *iphone*)
-(defvar *title*)
-(defvar *body*)
-(defvar *menu*)
-(defvar *onload*)
-(defvar *error*)
-(defvar *bankline*)
-(defvar *bankname*)
-(defvar *session*)
-(defvar *html-output*)
+;; Causes WHO and WHOTS to indent prettily by default.
+;; Remove when debugged, to reduce bandwidth.
+(eval-when (:compile-toplevel :execute :load-toplevel)
+  (setq cl-who::*indent* t))
 
 (defparameter *require-coupon* nil)
 
@@ -31,8 +22,27 @@
     ;;('admins "Admin")
     ('logout "Logout")))    
 
-(defun append-debug (x)
-  (and *debugstr* (dotcat *debugstr* x)))
+;; The client-web state
+(defstruct cw
+  client
+  iphone
+  title
+  error
+  bankline
+  bankname
+  debugstr
+  session
+  html-output
+  body
+  menu
+  onload
+  )
+
+(defun append-debug (cw x)
+  (let ((str (cw-debugstr cw)))
+    (and str
+         (setf (cw-debugstr cw)
+               (strcat str x)))))
 
 (defun hsc (x)
   (hunchentoot:escape-for-html x))
@@ -40,39 +50,42 @@
 ;; Called from do-trubanc-client in server-web.lisp
 ;; Returns a string with the contents of the client web page.
 (defun web-server ()
-  (let ((*client* (make-client "dbs/clientdb"))
-        (*iphone* (search "iPhone" (hunchentoot:user-agent)))
-        (*title* "Trubanc Client")
-        (*error* nil)
-        (*bankline* "")
-        (*bankname* nil)
-        (*debugstr* nil)
-        (*session* (hunchentoot:cookie-in "session"))
-        (cmd (hunchentoot:parameter "cmd")))
+  (let* ((client (make-client "dbs/clientdb")))
+    (unwind-protect
+         (web-server-internal client)
+      (finalize client))))
+
+(defun web-server-internal (client)
+  (let* ((iphone (search "iPhone" (hunchentoot:user-agent)))
+         (title "Trubanc Client")
+         (session (hunchentoot:cookie-in "session"))
+         (cw (make-cw :client client :iphone iphone :title title :session session))
+         (cmd (hunchentoot:parameter "cmd")))
     
     (when (hunchentoot:cookie-in "debug")
-      (setf *debugstr* ""
-            (showprocess *client*) 'append-debug))
+      (setf (cw-debugstr cw) ""
+            (showprocess client) (lambda (x) (append-debug cw x))))
 
-    (when *session*
-      (setq *session* (hunchentoot:cookie-value *session*))
+    (when session
+      (setq session (hunchentoot:cookie-value session))
       (handler-case
-          (progn (login-with-sessionid *client* *session*)
+          (progn (login-with-sessionid client session)
                  (setq cmd "balance"))
         (error (c)
           (hunchentoot:set-cookie "session" :value nil)
-          (setq *error* (format nil "Session login error: ~a" c)
+          (setf (cw-error cw) (format nil "Session login error: ~a" c)
                 cmd "logout"
-                *session* nil))))
+                session nil)))
+      (setf (cw-session cw) session))
 
-    (cond ((id *client*)
-           (let ((keephistory (user-preference *client* "keephistory")))
+    (cond ((id client)
+           (let ((keephistory (user-preference client "keephistory")))
              (unless keephistory (setq keephistory "keep"))
-             (setf (keep-history-p *client*) (equal keephistory "keep")))
+             (setf (keep-history-p client) (equal keephistory "keep")))
 
-           (init-bank)
+           (init-bank cw)
 
-           (unless (bankid *client*)
+           (unless (bankid client)
              (when (and cmd
                         (not (equal cmd "logout"))
                         (not (equal cmd "login"))
@@ -81,106 +94,115 @@
           ((and (not (equal cmd "login")) (not (equal cmd "register")))
            (setq cmd nil)))
 
-    (let ((*body* (with-output-to-string (*html-output*)
-                    (cond ((not cmd) (draw-login))
-                          ((equal cmd "logout") (do-logout))
-                          ((equal cmd "login") (do-login))
-                          ((equal cmd "contact") (do-contact))
-                          ((equal cmd "bank") (do-bank))
-                          ((equal cmd "asset") (do-asset))
-                          ((equal cmd "admin") (do-admin))
-                          ((equal cmd "spend") (do-spend))
-                          ((equal cmd "canceloutbox") (do-canceloutbox))
-                          ((equal cmd "processinbox") (do-processinbox))
-                          ((equal cmd "storagefees") (do-storagefees))
-                          ((equal cmd "dohistory") (do-history))
-                          ((equal cmd "togglehistory") (do-togglehistory))
-                          ((equal cmd "toggleinstructions") (do-toggleinstructions))
+    (setf (cw-body cw)
+          (with-output-to-string (s)
+            (setf (cw-html-output cw) s)
+            (cond ((not cmd) (draw-login cw))
+                          ((equal cmd "logout") (do-logout cw))
+                          ((equal cmd "login") (do-login cw))
+                          ((equal cmd "contact") (do-contact cw))
+                          ((equal cmd "bank") (do-bank cw))
+                          ((equal cmd "asset") (do-asset cw))
+                          ((equal cmd "admin") (do-admin cw))
+                          ((equal cmd "spend") (do-spend cw))
+                          ((equal cmd "canceloutbox") (do-canceloutbox cw))
+                          ((equal cmd "processinbox") (do-processinbox cw))
+                          ((equal cmd "storagefees") (do-storagefees cw))
+                          ((equal cmd "dohistory") (do-history cw))
+                          ((equal cmd "togglehistory") (do-togglehistory cw))
+                          ((equal cmd "toggleinstructions") (do-toggleinstructions cw))
             
-                          ((equal cmd "register") (draw-register))
-                          ((equal cmd "balance") (draw-balance))
-                          ((equal cmd "rawbalance") (draw-raw))
-                          ((equal cmd "contacts") (draw-contacts))
-                          ((equal cmd "banks") (draw-banks))
-                          ((equal cmd "assets") (draw-assets))
-                          ((equal cmd "admins") (draw-admin))
-                          ((equal cmd "coupon") (draw-coupon))
-                          ((equal cmd "history") (draw-history))
-                          (*session* (draw-balance))
+                          ((equal cmd "register") (draw-register cw))
+                          ((equal cmd "balance") (draw-balance cw))
+                          ((equal cmd "rawbalance") (draw-raw cw))
+                          ((equal cmd "contacts") (draw-contacts cw))
+                          ((equal cmd "banks") (draw-banks cw))
+                          ((equal cmd "assets") (draw-assets cw))
+                          ((equal cmd "admins") (draw-admin cw))
+                          ((equal cmd "coupon") (draw-coupon cw))
+                          ((equal cmd "history") (draw-history cw))
+                          (session (draw-balance cw))
               
-                          (t (draw-login))))))
+                          (t (draw-login cw)))))
 
-      ;; Use *title*, *body*, *onload*, and *debugstr* to fill the page template.
-      (when *debugstr*
-        (setq *debugstr*
+    ;; Use title, body, onload, and debugstr to fill the page template.
+    (let ((str (cw-debugstr cw)))
+      (when str
+        (setf (cw-debugstr cw)
               (format nil "<b>=== Debug log ===</b><br/><pre>~a</pre>~%"
-                      *debugstr*)))
+                      str))))
 
-      (with-output-to-string (*html-output*)
-        (write-template)))))
+    (with-output-to-string (s)
+      (setf (cw-html-output cw) s)
+      (write-template cw))))
 
 ;; Should support a template.lhtml file that users can easily change.
-(defun write-template ()
-  (unless *title* (setq *title* "A Trubanc Web Client"))
-  (unless *bankname* (setq *bankname* "Trubanc"))
-  (unless *menu* (setq *menu* ""))
+(defun write-template (cw)
+  (let ((title (cw-title cw))
+        (bankname (cw-bankname cw))
+        (menu (cw-menu cw)))
+    (unless title (setq title "A Trubanc Web Client"))
+    (unless bankname (setq bankname "Trubanc"))
+    (unless menu (setq menu ""))
 
-  (who (*html-output*)
-    (:html
-     (:head
-      (:title (str *title*))
-      (:meta :name "viewport" :content "width=device-width")
-      (:link :rel "apple-touch-icon" :href="../site-icon.ico")
-      (:link :rel "shortcut icon" :href "../site-icon.ico"))
-     (:body
-      :onload *onload*)
-      (:p
-       (:a :href="../"
-           (:img :style "vertical-align: middle;border: 1px white"
-                 :src "../trubanc-logo-50x49.gif"
-                 :alt "Trubanc" :width "50" :height="49"))
-       " "
-       (:b (str *bankname*))
-       (when *menu*
-         (str "&nbsp;&nbsp;") (str *menu*)))
-      (write-bankline)
-      (write-idcode)
-      (str *body*)
-      (str *debugstr*))))
+    (who (s (cw-html-output cw))
+      (:html
+       (:head
+        (:title (str title))
+        (:meta :name "viewport" :content "width=device-width")
+        (:link :rel "apple-touch-icon" :href="../site-icon.ico")
+        (:link :rel "shortcut icon" :href "../site-icon.ico"))
+       (:body
+        :onload (cw-onload cw)
+        (:p
+         (:a :href="../"
+             (:img :style "vertical-align: middle;border: 1px white"
+                   :src "../trubanc-logo-50x49.gif"
+                   :alt "Trubanc" :width "50" :height="49"))
+         " "
+         (:b (str bankname))
+         (when menu
+           (str "&nbsp;&nbsp;") (str menu)))
+        (write-bankline cw)
+        (write-idcode cw)
+        (str (cw-body cw))
+        (str (cw-debugstr cw)))))))
 
-(defun write-bankline ()
-  (let ((bankid (bankid *client*)))
+(defun write-bankline (cw)
+  (let* ((client (cw-client cw))
+         (bankid (bankid client)))
     (when bankid
-      (let ((bank (getbank *client* bankid)))
+      (let ((bank (getbank client bankid)))
         (when bank
           (let ((name (bank-name bank))
                 (url (bank-url bank)))
-            (who (*html-output*)
+            (who (s (cw-html-output cw))
               (:b "Bank: ") (esc name)
               (:a :href url (str url))
               (:br))))))))
 
-(defun write-idcode ()
-  (let ((id (and *client* (id *client*))))
+(defun write-idcode (cw)
+  (let* ((client (cw-client cw))
+         (id (and client (id client))))
     (when id
-      (multiple-value-bind (pubkeysig name) (get-id *client* id)
+      (multiple-value-bind (pubkeysig name) (get-id client id)
         (declare (ignore pubkeysig))
         (when name
-          (who (*html-output*)
+          (who (s (cw-html-output cw))
             (:b "Account name: ") (esc name)
             (:br)
             (:b "Your ID: ") (str id)
             (:br)))))))
 
-(defun draw-login (&optional key)
+(defun draw-login (cw &optional key)
   (let ((page (hunchentoot:parameter "page")))
     (when (equal page "register")
-      (return-from draw-login (draw-register key))))
+      (return-from draw-login (draw-register cw key))))
 
-  (setq *menu* nil
-        *onload* "document.forms[0].passphrase.focus()")
+  (setf (cw-menu cw) nil
+        (cw-onload cw) "document.forms[0].passphrase.focus()")
 
-  (who (*html-output*)
+  (who (s (cw-html-output cw))
     (:form
      :method "post" :action "./" :autocomplete "off"
      (:input :type "hidden" :name "cmd" :value "login")
@@ -195,24 +217,25 @@
       (:tr
        (:td)
        (:td :style "color: red"
-            (str (or *error* "&nbsp;")))))
+            (str (or (cw-error cw) "&nbsp;")))))
      (:a :href "./?cmd=register"
          "Register a new account"))))
 
-(defun draw-register (&optional key)
-  (settitle "Register")
-  (setq *menu* ""
-        *onload* "document.forms[0].passphrase.focus()")
+(defun draw-register (cw &optional key)
+  (settitle cw "Register")
+  (setf (cw-menu cw) ""
+        (cw-onload cw) "document.forms[0].passphrase.focus()")
 
-  (let* ((keysize (or (ignore-errors
+  (let* ((s (cw-html-output cw))
+         (keysize (or (ignore-errors
                         (parse-integer (hunchentoot:parameter "keysize")))
                       3072)))
     (flet ((keysize-option (size)
              (let ((size-str (format nil "~d" size)))
-               (who (*html-output*)
+               (who (s)
                  (:option :value size-str :selected (equal keysize size)
                           (str size-str))))))
-      (who (*html-output*)
+      (who (s)
         (:form
          :method "post" :action "./" :autocomplete "off"
          (:input :type "hidden" :name "cmd" :value "login")
@@ -225,7 +248,7 @@
           (:tr
            (:td)
            (:td :style "color: red"
-                (str (or *error* "&nbsp;"))))
+                (str (or (cw-error cw) "&nbsp;"))))
           (:tr
            (:td (:b "Verification:"))
            (:td (:input :type "password" :name "passphrase2" :size "50")))
@@ -258,8 +281,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
            (:td (:textarea :name "privkey" :cols "64" :rows "42"
                            (esc key))))))))))
 
-(defun settitle (subtitle)
-  (setq *title* (format nil "~a - Trubanc Client" subtitle)))
+(defun settitle (cw subtitle)
+  (setf (cw-title cw) (format nil "~a - Trubanc Client" subtitle)))
 
 (defun menuitem (cmd text highlight)
   (whots (s)
@@ -268,126 +291,129 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
         (str text)
         (str (and (equal cmd highlight) "</b>")))))
 
-(defun setmenu (&optional highlight (menuitems *default-menuitems*))
-  (setq *menu* nil)
-  (cond ((and highlight *client* (bankid *client*))
+(defun setmenu (cw &optional highlight (menuitems *default-menuitems*))
+  (let ((menu nil)
+        (client (cw-client cw)))
+    (cond ((and highlight client (bankid client))
          (loop
             for (cmd . text) in menuitems
             do
             (when (or (not (equal cmd "admins"))
-                      (and *client*
-                           (bankid *client*)
-                           (equal (id *client*) (bankid *client*))))
-              (if *menu*
-                  (dotcat *menu* "&nbsp;&nbsp")
-                  (setq *menu* ""))
-              (dotcat *menu* (menuitem cmd text highlight)))))
-        (t (setq *menu* (menuitem "logout" "Logout"  nil))))
-  *menu*)
+                      (and client
+                           (bankid client)
+                           (equal (id client) (bankid client))))
+              (if menu
+                  (dotcat menu "&nbsp;&nbsp")
+                  (setq menu ""))
+              (dotcat menu (menuitem cmd text highlight)))))
+        (t (setq menu (menuitem "logout" "Logout"  nil))))
+    (setf (cw-menu cw) menu)))
 
-(defun do-logout ()
-  (when *session*
-    (logout *client*))
+(defun do-logout (cw)
+  (when (cw-session cw)
+    (logout (cw-client cw)))
   (hunchentoot:set-cookie "session" :value nil)
-  (setq *bankline* nil
-        *error* nil)
-  (draw-login))
+  (setf (cw-bankline cw) nil
+        (cw-error cw) nil)
+  (draw-login cw))
 
 ;; Here from the login page when the user presses one of the buttons
-(defun do-login ()
+(defun do-login (cw)
   (bind-parameters (passphrase passphrase2 coupon name keysize login
                                newacct showkey privkey)
 
-    (when showkey
-      (let ((key (ignore-errors (get-privkey *client* passphrase))))
-        (unless key (setq *error* "No key for passphrase"))
-        (return-from do-login (draw-login key))))
+    (let ((client (cw-client cw))
+          (error nil))
+      (when showkey
+        (let ((key (ignore-errors (get-privkey client passphrase))))
+          (unless key (setf (cw-error cw) "No key for passphrase"))
+          (return-from do-login (draw-login cw key))))
 
     (when newacct
       (setq login nil)
       (cond ((not passphrase)
-             (setq *error* "Passphrase may not be blank"))
+             (setq error "Passphrase may not be blank"))
             ((and (not privkey) (not (equal passphrase passphrase2)))
-             (setq *error* "Passphrase didn't match Verification"))
+             (setq error "Passphrase didn't match Verification"))
             (privkey
              ;; Support adding a passphrase to a private key without one
              (ignore-errors
                (with-rsa-private-key (pk privkey)
-                 (unless (equal passphrase passphrase2)
-                   (setq *error* "Passphrase didn't match Verification")
-                   (return-from do-login (draw-login)))
-                 (setq privkey (encode-rsa-private-key pk passphrase)))))
+                 (cond ((not (equal passphrase passphrase2))
+                        (setq error "Passphrase didn't match Verification"))
+                       (t (setq privkey (encode-rsa-private-key pk passphrase)))))))
             (t (setq privkey keysize)))
 
-      (cond (coupon
+      (when error
+        (setf (cw-error cw) error)
+        (return-from do-login))
+
+      (cond ((and coupon (not (equal coupon "")))
              (handler-case
                  (multiple-value-bind (bankid url)
                      (parse-coupon coupon)
-                   (handler-case (verify-coupon *client* coupon bankid url)
-                     (error (c) (setq *error* (princ c)))))
+                   (handler-case (verify-coupon client coupon bankid url)
+                     (error (c) (setq error (princ c)))))
                (error ()
                  ;; See if "coupon" is just a URL, meaning the user
                  ;; already has an account at that bank.
-                 (handler-case (verify-bank *client* coupon)
-                   (error (c) (setq *error* (format nil "Invalid coupon: ~a" c)))))))
+                 (handler-case (verify-bank client coupon)
+                   (error (c) (setq error (format nil "Invalid coupon: ~a" c)))))))
             ((and *require-coupon* (not privkey))
-             (setq *error* "Bank coupon required for registration")))
+             (setq error "Bank coupon required for registration")))
 
-      (unless *error*
+      (unless error
         (handler-case
             (progn
-              (newuser *client* :passphrase passphrase :privkey privkey)
+              (newuser client :passphrase passphrase :privkey privkey)
               (setq login t))
           (error (c)
-            (setq *error* (princ c))))))
+            (setq error (princ c))))))
 
     (when login
       (handler-case
-          (let ((session (login-new-session *client* passphrase)))
+          (let ((session (login-new-session client passphrase)))
             ;; Hunchentoot doesn't appear to have a way to tell
             ;; if the client is accepting cookies.
+            ;; Need to set a test cookie in the login page,
+            ;; and check whether it comes back.
             (hunchentoot:set-cookie "session" :value session)
             (when newacct
-              (addbank *client* coupon name t)
-              (init-bank)
+              (addbank client coupon name t)
+              (init-bank cw)
               (return-from do-login
-                (if (bankid *client*)
-                    (draw-balance)
-                    (draw-banks)))))
+                (if (bankid client)
+                    (draw-balance cw)
+                    (draw-banks cw)))))
         (error (c)
-          (setq *error* (format nil "Login error: ~a" c)))))
+          (setq error (format nil "Login error: ~a" c)))))
 
-    (draw-login)))
+    (setf (cw-error cw) error)
+
+    (draw-login cw))))
+
+(defun do-bank (cw)
+  "Here to change banks or add a new bank"
+  (bind-parameters (newbank selectbank bankurl name bank)
+    (let ((client (cw-client cw))
+          (err nil))
+      (cond (newbank
+             (setq bankurl (trim bankurl))
+             (handler-case
+                 (progn (addbank client bankurl name)
+                        (setf (user-preference client "bankid") (bankid client)))
+               (error (c) (setq err (princ c)))))
+            (selectbank
+             (cond ((or (not bank) (equal bank ""))
+                    (setq err "You must choose a bank"))
+                   (t (setf (user-preference client "bankid") bank)
+                      (init-bank cw t)))))
+      (cond (err
+             (setf (cw-error cw) err)
+             (draw-banks cw bankurl name))
+            (t (draw-balance cw))))))
 
 #||
-
-
-// Here to change banks or add a new bank
-function do_bank() {
-  global $client;
-  global $error;
-
-  $error = false;
-
-  $newbank = mqpost('newbank');
-  $selectbank = mqpost('selectbank');
-
-  $bankurl = '';
-  $name = '';
-  if ($newbank) {
-    $bankurl = trim(mqpost('bankurl'));
-    $name = mqpost('name');
-    $error = $client->addbank($bankurl, $name);
-    if (!$error) $client->userpreference('bankid', $client->bankid);
-  } elseif ($selectbank) {
-    $bankid = mqpost('bank');
-    if (!$bankid) $error = "You must choose a bank";
-    else $client->userpreference('bankid', $bankid);
-    setbank(true);
-  }
-  if ($error) draw_banks($bankurl, $name);
-  else draw_balance();
-}
 
 function do_contact() {
   global $client;
@@ -690,90 +716,75 @@ function do_toggleinstructions() {
   else draw_balance();
 }
 
-function init-bank($reporterror=false) {
-  global $banks, $bank;
-  global $error;
-  global $client;
+||#
 
-  $t = $client->t;
+(defun init-bank (cw &optional report-error-p)
+  (let* ((client (cw-client cw))
+         (banks (getbanks client))
+         (bankid (user-preference client "bankid"))
+         (err nil))
+    (when bankid
+      (handler-case (setbank client bankid nil)
+        (error (c)
+          (setf err (format nil "Can't set bank: ~a" c)
+                (user-preference client "bankid") nil
+                bankid nil))))
+    (unless bankid
+      (dolist (bank banks)
+        (let ((bankid (bank-id bank)))
+          (handler-case
+              (progn (setbank client bankid)
+                     (setf (user-preference client "bankid") bankid)
+                     (return))
+            (error (c)
+              (setq err (format nil "Can't set bank: ~a" c)
+                    bankid nil))))))
+    (unless (or bankid err)
+      (setq err "No known banks. Please add one."))
 
-  $banks = $client->getbanks();
-  $bank = false;
-  $bankid = $client->userpreference('bankid');
-  if ($bankid) {
-    $err = $client->setbank($bankid, false);
-    if ($err) {
-      $err = "Can't set bank: $err";
-      $client->userpreference('bankid', '');
-      $bankid = false;
-    }
-  }
-  if (!$bankid) {
-    foreach ($banks as $bank) {
-      $bankid = $bank[$t->BANKID];
-      $err = $client->setbank($bankid);
-      if ($err) {
-        $err = "Can't set bank: $err";
-        $bankid = false;
-      }
-      else {
-        $client->userpreference('bankid', $bankid);
-        break;
-      }
-    } 
-    if (!$bankid) {
-      $err = "No known banks. Please add one.";
-    }
-  }
+  (when report-error-p
+    (setf (cw-error cw) err))))
 
-  if ($reporterror) $error = $err;
-}
+(defun namestr (nickname name id)
+  (cond (nickname
+         (if name
+             (if (not (equal name nickname))
+                 (format nil "~a (~a)" nickname name)
+                 name)
+             nickname))
+        (name (format nil "(~a)" name))
+        (t id)))
 
-function namestr($nickname, $name, $id) {
- if ($nickname) {
-    if ($name) {
-      if ($name != $nickname) $namestr = "$nickname ($name)";
-      else $namestr = $name;
-    } else $namestr = $nickname;
-  } elseif ($name) $namestr = "($name)";
-  else $namestr = "$id";
-  return "$namestr";
-}
+(defun contact-namestr (contact)
+  (let ((nickname (hsc (contact-nickname contact)))
+        (name (hsc (contact-name contact)))
+        (recipid (hsc (contact-id contact))))
+    (namestr nickname name recipid)))
 
-function contact_namestr($contact) {
-  global $client;
+(defun id-namestr (cw fromid &optional you)
+  "Returns two values: namestring and contact"
+  (let ((client (cw-client cw)))
+    (cond ((equal fromid "coupon") fromid)
+          ((and you (equal fromid (id client))) you)
+          (t (let ((contact (getcontact client fromid)))
+               (cond (contact
+                      (let ((namestr (contact-namestr contact)))
+                        (when (equal namestr fromid)
+                          (setq namestr "[unknown]"))
+                        (setq namestr
+                              (format nil "<span title='~a'>~a</span>"
+                                      fromid namestr))
+                        (values namestr contact)))
+                     (t (hsc fromid))))))))
 
-  $t = $client->t;
+(defun datestr (time)
+  "Return the ready-for-html-output formatted date for a timestamp"
+  (let ((unixtime (if (stringp time)
+                      (parse-integer (strip-fract time))
+                      time)))
+    (hsc (cybertiggyr-time:format-time nil "%d-%m-%Y %I:%M:%S%p" unixtime))))
 
-  $nickname = hsc(@$contact[$t->NICKNAME]);
-  $name = hsc($contact[$t->NAME]);
-  $recipid = hsc($contact[$t->ID]);
-  return namestr($nickname, $name, $recipid);
-}
-
-function id_namestr($fromid, &$contact, $you=false) {
-  global $client;
-
-  if ($fromid == 'coupon') return $fromid;
-
-  if ($you && $fromid == $client->id) return $you;
-
-  $contact = $client->getcontact($fromid);
-  if ($contact) {
-    $namestr = contact_namestr($contact);
-    if ($namestr == $fromid) $namestr = "[unknown]";
-    $namestr = "<span title=\"$fromid\">$namestr</span>";
-  } else $namestr = hsc($fromid);
-  return $namestr;
-}
-
-// Return the ready-for-html-output formatted date for a timestamp
-function datestr($time) {
-  global $timestamp;
-
-  $unixtime = $timestamp->stripfract($time);
-  return hsc(date("j-M-y g:i:sa T", $unixtime));
-}
+#||
 
 function draw_balance($spend_amount=false, $recipient=false, $note=false,
                       $toacct=false, $tonewacct=false, $nickname=false) {

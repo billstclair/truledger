@@ -1,0 +1,1840 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+
+<!--Converted with LaTeX2HTML 2002-2-1 (1.71)
+original version by:  Nikos Drakos, CBLU, University of Leeds
+* revised and updated by:  Marcus Hennecke, Ross Moore, Herb Swan
+* with significant contributions from:
+  Jens Lippmann, Marek Rouchal, Martin Wilck and others -->
+<HTML>
+<HEAD>
+<TITLE>Parsing Dates in Lisp</TITLE>
+<META NAME="description" CONTENT="Parsing Dates in Lisp">
+<META NAME="keywords" CONTENT="pdl">
+<META NAME="resource-type" CONTENT="document">
+<META NAME="distribution" CONTENT="global">
+
+<META NAME="Generator" CONTENT="LaTeX2HTML v2002-2-1">
+<META HTTP-EQUIV="Content-Style-Type" CONTENT="text/css">
+
+<LINK REL="STYLESHEET" HREF="pdl.css">
+
+</HEAD>
+
+<BODY >
+
+<DIV CLASS="navigation"><!--Navigation Panel-->
+<IMG WIDTH="81" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="next_inactive"
+ SRC="../img/latex2html/nx_grp_g.png"> 
+<IMG WIDTH="26" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="up"
+ SRC="../img/latex2html/up_g.png"> 
+<IMG WIDTH="63" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="previous"
+ SRC="../img/latex2html/prev_g.png">   
+  <A NAME="tex2html1"
+  HREF="../"><IMG
+ ALIGN="BOTTOM" SRC="../img/latex2html/root.png"
+ ALT="root">
+  </A>
+
+<BR>
+<BR><BR></DIV>
+<!--End of Navigation Panel-->
+
+<H1 ALIGN="CENTER">Parsing Dates in Lisp</H1><DIV CLASS="author_info">
+
+<P ALIGN="CENTER"><STRONG><A NAME="tex2html2"
+  HREF="../contacting/">Gene Michael Stover</A></STRONG></P>
+<P ALIGN="CENTER"><STRONG>created 2004 April 18 
+<BR>      updated Sunday, 2008 February 3</STRONG></P>
+</DIV>
+
+<P>
+
+  <EM><SMALL CLASS="SMALL">    Copyright &#169; 2004, 2006, 2008 Gene Michael Stover.
+    All rights reserved. Permission to copy, store, &amp;
+    view this document unmodified &amp; in its entirety is granted.</SMALL></EM>
+
+<P>
+<BR>
+
+<H2><A NAME="SECTION00010000000000000000">
+Contents</A>
+</H2>
+<!--Table of Contents-->
+
+<UL CLASS="TofC">
+<LI><A NAME="tex2html64"
+  HREF="pdl.html#SECTION00020000000000000000">1 Introduction</A>
+<UL>
+<LI><A NAME="tex2html65"
+  HREF="pdl.html#SECTION00021000000000000000">1.1 To Do</A>
+</UL><BR>
+<LI><A NAME="tex2html66"
+  HREF="pdl.html#SECTION00030000000000000000">2 License</A>
+<LI><A NAME="tex2html67"
+  HREF="pdl.html#SECTION00040000000000000000">3 Obtaining</A>
+<LI><A NAME="tex2html68"
+  HREF="pdl.html#SECTION00050000000000000000">4 Quick Test</A>
+<LI><A NAME="tex2html69"
+  HREF="pdl.html#SECTION00060000000000000000">5 Package CyberTiggyr-Time</A>
+<LI><A NAME="tex2html70"
+  HREF="pdl.html#SECTION00070000000000000000">6 Loading</A>
+<LI><A NAME="tex2html71"
+  HREF="pdl.html#SECTION00080000000000000000">7 FORMAT-TIME</A>
+<UL>
+<LI><A NAME="tex2html72"
+  HREF="pdl.html#SECTION00081000000000000000">7.1 Format String</A>
+<LI><A NAME="tex2html73"
+  HREF="pdl.html#SECTION00082000000000000000">7.2 Standards</A>
+<LI><A NAME="tex2html74"
+  HREF="pdl.html#SECTION00083000000000000000">7.3 Examples</A>
+<LI><A NAME="tex2html75"
+  HREF="pdl.html#SECTION00084000000000000000">7.4 Extending FORMAT-TIME</A>
+<LI><A NAME="tex2html76"
+  HREF="pdl.html#SECTION00085000000000000000">7.5 Adding Natural Languages</A>
+</UL><BR>
+<LI><A NAME="tex2html77"
+  HREF="pdl.html#SECTION00090000000000000000">8 PARSE-TIME</A>
+<LI><A NAME="tex2html78"
+  HREF="pdl.html#SECTION000100000000000000000">9 Extending PARSE-TIME</A>
+<LI><A NAME="tex2html79"
+  HREF="pdl.html#SECTION000110000000000000000">10 Alternate Implementations</A>
+<LI><A NAME="tex2html80"
+  HREF="pdl.html#SECTION000120000000000000000">A. Change Log</A>
+<LI><A NAME="tex2html81"
+  HREF="pdl.html#SECTION000130000000000000000">B. Cruft</A>
+<UL>
+<LI><A NAME="tex2html82"
+  HREF="pdl.html#SECTION000131000000000000000">B..1 Modified ISO 8601</A>
+<LI><A NAME="tex2html83"
+  HREF="pdl.html#SECTION000132000000000000000">B..2 Verbose Natural Formats</A>
+<LI><A NAME="tex2html84"
+  HREF="pdl.html#SECTION000133000000000000000">B..3 Terse Formats</A>
+</UL><BR>
+<LI><A NAME="tex2html85"
+  HREF="pdl.html#SECTION000140000000000000000">C. Other File Formats</A>
+<LI><A NAME="tex2html86"
+  HREF="pdl.html#SECTION000150000000000000000">Bibliography</A>
+</UL>
+<!--End of Table of Contents-->
+<P>
+
+<H1><A NAME="SECTION00020000000000000000">
+<SPAN CLASS="arabic">1</SPAN> Introduction</A>
+</H1>
+
+<P>
+<BIG CLASS="LARGE">fixme</BIG>: Does not parse <EM>yyyymmddTHHMMSS Z</EM> god
+damn it all.  Needs an overhaul. - gene 2006 April 8
+
+<P>
+<EM>fixme</EM>: Should also recognize partial dates, such as
+just the year or the year &amp; the month without the day.  -
+gene 2006 April
+
+<P>
+I needed a function to parse strings containing dates &amp;
+return a Common Lisp 
+    <A NAME="tex2html3"
+  HREF="http://www.lisp.org/HyperSpec/Body/26_glo_u.htm#universal_time.html"><SMALL>UNIVERSAL
+TIME</SMALL></A>
+.  While I was at it, I
+wrote a function to convert universal times to strings.
+
+<P>
+If you have a date-&amp;-time string, such as
+``Saturday, July 10, 2004, 6:45 PM PDT'', you can call
+my
+<A HREF="#defun-parse-time"><SMALL>PARSE-TIME</SMALL></A> function to obtain the equivalent universal time.  Here's an
+example:
+
+<P>
+<PRE>
+lisp&gt; (parse-time "July 10, 2004, 6:45 PM")
+3298499100
+lisp&gt; (decode-universal-time *)
+0       ; second
+45      ; minute
+18      ; hour
+10      ; day
+7       ; month
+2004    ; year
+5
+T       ; Daylight Stupid Time ???
+8       ; time zone
+lisp&gt;
+</PRE>
+
+<P>
+There is also a
+<A HREF="#defun-format-time"><SMALL>FORMAT-TIME</SMALL></A> function which converts universal times to text.  It is the
+reverse of <SMALL>PARSE-TIME</SMALL>, &amp; it's analogous to the
+Common Lisp function
+
+    <A NAME="tex2html4"
+  HREF="http://www.lisp.org/HyperSpec/Body/f_format.htm.html"><SMALL>FORMAT</SMALL></A>
+.  Here is an example of
+<SMALL>FORMAT-TIME</SMALL>
+in use:
+
+<P>
+<PRE>
+lisp&gt; (format-time nil "%H:%M on %A, %d %B" (get-universal-time))
+"20:55 on Tuesday, 08 June"
+lisp&gt;
+</PRE>
+
+<P>
+
+<H2><A NAME="SECTION00021000000000000000">
+<SPAN CLASS="arabic">1</SPAN>.<SPAN CLASS="arabic">1</SPAN> To Do</A>
+</H2>
+
+<P>
+
+<OL>
+<LI><SMALL>FORMAT-TIME</SMALL> should be able to print for a specific
+time zone other than the local time zone.
+
+<P>
+</LI>
+<LI><SMALL>FORMAT-TIME</SMALL> should have a format field which
+prints the symbolic time zone name.  Maybe that could be
+the <code>%z</code> (lower-case <EM>z</EM>) field.
+
+<P>
+</LI>
+<LI>If <SMALL>FORMAT-TIME</SMALL> has a symbolic time zone name
+field, *<SMALL>FORMAT-TIME-CEE*</SMALL> should be updated to use
+it.
+
+<P>
+</LI>
+<LI>Maybe the format field should always be a Lisp list
+  (or other Lisp datum), not a string.
+
+<P>
+</LI>
+<LI>Maybe the recognizer functions could be created at
+  load-time with macros.  Would this simplify the code or
+  reduce its size?
+</LI>
+</OL>
+
+<P>
+
+<H1><A NAME="SECTION00030000000000000000">
+<SPAN CLASS="arabic">2</SPAN> License</A>
+</H1>
+
+<P>
+The source code I describe in this article is released in
+accordance with the <A
+ HREF="pdl.html#gnu:lgpl">GNU Lesser General Public
+License</A>.
+
+<P>
+This article is not covered by the Gnu Lesser General
+Public License.  It is covered by its own copyright notice
+which is at the beginning of the article.
+
+<P>
+
+<H1><A NAME="SECTION00040000000000000000">
+<SPAN CLASS="arabic">3</SPAN> Obtaining</A>
+</H1>
+
+<P>
+The source code I describe here is in these
+files<A NAME="tex2html5"
+  HREF="footnode.html#foot732"><SUP><SPAN CLASS="arabic">1</SPAN></SUP></A>
+<P>
+
+<UL>
+<LI><A NAME="tex2html6"
+  HREF="http://cybertiggyr.com/gene/pdl/cybertiggyr-time.asd">cybertiggyr-time.asd</A>
+<P>
+</LI>
+<LI><A NAME="tex2html7"
+  HREF="time.lisp">time.lisp</A>
+<P>
+</LI>
+<LI><A NAME="tex2html8"
+  HREF="demo.lisp">demo.lisp</A>.
+Contains a demo function.
+
+<P>
+</LI>
+<LI><A NAME="tex2html9"
+  HREF="loadall.lisp">loadall.lisp</A>.
+
+<A NAME="tex2html10"
+  HREF="http://www.lisp.org/HyperSpec/Body/f_load.htm#load.html"><SMALL>LOAD</SMALL></A>
+ this file
+to load <TT>time.lisp</TT>, <TT>demo.lisp</TT>, &amp;
+test.lisp.  It's for convenient testing.
+
+<P>
+</LI>
+<LI><A NAME="tex2html11"
+  HREF="test.lisp">test.lisp</A>.
+Contains the test system.  To run all the tests,
+evaluate (<SMALL>CHECK)</SMALL>.
+</LI>
+</UL>
+
+<P>
+Each of these source files is licensed
+according to the terms of the <A
+ HREF="pdl.html#gnu:lgpl">GNU Lesser General
+Public License</A>.
+
+<P>
+
+<H1><A NAME="SECTION00050000000000000000">
+<SPAN CLASS="arabic">4</SPAN> Quick Test</A>
+</H1>
+
+<P>
+To quickly test everything on your Lisp, download all the
+files, ``<TT>cd</TT>'' to that directory, run Lisp, &amp; do this:
+
+<P>
+<PRE>
+lisp&gt; (load "loadall.lisp")
+;; see commands about loading some files
+lisp&gt; (check)
+;; see list of test program names
+T
+</PRE>
+
+<P>
+If <SMALL>CHECK</SMALL> returns <SMALL>NIL</SMALL> or dumps you into the
+debugger, my time formatter or parser doesn't work on your
+Lisp.  Or maybe I broke it when making improvements.
+<A NAME="tex2html13"
+  HREF="../contacting">Let me know</A>, &amp; I'll see
+what I can do.
+
+<P>
+To see a table of some time strings in various formats &amp;
+their parsed results (converted back to strings to you can
+read them), do this:
+
+<P>
+<PRE>
+lisp&gt; (demo)
+</PRE>
+
+<P>
+Table&nbsp;<A HREF="#tab-demo">5</A> shows the output from <SMALL>DEMO</SMALL>.
+
+<P>
+<BR><P></P>
+<DIV ALIGN="CENTER"><A NAME="733"></A>
+<TABLE>
+<CAPTION><STRONG>Table 1:</STRONG>
+The output from <SMALL>DEMO</SMALL></CAPTION>
+<TR><TD><TABLE CELLPADDING=3 BORDER="1">
+<TR><TD ALIGN="RIGHT"><B>input</B></TD>
+<TD ALIGN="RIGHT"><B>output</B></TD>
+</TR>
+<TR><TD ALIGN="RIGHT">2004-09-26T13:22:51 -7</TD>
+<TD ALIGN="RIGHT">2004-09-26T13:22:51 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">now</TD>
+<TD ALIGN="RIGHT">2004-09-26T13:22:54 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">today</TD>
+<TD ALIGN="RIGHT">2004-09-26T05:00:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">2004 05 30</TD>
+<TD ALIGN="RIGHT">2004-05-30T12:00:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">2004-05-30</TD>
+<TD ALIGN="RIGHT">2004-05-30T12:00:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">2004 May 30</TD>
+<TD ALIGN="RIGHT">2004-05-30T12:00:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1980-jun-1T12:30:00 gmt</TD>
+<TD ALIGN="RIGHT">1980-06-01T05:30:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1980-jun-1T12:30:00 est</TD>
+<TD ALIGN="RIGHT">1980-06-01T10:30:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1980-jun-1T12:30:00 pst</TD>
+<TD ALIGN="RIGHT">1980-06-01T13:30:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">2000-jan-01T05:59:59+00:00</TD>
+<TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">2000-01-01T00:59:59 est</TD>
+<TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1999-12-31T23:59:59 -6</TD>
+<TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1999-12-31T22:29:59-07:30</TD>
+<TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+<TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1999-12-31T21:59:59-8:00</TD>
+<TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">Mar 4, 05</TD>
+<TD ALIGN="RIGHT">2005-03-04T12:00:00 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">3/4/05</TD>
+<TD ALIGN="RIGHT">2005-03-04T12:00:00 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">19951025</TD>
+<TD ALIGN="RIGHT">1995-10-25T12:00:00 -7</TD>
+</TR>
+</TABLE>
+
+<A NAME="tab-demo"></A></TD></TR>
+</TABLE>
+</DIV><P></P><BR>
+
+<P>
+
+<H1><A NAME="SECTION00060000000000000000">
+<SPAN CLASS="arabic">5</SPAN> Package CyberTiggyr-Time</A>
+</H1>
+
+<P>
+The <TT>time.lisp</TT> file defines a package called
+<SMALL>CYBERTIGGYR-TIME</SMALL> &amp; exports two functions &amp;
+a bunch of data from it.  The two functions are
+<A HREF="#defun-format-time"><SMALL>FORMAT-TIME</SMALL></A> &amp;
+<A HREF="#defun-parse-time"><SMALL>PARSE-TIME</SMALL></A>.
+
+<P>
+Use the <SMALL>FORMAT-TIME</SMALL> function to convert universal
+times to strings.  There are also some global variables
+which might be useful when formatting times; they are
+described in Section&nbsp;<A HREF="#standard-format-fields">7.2</A>.
+
+<P>
+To parse times, you just need the <SMALL>PARSE-TIME</SMALL> function.  You might <SMALL>IMPORT</SMALL> it or call it by its
+full name: <SMALL>CYBERTIGGYR-TIME:PARSE-TIME</SMALL>.
+
+<P>
+
+<H1><A NAME="SECTION00070000000000000000">
+<SPAN CLASS="arabic">6</SPAN> Loading</A>
+</H1>
+
+<P>
+<EM>fixme this entire section.</EM>
+
+<P>
+<B>what it says now:</B>
+
+<P>
+<PRE>
+lisp&gt; (asdf:operate 'asdf:load-op "cybertiggyr-time")
+</PRE>
+
+<P>
+<B>what it used to say:</B>
+
+<P>
+When loading <TT>time.lisp</TT>, I recommend the symbolic
+pathname string
+``<SMALL>CL-LIBRARY:COM;CYBERTIGGYR;TIME;TIME.LISP</SMALL>''.
+So you'd load it like this:
+
+<P>
+<PRE>
+lisp&gt; (load "CL-LIBRARY:COM;CYBERTIGGYR;TIME;TIME.LISP")
+</PRE>
+
+<P>
+Or if you, like me, prefer explicitly translated logical
+pathnames, you'd do this:
+
+<P>
+<PRE>
+lisp&gt; (load 
+        (translate-logical-pathname
+          "CL-LIBRARY:COM;CYBERTIGGYR;TIME;TIME.LISP"))
+</PRE>
+
+<P>
+
+<H1><A NAME="SECTION00080000000000000000"></A>
+<A NAME="defun-format-time"></A><BR>
+<SPAN CLASS="arabic">7</SPAN> <SMALL>FORMAT-TIME</SMALL>
+</H1>
+
+<P>
+<SMALL>FORMAT-TIME</SMALL> is analogous to the Common Lisp function
+
+    <A NAME="tex2html14"
+  HREF="http://www.lisp.org/HyperSpec/Body/f_format.htm.html"><SMALL>FORMAT</SMALL></A>
+.
+It's declaration looks like this:
+
+<P>
+<PRE>
+;; in-package "CYBERTIGGYR-TIME"
+(defun format-time (strm fmt
+		    &amp;optional
+		    (ut (get-universal-time))
+		    (zone *format-time-default-zone*)
+		    (language *format-time-default-language*))
+...)
+</PRE>
+
+<P>
+As with the <SMALL>FORMAT</SMALL> function, <SMALL>STRM</SMALL> identifies the destination
+of the function's output.  It may be:
+
+<P>
+
+<UL>
+<LI>an output stream,
+
+<P>
+</LI>
+<LI><SMALL>T</SMALL>, which is short-hand for *<SMALL>STANDARD-OUTPUT*</SMALL>, or
+
+<P>
+</LI>
+<LI><SMALL>NIL</SMALL>, in which case <SMALL>FORMAT-TIME</SMALL> will return a
+  new string.
+</LI>
+</UL>
+
+<P>
+The <SMALL>FMT</SMALL> argument of <SMALL>FORMAT-TIME</SMALL> will most
+often be a string, but it may also be a list.  It contains
+format fields &amp; literals.  It is described in detail in
+Section&nbsp;<A HREF="#format-string">7.1</A>.
+
+<P>
+The <SMALL>UT</SMALL> argument should be a Lisp Universal Time or
+absent.  If it is absent, it defaults to the current time.
+
+<P>
+The <SMALL>ZONE</SMALL> argument defaults to the local time zone.  In
+the future, it will allow you to specify the time zone for
+the output string, but for now, it's ignored.
+
+<P>
+The <SMALL>LANGUAGE</SMALL> argument specifies the natural language
+in which some output fields are converted.
+For example, if the language is English, the day of week is
+Monday, &amp; the <SMALL>FMT</SMALL> argument contains the string
+``%A'', the output will contain ``Monday'', but if the
+language is French, the output will contain ``Lundi''.
+You can add your own languages, &amp; I'll give some examples
+later.
+
+<P>
+For convenience &amp; standardization, I've created some
+<A HREF="#format-string-constant">format string constants</A> which can be used for the <SMALL>FMT</SMALL> argument of
+<SMALL>FORMAT-TIME</SMALL>.
+
+<P>
+
+<H2><A NAME="SECTION00081000000000000000"></A>
+<A NAME="format-string"></A><BR>
+<SPAN CLASS="arabic">7</SPAN>.<SPAN CLASS="arabic">1</SPAN> Format String
+</H2>
+
+<P>
+<A HREF="#defun-format-time"><SMALL>FORMAT-TIME</SMALL></A> uses a <EM>format string</EM> argument to tell the form of the
+output string.  A format string contains <EM>format fields</EM>
+&amp; <EM>literals</EM>.
+
+<P>
+A format field consists of a percent character
+(<code>%</code>) followed by
+another character.  The second character identifies
+the type of the format field.  It is case-sensitive,
+so ``<code>%A</code>'' is distinct from ``<code>%a</code>''.
+
+<P>
+Literals are anything other than format fields.  They are
+case-sensitive.
+
+<P>
+Table&nbsp;<A HREF="#tab-fmt-fields">2</A> gives brief descriptions of the format fields for both
+<SMALL>FORMAT-TIME</SMALL> &amp; <SMALL>PARSE-TIME</SMALL>.  The format fields
+resemble those from the Standard C function <TT>  strftime</TT>.<A NAME="tex2html15"
+  HREF="footnode.html#foot741"><SUP><SPAN CLASS="arabic">2</SPAN></SUP></A>
+<P>
+<BR><P></P>
+<DIV ALIGN="CENTER"><A NAME="742"></A>
+<TABLE>
+<CAPTION><STRONG>Table 2:</STRONG>
+Brief descriptions of the format fields for
+         <SMALL>FORMAT-TIME</SMALL></CAPTION>
+<TR><TD><TABLE CELLPADDING=3 BORDER="1">
+<TR><TD ALIGN="RIGHT"><B>field</B></TD>
+<TD ALIGN="LEFT"><B>meaning</B></TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%A</code></TD>
+<TD ALIGN="LEFT">full weekday name</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%a</code></TD>
+<TD ALIGN="LEFT">abbreviated weekday name</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%B</code></TD>
+<TD ALIGN="LEFT">full month name</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%b</code></TD>
+<TD ALIGN="LEFT">abbreviated month name</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%d</code></TD>
+<TD ALIGN="LEFT">two-digit day of month</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%H</code></TD>
+<TD ALIGN="LEFT">two-digit 24-hour</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%I</code></TD>
+<TD ALIGN="LEFT">two-digit 12-hour</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%M</code></TD>
+<TD ALIGN="LEFT">two-digit minute</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%m</code></TD>
+<TD ALIGN="LEFT">two-digit month number</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%p</code></TD>
+<TD ALIGN="LEFT">AM or PM</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%S</code></TD>
+<TD ALIGN="LEFT">two-digit seconds</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%Y</code></TD>
+<TD ALIGN="LEFT">four-digit year</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%Z</code></TD>
+<TD ALIGN="LEFT">numeric time zone</TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+<TR><TD ALIGN="RIGHT"><code>%%</code></TD>
+<TD ALIGN="LEFT">literal <code>%</code></TD>
+<TD ALIGN="LEFT">&nbsp;</TD>
+</TR>
+</TABLE>
+
+<A NAME="tab-fmt-fields"></A></TD></TR>
+</TABLE>
+</DIV><P></P><BR>
+
+<P>
+The format strings for <SMALL>FORMAT-TIME</SMALL>
+resemble those for the Standard C function <TT>strftime</TT>.
+I haven't implemented all the format fields from <TT>strftime</TT>.  Some of the missing ones are <code>%j</code> (Julian
+day) &amp; <code>%c</code>.  A Julian format field might be useful at
+times, but I think a <code>%c</code> is unnecessary.
+Instead of <code>%c</code>, use one of the !!!.
+
+<P>
+<SMALL>FORMAT-TIME</SMALL> has a strict interpretation of the format
+fields.  If the second column Table&nbsp;<A HREF="#tab-fmt-fields">2</A> says that a field is two digits, then <SMALL>FORMAT-TIME</SMALL> will
+produce exactly two digits, with a leading zero if
+necessary.  Also, literals (the parts of the format string
+which are not format fields) are literal.
+
+<P>
+
+<H2><A NAME="SECTION00082000000000000000"></A>
+<A NAME="standard-format-fields"></A><BR>
+<SPAN CLASS="arabic">7</SPAN>.<SPAN CLASS="arabic">2</SPAN> Standards
+</H2>
+
+<P>
+For convenience &amp; standardization<A NAME="tex2html17"
+  HREF="footnode.html#foot510"><SUP><SPAN CLASS="arabic">3</SPAN></SUP></A>,
+I put some useful format
+strings in global variables.
+Table&nbsp;<A HREF="#tab-fmt-vars">3</A> shows those standardized format
+symbols
+&amp; their values.  All those symbols are within package <SMALL>CYBERTIGGYR-TIME</SMALL> &amp; exported by it.
+
+<P>
+<BR><P></P>
+<DIV ALIGN="CENTER"><A NAME="743"></A>
+<TABLE>
+<CAPTION><STRONG>Table 3:</STRONG>
+Global variables exported by <SMALL>CYBERTIGGYR-TIME</SMALL> that
+can help standardize format strings</CAPTION>
+<TR><TD><TABLE CELLPADDING=3 BORDER="1">
+<TR><TD ALIGN="RIGHT"><B>symbol</B></TD>
+<TD ALIGN="LEFT"><B>string value</B></TD>
+</TR>
+<TR><TD ALIGN="RIGHT">*<SMALL>FORMAT-TIME-ISO8601-LONG*</SMALL></TD>
+<TD ALIGN="LEFT"><code>%Y-%m-%dT%H:%M:%S %Z</code></TD>
+</TR>
+<TR><TD ALIGN="RIGHT">*<SMALL>FORMAT-TIME-ISO8601-SHORT*</SMALL></TD>
+<TD ALIGN="LEFT"><code>%Y%m%dT%H%M%S %Z</code></TD>
+</TR>
+<TR><TD ALIGN="RIGHT">*<SMALL>FORMAT-TIME-DATE*</SMALL></TD>
+<TD ALIGN="LEFT"><code>%d %b %Y</code></TD>
+</TR>
+<TR><TD ALIGN="RIGHT">*<SMALL>FORMAT-TIME-TIME*</SMALL></TD>
+<TD ALIGN="LEFT"><code>%H:%M %Z</code></TD>
+</TR>
+<TR><TD ALIGN="RIGHT">*<SMALL>FORMAT-TIME-FULL*</SMALL></TD>
+<TD ALIGN="LEFT"><code>%A, %Y %B %d, %H:%M %Z</code></TD>
+</TR>
+<TR><TD ALIGN="RIGHT">*<SMALL>FORMAT-TIME-CEE*</SMALL></TD>
+<TD ALIGN="LEFT"><code>%a %b %d %H:%M:%S %Z %Y</code></TD>
+</TR>
+</TABLE>
+
+<A NAME="tab-fmt-vars"></A></TD></TR>
+</TABLE>
+</DIV><P></P><BR>
+
+<P>
+My personal favorite is
+*<SMALL>FORMAT-TIME-ISO8601-LONG*</SMALL>.  It
+is an international standard &amp; unambiguous.  If you sort
+the resulting strings, you get a chronological list.  The
+format can be read by humans without pain, though it's
+not very pleasing to the eye.  My main complaint with it
+is that it numbers the month; I'd prefer an abbreviated
+month name.
+
+<P>
+If you need a format that is more pleasing to the human eye,
+or if you just don't like the <TT>*format-time-iso8601-long*</TT>, I recommend the <TT>*format-time-full*</TT> format.
+
+<P>
+The *<SMALL>FORMAT-TIME-CEE*</SMALL> format is similar to the
+<code>%c</code>
+format of Standard C's <TT>strftime</TT> function.  It
+is not identical, though.  The main difference is
+that time zones are numbers, not symbolic as with
+<TT>strftime</TT>'s <code>%c</code>.  Also,
+*<SMALL>FORMAT-TIME-CEE*</SMALL> uses strictly two-digit
+numbers for the day of month, whereas <code>%c</code>
+might use single-digit numbers where possible or
+might pad the day-of-month with a space on the
+left when appropriate.  *<SMALL>FORMAT-TIME-CEE*</SMALL>
+is pretty close to <TT>strftime</TT>'s <code>%c</code>, though.
+
+<P>
+
+<H2><A NAME="SECTION00083000000000000000">
+<SPAN CLASS="arabic">7</SPAN>.<SPAN CLASS="arabic">3</SPAN> Examples</A>
+</H2>
+
+<P>
+The Lisp Universal Time for Wednesday, 2036 May 8, 23:28:16 daylight savings time, US Pacific zone is
+4302916096.  When daylight savings time is in effect, US Pacific time is seven hours behind Greenwich Mean time.
+Table&nbsp;<A HREF="#tab-format-time-basic-ex">4</A> shows
+examples of the output of evaluating (<SMALL>FORMAT-TIME NIL FMT
+  4302916096)</SMALL> for various values of <SMALL>FMT</SMALL> when English
+is the default language.
+
+<P>
+<BR><P></P>
+<DIV ALIGN="CENTER"><A NAME="744"></A>
+<TABLE>
+<CAPTION><STRONG>Table 4:</STRONG>
+Examples of <SMALL>FORMAT-TIME</SMALL> for different format
+  values on the Universal Time of 4302916096</CAPTION>
+<TR><TD><TABLE CELLPADDING=3 BORDER="1">
+<TR><TD ALIGN="RIGHT"><B>fmt</B></TD>
+<TD ALIGN="LEFT"><B>format-time</B></TD>
+<TD ALIGN="LEFT"><B>comment</B></TD>
+</TR>
+<TR><TD ALIGN="RIGHT">"%Y-%m-%dT%H:%M:%S %Z"</TD>
+<TD ALIGN="LEFT">2036-05-08T23:28:16 -7</TD>
+<TD ALIGN="LEFT">ISO 8601</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">"%b, %d %b %Y"</TD>
+<TD ALIGN="LEFT">Thu, 08 May 2036</TD>
+<TD ALIGN="LEFT">short date, like for a cheque</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">"%A, %d %B %Y"</TD>
+<TD ALIGN="LEFT">Thursday, 08 May 2036</TD>
+<TD ALIGN="LEFT">full date</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">"%b %d, %Y"</TD>
+<TD ALIGN="LEFT">May 08, 2036</TD>
+<TD ALIGN="LEFT">silly American date</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">"%H:%M GMT%Z"</TD>
+<TD ALIGN="LEFT">23:28 GMT-7</TD>
+<TD ALIGN="LEFT">time with semi-readable zone</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">'("%H" ":" "%M" " GMT" "%Z")</TD>
+<TD ALIGN="LEFT">23:28 GMT-7</TD>
+<TD ALIGN="LEFT">ditto, as a list</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">"%I:%M %p"</TD>
+<TD ALIGN="LEFT">11:28 PM</TD>
+<TD ALIGN="LEFT">time on 12-hour clock</TD>
+</TR>
+</TABLE>
+
+<A NAME="tab-format-time-basic-ex"></A></TD></TR>
+</TABLE>
+</DIV><P></P><BR>
+
+<P>
+A spcial example from Table&nbsp;<A HREF="#tab-format-time-basic-ex">4</A> is
+the penultimate one, which uses a list of strings as the
+<SMALL>FMT</SMALL> argument.  When the <SMALL>FMT</SMALL> argument is a single
+string, <SMALL>FORMAT-TIME</SMALL> parses it into a list of tokens like
+in that one example, then it processes each token.  The
+tokens may be strings (as shown), symbols, or whatever.  So
+if you can stomache the horrible syntax, you get more
+flexibility &amp; run-time efficiency by using lists instead of
+strings.
+
+<P>
+
+<H2><A NAME="SECTION00084000000000000000"></A>
+<A NAME="extend-format-time"></A><BR>
+<SPAN CLASS="arabic">7</SPAN>.<SPAN CLASS="arabic">4</SPAN> Extending <SMALL>FORMAT-TIME</SMALL>
+</H2>
+
+<P>
+<EM>As of Sunday, 26 September 2004, this section might be
+inaccurate.  I have recently updated the documentation, &amp;
+I have not double-checked this section.  So beware.</EM>
+
+<P>
+<SMALL>FORMAT-TIME</SMALL> converts the format string to a list of format fields
+&amp; literal fields, though when it splits the format string into those
+fields, <SMALL>FORMAT-TIME</SMALL> doesn't make note of which fields are literal
+&amp; which are format fields.  Then it iterates over the fields.  It tries
+to find each field in a table called *<SMALL>FORMAT-TIME-FNS*</SMALL>, which
+is a hash table whose keys are format fields such as ``<code>%Y</code>''.
+
+<P>
+
+<H3><A NAME="SECTION00084100000000000000">
+<SPAN CLASS="arabic">7</SPAN>.<SPAN CLASS="arabic">4</SPAN>.<SPAN CLASS="arabic">1</SPAN> Adding a Format Field</A>
+</H3>
+
+<P>
+To add new format fields, create a function to do the work for that
+field.  Choose an unused format field string.  Then insert
+the new field string &amp; the new function into the
+*<SMALL>FORMAT-TIME-FNS*</SMALL> table.  (Optional: If your new format
+field is probably of use to others, send it to me &amp; I'll include
+it in the next release of this library.)
+
+<P>
+Let's do an example.
+
+<P>
+Let's say you want to implement the two-digit year format
+field for <SMALL>FORMAT-TIME</SMALL>.  The format field string will
+be <code>%y</code>.
+
+<P>
+Now we need to write the function which actually does the
+formatting for <code>%y</code>.
+
+<P>
+When <SMALL>FORMAT-TIME</SMALL> calls a function for a field, it provides
+three arguments.  They are:
+
+<P>
+<DL>
+<DT><STRONG>bro</STRONG></DT>
+<DD>A <SMALL>BROKEN-TIME</SMALL> structure, which is defined
+near the beginning of the
+<A NAME="tex2html20"
+  HREF="time.lisp"><TT>time.lisp</TT></A> file.
+
+<P>
+</DD>
+<DT><STRONG>language</STRONG></DT>
+<DD>Identifies the natural language for the
+output string.
+
+<P>
+</DD>
+<DT><STRONG>strm</STRONG></DT>
+<DD>The character output stream to which the function
+should send the string it creates.
+</DD>
+</DL>
+
+<P>
+Because the <SMALL>BROKEN-TIME</SMALL> contains the time's components
+``broken'' out of the universal time, the job of the new
+function is simple.  We just need to create a string from the
+last two digits of the year.  Here's how we could do that:
+
+<P>
+<PRE>
+(defun format-time-evil-year (bro language strm)
+  (declare (ignore language))
+  (format strm "~2,'0D" (mod (broken-time-yy bro) 100))
+  ;; The return value doesn't matter.  In such cases,
+  ;; I like to return the function's name.  It's okay
+  ;; if you want to return something else.
+  'format-time-evil-year)
+</PRE>
+
+<P>
+The final step is to insert the new function into the
+*<SMALL>FORMAT-TIME-FNS*</SMALL> table.  Here's how:
+
+<P>
+<PRE>
+(setf (gethash "%y" *format-time-fns*)
+      #'format-time-evil-year)
+</PRE>
+
+<P>
+You will also want to write one or more test programs for
+your new format field.  Add them as functions to
+<A NAME="tex2html21"
+  HREF="test.lisp"><TT>test.lisp</TT></A>.
+
+<P>
+
+<H2><A NAME="SECTION00085000000000000000">
+<SPAN CLASS="arabic">7</SPAN>.<SPAN CLASS="arabic">5</SPAN> Adding Natural Languages</A>
+</H2>
+
+<P>
+You can add the names of months &amp; weekdays from other languages, too.
+To do that, add them to the *<SMALL>FORMAT-TIME-MONTHS*</SMALL> or
+*<SMALL>FORMAT-TIME-WEEKDAYS*</SMALL> tables, whichever table is appropriate.
+
+<P>
+Each key in those tables is a list of two elements. The first
+element is the number of the item, such as 1 for January or 6 for
+Sunday.  The second element of a key is the natural language.  I
+recommend symbols from the
+keywords package, such as :<SMALL>ENGLISH</SMALL>, :<SMALL>JIVE</SMALL>,
+or :<SMALL>WELSH</SMALL>.
+
+<P>
+Each
+value is a list of two strings.  The first item in a value list
+is the full name of the month or weekday.  The second is the
+abbreviated name.
+
+<P>
+If you add any other languages &amp; wanted to send them to me
+so I could include them in the next release, that'd be peachy.
+
+<P>
+
+<H1><A NAME="SECTION00090000000000000000"></A>
+<A NAME="defun-parse-time"></A><BR>
+<SPAN CLASS="arabic">8</SPAN> <SMALL>PARSE-TIME</SMALL>
+</H1>
+
+<P>
+Function <SMALL>PARSE-TIME</SMALL> scans a date-&amp;-time encoded in a
+human-readable string to determine the equivalent
+
+    <A NAME="tex2html23"
+  HREF="http://www.lisp.org/HyperSpec/Body/26_glo_u.htm#universal_time.html"><SMALL>UNIVERSAL TIME</SMALL></A>
+.
+<SMALL>PARSE-TIME</SMALL> returns the universal time when it can
+determine it; otherwise, <SMALL>PARSE-TIME</SMALL> returns <SMALL>NIL</SMALL>.
+
+<P>
+<SMALL>PARSE-TIME</SMALL> understands a variety of formats, &amp; it can
+fill-in items that are missing.  It also understands some
+convenience words (<EM>today</EM> &amp; <EM>now</EM>).
+Here are some examples:
+
+<P>
+<PRE>
+lisp&gt; (parse-time "2004-apr-4 19:11")
+3291329460
+lisp&gt; (parse-time "4 april 2004")
+3291260400
+lisp&gt; (parse-time "today")
+3295684800
+lisp&gt; (parse-time "now")
+3295742590
+</PRE>
+
+<P>
+<SMALL>PARSE-TIME</SMALL> is declared like this:
+
+<P>
+<PRE>
+(defun parse-time (str &amp;optional
+                   (recognizers *default-recognizers*))
+  ...)
+</PRE>
+
+<P>
+The <EM>str</EM> argument is a string.  It contains the
+date-&amp;-time to parse.
+
+<P>
+The optional <EM>recognizers</EM> argument is a list of
+function which know how to parse specific formats.  If you
+don't supply a list of recognizers, you get the default
+list.  I suspect that the default list of recognizers will
+be most common under normal use.
+
+<P>
+If <SMALL>PARSE-TIME</SMALL> can recognize the date-&amp;-time in the
+string, it converts them into a
+
+    <A NAME="tex2html24"
+  HREF="http://www.lisp.org/HyperSpec/Body/26_glo_u.htm#universal_time.html"><SMALL>UNIVERSAL TIME</SMALL></A>
+ &amp;
+returns it.  If <SMALL>PARSE-TIME</SMALL> can't recognize the string,
+it returns <SMALL>NIL</SMALL>.
+
+<P>
+Table&nbsp;<A HREF="#tab-demo">5</A> shows examples of some strings that
+were fed to <SMALL>PARSE-TIME</SMALL>.  The first column shows the
+strings that were given to <SMALL>PARSE-TIME</SMALL>.  The second
+column shows the output of using <SMALL>FORMAT-TIME</SMALL> to
+convert the resulting universal time back to a readable
+string.
+
+<P>
+<BR><P></P>
+<DIV ALIGN="CENTER"><A NAME="749"></A>
+<TABLE>
+<CAPTION><STRONG>Table 5:</STRONG>
+Examples of some formats understood by <SMALL>PARSE-TIME</SMALL></CAPTION>
+<TR><TD><TABLE CELLPADDING=3 BORDER="1">
+<TR><TD ALIGN="RIGHT"><B>input</B></TD>
+<TD ALIGN="RIGHT"><B>output</B></TD>
+</TR>
+<TR><TD ALIGN="RIGHT">2004-09-26T13:22:51 -7</TD>
+<TD ALIGN="RIGHT">2004-09-26T13:22:51 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">now</TD>
+<TD ALIGN="RIGHT">2004-09-26T13:22:54 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">today</TD>
+<TD ALIGN="RIGHT">2004-09-26T05:00:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">2004 05 30</TD>
+<TD ALIGN="RIGHT">2004-05-30T12:00:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">2004-05-30</TD>
+<TD ALIGN="RIGHT">2004-05-30T12:00:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">2004 May 30</TD>
+<TD ALIGN="RIGHT">2004-05-30T12:00:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1980-jun-1T12:30:00 gmt</TD>
+<TD ALIGN="RIGHT">1980-06-01T05:30:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1980-jun-1T12:30:00 est</TD>
+<TD ALIGN="RIGHT">1980-06-01T10:30:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1980-jun-1T12:30:00 pst</TD>
+<TD ALIGN="RIGHT">1980-06-01T13:30:00 -7</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">2000-jan-01T05:59:59+00:00</TD>
+<TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">2000-01-01T00:59:59 est</TD>
+<TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1999-12-31T23:59:59 -6</TD>
+<TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1999-12-31T22:29:59-07:30</TD>
+<TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+<TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">1999-12-31T21:59:59-8:00</TD>
+<TD ALIGN="RIGHT">1999-12-31T21:59:59 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">Mar 4, 05</TD>
+<TD ALIGN="RIGHT">2005-03-04T12:00:00 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">3/4/05</TD>
+<TD ALIGN="RIGHT">2005-03-04T12:00:00 -8</TD>
+</TR>
+<TR><TD ALIGN="RIGHT">19951025</TD>
+<TD ALIGN="RIGHT">1995-10-25T12:00:00 -7</TD>
+</TR>
+</TABLE>
+
+<A NAME="tab-demo"></A></TD></TR>
+</TABLE>
+</DIV><P></P><BR>
+
+<P>
+I produced Table&nbsp;<A HREF="#tab-demo">5</A> by running the <SMALL>DEMO</SMALL>
+function from <A NAME="tex2html25"
+  HREF="demo.lisp">demo.lisp</A>.  The
+time zone on my computer when I ran it was U.S. Pacific
+Daylight Stupid time, which is 7 hours west of Greenwich
+Mean Time (GMT).  It's also 7 hours behind GMT.
+
+<P>
+Notice the second &amp; third rows in
+Table&nbsp;<A HREF="#tab-demo">5</A>.  <SMALL>PARSE-TIME</SMALL> interprets a string
+of ``now'' as the current time.
+
+<P>
+<SMALL>PARSE-TIME</SMALL> interprets a string of ``today'' as noon <EM>in
+the GMT time zone</EM> on the current day.  So if you feed ``today''
+to <SMALL>PARSE-TIME</SMALL> on 2004 July 4, 13:00 in London, you'll get
+a universal time corresponding to 2004 July 4, 12:00.  If someone
+in Seattle feeds ``today'' to <SMALL>PARSE-TIME</SMALL> at exactly the
+same time, they'll get the same universal time, which will be
+2004 July 4, 5:00 PDT.
+
+<P>
+So why does ``today'' inject noon in the GMT instead of using the
+current time as ``now'' does?  I wanted ``today'' to evaluate to
+the same universal time regardless of the time zone in which it
+was parsed.  So parsing ``today'' on a particular day gets you
+the same universal time anywhere on the world.  That's why it uses
+a particular time of day instead of the current time of day.  For
+that particular time of day, I choose noon in London because
+it is unlikely (impossible?) to find a time zone that is more than
+11 hours distant from London.  So when it is noon in London,
+all other time zones will show different times of the day, but
+they will all show the same day.
+
+<P>
+
+<H1><A NAME="SECTION000100000000000000000"></A>
+<A NAME="extend-parse-time"></A><BR>
+<SPAN CLASS="arabic">9</SPAN> Extending <SMALL>PARSE-TIME</SMALL>
+</H1>
+
+<P>
+I wrote a function similar to
+<SMALL>PARSE-TIME</SMALL> for C years ago.  I used <EM>yacc</EM> for part
+of the work.  If I remember correctly, I never did work out a single
+grammar that could describe all these formats.  Maybe I didn't try
+hard enough; nevertheless, I don't want to do it that way
+for Lisp.
+
+<P>
+My <SMALL>PARSE-TIME</SMALL> function uses a list of
+<EM>recognizers</EM>.<A NAME="tex2html26"
+  HREF="footnode.html#foot636"><SUP><SPAN CLASS="arabic">4</SPAN></SUP></A> Each
+recognizer<A NAME="tex2html27"
+  HREF="footnode.html#foot751"><SUP><SPAN CLASS="arabic">5</SPAN></SUP></A> is a function that
+can extract the date &amp; time from one or more formats, but
+it never incorrectly extracts information from another format.
+It returns a
+
+    <A NAME="tex2html30"
+  HREF="http://www.lisp.org/HyperSpec/Body/26_glo_u.htm#universal_time.html"><SMALL>UNIVERSAL TIME</SMALL></A>
+ or a
+<SMALL>BROKEN-TIME</SMALL> structure.
+
+<P>
+It's important that a recognizer does not accidentally or
+incorrectly extract &amp; return information from a format that
+it doesn't understand.  As long as all recognizers know when
+they don't understand a format, the order in which <SMALL>PARSE-TIME</SMALL>
+tries the recognizers doesn't matter &amp; maintenance will be
+easier.
+
+<P>
+For example, a recognizer for the <TT>yyyy-mm-dd</TT> format,
+which contains the year, the month, the day, but no hours,
+minutes, seconds, or time zone, should extract &amp; return
+information from ``2004-02-01'', but it must be sure to
+return <SMALL>NIL</SMALL> for ``2004-02-01 9:21''.
+
+<P>
+<SMALL>PARSE-TIME</SMALL> tries each recognizer in its list of
+recognizes until one of them understands the parse string.
+
+<P>
+On the one hand, it's pretty grotty<A NAME="tex2html28"
+  HREF="footnode.html#foot752"><SUP><SPAN CLASS="arabic">6</SPAN></SUP></A>  It's brute-force code, &amp; I did a lot of it by
+copy-&amp;-paste programming.<A NAME="tex2html29"
+  HREF="footnode.html#foot646"><SUP><SPAN CLASS="arabic">7</SPAN></SUP></A>
+<P>
+On the other hand, the implementation is extensible.  If you
+want <SMALL>PARSE-TIME</SMALL> to understand a new format, write a
+recognizer for it &amp; push it onto *<SMALL>DEFAULT-RECOGNIZERS*</SMALL>.
+If you can write a more elegant recognizer, you can push it onto
+*<SMALL>DEFAULT-RECOGNIZERS*</SMALL>, too.
+
+<P>
+
+<H1><A NAME="SECTION000110000000000000000">
+<SPAN CLASS="arabic">10</SPAN> Alternate Implementations</A>
+</H1>
+
+<P>
+I originally wanted to use a more intelligent system, maybe one
+that analyzed each term in the parse string &amp; figured out what
+each term was.  For example, in the parse string were ``May 5 2004'',
+the ``May'' is certainly a month, &amp; the 2004 is probably a year,
+so the ``5'' is probably a day.  In ``5/5/4'', the slashes suggest
+that the string is in Stupid American Date Format, so the first
+5 is May, the second 5 is the day, &amp; the 4 suggests a year <SPAN CLASS="MATH"><IMG
+ WIDTH="13" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img1.png"
+ ALT="$y$"></SPAN>
+that is closest to the current year &amp; <!-- MATH
+ $y\ mod\ 100 = 4$
+ -->
+<SPAN CLASS="MATH"><IMG
+ WIDTH="106" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img2.png"
+ ALT="$y\ mod\ 100 = 4$"></SPAN>.
+If this <EM>reasoning recognizer</EM> produced more than one
+parse for the string, it could attach a confidence value to
+each estimate, &amp; <SMALL>PARSE-TIME</SMALL> could return the result
+with the highest confidence value.
+
+<P>
+That would be cool, but it would take a lot of programming.
+It would take research.  It also sounds like it would be an
+all-or-nothing type of algorithm.  Until I got the entire
+thing working, none of it would work.  The approach I've
+chosen allows recognizers to be added one at a time, so it
+was easy to get something working, &amp; new recognizers can
+be created, debugged, &amp; added in isolation.
+
+<P>
+Within the architecture I've chosen,
+It might be possible to use a pattern-matching library to
+write the recognizers.  That might remove the need to
+create a named function for each recognizer.  If you
+look at all the recognizers in
+<A NAME="tex2html31"
+  HREF="time.lisp">time.lisp</A>,
+you'll see that I have some long, hard-to-type names
+for some of those recognizers, &amp; I suspect the situation
+will get worse as I add more recognizers.  If I had a
+macro that compiled patterns to functions, I might be
+able to create anonymous recognizer functions like
+this:
+
+<P>
+<PRE>
+;; Pattern-based recognizer that matches strings
+;; of the form "Friday, 13 July 2029".
+(push
+  (defrecognizer
+    ((?isWeekday ?dow) "," (?isDay ?day) (?isMonth ?mon) (?isYear ?year)))
+  *default-recognizers*)
+</PRE>
+
+<P>
+I don't suppose such pattern-based recognizers would
+be more efficient than the hand-crafted ones I've
+used, &amp; <SMALL>PARSE-TIME</SMALL> would probably need as many
+of them as it does the hand-crafted ones, but these
+pattern-based ones might be easier to maintain because
+their definitions would be their documentation.
+They might be easier to debug, too, if the mythical
+<SMALL>DEFRECOGNIZER</SMALL> macro required only the one parameter
+I have shown here.
+
+<P>
+A suitable pattern-matching library might be the
+one described in the section ``A Pattern Matching
+Tool'' from Peter Norvig's <A
+ HREF="pdl.html#norvig:paip"><EM>Paradigms
+of Artificial Intelligence Programming: Case
+Studies in Common Lisp</EM></A>.
+
+<P>
+
+<P>
+
+<H1><A NAME="SECTION000120000000000000000">
+A. Change Log</A>
+</H1>
+
+<P>
+<DL>
+<DT><STRONG>2008-Feb-03</STRONG></DT>
+<DD>Added the ASDF file,
+<A NAME="tex2html32"
+  HREF="http://cybertiggyr.com/gene/pdl/cybertiggyr-time.asd">cybertiggyr-time.asd</A>.
+
+<P>
+</DD>
+<DT><STRONG>2004-Sep-26</STRONG></DT>
+<DD><SMALL>PARSE-TIME</SMALL> now recognizes strings
+  of the form <EM>yyyymmdd</EM>, in which every character is a
+  digit.  For example, ``19991231''.
+</DD>
+</DL>
+
+<P>
+
+<H1><A NAME="SECTION000130000000000000000">
+B. Cruft</A>
+</H1>
+
+<P>
+This is old stuff I wrote for this article.  I might
+remove it entirely some day.  <EM>1 June 2004</EM>
+
+<P>
+
+<H2><A NAME="SECTION000131000000000000000">
+B..<SPAN CLASS="arabic">1</SPAN> Modified ISO 8601</A>
+</H2>
+
+<P>
+ISO 8601:1988 is a standard for specifying dates, times, &amp;
+periods of time.  <A HREF="#unknown:iso8601"><IMG  ALIGN="BOTTOM" BORDER="1" ALT="[*]"
+ SRC="../img/latex2html/crossref.png"></A> is an unofficial
+but useful description of that standard.
+
+<P>
+<SMALL>PARSE-TIME</SMALL> should understand a restricted version of the
+ISO 8601 format.  The full format is:
+
+<P>
+<!-- MATH
+ \begin{math}
+year - month - day T hour : minute : second ampm zone
+\end{math}
+ -->
+<SPAN CLASS="MATH"><IMG
+ WIDTH="394" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img3.png"
+ ALT="$year - month - day T hour : minute : second ampm zone$"></SPAN>
+
+<P>
+where
+
+<P>
+
+<UL>
+<LI>the hyphens &amp; colons are literals,
+
+<P>
+</LI>
+<LI><SPAN CLASS="MATH"><IMG
+ WIDTH="36" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img4.png"
+ ALT="$year$"></SPAN> is four digits,
+
+<P>
+</LI>
+<LI><SPAN CLASS="MATH"><IMG
+ WIDTH="51" HEIGHT="14" ALIGN="BOTTOM" BORDER="0"
+ SRC="img5.png"
+ ALT="$month$"></SPAN> two digits or an abbreviated month name,
+
+<P>
+</LI>
+<LI><SPAN CLASS="MATH"><IMG
+ WIDTH="30" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img6.png"
+ ALT="$day$"></SPAN> is the two-digit day of the month,
+
+<P>
+</LI>
+<LI>T is a literal letter T, in upper- or lower-case,
+
+<P>
+</LI>
+<LI><SPAN CLASS="MATH"><IMG
+ WIDTH="38" HEIGHT="14" ALIGN="BOTTOM" BORDER="0"
+ SRC="img7.png"
+ ALT="$hour$"></SPAN> is two digits, <!-- MATH
+ $0 \leq hour < 24$
+ -->
+<SPAN CLASS="MATH"><IMG
+ WIDTH="104" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img8.png"
+ ALT="$0 \leq hour &lt; 24$"></SPAN>,
+
+<P>
+</LI>
+<LI><SPAN CLASS="MATH"><IMG
+ WIDTH="56" HEIGHT="17" ALIGN="BOTTOM" BORDER="0"
+ SRC="img9.png"
+ ALT="$minute$"></SPAN> is one or two digits, <!-- MATH
+ $0 \leq minute < 60$
+ -->
+<SPAN CLASS="MATH"><IMG
+ WIDTH="122" HEIGHT="29" ALIGN="MIDDLE" BORDER="0"
+ SRC="img10.png"
+ ALT="$0 \leq minute &lt; 60$"></SPAN>,
+
+<P>
+</LI>
+<LI><SPAN CLASS="MATH"><IMG
+ WIDTH="52" HEIGHT="14" ALIGN="BOTTOM" BORDER="0"
+ SRC="img11.png"
+ ALT="$second$"></SPAN> is one or two digits, <!-- MATH
+ $0 \leq second < 60$
+ -->
+<SPAN CLASS="MATH"><IMG
+ WIDTH="118" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img12.png"
+ ALT="$0 \leq second &lt; 60$"></SPAN>,
+
+<P>
+</LI>
+<LI><SPAN CLASS="MATH"><IMG
+ WIDTH="49" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img13.png"
+ ALT="$ampm$"></SPAN> is the literal <EM>AM</EM> (case-insensitive), the
+  literal <EM>PM</EM> (case-insensitive), or missing.
+
+<P>
+</LI>
+<LI><SPAN CLASS="MATH"><IMG
+ WIDTH="37" HEIGHT="13" ALIGN="BOTTOM" BORDER="0"
+ SRC="img14.png"
+ ALT="$zone$"></SPAN> is the time zone or is missing.
+</LI>
+</UL>
+
+<P>
+The hyphens &amp; colons must all be present or must all be
+missing.  The <SPAN CLASS="MATH"><IMG
+ WIDTH="59" HEIGHT="14" ALIGN="BOTTOM" BORDER="0"
+ SRC="img15.png"
+ ALT="$seconds$"></SPAN> &amp; its preceeding colon are
+optional, but if the <SPAN CLASS="MATH"><IMG
+ WIDTH="59" HEIGHT="14" ALIGN="BOTTOM" BORDER="0"
+ SRC="img15.png"
+ ALT="$seconds$"></SPAN> are missing, their preceeding
+colon must be missing, too.
+
+<P>
+If the <SPAN CLASS="MATH"><IMG
+ WIDTH="16" HEIGHT="14" ALIGN="BOTTOM" BORDER="0"
+ SRC="img16.png"
+ ALT="$T$"></SPAN> is missing, the hyphens &amp; colons must be missing &amp; the seconds
+must be present.
+
+<P>
+If <SPAN CLASS="MATH"><IMG
+ WIDTH="49" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img13.png"
+ ALT="$ampm$"></SPAN> is present, then <!-- MATH
+ $1 \leq hour \leq 12$
+ -->
+<SPAN CLASS="MATH"><IMG
+ WIDTH="104" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img17.png"
+ ALT="$1 \leq hour \leq 12$"></SPAN>.
+Otherwise, <!-- MATH
+ $0 \leq hour < 24$
+ -->
+<SPAN CLASS="MATH"><IMG
+ WIDTH="104" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img8.png"
+ ALT="$0 \leq hour &lt; 24$"></SPAN>.
+
+<P>
+If <SPAN CLASS="MATH"><IMG
+ WIDTH="37" HEIGHT="13" ALIGN="BOTTOM" BORDER="0"
+ SRC="img14.png"
+ ALT="$zone$"></SPAN> is missing, <SMALL>PARSE-TIME</SMALL> assumes GMT.
+
+<P>
+I think those rules boil down to these cases:
+
+<P>
+
+<OL>
+<LI>All components present, giving <!-- MATH
+ $year-month-dayThour:minute:second$
+ -->
+<SPAN CLASS="MATH"><IMG
+ WIDTH="317" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img18.png"
+ ALT="$year-month-dayThour:minute:second$"></SPAN>,
+
+<P>
+</LI>
+<LI>Missing <SPAN CLASS="MATH"><IMG
+ WIDTH="59" HEIGHT="14" ALIGN="BOTTOM" BORDER="0"
+ SRC="img15.png"
+ ALT="$seconds$"></SPAN>, giving <!-- MATH
+ $year-month-dayThour:minute$
+ -->
+<SPAN CLASS="MATH"><IMG
+ WIDTH="256" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img19.png"
+ ALT="$year-month-dayThour:minute$"></SPAN>,
+
+<P>
+</LI>
+<LI>hyphens &amp; colons missing, giving <!-- MATH
+ $year month day T hour minute second$
+ -->
+<SPAN CLASS="MATH"><IMG
+ WIDTH="251" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img20.png"
+ ALT="$year month day T hour minute second$"></SPAN>
+(all components smashed together, with no spaces between them),
+
+<P>
+</LI>
+<LI><SPAN CLASS="MATH"><IMG
+ WIDTH="16" HEIGHT="14" ALIGN="BOTTOM" BORDER="0"
+ SRC="img16.png"
+ ALT="$T$"></SPAN> (&amp; therefore hyphens &amp; colons) missing, giving <!-- MATH
+ $year month day hour minute second$
+ -->
+<SPAN CLASS="MATH"><IMG
+ WIDTH="240" HEIGHT="30" ALIGN="MIDDLE" BORDER="0"
+ SRC="img21.png"
+ ALT="$year month day hour minute second$"></SPAN>.
+</LI>
+</OL>
+
+<P>
+Table&nbsp;<A HREF="#tab-modified-iso-examples">6</A> shows examples of
+this modified ISO 8601 format.
+
+<P>
+<BR><P></P>
+<DIV ALIGN="CENTER"><A NAME="689"></A>
+<TABLE>
+<CAPTION><STRONG>Table 6:</STRONG>
+Examples of my Modified ISO 8601 date-&amp;-time
+  format</CAPTION>
+<TR><TD><TABLE CELLPADDING=3 BORDER="1">
+<TR><TD ALIGN="LEFT">2004-04-18T23:59:59</TD>
+<TD ALIGN="RIGHT">the last second of 18 April 2004 GMT</TD>
+</TR>
+<TR><TD ALIGN="LEFT">2004-apr-18T23:59:59</TD>
+<TD ALIGN="RIGHT">ditto</TD>
+</TR>
+<TR><TD ALIGN="LEFT">2004-04-18T11:59:59 pm</TD>
+<TD ALIGN="RIGHT">ditto</TD>
+</TR>
+<TR><TD ALIGN="LEFT">20040418T235959</TD>
+<TD ALIGN="RIGHT">ditto, without the hyphens &amp; colons</TD>
+</TR>
+<TR><TD ALIGN="LEFT">20040418235959</TD>
+<TD ALIGN="RIGHT">ditto, as terse as possible</TD>
+</TR>
+<TR><TD ALIGN="LEFT">2004apr18235959</TD>
+<TD ALIGN="RIGHT">another terse version</TD>
+</TR>
+<TR><TD ALIGN="LEFT">2004-apr-18T12:00:00</TD>
+<TD ALIGN="RIGHT">noon on 18 April 2004 GMT</TD>
+</TR>
+<TR><TD ALIGN="LEFT">2004-apr-18T12:00</TD>
+<TD ALIGN="RIGHT">ditto</TD>
+</TR>
+<TR><TD ALIGN="LEFT">2004-apr-18T12:00 pm</TD>
+<TD ALIGN="RIGHT">ditto</TD>
+</TR>
+<TR><TD ALIGN="LEFT">2004-apr-18T12:00 am</TD>
+<TD ALIGN="RIGHT">first second of 18 April 2004</TD>
+</TR>
+<TR><TD ALIGN="LEFT">2004-apr-18T12:00 am pdt</TD>
+<TD ALIGN="RIGHT">equiv. to 2004-04-18T07:00 GMT</TD>
+</TR>
+<TR><TD ALIGN="LEFT">2004-nov-18T12:00 am pst</TD>
+<TD ALIGN="RIGHT">equiv. to 2004-11-18T08:00 GMT</TD>
+</TR>
+<TR><TD ALIGN="LEFT">2004-nov-18T12:00 am +8</TD>
+<TD ALIGN="RIGHT">equiv. to 2004-11-18T08:00 GMT</TD>
+</TR>
+<TR><TD ALIGN="LEFT">2004-nov-18T12:00 am +7:15</TD>
+<TD ALIGN="RIGHT">equiv. to 2004-11-18T07:15 GMT</TD>
+</TR>
+<TR><TD ALIGN="LEFT">2004-nov-18T12:00 +7:15</TD>
+<TD ALIGN="RIGHT">equiv. to 2004-11-18T19:15 GMT</TD>
+</TR>
+</TABLE>
+
+<A NAME="tab-modified-iso-examples"></A></TD></TR>
+</TABLE>
+</DIV><P></P><BR>
+
+<P>
+If the AMs, PMs, &amp; daylight savings times in some of those examples
+are confusing, consider it a reminder of how stupid a 12-hour clock &amp;
+daylight savings time are.  I'm not sure time zones haven't outlived
+their utility, for that matter.
+
+<P>
+
+<H2><A NAME="SECTION000132000000000000000"></A>
+<A NAME="verbose-natural-formats"></A><BR>
+B..<SPAN CLASS="arabic">2</SPAN> Verbose Natural Formats
+</H2>
+
+<P>
+Verbose natural formats are those written in long-hand.  Here are
+the rules:
+
+<P>
+
+<OL>
+<LI>In particular, the months have complete names or abbreviated
+names, but the months are never numbers.
+
+<P>
+</LI>
+<LI>Day-of-week may be present.  It will probably be ignored, but
+there is a chance it could serve as a hint.
+
+<P>
+</LI>
+<LI>Time zone may be present.  If it is absent, local time zone is
+assumed if it is known; otherwise, GMT is assumed to be the local time
+zone.
+
+<P>
+</LI>
+<LI><EM>AM</EM> or <EM>PM</EM> marker may be present.  Otherwise, a 24-hour
+clock is assumed.
+
+<P>
+</LI>
+<LI>The literal ``noon'' may be used in place of the time.
+
+<P>
+</LI>
+<LI>The literal ``midnight'' may be used in place of the
+time.  Midnight is considered the first second of the day.
+
+<P>
+</LI>
+<LI>The literal ``o'clock'' may be present.  If so, it invokes a
+sloppy heuristic that tries to automagically determine AM or PM.
+If you don't like the sloppy heuristic, that's what you get for
+describing the time in an ambigous way.
+
+<P>
+</LI>
+<LI>Components of the date-&amp;-time may occur in any order,
+but certain orders are recommended while others should be avoided.
+Commas may serve as hints.
+</LI>
+</OL>
+
+<P>
+Table&nbsp;<A HREF="#tab-natural-examples">7</A> shows examples.
+
+<P>
+<BR><P></P>
+<DIV ALIGN="CENTER"><A NAME="703"></A>
+<TABLE>
+<CAPTION><STRONG>Table 7:</STRONG>
+Example date-&amp;-times in the ``natural'' formats</CAPTION>
+<TR><TD><TABLE CELLPADDING=3 BORDER="1">
+<TR><TD ALIGN="LEFT">18 April 2004</TD>
+<TD ALIGN="RIGHT">2004-Apr-18T12:00 local time zone</TD>
+</TR>
+<TR><TD ALIGN="LEFT">April 18, 2004</TD>
+<TD ALIGN="RIGHT">ditto</TD>
+</TR>
+<TR><TD ALIGN="LEFT">midnight 18 April 2004</TD>
+<TD ALIGN="RIGHT">2004-Apr-18T00:00 local time zone</TD>
+</TR>
+<TR><TD ALIGN="LEFT">3 o'clock apr 18, 2004</TD>
+<TD ALIGN="RIGHT">2004-Apr-18T15:00 local time zone</TD>
+</TR>
+<TR><TD ALIGN="LEFT">10 o'clock apr 18, 2004</TD>
+<TD ALIGN="RIGHT">2004-Apr-18T10:00 local time zone</TD>
+</TR>
+<TR><TD ALIGN="LEFT">10 o'clock Friday 18 apr</TD>
+<TD ALIGN="RIGHT">see note A</TD>
+</TR>
+<TR><TD ALIGN="LEFT">18 apr 3</TD>
+<TD ALIGN="RIGHT">2003-Apr-18T12:00 local time zone</TD>
+</TR>
+<TR><TD ALIGN="LEFT">apr 18, 3</TD>
+<TD ALIGN="RIGHT">ditto</TD>
+</TR>
+<TR><TD ALIGN="LEFT">apr 18 3</TD>
+<TD ALIGN="RIGHT">ditto</TD>
+</TR>
+<TR><TD ALIGN="LEFT">3 apr 18</TD>
+<TD ALIGN="RIGHT">2018-Apr-03T12:00 local time zone</TD>
+</TR>
+<TR><TD ALIGN="LEFT">3 apr 2018 3:30 pm</TD>
+<TD ALIGN="RIGHT">2018-Apr-03T15:30 local time zone</TD>
+</TR>
+</TABLE>
+
+<A NAME="tab-natural-examples"></A></TD></TR>
+</TABLE>
+</DIV><P></P><BR>
+
+<P>
+For the example marked ``see note A'', <SMALL>PARSE-TIME</SMALL> should
+assume the current year.  It ignores the ``Friday'' because ``18 apr''
+has enough information.  So ``10 o'clock Friday 18 apr'', if
+parsed during the year 2004 in the timezone of the United States's
+Pacific Coast, is equivalent to 2004-Apr-18T17:00.
+
+<P>
+
+<H2><A NAME="SECTION000133000000000000000"></A>
+<A NAME="terse-formats"></A><BR>
+B..<SPAN CLASS="arabic">3</SPAN> Terse Formats
+</H2>
+
+<P>
+The terse formats often use numbers for months &amp; only two
+digits for years.  The month may be numbered, named in full, or abbreviated,
+but there will be two other numbers.  One of them is the day; it must
+be one or two digits.  The other is the year; it must be two or four
+digits.
+
+<P>
+I think these formats stink because people so often number the
+months &amp; also use two-digit years.  This creates ambiguity.
+When this occurs, the separators determine the order.  There
+are always two separators.  Both must be hyphens (-) or both
+must be slashes (/).  Hyphens indicate the European order of
+day, month, year.  Slashes indicate the stupid American format
+of month, day, year.
+
+<P>
+Times may be present in the same way as for the verbose natural
+formats.
+
+<P>
+Table&nbsp;<A HREF="#tab-terse-examples">8</A> shows examples
+
+<P>
+<BR><P></P>
+<DIV ALIGN="CENTER"><A NAME="715"></A>
+<TABLE>
+<CAPTION><STRONG>Table 8:</STRONG>
+Example date-&amp;-times in the ``natural'' formats</CAPTION>
+<TR><TD><TABLE CELLPADDING=3 BORDER="1">
+<TR><TD ALIGN="LEFT">18-Apr-2004</TD>
+<TD ALIGN="RIGHT">2004-Apr-18T12:00 local time zone</TD>
+</TR>
+<TR><TD ALIGN="LEFT">18-Apr-04</TD>
+<TD ALIGN="RIGHT">ditto</TD>
+</TR>
+<TR><TD ALIGN="LEFT">18-04-04</TD>
+<TD ALIGN="RIGHT">ditto</TD>
+</TR>
+<TR><TD ALIGN="LEFT">04/04/18</TD>
+<TD ALIGN="RIGHT">ditto</TD>
+</TR>
+<TR><TD ALIGN="LEFT">Apr/04/18</TD>
+<TD ALIGN="RIGHT">ditto</TD>
+</TR>
+<TR><TD ALIGN="LEFT">18/04/04</TD>
+<TD ALIGN="RIGHT">Error!  No <SPAN CLASS="MATH"><IMG
+ WIDTH="33" HEIGHT="20" ALIGN="BOTTOM" BORDER="0"
+ SRC="img22.png"
+ ALT="$18^{th}$"></SPAN> month</TD>
+</TR>
+<TR><TD ALIGN="LEFT">18/Apr/2004 3 pm</TD>
+<TD ALIGN="RIGHT">2004-Apr-18T15:00 local time zone</TD>
+</TR>
+</TABLE>
+
+<A NAME="tab-terse-examples"></A></TD></TR>
+</TABLE>
+</DIV><P></P><BR>
+
+<P>
+I dislike numbered months &amp; two-digit years because of the
+potential for misunderstanding.  In addition, I dislike the
+American convention of month/day/year.  That's like saying
+123 is three hundred twelve.
+
+<P>
+
+<H1><A NAME="SECTION000140000000000000000">
+C. Other File Formats</A>
+</H1>
+
+<P>
+
+<UL>
+<LI>This document is available in multi-file HTML format at
+<A NAME="tex2html36"
+  HREF="./">http://cybertiggyr.com/gene/pdl/</A>.
+</LI>
+<LI>This document is available in Pointless Document
+
+Format at
+  <A NAME="tex2html37"
+  HREF="pdl.pdf">http://cybertiggyr.com/gene/pdl/pdl.pdf</A>
+</LI>
+</UL>
+
+<P>
+
+<H2><A NAME="SECTION000150000000000000000">
+Bibliography</A>
+</H2><DL COMPACT><DD><P></P><DT><A NAME="gnu:lgpl">Fou</A>
+<DD>
+Free&nbsp;Software Foundation.
+<BR>Lesser general public license.
+<BR>world wide web.
+<BR>
+  <A NAME="tex2html38"
+  HREF="http://www.gnu.org/licenses/licenses.html#LGPL">http://www.gnu.org/licenses/licenses.html#LGPL</A>.
+
+<P></P><DT><A NAME="norvig:paip">Nor92</A>
+<DD>
+Peter Norvig.
+<BR><EM>Paradigms of Artificial Intelligence: Case Studies in Common
+  Lisp</EM>.
+<BR>Morgan Kaufmann Publishers, 1992.
+<BR>ISBN 1-55860-191-0.
+
+<P></P><DT><A NAME="plauger:library">Pla92</A>
+<DD>
+P.&nbsp;J. Plauger.
+<BR><EM>The Standard C Library</EM>.
+<BR>Prentice Hall, 1992.
+<BR>ISBN 0-13-131509-9.
+</DL>
+
+<P>
+
+<DIV CLASS="navigation"><HR>
+<!--Navigation Panel-->
+<IMG WIDTH="81" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="next_inactive"
+ SRC="../img/latex2html/nx_grp_g.png"> 
+<IMG WIDTH="26" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="up"
+ SRC="../img/latex2html/up_g.png"> 
+<IMG WIDTH="63" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="previous"
+ SRC="../img/latex2html/prev_g.png">   
+  <A NAME="tex2html1"
+  HREF="../"><IMG
+ ALIGN="BOTTOM" SRC="../img/latex2html/root.png"
+ ALT="root">
+  </A>
+
+<BR></DIV>
+<!--End of Navigation Panel-->
+<ADDRESS>
+Gene Michael Stover
+2008-04-20
+</ADDRESS>
+</BODY>
+</HTML>
