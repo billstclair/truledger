@@ -207,7 +207,6 @@
    #:whots
    #:fraction-digits
    #:storage-fee
-   #:explode
    #:coupon-number-p
    #:dirhash
    #:all-processes
@@ -221,6 +220,9 @@
    #:makemsg
    #:implode
    #:explode
+   #:strstr
+   #:str-replace
+   #:zero-string
 
    ;; client.lisp & server.lisp
    #:id
@@ -349,6 +351,7 @@
    #:inbox-amount
    #:inbox-formattedamount
    #:inbox-note
+   #:inbox-reply
    #:inbox-items
    #:getinbox
    #:make-process-inbox
@@ -376,7 +379,8 @@
    #:outbox-coupons
    #:getoutbox
    #:redeem
-   #:user-preference))
+   #:user-preference
+   #:userreq))
 
 (cl:defpackage :trubanc-client-web
   (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens :trubanc-client)

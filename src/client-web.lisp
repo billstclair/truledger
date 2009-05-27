@@ -323,7 +323,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                                newacct showkey privkey)
 
     (let ((client (cw-client cw))
-          (error nil))
+          (err nil))
       (when showkey
         (let ((key (ignore-errors (get-privkey client passphrase))))
           (unless key (setf (cw-error cw) "No key for passphrase"))
@@ -332,20 +332,20 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
     (when newacct
       (setq login nil)
       (cond ((not passphrase)
-             (setq error "Passphrase may not be blank"))
+             (setq err "Passphrase may not be blank"))
             ((and (not privkey) (not (equal passphrase passphrase2)))
-             (setq error "Passphrase didn't match Verification"))
+             (setq err "Passphrase didn't match Verification"))
             (privkey
              ;; Support adding a passphrase to a private key without one
              (ignore-errors
                (with-rsa-private-key (pk privkey)
                  (cond ((not (equal passphrase passphrase2))
-                        (setq error "Passphrase didn't match Verification"))
+                        (setq err "Passphrase didn't match Verification"))
                        (t (setq privkey (encode-rsa-private-key pk passphrase)))))))
             (t (setq privkey keysize)))
 
-      (when error
-        (setf (cw-error cw) error)
+      (when err
+        (setf (cw-error cw) err)
         (return-from do-login))
 
       (cond ((and coupon (not (equal coupon "")))
@@ -353,22 +353,22 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                  (multiple-value-bind (bankid url)
                      (parse-coupon coupon)
                    (handler-case (verify-coupon client coupon bankid url)
-                     (error (c) (setq error (princ c)))))
+                     (error (c) (setq err (princ c)))))
                (error ()
                  ;; See if "coupon" is just a URL, meaning the user
                  ;; already has an account at that bank.
                  (handler-case (verify-bank client coupon)
-                   (error (c) (setq error (format nil "Invalid coupon: ~a" c)))))))
+                   (error (c) (setq err (format nil "Invalid coupon: ~a" c)))))))
             ((and *require-coupon* (not privkey))
-             (setq error "Bank coupon required for registration")))
+             (setq err "Bank coupon required for registration")))
 
-      (unless error
+      (unless err
         (handler-case
             (progn
               (newuser client :passphrase passphrase :privkey privkey)
               (setq login t))
           (error (c)
-            (setq error (princ c))))))
+            (setq err (princ c))))))
 
     (when login
       (handler-case
@@ -386,9 +386,9 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                     (draw-balance cw)
                     (draw-banks cw)))))
         (error (c)
-          (setq error (format nil "Login error: ~a" c)))))
+          (setq err (format nil "Login error: ~a" c)))))
 
-    (setf (cw-error cw) error)
+    (setf (cw-error cw) err)
 
     (draw-login cw))))
 
@@ -784,271 +784,276 @@ function do_toggleinstructions() {
                       time)))
     (hsc (cybertiggyr-time:format-time nil "%d-%m-%Y %I:%M:%S%p" unixtime))))
 
-#||
+(defmacro storing-error ((err-var format) &body body)
+  `(do-storing-error (lambda (x) (setf ,err-var x)) ,format (lambda () ,@body)))
 
-function draw_balance($spend_amount=false, $recipient=false, $note=false,
-                      $toacct=false, $tonewacct=false, $nickname=false) {
-  global $client;
-  global $error;
-  global $onload, $body;
-  global $iphone, $keephistory;
-  global $fraction_asset;
-  
-  $t = $client->t;
+(defun do-storing-error (setter format thunk)
+  (handler-case (funcall thunk)
+    (error (c)
+      (funcall setter (format nil format c)))))
 
-  $bankid = $client->bankid();
-  $banks = $client->getbanks();
+(defconstant $nl #.(format nil "~%"))
+(defconstant $brn #.(format nil "<br/>~%"))
 
-  settitle('Balance');
-  setmenu('balance');
+(defun normalize-note (note)
+  (if (or (null note) (equal note ""))
+      "&nbsp;"
+      (str-replace $nl $brn note)))
 
-  $saveerror = $error;
-  $error = false;
+(defun draw-balance (cw &optional
+                     spend-amount recipient note toacct tonewacct nickname)
+  (let* ((client (cw-client cw))
+         (bankid (bankid client))
+         (banks (getbanks client))
+         (err nil)
+         (bankcode "")
+         inboxcode
+         seloptions
+         (balcode "")
+         (assetlist "")
+         (assetidx 0)
+         (acctidx 0)
+         (gotbal nil)
+         (contacts (getcontacts client))
+         inbox
+         outbox
+         accts
+         assets
+         acctoptions
+         acctheader
+         (nonspends nil)
+         (spendcnt 0)
+         (nonspendcnt 0)
+         (inbox-msgtimes (make-equal-hash))
+         assets)
 
-  $bankopts = '';
-  foreach ($banks as $bid => $b) {
-    if ($bid != $bankid) {
-      if ($client->userreq($bid) != -1) {
-        $bname = $b[$t->NAME];
-        $burl = $b[$t->URL];
-        $bankopts .= "<option value=\"$bid\">$bname $burl</option>\n";
-      }
-    }
-  }
+    (settitle cw "Balance")
+    (setmenu cw "balance")
 
-  $bankcode = '';
-  if ($bankopts) {
-    $bankcode .= <<<EOT
-<form method="post" action="./" autocomplete="off">
-<input type="hidden" name="cmd" value="bank">
-<select name="bank">
-<option value="">Choose a bank...</option>
-$bankopts
-</select>
-<input type="submit" name="selectbank" value="Change Bank"/>
-</form>
+    (let ((bankopts
+           (with-output-to-string (s)
+             (dolist (bank banks)
+               (let ((bid (bank-id bank)))
+                 (unless (equal bid bankid)
+                   (unless (equal (userreq client bid) "-1")
+                     (let ((bname (bank-name bank))
+                           (burl (bank-url bank)))
+                       (who (s)
+                         (:option :value bid (str bname) (str burl)))))))))))
+      (unless (equal bankopts "")
+        (setq
+         bankcode
+         (whots (s)
+           (:form
+            :method "post" :action "./" :autocomplete "off"
+            (:input :type "hidden" :name "cmd" :value "bank")
+            (:select
+             :name "bank"
+             (:option :value "" "Choose a bank...")
+             (str bankopts))
+            (:input :type "submit" :name "selectbank" :value "Change Bank"))))))
 
-EOT;
-  }
+    (when bankid
+      ;; Print inbox, if there is one
 
-  $inboxcode = '';
-  $balcode = '';
-  $assetlist = '';
-  $assetidx = 0;
-  $acctidx = 0;
-  $gotbal = false;
-  $contacts = $client->getcontacts();
-  $havecontacts = (count($contacts) > 0);
+      (setq inbox (storing-error (err "Error getting inbox: ~a")
+                    (getinbox client))
+            outbox (storing-error (err "Error getting outbox: ~a")
+                     (getoutbox client))
+            accts (storing-error (err "Error getting accts: ~a")
+                    (getaccts client))
+            acctoptions
+            (and (> (length accts) 0)
+                 (with-output-to-string (s)
+                   (dolist (acct accts)
+                     (let ((acct (hsc acct)))
+                       (who (s)
+                         (:option :value acct (str acct))))))))
 
-  if (!$error && $client->bankid) {
-    // Print inbox, if there is one
-    $inbox = $client->getinbox();
-    $outbox = $client->getoutbox();
-    $accts = $client->getaccts();
+      (cond ((null inbox)
+             (setq inboxcode
+                   (whots (s)
+                     (:b "=== Inbox empty ===") (:br) (:br))))
+            (t
+             (setq
+              inboxcode
+              (with-output-to-string (inbox-stream)
+                (when acctoptions
+                  (setq acctheader (whots (s) (:th "To Acct"))))
+                (setq seloptions
+                      (whots (s)
+                        (:option :value "accept" "Accept")
+                        (:option :value "reject" "Reject")
+                        (:option :value "ignore" "Ignore")))
 
-    $acctoptions = '';
-    if (count($accts) > 1) {
-      $first = true;
-      foreach ($accts as $acct) {
-        $acct = hsc($acct);
-        $acctoptions .= <<<EOT
-          <option value="$acct">$acct</option>
+                (setq assets (storing-error (err "Error getting assets: ~a")
+                               (getassets client)))
 
-EOT;
-      }
-    }
+                (dolist (item inbox)
+                  (let* ((request (inbox-request item))
+                         (fromid (inbox-id item))
+                         (time (inbox-time item)))
+                    (multiple-value-bind (namestr contact) (id-namestr cw fromid)
+                      (cond ((not (equal request $SPEND))
+                             (let* ((msgtime (inbox-msgtime item))
+                                    (outitem (find msgtime outbox
+                                                   :test #'equal :key #'outbox-time)))
+                               (setf (gethash msgtime inbox-msgtimes) item)
+                               (when outitem
+                                 (setf (inbox-assetname item) (outbox-assetname outitem)
+                                       (inbox-formattedamount item)
+                                       (outbox-formattedamount outitem)
+                                       (inbox-reply item) (inbox-note item)
+                                       (inbox-note item) (outbox-note outitem)))
+                               (push item nonspends)))
+                            (t (let* ((assetid (inbox-assetid item))
+                                      (assetname (hsc (inbox-assetname item)))
+                                      (amount (hsc (inbox-formattedamount item)))
+                                      (itemnote (normalize-note (hsc (inbox-note item))))
+                                      (selname (format nil "spend~d" spendcnt))
+                                      (notename (format nil "spendnote~d" spendcnt))
+                                      (acctselname (format nil "acct~d" spendcnt))
+                                      (timecode
+                                       (whots (s)
+                                         (:input :type "hidden"
+                                                 :name (format nil "spendtime~a" spendcnt)
+                                                 :value time)))
+                                      (selcode
+                                       (whots (s)
+                                         (:select :name selname (str seloptions))))
+                                      (acctcode
+                                       (if (not acctoptions)
+                                           ""
+                                           (whots (s)
+                                             (:td
+                                              (:select :name acctselname
+                                                       (str acctoptions))))))
+                                      (date (datestr time)))
 
-    // Try again, in case we just needed to sync.
-    // Maybe this should be hidden by getinbox()
-    if (is_string($inbox)) $inbox = $client->getinbox();
+                                 (unless (find assetid assets
+                                               :test #'equal :key #'asset-id)
+                                   (setq assetname
+                                         (whots (s)
+                                           (str assetname) " "
+                                           (:span :style "color: red;"
+                                                  (:i "(new)")))))
+                                 (unless contact
+                                   (setq namestr
+                                         (whots (s)
+                                           (str namestr)
+                                           (:br)
+                                           (:input :type "hidden"
+                                                   :name (format nil "spendid~a" spendcnt)
+                                                   :value fromid)
+                                           "Nickname: "
+                                           (:input :type "text"
+                                                   :name (format nil "spendnick~a"
+                                                                 spendcnt)
+                                                   :size "10"))))
+                                 (incf spendcnt)
+                                 (who (inbox-stream)
+                                   (str timecode)
+                                   (:tr
+                                    (:td "Spend")
+                                    (:td (str namestr))
+                                    (:td :align "right"
+                                         :style "border-right-width: 0;"
+                                         (str amount))
+                                    (:td :style "border-left-width: 0;"
+                                         (str assetname))
+                                    (:td (str itemnote))
+                                    (:td (str selcode))
+                                    (:td
+                                     (:textarea
+                                      :name notename
+                                      :cols "20"
+                                      :rows "2"))
+                                    (str acctcode)
+                                    (:td (str date))))))))))
 
-    $acctheader = '';
-    if (is_string($inbox)) {
-      $error = "Error getting inbox: $inbox";
-      $inbox = array();
-    }
-    elseif (count($inbox) == 0) $inboxcode .= "<b>=== Inbox empty ===</b><br/><br/>\n";
-    else {
-      if ($acctoptions) $acctheader = "\n<th>To Acct</th>";
-
-      $inboxcode .= <<<EOT
-<table border="1">
-<caption><b>=== Inbox ===</b></caption>
-<tr>
-<th>Request</th>
-<th>From</th>
-<th colspan="2">Amount</th>
-<th>Note</th>
-<th>Action</th>
-<th>Reply</th>$acctheader
-<th>Time</th>
-</tr>
-
-EOT;
-      $seloptions = <<<EOT
-<option value="accept">Accept</option>
-<option value="reject">Reject</option>
-<option value="ignore">Ignore</option>
-
-EOT;
-
-      if (is_string($outbox)) {
-        $error = "Error getting outbox: $outbox";
-        $outbox = array();
-      }
-      $nonspends = array();
-      $spendcnt = 0;
-      $assets = $client->getassets();
-      foreach ($inbox as $itemkey => $item) {
-        $item = $item[0];
-        $request = $item[$t->REQUEST];
-        $fromid = $item[$t->ID];
-        $time = $item[$t->TIME];
-        $namestr = id_namestr($fromid, $contact);
-
-        if ($request != $t->SPEND) {
-          $msgtime = $item[$t->MSGTIME];
-          $outitem = $outbox[$msgtime];
-          // outbox entries are array($spend, $tranfee)
-          if ($outitem) $outitem = $outitem[0];
-          if ($outitem) {
-            $item[$t->ASSETNAME] = $outitem[$t->ASSETNAME];
-            $item[$t->FORMATTEDAMOUNT] = $outitem[$t->FORMATTEDAMOUNT];
-            $item['reply'] = $item[$t->NOTE];
-            $item[$t->NOTE] = $outitem[$t->NOTE];
-          }
-          $nonspends[] = $item;
-        }
-        else {
-          $assetid = $item[$t->ASSET];
-          $assetname = hsc($item[$t->ASSETNAME]);
-          if (!@$assets[$assetid]) {
-            $assetname .= ' <span style="color: red;"><i>(new)</i></span>';
-          }
-          $amount = hsc($item[$t->FORMATTEDAMOUNT]);
-          $itemnote = hsc($item[$t->NOTE]);
-          if (!$itemnote) $itemnote = '&nbsp;';
-          else $itemnote = str_replace("\n", "<br/>\n", $itemnote);
-          $selname = "spend$spendcnt";
-          $notename = "spendnote$spendcnt";
-          $acctselname = "acct$spendcnt";
-          if (!@$contact[$t->CONTACT]) {
-            $namestr .= <<<EOT
-<br/>
-<input type="hidden" name="spendid$spendcnt" value="$fromid"/>
-Nickname:
-<input type="text" name="spendnick$spendcnt" size="10"/>
-EOT;
-          }
-          $timecode = <<<EOT
-<input type="hidden" name="spendtime$spendcnt" value="$time">
-EOT;
-
-          $spendcnt++;
-          $selcode = <<<EOT
-<select name="$selname">
-$seloptions
-</select>
-
-EOT;
-          $acctcode = '';
-          if ($acctoptions) {
-            $acctcode = <<<EOT
-<td><select name="$acctselname">
-$acctoptions
-</select></td>
-EOT;
-          }
-          $date = datestr($time);
-          $inboxcode .= <<<EOT
-$timecode
-<tr>
-<td>Spend</td>
-<td>$namestr</td>
-<td align="right" style="border-right-width: 0;">$amount</td>
-<td style="border-left-width: 0;">$assetname</td>
-<td>$itemnote</td>
-<td>$selcode</td>
-<td><textarea name="$notename" cols="20" rows="2"></textarea></td>
-$acctcode
-<td>$date</td>
-</tr>
-
-EOT;
-        }
-      }
-      $nonspendcnt = 0;
-      foreach ($nonspends as $item) {
-        $request = $item[$t->REQUEST];
-        $fromid = $item[$t->ID];
-        $reqstr = ($request == $t->SPENDACCEPT) ? "Accept" : "Reject";
-        $time = $item[$t->TIME];
-        $namestr = id_namestr($fromid, $contact);
-        $assetname = hsc($item[$t->ASSETNAME]);
-        $amount = hsc($item[$t->FORMATTEDAMOUNT]);
-        $itemnote = hsc($item[$t->NOTE]);
-        if (!$itemnote) $itemnote = '&nbsp;';
-        else $itemnote = $itemnote = str_replace("\n", "<br/>\n", $itemnote);
-        $reply = hsc($item['reply']);
-        if (!$reply) $reply = '&nbsp;';
-        else $reply = str_replace("\n", "<br/>\n", $reply);
-        $selname = "nonspend$nonspendcnt";
-        if (!@$contact[$t->CONTACT]) {
-          $namestr .= <<<EOT
-<br/>
-<input type="hidden" name="nonspendid$nonspendcnt" value="$fromid"/>
-Nickname:
-<input type="text" name="nonspendnick$nonspendcnt" size="10"/>
-EOT;
-          }
-        $timecode = <<<EOT
-<input type="hidden" name="nonspendtime$nonspendcnt" value="$time">
-EOT;
-        $nonspendcnt++;
-        $selcode = <<<EOT
-<input type="checkbox" name="$selname" checked="checked">Remove</input>
-
-EOT;
-        $date = datestr($time);
-        $acctcode = '';
-        if ($acctoptions) $acctcode = "\n<td>&nbsp;</td>";
-        $inboxcode .= <<<EOT
-$timecode
-<tr>
-<td>$reqstr</td>
-<td>$namestr</td>
-<td align="right" style="border-right-width: 0;">$amount</td>
-<td style="border-left-width: 0;">$assetname</td>
-<td>$itemnote</td>
-<td>$selcode</td>
-<td>$reply</td>$acctcode
-<td>$date</td>
-</tr>
-
-EOT;
-      }
+                (dolist (item nonspends)
+                  (let* ((request (inbox-request item))
+                         (fromid (inbox-id item))
+                         (reqstr (if (equal request $SPENDACCEPT) "Accept" "Reject"))
+                         (time (inbox-time item))
+                         (reply (normalize-note (hsc (inbox-reply item))))
+                         (assetname (hsc (inbox-assetname item)))
+                         (amount (hsc (inbox-formattedamount item)))
+                         (itemnote (normalize-note (hsc (inbox-note item))))
+                         (selname (format nil "nonspend~d" nonspendcnt))
+                         (timecode
+                          (whots (s)
+                            (:input :type "hidden"
+                                    :name (format nil "nonspendtime~d" nonspendcnt)
+                                    :value time)))
+                         (selcode
+                          (whots (s)
+                            (:input :type "checkbox"
+                                    :name selname
+                                    :checked t
+                                    "Remove")))
+                         (date (datestr time))
+                         (acctcode (if acctoptions
+                                       (whots (s) (:td "&nbsp;"))
+                                       "")))
+                    (multiple-value-bind (namestr contact) (id-namestr cw fromid)
+                      (unless contact
+                        (setq namestr
+                              (whots (s)
+                                (str namestr)
+                                (:br)
+                                (:input :type "hidden"
+                                        :name (format nil "nonspendid~d" nonspendcnt)
+                                        :value fromid)
+                                "Nickname: "
+                                (:input :type "text"
+                                        :name (format nil "nonspendnick~d" nonspendcnt)
+                                        :size "10"))))
+                      (incf nonspendcnt)
+                      (who (inbox-stream)
+                        (str timecode)
+                        (:tr
+                         (:td (str reqstr))
+                         (:td (str namestr))
+                         (:td :align "right" :style "border-right-width: 0;"
+                              (str amount))
+                         (:td :style "border-left-width: 0;"
+                              (str assetname))
+                         (:td (str itemnote))
+                         (:td (str selcode))
+                         (:td (str reply))
+                         (str acctcode)
+                         (:td (str date)))))))))
       
-      $inboxcode = <<<EOT
-<form method="post" action="./" autocomplete="off">
-<input type="hidden" name="cmd" value="processinbox"/>
-<input type="hidden" name="spendcnt" value="$spendcnt"/>
-<input type="hidden" name="nonspendcnt" value="$nonspendcnt"/>
-$inboxcode
-</table>
-<br/>
-<input type="submit" name="submit" value="Process Inbox"/>
-</form>
+             (setq
+              inboxcode
+              (whots (s)
+                (:form
+                 :method "post" :action "./" :autocomplete "off"
+                 (:input :type "hidden" :name "cmd" :value "processinbox")
+                 (:input :type "hidden" :name "spendcnt" :value spendcnt)
+                 (:input :type "hidden" :name "nonspendcnt" :value nonspendcnt)
+                 (:table
+                  :border "1"
+                  (:caption (:b "=== Inbox ==="))
+                  (:tr
+                   (:th "Request")
+                   (:th "From")
+                   (:th :colspan "2" "Amount")
+                   (:th "Note")
+                   (:th "Action")
+                   (:th "Reply")
+                   (str acctheader)
+                   (:th "Time"))
+                  (str inboxcode))
+                 (:br)
+                 (:input :type "submit" :name "submit"
+                         :value "Process Inbox"))))))
 
-EOT;
-    }
+)))
 
-    // Index the spends in the inbox by MSGTIME
-    $inboxspends = array();
-    foreach ($inbox as $items) {
-      $item = $items[0];
-      $request = $item[$t->REQUEST];
-      $inboxspends[$item[$t->MSGTIME]] = $item;
-    }
+#||
+;; Continue here
 
     // Prepare outbox display
     $cancelcount = 0;
@@ -1087,7 +1092,7 @@ EOT;
             $namestr = id_namestr($recip, $contact);
           }
           $cancelcode = '&nbsp;';
-          if (!@$inboxspends[$time]) {
+          if (!@$inbox-msgtimes[$time]) {
             $cancelcode = <<<EOT
 <input type="hidden" name="canceltime$cancelcount" value="$timestr"/>
 <input type="submit" name="cancel$cancelcount" value="$label"/>
@@ -1397,6 +1402,8 @@ $closespend
 EOT;
   $body = "$error<br/>$bankcode$inboxcode$fullspend$outboxcode$storagefeecode$instructions";
 }
+
+# ||
 
 function draw_coupon($time = false) {
   global $client;

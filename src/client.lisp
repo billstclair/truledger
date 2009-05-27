@@ -1371,6 +1371,7 @@
   amount
   formattedamount
   note
+  reply                                 ;used by client-web.lisp
   items)
 
 (defmethod getinbox ((client client) &optional includeraw)
@@ -1468,8 +1469,10 @@
          (bankid (bankid client))
          (parser (parser client))
          (server (server client))
-         (req (getreq client))
-         (msg (custmsg client $GETINBOX bankid req))
+         (msg (handler-case (custmsg client $GETINBOX bankid (getreq client))
+                (error ()
+                  (forceinit client)
+                  (custmsg client $GETINBOX bankid (getreq client)))))
          (bankmsg (process server msg))
          (reqs (parse parser bankmsg))
          (inbox (make-equal-hash))
@@ -1872,8 +1875,7 @@
 
 (defmethod getoutbox ((client client) &optional includeraw)
   "Get the outbox contents.
-   Returns an error string or the outbox contents as a list of
-   OUTBOX instances
+   Returns a list of OUTBOX instances:
    TIME is the timestamp of the outbox entry.
    REQUEST is $SPEND, $TRANFEE, or $COUPONENVELOPE.
    ASSETID is the ID of the asset transferred.

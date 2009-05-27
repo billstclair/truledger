@@ -178,15 +178,18 @@
 
 (defun str-replace (old new string)
   "Change all instance of OLD to NEW in STRING"
-  (loop with pos = 0
-        with old-len = (length old)
-        with new-len = (length new)
-        with res = string
-        for idx = (search old res :start2 pos)
-        do
-     (when (null idx) (return res))
-     (setq res (strcat (subseq res 0 idx) new (subseq res (+ idx old-len)))
-           pos (+ idx new-len))))
+  (loop
+     with oldstr = (string old)
+     with newstr = (string new)
+     with pos = 0
+     with old-len = (length oldstr)
+     with new-len = (length newstr)
+     with res = string
+     for idx = (search oldstr res :start2 pos)
+     do
+       (when (null idx) (return res))
+       (setq res (strcat (subseq res 0 idx) newstr (subseq res (+ idx old-len)))
+             pos (+ idx new-len))))
 
 (defun zero-string (len)
   (make-string len :initial-element #\0))
