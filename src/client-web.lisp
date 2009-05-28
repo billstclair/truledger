@@ -810,6 +810,7 @@ function do_toggleinstructions() {
          (bankid (bankid client))
          (banks (getbanks client))
          (err nil)
+         (iphone (strstr (or (hunchentoot:header-in* "User-Agent") "") "iPhone"))
          (bankcode "")
          inboxcode
          seloptions
@@ -834,7 +835,10 @@ function do_toggleinstructions() {
          assets
          outboxcode
          balcode
-         gotbal-p)
+         gotbal-p
+         spendcode
+         storagefeecode
+         instructions)
 
     (settitle cw "Balance")
     (setmenu cw "balance")
@@ -849,7 +853,7 @@ function do_toggleinstructions() {
                            (burl (bank-url bank)))
                        (who (s)
                          (:option :value bid (str bname) (str burl)))))))))))
-      (unless (equal bankopts "")
+      (unless (blankp bankopts)
         (setq
          bankcode
          (whots (s)
@@ -1084,7 +1088,7 @@ function do_toggleinstructions() {
                        (label "Cancel")
                        namestr
                        (cancelcode "&nbsp;"))
-                   (unless (and note (not (equal note "")))
+                   (unless (not (blankp note))
                      (setq note  "&nbsp;"))
                    (cond ((equal recip $COUPON)
                           (let ((timearg (hunchentoot:url-encode time)))
@@ -1115,19 +1119,19 @@ function do_toggleinstructions() {
                            (str assetname))
                       (:td (str note))
                       (:td (str cancelcode))))))))))
-        (unless (equal outboxcode "")
+        (unless (blankp outboxcode)
           (setq outboxcode
                 (whots (s)
-                       (:table
-                        :border "1"
-                        (:caption (:b "=== Outbox ==="))
-                        (:tr
-                         (:th "Time")
-                         (:th "Recipient")
-                         (:th :colspan "2" "Amount")
-                         (:th "Note")
-                         (:th "Action"))
-                        (str outboxcode))))
+                  (:table
+                   :border "1"
+                   (:caption (:b "=== Outbox ==="))
+                   (:tr
+                    (:th "Time")
+                    (:th "Recipient")
+                    (:th :colspan "2" "Amount")
+                    (:th "Note")
+                    (:th "Action"))
+                   (str outboxcode))))
           (when (> cancelcount 0)
             (setq outboxcode
                   (whots (s)
@@ -1172,14 +1176,14 @@ function do_toggleinstructions() {
               finally
                 (let ((assetcode (get-output-stream-string assetcode-stream))
                       (newassetlist (get-output-stream-string newassetlist-stream)))
-                  (unless (equal assetcode "")
+                  (unless (blankp assetcode)
                     (who (bal-stream)
                       (:tr
                        (:th :colspan "3"
                             "- " (str acct) " -")
                        (str $nl)
                        (str assetcode))))
-                  (unless (equal newassetlist "")
+                  (unless (blankp newassetlist)
                     (unless assetlist-stream
                       (setq assetlist-stream (make-string-output-stream)))
                     (who (assetlist-stream)
@@ -1229,143 +1233,146 @@ function do_toggleinstructions() {
         (when assetlist-stream
           (setq assetlist (get-output-stream-string assetlist-stream)))
 
-))))
+        (let ((recipopts nil)
+              (found nil)
+              (selectmint nil)
+              (disablemint nil)
+              (recipientid nil)
+              (acctcode nil))
+          (when gotbal
+            (setq recipopts
+                  (whots (s)
+                    (:select
+                     :name "recipient"
+                     (:option :value "" "Choose contact...")
+                     (dolist (contact contacts)
+                       (let ((namestr (contact-namestr contact))
+                             (recipid (contact-id contact))
+                             (selected nil))
+                         (unless (equal recipid (id client))
+                           (when (equal recipid recipient)
+                             (setq selected t
+                                   found t))
+                           (who (s)
+                             (:option :value recipid :selected selected
+                                      (str namestr)))))))))
+
+            (cond ((equal (id client) (bankid client))
+                   (setq disablemint t))
+                  ((equal recipient $COUPON)
+                   (setq selectmint t)))
+
+            (when (and (not found) (not (equal recipient $COUPON)))
+              (setq recipientid recipient))
+
+            (when (> (length accts) 0)
+              (setq acctcode
+                    (whots (s)
+                      (:select
+                       :name "toacct"
+                       (:option :value "" "Select or fill-in below...")
+                       (dolist (acct accts)
+                         (let ((selected (equal acct toacct)))
+                           (who (s)
+                             (:option :value (esc acct) :selected selected
+                                      (str acct)))))))))
+
+            (let ((storagefees (getstoragefee client)))
+              (when storagefees
+                (setq storagefeecode
+                      (whots (s)
+                        (:form
+                         :method "post" :action "./" :autocomplete "off"
+                         (:input :type "hidden" :name "cmd" :value "storagefees")
+                         (:table
+                          :border "1"
+                          (:caption (:b "=== Storage Fees ==="))
+                          (:tr
+                           (:td
+                            (:table
+                             (dolist (storagefee storagefees)
+                               (let* ((formattedamount
+                                       (balance-formatted-amount storagefee))
+                                      (assetname (balance-assetname storagefee))
+                                      (time (balance-time storagefee))
+                                      (timestr (hsc time))
+                                      (date (datestr time)))
+                                 (who (s)
+                                   (:tr
+                                    (:td :align "right"
+                                         (:span :style "margin-right: 5px"
+                                                (str formattedamount)))
+                                    (:td
+                                     (:span :style "margin-right: 5px"
+                                            (str assetname)))
+                                    (:td (str date))))))))))
+                         (:input :type "submit" :name "accept"
+                                 :value "Move to Inbox"))))))
+
+            (flet ((write-amt (s)
+                     (who (s)
+                       (:td
+                        :valign "top"
+                        (:table
+                         (:tr
+                          (:td
+                           (:b "Spend amount:"))
+                          (:td
+                           :input :type "text" :name "amount" :size "20"
+                           :value spend-amount :style "text-align: right;"))
+                         (:tr
+                          (:td
+                           (:b "Recipient:"))
+                          (:td
+                           (str recipopts)
+                           (:input :type "checkbox" :name "mintcoupon"
+                                   :selected selectmint :disabled disablemint
+                                   "Mint coupon")))
+                         (:tr
+                          (:td (:b "Note:"))
+                          (:td
+                           (:textarea :name "note" :cols "40" :rows "10"
+                                      (str note))))
+                         (:tr
+                          (:td (:b "Recipient ID:"))
+                          (:td
+                           (:input :type "text" :name "recipientid" :size "40"
+                                   :value recipientid)
+                           (:input :type "checkbox" :name "allowunregistered"
+                                   "Allow unregistered")))
+                         (:tr
+                          (:td (:b "Nickname:"))
+                          (:td
+                           (:input :type "text" :name "nickname" :size "30"
+                                   :value nickname)))
+                         (:tr
+                          (:td (:b "Transfer to:"))
+                          (:td (str acctcode)))
+                         (:tr
+                          (:td
+                           (:input :type "text" :name "tonewacct" :size "30"
+                                   :value tonewacct))))))))
+              (setq
+               spendcode
+               (whots (s)
+                 (:form
+                  :method "post" :action "./" :autocomplete "off"
+                  (:input :type "hidden" :name "cmd" :value "spend")
+                  (:table
+                   (:tr
+                    (:td
+                     :valign "top"
+                     (str assetlist)
+                     (str balcode))
+                    (unless iphone (write-amt s)))
+                   (when iphone
+                     (who (s)
+                       (:tr (write-amt s)))))))))
+
+))))))
 
 #||
 
-    $openspend = '';
-    $spendcode = '';
-    $closespend = '';
-    $instructions = '';
-    $storagefeecode = '';
-    if ($gotbal) {
-      $recipopts = '<select name="recipient">
-<option value="">Choose contact...</option>
-';
-      $found = false;
-      foreach ($contacts as $contact) {
-        $namestr = contact_namestr($contact);
-        $recipid = $contact[$t->ID];
-        if ($recipid != $client->id) {
-          $selected = '';
-          if ($recipid == $recipient) {
-            $selected = ' selected="selected"';
-            $found = true;
-          }
-          $recipopts .= <<<EOT
-<option value="$recipid"$selected>$namestr</option>
-
-EOT;
-        }
-      }
-      $recipopts .= "</select>\n";
-      $selectmint = '';
-      if ($recipient == $t->COUPON) $selectmint = ' checked="checked"';
-      $recipientid = '';
-      if (!$found && $recipient != $t->COUPON) $recipientid = $recipient;
-      $openspend = '<form method="post" action="./" autocomplete="off">
-<input type="hidden" name="cmd" value="spend"/>
-
-';
-      $acctoptions = '';
-      if (count($accts) > 1) {
-        $first = true;
-        foreach ($accts as $acct) {
-          $selcode = '';
-          if ($acct == $toacct) $selcode = ' selected="selected"';
-          $acct = hsc($acct);
-          $acctoptions .= <<<EOT
-<option value="$acct"$selcode>$acct</option>
-
-EOT;
-        }
-      }
-      $acctcode = '';
-      if ($acctoptions) {
-        $acctcode = <<<EOT
-
-<td><select name="toacct">
-<option value="">Select or fill-in below...</option>
-$acctoptions
-</select></td>
-</tr>
-<tr>
-<td><b>&nbsp;</b></td>
-
-EOT;
-      }
-
-      $storagefeecode = '';
-      $storagefees = $client->getstoragefee();
-      if (is_string($storagefees)) {
-        $error = $storagefees;
-        $storagefees = array();
-      }
-      $storagefeecode = '';
-      if (count($storagefees) > 0) {
-        $storagefeecode = <<<EOT
-<form method="post" action="./" autocomplete="off">
-<input type="hidden" name="cmd" value="storagefees"/>
-<table border="1">
-<caption><b>=== Storage Fees ===</b></caption>
-<tr><td><table>
-
-EOT;
-        foreach ($storagefees as $assetid => $storagefee) {
-          $formattedamount = $storagefee[$t->FORMATTEDAMOUNT];
-          $assetname = $storagefee[$t->ASSETNAME];
-          $time = $storagefee[$t->TIME];
-          $timestr = hsc($time);
-          $date = datestr($time);
-          $storagefeecode .= <<<EOT
-<tr>
-<td align="right"><span style="margin-right: 5px">$formattedamount</span></td>
-<td><span style="margin-right: 5px">$assetname</span></td>
-<td>$date</td>
-</tr>
-
-EOT;
-        }
-        $storagefeecode .= <<<EOT
-</table></td></tr>
-</table>
-<input type="submit" name="accept" value="Move to Inbox"/>
-</form>
-
-EOT;
-      }
-
-      $disablemint = '';
-      if ($client->id == $client->bankid) {
-        $selectmint = '';
-        $disablemint = ' disabled="disabled"';
-      }
-      $spendcode = <<<EOT
-
-<table>
-<tr>
-<td><b>Spend amount:</b></td>
-<td><input type="text" name="amount" size="20" value="$spend_amount" style="text-align: right;"/>
-</tr><tr>
-<td><b>Recipient:</b></td>
-<td>$recipopts
-<input type="checkbox" name="mintcoupon"$selectmint$disablemint>Mint coupon</input></td>
-</tr><tr>
-<td><b>Note:</b></td>
-<td><textarea name="note" cols="40" rows="10">$note</textarea></td>
-</tr><tr>
-<td><b>Recipient ID:</b></td>
-<td><input type="text" name="recipientid" size="40" value="$recipientid"/>
-<input type="checkbox" name="allowunregistered">Allow unregistered</input></td>
-</tr><tr>
-<td><b>Nickname:</b></td>
-<td><input type="text" name="nickname" size="30" value="$nickname"/></td>
-<tr>
-<td><b>Transfer to:</b></td>$acctcode
-<td><input type="text" name="tonewacct" size="30" value="$tonewacct"/></td>
-</tr>
-</table>
-EOT;
       $onload = "document.forms[0].amount.focus()";
       $closespend = "</form>\n";
       $historytext = ($keephistory == 'keep' ? "Disable" : "Enable") . " history";
@@ -1417,24 +1424,7 @@ EOT;
   if ($error) {
     $error = "<span style=\"color: red\";\">$error</span>\n";
   }
-  $fullspend = <<<EOT
-$openspend
-<table>
-<tr>
-<td valign="top">
-$assetlist$balcode
-</td>
-
-EOT;
-  if ($iphone) $fullspend .= "</tr>\n<tr>\n";
-  $fullspend .= <<<EOT
-<td valign="top">
-$spendcode
-</td>
-</table>
-$closespend
-EOT;
-  $body = "$error<br/>$bankcode$inboxcode$fullspend$outboxcode$storagefeecode$instructions";
+  $body = "$error<br/>$bankcode$inboxcode$spendcode$outboxcode$storagefeecode$instructions";
 }
 
 # ||
