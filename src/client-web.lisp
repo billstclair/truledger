@@ -9,18 +9,20 @@
 
 ;; Causes WHO and WHOTS to indent prettily by default.
 ;; Remove when debugged, to reduce bandwidth.
+#||
 (eval-when (:compile-toplevel :execute :load-toplevel)
   (setq cl-who::*indent* t))
+||#
 
 (defparameter *require-coupon* nil)
 
 (defparameter *default-menuitems*
-  '(('balance "Balance")
-    ('contacts "Contacts")
-    ('banks "Banks")
-    ('assets "Assets")
-    ;;('admins "Admin")
-    ('logout "Logout")))    
+  '(("balance" "Balance")
+    ("contacts" "Contacts")
+    ("banks" "Banks")
+    ("assets" "Assets")
+    ;;("admins" "Admin")
+    ("logout" "Logout")))    
 
 ;; The client-web state
 (defstruct cw
@@ -36,6 +38,7 @@
   body
   menu
   onload
+  fraction-asset
   )
 
 (defun append-debug (cw x)
@@ -55,6 +58,9 @@
          (web-server-internal client)
       (finalize client))))
 
+(defun delete-cookie (name)
+  (hunchentoot:set-cookie name :value "" :expires 0))
+
 (defun web-server-internal (client)
   (let* ((iphone (search "iPhone" (hunchentoot:user-agent)))
          (title "Trubanc Client")
@@ -66,13 +72,11 @@
       (setf (cw-debugstr cw) ""
             (showprocess client) (lambda (x) (append-debug cw x))))
 
-    (when session
-      (setq session (hunchentoot:cookie-value session))
+    (unless (blankp session)
       (handler-case
-          (progn (login-with-sessionid client session)
-                 (setq cmd "balance"))
+          (login-with-sessionid client session)
         (error (c)
-          (hunchentoot:set-cookie "session" :value nil)
+          (delete-cookie "session")
           (setf (cw-error cw) (format nil "Session login error: ~a" c)
                 cmd "logout"
                 session nil)))
@@ -85,12 +89,11 @@
 
            (init-bank cw)
 
-           (unless (bankid client)
-             (when (and cmd
-                        (not (equal cmd "logout"))
-                        (not (equal cmd "login"))
-                        (not (equal cmd "bank")))
-               (setq cmd "banks"))))
+           (cond ((bankid client) (setq cmd "balance"))
+                 (t (when (and (not (equal cmd "logout"))
+                               (not (equal cmd "login"))
+                               (not (equal cmd "bank")))
+                      (setq cmd "banks")))))
           ((and (not (equal cmd "login")) (not (equal cmd "register")))
            (setq cmd nil)))
 
@@ -98,32 +101,32 @@
           (with-output-to-string (s)
             (setf (cw-html-output cw) s)
             (cond ((not cmd) (draw-login cw))
-                          ((equal cmd "logout") (do-logout cw))
-                          ((equal cmd "login") (do-login cw))
-                          ((equal cmd "contact") (do-contact cw))
-                          ((equal cmd "bank") (do-bank cw))
-                          ((equal cmd "asset") (do-asset cw))
-                          ((equal cmd "admin") (do-admin cw))
-                          ((equal cmd "spend") (do-spend cw))
-                          ((equal cmd "canceloutbox") (do-canceloutbox cw))
-                          ((equal cmd "processinbox") (do-processinbox cw))
-                          ((equal cmd "storagefees") (do-storagefees cw))
-                          ((equal cmd "dohistory") (do-history cw))
-                          ((equal cmd "togglehistory") (do-togglehistory cw))
-                          ((equal cmd "toggleinstructions") (do-toggleinstructions cw))
+                  ((equal cmd "logout") (do-logout cw))
+                  ((equal cmd "login") (do-login cw))
+                  ((equal cmd "contact") (do-contact cw))
+                  ((equal cmd "bank") (do-bank cw))
+                  ((equal cmd "asset") (do-asset cw))
+                  ((equal cmd "admin") (do-admin cw))
+                  ((equal cmd "spend") (do-spend cw))
+                  ((equal cmd "canceloutbox") (do-canceloutbox cw))
+                  ((equal cmd "processinbox") (do-processinbox cw))
+                  ((equal cmd "storagefees") (do-storagefees cw))
+                  ((equal cmd "dohistory") (do-history cw))
+                  ((equal cmd "togglehistory") (do-togglehistory cw))
+                  ((equal cmd "toggleinstructions") (do-toggleinstructions cw))
             
-                          ((equal cmd "register") (draw-register cw))
-                          ((equal cmd "balance") (draw-balance cw))
-                          ((equal cmd "rawbalance") (draw-raw cw))
-                          ((equal cmd "contacts") (draw-contacts cw))
-                          ((equal cmd "banks") (draw-banks cw))
-                          ((equal cmd "assets") (draw-assets cw))
-                          ((equal cmd "admins") (draw-admin cw))
-                          ((equal cmd "coupon") (draw-coupon cw))
-                          ((equal cmd "history") (draw-history cw))
-                          (session (draw-balance cw))
+                  ((equal cmd "register") (draw-register cw))
+                  ((equal cmd "balance") (draw-balance cw))
+                  ((equal cmd "rawbalance") (draw-raw cw))
+                  ((equal cmd "contacts") (draw-contacts cw))
+                  ((equal cmd "banks") (draw-banks cw))
+                  ((equal cmd "assets") (draw-assets cw))
+                  ((equal cmd "admins") (draw-admin cw))
+                  ((equal cmd "coupon") (draw-coupon cw))
+                  ((equal cmd "history") (draw-history cw))
+                  (session (draw-balance cw))
               
-                          (t (draw-login cw)))))
+                  (t (draw-login cw)))))
 
     ;; Use title, body, onload, and debugstr to fill the page template.
     (let ((str (cw-debugstr cw)))
@@ -143,7 +146,6 @@
         (menu (cw-menu cw)))
     (unless title (setq title "A Trubanc Web Client"))
     (unless bankname (setq bankname "Trubanc"))
-    (unless menu (setq menu ""))
 
     (who (s (cw-html-output cw))
       (:html
@@ -155,12 +157,11 @@
        (:body
         :onload (cw-onload cw)
         (:p
-         (:a :href="../"
+         (:a :href "../"
              (:img :style "vertical-align: middle;border: 1px white"
                    :src "../trubanc-logo-50x49.gif"
-                   :alt "Trubanc" :width "50" :height="49"))
-         " "
-         (:b (str bankname))
+                   :alt "Trubanc" :width "50" :height "49"))
+         (:b " " (str bankname))
          (when menu
            (str "&nbsp;&nbsp;") (str menu)))
         (write-bankline cw)
@@ -223,7 +224,7 @@
 
 (defun draw-register (cw &optional key)
   (settitle cw "Register")
-  (setf (cw-menu cw) ""
+  (setf (cw-menu cw) nil
         (cw-onload cw) "document.forms[0].passphrase.focus()")
 
   (let* ((s (cw-html-output cw))
@@ -295,24 +296,24 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
   (let ((menu nil)
         (client (cw-client cw)))
     (cond ((and highlight client (bankid client))
-         (loop
-            for (cmd . text) in menuitems
-            do
-            (when (or (not (equal cmd "admins"))
-                      (and client
-                           (bankid client)
-                           (equal (id client) (bankid client))))
-              (if menu
-                  (dotcat menu "&nbsp;&nbsp")
-                  (setq menu ""))
-              (dotcat menu (menuitem cmd text highlight)))))
-        (t (setq menu (menuitem "logout" "Logout"  nil))))
+           (loop
+              for (cmd . text) in menuitems
+              do
+              (when (or (not (equal cmd "admins"))
+                        (and client
+                             (bankid client)
+                             (equal (id client) (bankid client))))
+                (if menu
+                    (dotcat menu "&nbsp;&nbsp")
+                    (setq menu ""))
+                (dotcat menu (menuitem cmd text highlight)))))
+          (t (setq menu (menuitem "logout" "Logout"  nil))))
     (setf (cw-menu cw) menu)))
 
 (defun do-logout (cw)
   (when (cw-session cw)
     (logout (cw-client cw)))
-  (hunchentoot:set-cookie "session" :value nil)
+  (delete-cookie "session")
   (setf (cw-bankline cw) nil
         (cw-error cw) nil)
   (draw-login cw))
@@ -331,24 +332,24 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
 
     (when newacct
       (setq login nil)
-      (cond ((not passphrase)
+      (cond ((blankp passphrase)
              (setq err "Passphrase may not be blank"))
-            ((and (not privkey) (not (equal passphrase passphrase2)))
+            ((and (blankp privkey) (not (equal passphrase passphrase2)))
              (setq err "Passphrase didn't match Verification"))
-            (privkey
+            ((not (blankp privkey))
              ;; Support adding a passphrase to a private key without one
              (ignore-errors
                (with-rsa-private-key (pk privkey)
                  (cond ((not (equal passphrase passphrase2))
                         (setq err "Passphrase didn't match Verification"))
                        (t (setq privkey (encode-rsa-private-key pk passphrase)))))))
-            (t (setq privkey keysize)))
+            (t (setq privkey (parse-integer keysize))))
 
       (when err
         (setf (cw-error cw) err)
-        (return-from do-login))
+        (return-from do-login (draw-login cw)))
 
-      (cond ((and coupon (not (equal coupon "")))
+      (cond ((not (blankp coupon))
              (handler-case
                  (multiple-value-bind (bankid url)
                      (parse-coupon coupon)
@@ -359,7 +360,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                  ;; already has an account at that bank.
                  (handler-case (verify-bank client coupon)
                    (error (c) (setq err (format nil "Invalid coupon: ~a" c)))))))
-            ((and *require-coupon* (not privkey))
+            ((and *require-coupon* (not (stringp privkey)))
              (setq err "Bank coupon required for registration")))
 
       (unless err
@@ -379,12 +380,13 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
             ;; and check whether it comes back.
             (hunchentoot:set-cookie "session" :value session)
             (when newacct
-              (addbank client coupon name t)
-              (init-bank cw)
-              (return-from do-login
-                (if (bankid client)
-                    (draw-balance cw)
-                    (draw-banks cw)))))
+              (unless (blankp coupon)
+                (addbank client coupon name t)
+                (init-bank cw)))
+            (return-from do-login
+              (if (bankid client)
+                  (draw-balance cw)
+                  (draw-banks cw))))
         (error (c)
           (setq err (format nil "Login error: ~a" c)))))
 
@@ -407,7 +409,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
              (cond ((or (not bank) (equal bank ""))
                     (setq err "You must choose a bank"))
                    (t (setf (user-preference client "bankid") bank)
-                      (init-bank cw t)))))
+                      (init-bank cw t)
+                      (setq err (cw-error cw))))))
       (cond (err
              (setf (cw-error cw) err)
              (draw-banks cw bankurl name))
@@ -790,7 +793,8 @@ function do_toggleinstructions() {
 (defun do-storing-error (setter format thunk)
   (handler-case (funcall thunk)
     (error (c)
-      (funcall setter (format nil format c)))))
+      (funcall setter (format nil format c))
+      nil)))
 
 (defconstant $nl #.(format nil "~%"))
 (defconstant $brn #.(format nil "<br/>~%"))
@@ -810,7 +814,8 @@ function do_toggleinstructions() {
          inboxcode
          seloptions
          (balcode "")
-         (assetlist "")
+         assetlist
+         assetlist-stream
          (assetidx 0)
          (acctidx 0)
          (gotbal nil)
@@ -818,6 +823,7 @@ function do_toggleinstructions() {
          inbox
          outbox
          accts
+         balance
          assets
          acctoptions
          acctheader
@@ -825,7 +831,10 @@ function do_toggleinstructions() {
          (spendcnt 0)
          (nonspendcnt 0)
          (inbox-msgtimes (make-equal-hash))
-         assets)
+         assets
+         outboxcode
+         balcode
+         gotbal-p)
 
     (settitle cw "Balance")
     (setmenu cw "balance")
@@ -862,6 +871,7 @@ function do_toggleinstructions() {
                      (getoutbox client))
             accts (storing-error (err "Error getting accts: ~a")
                     (getaccts client))
+            balance (storing-error (err "Error getting balance: ~a"))
             acctoptions
             (and (> (length accts) 0)
                  (with-output-to-string (s)
@@ -897,10 +907,12 @@ function do_toggleinstructions() {
                       (cond ((not (equal request $SPEND))
                              (let* ((msgtime (inbox-msgtime item))
                                     (outitem (find msgtime outbox
-                                                   :test #'equal :key #'outbox-time)))
+                                                   :test #'equal
+                                                   :key #'outbox-time)))
                                (setf (gethash msgtime inbox-msgtimes) item)
                                (when outitem
-                                 (setf (inbox-assetname item) (outbox-assetname outitem)
+                                 (setf (inbox-assetname item) (outbox-assetname
+                                                               outitem)
                                        (inbox-formattedamount item)
                                        (outbox-formattedamount outitem)
                                        (inbox-reply item) (inbox-note item)
@@ -909,14 +921,16 @@ function do_toggleinstructions() {
                             (t (let* ((assetid (inbox-assetid item))
                                       (assetname (hsc (inbox-assetname item)))
                                       (amount (hsc (inbox-formattedamount item)))
-                                      (itemnote (normalize-note (hsc (inbox-note item))))
+                                      (itemnote (normalize-note
+                                                 (hsc (inbox-note item))))
                                       (selname (format nil "spend~d" spendcnt))
                                       (notename (format nil "spendnote~d" spendcnt))
                                       (acctselname (format nil "acct~d" spendcnt))
                                       (timecode
                                        (whots (s)
                                          (:input :type "hidden"
-                                                 :name (format nil "spendtime~a" spendcnt)
+                                                 :name (format nil "spendtime~a"
+                                                               spendcnt)
                                                  :value time)))
                                       (selcode
                                        (whots (s)
@@ -943,7 +957,8 @@ function do_toggleinstructions() {
                                            (str namestr)
                                            (:br)
                                            (:input :type "hidden"
-                                                   :name (format nil "spendid~a" spendcnt)
+                                                   :name (format nil "spendid~a"
+                                                                 spendcnt)
                                                    :value fromid)
                                            "Nickname: "
                                            (:input :type "text"
@@ -1007,7 +1022,8 @@ function do_toggleinstructions() {
                                         :value fromid)
                                 "Nickname: "
                                 (:input :type "text"
-                                        :name (format nil "nonspendnick~d" nonspendcnt)
+                                        :name (format nil "nonspendnick~d"
+                                                      nonspendcnt)
                                         :size "10"))))
                       (incf nonspendcnt)
                       (who (inbox-stream)
@@ -1050,154 +1066,172 @@ function do_toggleinstructions() {
                  (:input :type "submit" :name "submit"
                          :value "Process Inbox"))))))
 
-)))
+      ;; Prepare outbox display
+      (let ((cancelcount 0))
+        (setq
+         outboxcode
+         (with-output-to-string (outbox-stream)
+           (dolist (item outbox)
+             (let* ((time (outbox-time item))
+                    (timestr (hsc time))
+                    (date (datestr time))
+                    (request (outbox-request item)))
+               (when (equal request $SPEND)
+                 (let ((recip (outbox-id item))
+                       (assetname (hsc (outbox-assetname item)))
+                       (amount (hsc (outbox-formattedamount item)))
+                       (note (hsc (outbox-note item)))
+                       (label "Cancel")
+                       namestr
+                       (cancelcode "&nbsp;"))
+                   (unless (and note (not (equal note "")))
+                     (setq note  "&nbsp;"))
+                   (cond ((equal recip $COUPON)
+                          (let ((timearg (hunchentoot:url-encode time)))
+                            (setq label "Redeem"
+                                  namestr
+                                  (whots (s)
+                                    (:a :href (format nil
+                                                      "./?cmd=coupon&time=~a"
+                                                      timearg)
+                                        (str recip))))))
+                         (t (setq namestr (id-namestr cw recip))))
+                   (unless (gethash time inbox-msgtimes)
+                     (setq cancelcode
+                           (whots (s)
+                             (:input :type "hidden" :name "canceltime$cancelcount"
+                                     :value timestr)
+                             (:input :type "submit"
+                                     :name (format nil "cancel~d" cancelcount)
+                                     :value label)))
+                     (incf cancelcount))
+                   (who (outbox-stream)
+                     (:tr
+                      (:td (str date))
+                      (:td (str namestr))
+                      (:td :align "right" :style "border-right-width: 0;"
+                           (str amount))
+                      (:td :style "border-left-width: 0;"
+                           (str assetname))
+                      (:td (str note))
+                      (:td (str cancelcode))))))))))
+        (unless (equal outboxcode "")
+          (setq outboxcode
+                (whots (s)
+                       (:table
+                        :border "1"
+                        (:caption (:b "=== Outbox ==="))
+                        (:tr
+                         (:th "Time")
+                         (:th "Recipient")
+                         (:th :colspan "2" "Amount")
+                         (:th "Note")
+                         (:th "Action"))
+                        (str outboxcode))))
+          (when (> cancelcount 0)
+            (setq outboxcode
+                  (whots (s)
+                    (:form
+                     :method "post" :action "./" :autocomplete "off"
+                     (:input :type "hidden" :name "cmd" :value "canceloutbox")
+                     (:input :type "hidden" :name "cancelcount" :value cancelcount)
+                     (str outboxcode)))))))
+
+      (when balance
+        (setq
+         balcode
+         (with-output-to-string (bal-stream)
+           (loop
+              for (acct . assets) in balance
+              for assetcode-stream = (make-string-output-stream)
+              for newassetlist-stream = (make-string-output-stream)
+              do
+                (setq acct (hsc acct))
+                (dolist (bal assets)
+                  (unless (eql 0 (bccomp (balance-amount bal) 0))
+                    (setq gotbal-p t)
+                    (let ((assetid (hsc (balance-assetid bal)))
+                          (assetname (hsc (balance-assetname bal)))
+                          (formattedamount (hsc (balance-formatted-amount bal))))
+                      (who (newassetlist-stream)
+                        (:input :type "hidden"
+                                :name (format nil "assetid~d|~d" acctidx assetidx)
+                                :value assetid))
+                      (who (assetcode-stream)
+                        (:tr
+                         (:td :align "right"
+                              (:span :style "margin-right: 5px"
+                                     (str formattedamount)))
+                         (:td (str assetname))
+                         (:td
+                          (:input :type "submit"
+                                  :name (format nil "spentasset~d|~d"
+                                                acctidx assetidx)
+                                  :value "Spend"))))
+                      (incf assetidx))))
+              finally
+                (let ((assetcode (get-output-stream-string assetcode-stream))
+                      (newassetlist (get-output-stream-string newassetlist-stream)))
+                  (unless (equal assetcode "")
+                    (who (bal-stream)
+                      (:tr
+                       (:th :colspan "3"
+                            "- " (str acct) " -")
+                       (str $nl)
+                       (str assetcode))))
+                  (unless (equal newassetlist "")
+                    (unless assetlist-stream
+                      (setq assetlist-stream (make-string-output-stream)))
+                    (who (assetlist-stream)
+                      (:input :type "hidden"
+                              :name (format nil "acct~d" acctidx)
+                              :value acct)
+                      (str newassetlist))
+                    (incf acctidx))))))
+        (setq
+         balcode
+         (with-output-to-string (bal-stream)
+           (who (bal-stream)
+             (:table
+              :border "1"
+              (:caption (:b "=== Balances ==="))
+              (:tr
+               (:td
+                (:table
+                 (:tr
+                  (:td :colspan "3" "&nbsp;")
+                  (str balcode)))))))
+           (let ((enabled (if (keep-history-p client)
+                              "enabled"
+                              "disabled")))
+             (when (and (cw-fraction-asset cw) (showprocess client))
+               (let* ((fraction (car (getfraction client (cw-fraction-asset cw)))))
+                 (when fraction
+                   (let ((amt (fraction-amount fraction))
+                         (scale (fraction-scale fraction)))
+                     (who (bal-stream)
+                       "Fractional balance: "
+                       (str amt)
+                       (unless (eql 0 (bccomp scale 0))
+                         (who (bal-stream)
+                           " x 10"
+                           (:sup "-" (str scale))))
+                       (:br))))))
+             (who (bal-stream)
+               (:br)
+               (:a :href "./?cmd=rawbalance"
+                   "Show raw balance")
+               (:br)
+               (:a :href "./?cmd=history" "Show history")
+               " (" (str enabled) ")"
+               (:br)))))
+
+        (when assetlist-stream
+          (setq assetlist (get-output-stream-string assetlist-stream)))
+
+))))
 
 #||
-;; Continue here
-
-    // Prepare outbox display
-    $cancelcount = 0;
-    $outboxcode = '';
-    foreach ($outbox as $time => $items) {
-      $timestr = hsc($time);
-      $date = datestr($time);
-      foreach ($items as $item) {
-        $request = $item[$t->REQUEST];
-        if ($request == $t->SPEND) {
-          $recip = $item[$t->ID];
-          if (!$outboxcode) $outboxcode = <<<EOT
-<table border="1">
-<caption><b>=== Outbox ===</b></caption>
-<tr>
-<th>Time</th>
-<th>Recipient</th>
-<th colspan="2">Amount</th>
-<th>Note</th>
-<th>Action</th>
-</tr>
-EOT;
-          $assetname = hsc($item[$t->ASSETNAME]);
-          $amount = hsc($item[$t->FORMATTEDAMOUNT]);
-          $not = hsc($item[$t->NOTE]);
-          if (!$not) $not = '&nbsp;';
-          $label = 'Cancel';
-          if ($recip == $t->COUPON) {
-            $label = 'Redeem';
-            $recip = hsc($recip);
-            $timearg = urlencode($time);
-            $namestr = <<<EOT
-<a href="./?cmd=coupon&time=$timearg">$recip</a>
-EOT;
-          } else {
-            $namestr = id_namestr($recip, $contact);
-          }
-          $cancelcode = '&nbsp;';
-          if (!@$inbox-msgtimes[$time]) {
-            $cancelcode = <<<EOT
-<input type="hidden" name="canceltime$cancelcount" value="$timestr"/>
-<input type="submit" name="cancel$cancelcount" value="$label"/>
-
-EOT;
-            $cancelcount++;
-          }
-          $outboxcode .= <<<EOT
-<tr>
-<td>$date</td>
-<td>$namestr</td>
-<td align="right" style="border-right-width: 0;">$amount</td>
-<td style="border-left-width: 0;">$assetname</td>
-<td>$not</td>
-<td>$cancelcode</td>
-</tr>
-EOT;
-        }
-      }
-    }
-    if ($outboxcode) {
-      $outboxcode .= "</table>\n";
-      if ($cancelcount > 0) {
-        $outboxcode = <<<EOT
-<form method="post" action="./" autocomplete="off">
-<input type="hidden" name="cmd" value="canceloutbox"/>
-<input type="hidden" name="cancelcount" value="$cancelcount"/>
-$outboxcode
-</form>
-
-EOT;
-      }
-    }
-
-    $balance = $client->getbalance();
-    if (is_string($balance)) $error = $balance;
-    elseif (count($balance) > 0) {
-      $balcode = "<table border=\"1\">\n<caption><b>=== Balances ===</b></caption>
-<tr><td><table>";
-      $firstacct = true;
-      foreach ($balance as $acct => $assets) {
-        $acct = hsc($acct);
-        $assetcode = '';
-        $newassetlist = '';
-        foreach ($assets as $asset => $data) {
-          if ($data[$t->AMOUNT] != 0) {
-            $gotbal = true;
-            $assetid = hsc($data[$t->ASSET]);
-            $assetname = hsc($data[$t->ASSETNAME]);
-            $formattedamount = hsc($data[$t->FORMATTEDAMOUNT]);
-            $submitcode = '';
-            $newassetlist .= <<<EOT
-<input type="hidden" name="assetid$acctidx|$assetidx" value="$assetid"/>
-
-EOT;
-            $submitcode = <<<EOT
-<input type="submit" name="spentasset$acctidx|$assetidx" value="Spend"/>
-
-EOT;
-            $assetidx++;
-            $assetcode .= <<<EOT
-<tr>
-<td align="right"><span style="margin-right: 5px">$formattedamount</span></td>
-<td>$assetname</td>
-<td>$submitcode</td>
-</tr>
-
-EOT;
-          }
-        }
-
-        if ($assetcode) {
-          if (!$firstacct) {
-            $balcode .= "<tr><td colspan=\"3\">&nbsp;</td></tr>\n";
-          } else $firstacct = false;
-          $balcode .= "<tr><th colspan=\"3\">- $acct -</th></tr>\n$assetcode";
-        }
-
-        if ($newassetlist) {
-          $assetlist .= <<<EOT
-<input type="hidden" name="acct$acctidx" value="$acct"/>
-$newassetlist
-EOT;
-          $acctidx++;
-        }
-      }
-      $balcode .= "</table>\n</td></tr></table>\n";
-      $enabled = ($keephistory == 'keep' ? 'enabled' : 'disabled');
-      if ($fraction_asset && $_COOKIE['debug']) {
-        $fraction = $client->getfraction($fraction_asset);
-        $amt = $fraction[$t->AMOUNT];
-        $scale = $fraction[$t->SCALE];
-        $balcode .= "Fractional balance: $amt";
-        if ($scale) $balcode .= " x 10<sup>-$scale</sup>";
-        $balcode .= "<br/>\n";
-      }
-      $balcode .= <<<EOT
-<br/>
-<a href="./?cmd=rawbalance">Show raw balance</a>
-<br/>
-<a href="./?cmd=history">Show history</a> ($enabled)
-<br/>
-
-EOT;
-    }
 
     $openspend = '';
     $spendcode = '';
@@ -1551,74 +1585,75 @@ EOT;
   }
 }
 
-function draw_banks($bankurl='', $name='') {
-  global $onload, $body;
-  global $error;
-  global $client;
+||#
 
-  $t = $client->t;
+(defun draw-banks(cw &optional bankurl name)
+  (let* ((client (cw-client cw))
+         (banks (getbanks client))
+         (err (cw-error cw))
+         (stream (cw-html-output cw)))
 
-  $banks = $client->getbanks();
+    (setf (cw-onload cw) "document.forms[0].bankurl.focus()")
+    (settitle cw "Banks")
+    (setmenu cw "banks")
 
-  $onload = "document.forms[0].bankurl.focus()";
-  settitle('Banks');
-  setmenu('banks');
+    (who (stream)
+      (:span :style "color: red;" (str err))
+      (:br)
+      (:form
+       :method "post" :action "./" :autocomplete "off"
+       (:input :type "hidden" :name "cmd" :value "bank")
+       (:table
+        (:tr
+         (:td (:b "Bank URL"
+                  (:br)
+                  "or Coupon:"))
+         (:td
+          (:input :type "text" :name "bankurl" :size "64"
+                                               :value bankurl)))
+        (:tr
+         (:td (:b "Account Name"
+                  (:br)
+                  "(optional):"))
+         (:td
+          (:input :type "text" :name "name" :size "40"
+                                            :value name)))
+        (:tr
+         (:td)
+         (:td
+          (:input :type "submit" :name "newbank" :value "Add Bank")
+          (:input :type "submit" :name "cancel" :value "Cancel"))))))
 
-  $body .= <<<EOT
-<span style="color: red;">$error</span><br/>
-<form method="post" action="./" autocomplete="off">
-<input type="hidden" name="cmd" value="bank"/>
-<table>
-<tr>
-<td><b>Bank URL<br/>or Coupon:</b></td>
-<td><input type="text" name="bankurl" size="64" value="$bankurl"/>
-</tr><tr>
-<td><b>Account Name<br/>(optional):</b></td>
-<td><input type="text" name="name" size="40" value="$name"/></td>
-</tr><tr>
-<td></td>
-<td><input type="submit" name="newbank" value="Add Bank"/>
-<input type="submit" name="cancel" value="Cancel"/></td>
-</tr>
-</table>
-</form>
+    (when banks
+      (who (stream)
+          (:table
+           :border "1"
+           (:tr
+            (:th "Bank")
+            (:th "URL")
+            (:th "ID")
+            (:th "Choose"))
+           (dolist (bank banks)
+             (let ((bid (bank-id bank)))
+               (unless (equal (userreq client bid) "-1")
+                 (let ((name (bank-name bank))
+                       (url (hsc (bank-url bank))))
+                   (when (blankp name)
+                     (setq name "unnamed"))
+                   (who (stream)
+                     (:form
+                      :method "post" :action "./" :autocomplete "off"
+                      (:input :type "hidden" :name "cmd" :value "bank")
+                      (:input :type "hidden" :name "bank" :value bid)
+                      (:tr
+                       (:td (esc name))
+                       (:td (:a :href url (str url)))
+                       (:td (esc bid))
+                       (:td
+                        (:input :type "submit" :name "selectbank"
+                                               :value "Choose"))))))))))))))
 
-EOT;
-
-  if (count($banks) > 0) {
-    $body .= '<table border="1">
-<tr>
-<th>Bank</th>
-<th>URL</th>
-<th>ID</th>
-<th>Choose</th>
-</tr>
-';
-    foreach ($banks as $bid => $b) {
-      if ($client->userreq($bid) != -1) {
-        $name = hsc($b[$t->NAME]);
-        if (!$name) $name = "unnamed";
-        $url = hsc($b[$t->URL]);
-        $body .= <<<EOT
-<form method="post" action="./" autocomplete="off">
-<input type="hidden" name="cmd" value="bank"/>
-<input type="hidden" name="bank" value="$bid"/>
-<tr>
-<td>$name</td>
-<td><a href="$url">$url</a></td>
-<td>$bid</td>
-<td><input type="submit" name="selectbank" value="Choose"/></td>
-</tr>
-</form>
-
-EOT;
-      }
-    }
-    $body .= "</table>\n";
-  }
-  
-}
-
+#||
 function draw_contacts($id=false, $nickname=false, $notes=false) {
   global $onload, $body;
   global $error;

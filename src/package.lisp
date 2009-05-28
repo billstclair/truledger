@@ -223,6 +223,7 @@
    #:strstr
    #:str-replace
    #:zero-string
+   #:blankp
 
    ;; client.lisp & server.lisp
    #:id
@@ -369,6 +370,7 @@
    #:assetinfo-digits
    #:outbox
    #:outbox-time
+   #:outbox-id
    #:outbox-request
    #:outbox-assetid
    #:outbox-assetname

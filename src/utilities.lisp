@@ -218,6 +218,9 @@
            res))
     (sort res 'string-lessp)))
 
+(defun blankp (x)
+  (or (null x) (equal x "")))
+
 (defun get-host-name ()
   (usocket::get-host-name))
 

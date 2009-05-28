@@ -230,10 +230,10 @@
                    url (trim (car a))
                    coupon-number (trim (cadr a)))))
           (t (let* ((parse (tokenize coupon))
-                    (items (print (map #'vector #'cdr parse))))
+                    (items (print (map 'vector #'cdr parse))))
                ; [$id,coupon,$bankid,
                (unless (>= (length items) 7)
-                 (error "Malformed coupon message, < 7 tokens"))
+                 (error "Malformed coupon message"))
                (unless (equal (elt items 0) #\()
                  (error "Message doesn't start with left paren"))
                (setq bankid (elt items 1)
@@ -1864,6 +1864,7 @@
 
 (defstruct outbox
   time
+  id
   request
   assetid
   assetname
@@ -1932,6 +1933,7 @@
             (setq outbox
                   (make-outbox
                    :time time
+                   :id id
                    :request request
                    :assetid assetid
                    :assetname assetname
@@ -1940,7 +1942,7 @@
 
             (cond ((equal request $SPEND)
                    (when item
-                     (error "More than on spend message in an outbox item"))
+                     (error "More than one spend message in an outbox item"))
                    (setf item outbox
                          (outbox-note item) (getarg $NOTE args)))
                   ((equal request $TRANFEE)
@@ -2640,6 +2642,7 @@
                      (trubanc-server:process test-server msg)
                      (post url vars)))
             (text nil))
+        (unless res (error "Null result from server"))
         (when (and (> (length res) 2)
                    (equal "<<" (subseq res 0 2)))
           (let ((pos (search #.(format nil ">>~%") res)))
