@@ -47,7 +47,7 @@
                (strcat str x)))))
 
 (defun hsc (x)
-  (hunchentoot:escape-for-html x))
+  (hunchentoot:escape-for-html (or x "")))
 
 ;; Called from do-trubanc-client in server-web.lisp
 ;; Returns a string with the contents of the client web page.
@@ -431,48 +431,40 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
              (draw-banks cw bankurl name))
             (t (draw-balance cw))))))
 
+(defun do-contact (cw)
+  (let ((client (cw-client cw))
+        (err nil))
+    (bind-parameters (addcontact deletecontacts chkcnt id nickname notes)
+      (setq chkcnt
+            (if (blankp chkcnt)
+                0
+                (or (ignore-errors (parse-integer chkcnt)) 0)))
+      (cond (addcontact
+             (when (blankp id)
+               (dotimes (i chkcnt)
+                 (let ((chki (hunchentoot:parameter (format nil "chk~d" i))))
+                   (unless (blankp chki)
+                     (setq id  (hunchentoot:parameter (format nil "id~d" i)))
+                     (return)))))
+             (cond ((blankp id)
+                    (setq err
+                          "you must specify an id, either explicitly or by checking an existing contact"))
+                   (t (handler-case (addcontact client id nickname notes)
+                        (error (c)
+                          (setq err (format nil "can't add contact: ~a" c))))))
+             (if (setf (cw-error cw) err)
+               (draw-contacts cw id nickname notes)
+               (draw-contacts cw)))
+            (deletecontacts
+             (dotimes (i chkcnt)
+               (let ((chki (hunchentoot:parameter (format nil "chk~d" i))))
+                 (unless (blankp chki)
+                   (let ((id (hunchentoot:parameter (format nil "id~d" i))))
+                     (deletecontact client id)))))
+             (draw-contacts cw))
+            (t (draw-balance cw))))))
+
 #||
-
-function do_contact() {
-  global $client;
-  global $error;
-
-  $addcontact = mqpost('addcontact');
-  $deletecontacts = mqpost('deletecontacts');
-  $chkcnt = mqpost('chkcnt');
-
-  if ($addcontact) {
-    $id = mqpost('id');
-    $nickname = mqpost('nickname');
-    $notes = mqpost('notes');
-    if (!$id) {
-      for ($i=0; $i<$chkcnt; $i++) {
-        $chki = mqpost("chk$i");
-        if ($chki) {
-          $id = mqpost("id$i");
-          break;
-        }
-      }
-    }
-    $err = '';
-    if ($id) $err = $client->addcontact($id, $nickname, $notes);
-    else $error = "You must specify an ID, either explicitly or by checking an existing contact";
-    if ($err) {
-      $error = "Can't add contact: $err";
-      draw_contacts($id, $nickname, $notes);
-    } else draw_contacts();
-  } elseif ($deletecontacts) {
-    for ($i=0; $i<$chkcnt; $i++) {
-      $chki = mqpost("chk$i");
-      if ($chki) {
-        $id = mqpost("id$i");
-        $client->deletecontact($id);
-      }
-    }
-    draw_contacts();
-  } else draw_balance();
-
-  }
 
 // Here to add a new asset
 function do_asset() {
@@ -724,8 +716,7 @@ function do_togglehistory() {
   (setf (user-preference (cw-client cw) "hideinstructions") value))
 
 (defun do-toggleinstructions (cw)
-  (let ((client (cw-client cw))
-        (page (hunchentoot:parameter "page")))
+  (let ((page (hunchentoot:parameter "page")))
     (setf (hideinstructions cw)
           (and (blankp (hideinstructions cw)) "hide"))
     (if (equal page "history")
@@ -1656,96 +1647,84 @@ EOT;
                         (:input :type "submit" :name "selectbank"
                                                :value "Choose"))))))))))))))
 
+(defun draw-contacts (cw &optional id nickname notes)
+  (let* ((client (cw-client cw))
+         (stream (cw-html-output cw))
+         (contacts (getcontacts client)))
+
+    (setf (cw-onload cw) "document.forms[0].id.focus()")
+    (settitle cw "Contacts")
+    (setmenu cw "contacts")
+
+    (who (stream)
+      (:span :style "color: red;" (str (cw-error cw)))
+      (:br)
+      (:form
+       :method "post" :action "./" :autocomplete "off"
+       (:input :type "hidden" :name "cmd" :value "contact")
+       (:table
+        (:tr
+         (:td :align "right" (:b "ID:"))
+         (:td
+          (:input :type "text" :name "id" :size "40" :value (esc id))))
+        (:tr
+         (:td (:b "Nickname" (:br) "(Optional):"))
+         (:td
+          (:input :type "text" :name "nickname" :size "30" :value (esc nickname))))
+        (:tr
+         (:td (:b "Notes" (:br) "(Optional):"))
+         (:td
+          (:textarea :name "notes" :cols "30" :rows "10") (esc notes)))
+        (:tr
+         (:td)
+         (:td
+          (:input :type "submit" :name "addcontact" :value "Add/Change Contact")
+          (:input :type "submit" :name "cancel" :value "Cancel"))))
+
+       (when contacts
+         (who (stream)
+           (:br)
+           (:form
+            :method "post" :action "./" :autocomplete "off"
+            (:input :type "hidden" :name "cmd" :value "contact")
+            (:input :type "hidden" :name "chkcnt" :value (length contacts))
+            (:table
+             :border "1"
+             (:tr
+              (:th "Nickname")
+              (:th "Name")
+              (:th "Display")
+              (:th "ID")
+              (:th "Notes")
+              (:th "x"))
+             (let ((idx 0))
+               (dolist (contact contacts)
+                 (let* ((id (hsc (contact-id contact)))
+                        (name (trim (hsc (contact-name contact))))
+                        (nickname (hsc (contact-nickname contact)))
+                        (display (namestr nickname name id))
+                        (note  (hsc (contact-note contact))))
+                   (when (blankp name) (setq name "&nbsp;"))
+                   (when (blankp nickname) (setq nickname "&nbsp;"))
+                   (setq note
+                         (if (blankp note)
+                             "&nbsp;"
+                             (str-replace $nl $brn note)))
+                   (who (stream)
+                     (:tr
+                      (:td (str nickname))
+                      (:td (str name))
+                      (:td (str display))
+                      (:td (str id))
+                      (:td (str note))
+                      (:td
+                       (:input :type "hidden" :name (format nil "id~d" idx)
+                                              :value id)
+                       (:input :type "checkbox" :name (format nil "chk~d" idx)))))
+                   (incf idx)))))
+            (:input :type "submit" :name "deletecontacts" :value "Delete checked"))))))))
+
 #||
-function draw_contacts($id=false, $nickname=false, $notes=false) {
-  global $onload, $body;
-  global $error;
-  global $client;
-
-  $t = $client->t;
-
-  $onload = "document.forms[0].id.focus()";
-  settitle('Contacts');
-  setmenu('contacts');
-
-  $id = hsc($id);
-  $nickname = hsc($nickname);
-  $notes = hsc($notes);
-
-  $body = <<<EOT
-<span style="color: red;">$error</span><br/>
-<form method="post" action="./" autocomplete="off">
-<input type="hidden" name="cmd" value="contact">
-<table>
-<tr>
-<td align="right"><b>ID:</b></td>
-<td><input type="text" name="id" size="40" value="$id"/></td>
-</tr><tr>
-<td><b>Nickname<br/>(Optional):</b></td>
-<td><input type="text" name="nickname" size="30" value="$nickname"/></td>
-</tr><tr>
-<td><b>Notes<br/>(Optional):</b></td>
-<td><textarea name="notes" cols="30" rows="10">$notes</textarea></td>
-</tr><tr>
-<td></td>
-<td><input type="submit" name="addcontact" value="Add/Change Contact"/>
-<input type="submit" name="cancel" value="Cancel"/></td>
-</tr>
-</table>
-
-EOT;
-
-  $contacts = $client->getcontacts();
-  $cnt = count($contacts);
-  if ($cnt > 0) {
-    $body .= '<br/><form method="post" action="./" autocomplete="off">
-<input type="hidden" name="cmd" value="contact"/>
-<input type="hidden" name="chkcnt" value="' . $cnt . '"/>
-<table border="1">
-<tr>
-<th>Nickname</th>
-<th>Name</th>
-<th>Display</th>
-<th>ID</th>
-<th>Notes</th>
-<th>x</th>
-</tr>';
-    $idx = 0;
-    foreach ($contacts as $contact) {
-      $id = hsc($contact[$t->ID]);
-      $name = trim(hsc($contact[$t->NAME]));
-      $nickname = trim(hsc($contact[$t->NICKNAME]));
-      $display = namestr($nickname, $name, $id);
-      if (!$name) $name = '&nbsp;';
-      if (!$nickname) $nickname = '&nbsp;';
-      
-      $note = hsc($contact[$t->NOTE]);
-      if (!$note) $note = "&nbsp;";
-      else $note = str_replace("\n", "<br/>\n", $note);
-      $body .= <<<EOT
-<tr>
-<td>$nickname</td>
-<td>$name</td>
-<td>$display</td>
-<td>$id</td>
-<td>$note</td>
-<td>
-<input type="hidden" name="id$idx" value="$id"/>
-<input type="checkbox" name="chk$idx"/>
-</td>
-</tr>
-
-EOT;
-      $idx++;
-    }
-    $body .= <<<EOT
-</table>
-<br/>
-<input type="submit" name="deletecontacts" value="Delete checked"/>
-</form>
-EOT;
-  }
-}
 
 function draw_assets($scale=false, $precision=false, $assetname=false, $storage=false) {
   global $onload, $body;

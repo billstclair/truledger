@@ -509,7 +509,7 @@
       (let* ((ids (db-contents db (contactkey client)))
              (res (loop
                      for otherid in ids
-                     for contact = (getcontact-internal client otherid)
+                     for contact = (getcontact-internal client otherid nil nil)
                      when contact
                      collect contact)))
         (sort res #'contacts-lessp)))))
