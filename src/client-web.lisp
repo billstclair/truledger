@@ -172,7 +172,7 @@
         (:p
          (:a :href "http://common-lisp.net/"
              (:img
-              :style "border: 0;" :src "../ll.png"
+              :style "border: 0;" :src "../little-lambda.png"
               :alt "Made with Lisp" :title "Made with Lisp"
               :width "16" :height "16"))))))))
 
@@ -858,7 +858,7 @@ function do_togglehistory() {
                      (let ((bname (bank-name bank))
                            (burl (bank-url bank)))
                        (who (s)
-                         (:option :value bid (str bname) (str burl)))))))))))
+                         (:option :value bid (str bname) " " (str burl)))))))))))
       (unless (blankp bankopts)
         (setq
          bankcode
