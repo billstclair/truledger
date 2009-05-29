@@ -168,7 +168,13 @@
         (write-bankline cw)
         (write-idcode cw)
         (str (cw-body cw))
-        (str (cw-debugstr cw)))))))
+        (str (cw-debugstr cw))
+        (:p
+         (:a :href "http://common-lisp.net/"
+             (:img
+              :style "border: 0;" :src "../ll.png"
+              :alt "Made with Lisp" :title "Made with Lisp"
+              :width "16" :height "16"))))))))
 
 (defun write-bankline (cw)
   (let* ((client (cw-client cw))
@@ -714,21 +720,17 @@ function do_togglehistory() {
 (defun hideinstructions(cw)
   (user-preference (cw-client cw) "hideinstructions"))
 
-(defun (setf hideinstrutions) (value cw)
+(defun (setf hideinstructions) (value cw)
   (setf (user-preference (cw-client cw) "hideinstructions") value))
 
-#||
-
-function do_toggleinstructions() {
-  global $client;
-
-  $page = mqrequest('page');
-  hideinstructions(hideinstructions() ? '' : 'hide');
-  if ($page == 'history') draw_history();
-  else draw_balance();
-}
-
-||#
+(defun do-toggleinstructions (cw)
+  (let ((client (cw-client cw))
+        (page (hunchentoot:parameter "page")))
+    (setf (hideinstructions cw)
+          (and (blankp (hideinstructions cw)) "hide"))
+    (if (equal page "history")
+        (draw-history cw)
+        (draw-balance cw))))
 
 (defun init-bank (cw &optional report-error-p)
   (let* ((client (cw-client cw))

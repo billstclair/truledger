@@ -78,6 +78,25 @@
 (defun do-trubanc-web-client ()
   (trubanc-client-web:web-server))
   
+(defparameter *little-lambda-base64*
+"iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+g
+ vaeTAAAACXBIWXMAAAsSAAALEgHS3X78AAAAB3RJTUUH1AITDy0QS9ZSPgAAAKxJ
+ REFUeNrNk8ENwyAQBNdR2qAPUwj0AfRx7sMUAn1AH5uXUeQQ28SfzOs4pBG3JyaS
+ xA0euElXEEJACOE3wbIsrY4xnhu4Q0RYSiFJeu95Bo4u32XDglIKAXBd10PB1y1s
+ WeScDyN49po5Z4gIRGQ8xG12pRRJ0hgzPkKMEc45AIBSCrVWAIC19toatdbtnFIi
+ AGqtmVL6eEE3A2NMq+d5hve+1Xum//xMI7wAbKVIbzySjiIAAAAASUVORK5CYII=")
+
+(defun from-now-rfc-1123 (delta-seconds)
+  (hunchentoot:rfc-1123-date
+   (+ (get-universal-time) delta-seconds)))
+
+(defun do-little-lambda ()
+  (setf (hunchentoot:content-type*) "image/png")
+  ;; Set the image to expire 10 years from now
+  (setf (hunchentoot:header-out "Expires")
+        (from-now-rfc-1123 (* 10 365 24 60 60)))
+  (base64-string-to-string *little-lambda-base64*))
+
 (defvar *web-script-handlers*
   (make-hash-table :test 'equal))
 
@@ -137,7 +156,9 @@
               (get-web-script-handler port "/client" acceptor)
               #'(lambda () (hunchentoot:redirect "/client/"))
               (get-web-script-handler port "/client/" acceptor)
-              'do-trubanc-web-client)
+              'do-trubanc-web-client
+              (get-web-script-handler port "/ll.png" acceptor)
+              'do-little-lambda)        
         (setf (port-acceptor port) acceptor)
         (hunchentoot:start acceptor)
         acceptor)))
