@@ -47,7 +47,7 @@
                (strcat str x)))))
 
 (defun hsc (x)
-  (hunchentoot:escape-for-html (or x "")))
+  (and x (hunchentoot:escape-for-html x)))
 
 ;; Called from do-trubanc-client in server-web.lisp
 ;; Returns a string with the contents of the client web page.
@@ -195,12 +195,13 @@
     (when id
       (multiple-value-bind (pubkeysig name) (get-id client id)
         (declare (ignore pubkeysig))
-        (when name
-          (who (s (cw-html-output cw))
-            (:b "Account name: ") (esc name)
-            (:br)
-            (:b "Your ID: ") (str id)
-            (:br)))))))
+        (who (s (cw-html-output cw))
+          (unless (blankp name)
+            (who (s)
+              (:b "Account name: ") (esc name)
+              (:br)))
+          (:b "Your ID: ") (str id)
+          (:br))))))
 
 (defun draw-login (cw &optional key)
   (let ((page (hunchentoot:parameter "page")))
@@ -451,7 +452,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                           "you must specify an id, either explicitly or by checking an existing contact"))
                    (t (handler-case (addcontact client id nickname notes)
                         (error (c)
-                          (setq err (format nil "can't add contact: ~a" c))))))
+                          (setq err (format nil "Can't add contact: ~a" c))))))
              (if (setf (cw-error cw) err)
                (draw-contacts cw id nickname notes)
                (draw-contacts cw)))
@@ -1674,7 +1675,7 @@ EOT;
         (:tr
          (:td (:b "Notes" (:br) "(Optional):"))
          (:td
-          (:textarea :name "notes" :cols "30" :rows "10") (esc notes)))
+          (:textarea :name "notes" :cols "30" :rows "10" (esc notes))))
         (:tr
          (:td)
          (:td
@@ -1684,145 +1685,136 @@ EOT;
        (when contacts
          (who (stream)
            (:br)
-           (:form
-            :method "post" :action "./" :autocomplete "off"
-            (:input :type "hidden" :name "cmd" :value "contact")
-            (:input :type "hidden" :name "chkcnt" :value (length contacts))
-            (:table
-             :border "1"
-             (:tr
-              (:th "Nickname")
-              (:th "Name")
-              (:th "Display")
-              (:th "ID")
-              (:th "Notes")
-              (:th "x"))
-             (let ((idx 0))
-               (dolist (contact contacts)
-                 (let* ((id (hsc (contact-id contact)))
-                        (name (trim (hsc (contact-name contact))))
-                        (nickname (hsc (contact-nickname contact)))
-                        (display (namestr nickname name id))
-                        (note  (hsc (contact-note contact))))
-                   (when (blankp name) (setq name "&nbsp;"))
-                   (when (blankp nickname) (setq nickname "&nbsp;"))
-                   (setq note
-                         (if (blankp note)
-                             "&nbsp;"
-                             (str-replace $nl $brn note)))
-                   (who (stream)
-                     (:tr
-                      (:td (str nickname))
-                      (:td (str name))
-                      (:td (str display))
-                      (:td (str id))
-                      (:td (str note))
-                      (:td
-                       (:input :type "hidden" :name (format nil "id~d" idx)
-                                              :value id)
-                       (:input :type "checkbox" :name (format nil "chk~d" idx)))))
-                   (incf idx)))))
-            (:input :type "submit" :name "deletecontacts" :value "Delete checked"))))))))
+           (:input :type "hidden" :name "cmd" :value "contact")
+           (:input :type "hidden" :name "chkcnt" :value (length contacts))
+           (:table
+            :border "1"
+            (:tr
+             (:th "Nickname")
+             (:th "Name")
+             (:th "Display")
+             (:th "ID")
+             (:th "Notes")
+             (:th "x"))
+            (let ((idx 0))
+              (dolist (contact contacts)
+                (let* ((id (hsc (contact-id contact)))
+                       (name (trim (hsc (contact-name contact))))
+                       (nickname (hsc (contact-nickname contact)))
+                       (display (namestr nickname name id))
+                       (note  (hsc (contact-note contact))))
+                  (when (blankp name) (setq name "&nbsp;"))
+                  (when (blankp nickname) (setq nickname "&nbsp;"))
+                  (setq note
+                        (if (blankp note)
+                            "&nbsp;"
+                            (str-replace $nl $brn note)))
+                  (who (stream)
+                    (:tr
+                     (:td (str nickname))
+                     (:td (str name))
+                     (:td (str display))
+                     (:td (str id))
+                     (:td (str note))
+                     (:td
+                      (:input :type "hidden" :name (format nil "id~d" idx)
+                                             :value id)
+                      (:input :type "checkbox" :name (format nil "chk~d" idx)))))
+                  (incf idx)))))
+           (:input :type "submit" :name "deletecontacts" :value "Delete checked")))))))
+
+(defun draw-assets(cw &optional scale precision assetname storage)
+  (let* ((client (cw-client cw))
+         (assets (getassets client))
+         (stream (cw-html-output cw))
+         (scale (hsc scale))
+         (precision (hsc precision))
+         (assetname (hsc assetname))
+         (storage (hsc storage))
+         (incnt 0))
+    (setf (cw-onload cw) "document.forms[0].scale.focus()")
+    (settitle cw "Assets")
+    (setmenu cw "assets")
+
+    (who (stream)
+      (:span :style "color: red;" (str (cw-error cw)))
+      (:br)
+      (:form
+       :method "post" :action "./" :autocomplete "off"
+       (:input :type "hidden" :name "cmd" :value "asset")
+       (:table
+        (:tr
+         (:td (:b "Scale:"))
+         (:td (:input :type "text" :name "scale" :size "3" :value scale)))
+        (:tr
+         (:td (:b "Precision:"))
+         (:td (:input :type "text" :name "precision" :size "3" :value precision)))
+        (:tr
+         (:td (:b "Asset name:"))
+         (:td (:input :type "text" :name "assetname" :size "30" :value assetname)))
+        (:tr
+         (:td (:b "Storage fee (%/year):"))
+         (:td (:input :type "text" :name "storage" :size "5" :value storage)))
+        (:tr
+         (:td)
+         (:td (:input :type "submit" :name "newasset" :value "Add Asset")
+              (:input :type "submit" :name "cancel" :value "Cancel"))))))
+
+  (when assets
+    (who (stream)
+      (:form
+       :method "post" :action "./" :autocomplete "off"
+       (:table
+        :border "1"
+        (:tr
+         (:th "Asset name")
+         (:th "Scale")
+         (:th "Precision")
+         (:th "Storage Fee" (:br) "(%/year)")
+         (:th "Owner")
+         (:th "Asset ID"))
+        (dolist (asset assets)
+          (let* ((ownerid (asset-id asset))
+                 (namestr (id-namestr cw ownerid))
+                 (assetid (asset-assetid asset))
+                 (scale (asset-scale asset))
+                 (precision (asset-precision asset))
+                 (assetname (asset-name asset))
+                 (percent (asset-percent asset)))
+            (setq percent
+                  (if (equal ownerid (id client))
+                      (whots (s)
+                        (:input :type "hidden"
+                                :name (format nil "assetid~d" incnt)
+                                :value (hsc assetid))
+                        (:input :type "hidden"
+                                :name (format nil "opercent~d" incnt)
+                                :value (hsc percent))
+                        (:input :type "text"
+                                :name (format nil "percent~d" incnt)
+                                :value (hsc percent)
+                                :size "10"
+                                :style "text-align: right;"))
+                      (hsc percent)))
+            (incf incnt)
+            (when (blankp percent) (setq percent "&nbsp;"))
+            (who (stream)
+              (:tr
+               (:td (esc assetname))
+               (:td :align "right" (esc scale))
+               (:td :align "right" (esc precision))
+               (:td :align "right" (str percent))
+               (:td (str namestr))
+               (:td (esc assetid)))))))
+       (when (> incnt 0)
+         (who (stream)
+           (:input :type "hidden" :name "percentcnt" :value incnt)
+           (:input :type "hidden" :name "cmd" :value "asset")
+           (:br)
+           (:input :type "submit" :name "updatepercent"
+                   :value "Update Storage Fees"))))))))
 
 #||
-
-function draw_assets($scale=false, $precision=false, $assetname=false, $storage=false) {
-  global $onload, $body;
-  global $error;
-  global $client;
-
-  $t = $client->t;
-
-  $onload = "document.forms[0].scale.focus()";
-
-  settitle('Assets');
-  setmenu('assets');
-
-  $scale = hsc($scale);
-  $precision = hsc($precision);
-  $assetname = hsc($assetname);
-
-  $body .= <<<EOT
-<span style="color: red;">$error</span><br/>
-<form method="post" action="./" autocomplete="off">
-<input type="hidden" name="cmd" value="asset"/>
-<table>
-<tr>
-<td><b>Scale:</b></td>
-<td><input type="text" name="scale" size="3" value="$scale"/>
-</tr><tr>
-<td><b>Precision:</b></td>
-<td><input type="text" name="precision" size="3" value="$precision"/></td>
-</tr><tr>
-<td><b>Asset name:</b></td>
-<td><input type="text" name="assetname" size="30" value="$assetname"/></td>
-</tr><tr>
-<td><b>Storage fee (%/year):</b></td>
-<td><input type="text" name="storage" size="5" value="$storage"/></td>
-</tr><tr>
-<td></td>
-<td><input type="submit" name="newasset" value="Add Asset"/>
-<input type="submit" name="cancel" value="Cancel"/></td>
-</tr>
-</table>
-</form>
-
-EOT;
-
-  $assets = $client->getassets();
-  if (count($assets) > 0) {
-    $body .= '<form method="post" action="./" autocomplete="off">
-<table border="1">
-<tr>
-<th>Asset name</th>
-<th>Scale</th>
-<th>Precision</th>
-<th>Storage Fee<br/>(%/year)</th>
-<th>Owner</th>
-<th>Asset ID</th>
-</tr>
-';
-    $incnt = 0;
-    foreach ($assets as $asset) {
-      $ownerid = $asset[$t->ID];
-      $namestr = id_namestr($ownerid, $contact);
-      $assetid = $asset[$t->ASSET];
-      $scale = $asset[$t->SCALE];
-      $precision = $asset[$t->PRECISION];
-      $assetname = $asset[$t->ASSETNAME];
-      $percent = $asset[$t->PERCENT];
-      if ($ownerid == $client->id) {
-        $percent = <<<EOT
-<input type="hidden" name="assetid$incnt" value="$assetid"/>
-<input type="hidden" name="opercent$incnt" value="$percent"/>
-<input type="text" name="percent$incnt" value="$percent" size="10" style="text-align: right;"/>
-EOT;
-        $incnt++;
-      }
-      if (!$percent) $percent = "&nbsp;";
-      $body .= <<<EOT
-<tr>
-<td>$assetname</td>
-<td align="right">$scale</td>
-<td align="right">$precision</td>
-<td align="right">$percent</td>
-<td>$namestr</td>
-<td>$assetid</td>
-</tr>
-
-EOT;
-    }
-    $body .= "</table>\n";
-    if ($incnt > 0) {
-      $body .= '<input type="hidden" name="percentcnt" value="' . $incnt . '"/>
-<input type="hidden" name="cmd" value="asset"/>
-<br/><input type="submit" name="updatepercent" value="Update Storage Fees"/>
-';
-    }
-    $body .= "</form>\n";
-  }
-}
-
 function gethistory() {
   global $history;
 
