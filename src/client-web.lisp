@@ -40,6 +40,9 @@
   fraction-asset
   )
 
+(defun parm (name)
+  (hunchentoot:parameter name))
+
 (defun append-debug (cw x)
   (let ((str (cw-debugstr cw)))
     (and str
@@ -60,14 +63,50 @@
 (defun delete-cookie (name)
   (hunchentoot:set-cookie name :value "" :expires 0))
 
+;; Map a (parm "cmd") value to a function to call
+(defparameter *command-map*
+  (apply #'make-equal-hash
+         '(nil draw-login
+           "logout" do-logout
+           "login" do-login
+           "contact" do-contact
+           "bank" do-bank
+           "asset" do-asset
+           "admin" do-admin
+           "spend" do-spend
+           "sync" do-sync
+           "canceloutbox" do-canceloutbox
+           "processinbox" do-processinbox
+           "storagefees" do-storagefees
+           "dohistory" do-history
+           "togglehistory" do-togglehistory
+           "toggleinstructions" do-toggleinstructions
+
+           "register" draw-register
+           "balance" draw-balance
+           "rawbalance" draw-raw
+           "contacts" draw-contacts
+           "banks" draw-banks
+           "assets" draw-assets
+           "admins" draw-admin
+           "coupon" draw-coupon
+           "history" draw-history)))
+
 (defun web-server-internal (client)
   (let* ((iphone (search "iPhone" (hunchentoot:user-agent)))
          (title "Trubanc Client")
          (session (hunchentoot:cookie-in "session"))
          (cw (make-cw :client client :iphone iphone :title title :session session))
-         (cmd (hunchentoot:parameter "cmd")))
+         (cmd (parm "cmd"))
+         (debug-parm (parm "debug"))
+         (debug (hunchentoot:cookie-in "debug")))
     
-    (when (hunchentoot:cookie-in "debug")
+    (when debug-parm
+      (setq debug (not (blankp debug-parm)))
+      (if debug
+          (hunchentoot:set-cookie "debug" :value "debug")
+          (delete-cookie "debug")))
+    (when debug
       (setf (cw-debugstr cw) ""
             (showprocess client) (lambda (x) (append-debug cw x))))
 
@@ -101,33 +140,10 @@
     (setf (cw-body cw)
           (with-output-to-string (s)
             (setf (cw-html-output cw) s)
-            (cond ((not cmd) (draw-login cw))
-                  ((equal cmd "logout") (do-logout cw))
-                  ((equal cmd "login") (do-login cw))
-                  ((equal cmd "contact") (do-contact cw))
-                  ((equal cmd "bank") (do-bank cw))
-                  ((equal cmd "asset") (do-asset cw))
-                  ((equal cmd "admin") (do-admin cw))
-                  ((equal cmd "spend") (do-spend cw))
-                  ((equal cmd "canceloutbox") (do-canceloutbox cw))
-                  ((equal cmd "processinbox") (do-processinbox cw))
-                  ((equal cmd "storagefees") (do-storagefees cw))
-                  ((equal cmd "dohistory") (do-history cw))
-                  ((equal cmd "togglehistory") (do-togglehistory cw))
-                  ((equal cmd "toggleinstructions") (do-toggleinstructions cw))
-            
-                  ((equal cmd "register") (draw-register cw))
-                  ((equal cmd "balance") (draw-balance cw))
-                  ((equal cmd "rawbalance") (draw-raw cw))
-                  ((equal cmd "contacts") (draw-contacts cw))
-                  ((equal cmd "banks") (draw-banks cw))
-                  ((equal cmd "assets") (draw-assets cw))
-                  ((equal cmd "admins") (draw-admin cw))
-                  ((equal cmd "coupon") (draw-coupon cw))
-                  ((equal cmd "history") (draw-history cw))
-                  (session (draw-balance cw))
-              
-                  (t (draw-login cw)))))
+            (let ((f (gethash cmd *command-map*)))
+              (cond (f (funcall f cw))
+                    (session (draw-balance cw))
+                    (t (draw-login cw))))))
 
     ;; Use title, body, onload, and debugstr to fill the page template.
     (let ((str (cw-debugstr cw)))
@@ -204,7 +220,7 @@
           (:br))))))
 
 (defun draw-login (cw &optional key)
-  (let ((page (hunchentoot:parameter "page")))
+  (let ((page (parm "page")))
     (when (equal page "register")
       (return-from draw-login (draw-register cw key))))
 
@@ -237,7 +253,7 @@
 
   (let* ((s (cw-html-output cw))
          (keysize (or (ignore-errors
-                        (parse-integer (hunchentoot:parameter "keysize")))
+                        (parse-integer (parm "keysize")))
                       3072)))
     (flet ((keysize-option (size)
              (let ((size-str (format nil "~d" size)))
@@ -294,11 +310,12 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
   (setf (cw-title cw) (format nil "~a - Trubanc Client" subtitle)))
 
 (defun menuitem (cmd text highlight)
-  (whots (s)
-    (:a :href (format nil "./?cmd=~a" cmd)
-        (str (and (equal cmd highlight) "<b>"))
-        (str text)
-        (str (and (equal cmd highlight) "</b>")))))
+  (let ((highlightp (equal cmd highlight)))
+    (whots (s)
+      (:a :href (format nil "./?cmd=~a" cmd)
+          (if highlightp
+              (who (s) (:b :style "font-size: 120%;" (str text)))
+              (who (s) (str text)))))))
 
 (defun setmenu (cw &optional highlight (menuitems *default-menuitems*))
   (let ((menu nil)
@@ -362,7 +379,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                    (multiple-value-bind (bankid url)
                        (parse-coupon coupon)
                      (handler-case (verify-coupon client coupon bankid url)
-                       (error (c) (setq err (princ c)))))
+                       (error (c) (setq err (format nil "~a" c)))))
                  (error ()
                    ;; See if "coupon" is just a URL, meaning the user
                    ;; already has an account at that bank.
@@ -385,7 +402,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                   (let ((pk privkey))
                     (setq privkey nil)
                     (rsa-free pk)))
-                (setq err (princ c)))))))
+                (setq err (format nil "~a" c)))))))
 
       (when login
         (handler-case
@@ -420,7 +437,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
              (handler-case
                  (progn (addbank client bankurl name)
                         (setf (user-preference client "bankid") (bankid client)))
-               (error (c) (setq err (princ c)))))
+               (error (c) (setq err (format nil "~a" c)))))
             (selectbank
              (cond ((or (not bank) (equal bank ""))
                     (setq err "You must choose a bank"))
@@ -443,9 +460,9 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
       (cond (addcontact
              (when (blankp id)
                (dotimes (i chkcnt)
-                 (let ((chki (hunchentoot:parameter (format nil "chk~d" i))))
+                 (let ((chki (parm (format nil "chk~d" i))))
                    (unless (blankp chki)
-                     (setq id  (hunchentoot:parameter (format nil "id~d" i)))
+                     (setq id  (parm (format nil "id~d" i)))
                      (return)))))
              (cond ((blankp id)
                     (setq err
@@ -458,71 +475,73 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                (draw-contacts cw)))
             (deletecontacts
              (dotimes (i chkcnt)
-               (let ((chki (hunchentoot:parameter (format nil "chk~d" i))))
+               (let ((chki (parm (format nil "chk~d" i))))
                  (unless (blankp chki)
-                   (let ((id (hunchentoot:parameter (format nil "id~d" i))))
+                   (let ((id (parm (format nil "id~d" i))))
                      (deletecontact client id)))))
              (draw-contacts cw))
             (t (draw-balance cw))))))
 
+
+(defun do-asset (cw)
+  "Add a new asset, or change the storage fee"
+  (let ((client (cw-client cw))
+        (err nil))
+    (bind-parameters (newasset updatepercent scale precision assetname storage)
+      (cond (newasset
+             (cond ((or (blankp scale) (blankp precision) (blankp assetname))
+                    (setq err
+                          "Scale, Precision, and Asset name must all be specified"))
+                   ((not (and (is-numeric-p scale t)
+                              (is-numeric-p precision t)))
+                    (setq err "Scale and Precision must be numbers"))
+                   ((and (not (blankp storage)) (not (is-numeric-p storage)))
+                    (setq err "Storage fee must be a number"))
+                   (t
+                    (handler-case
+                        (addasset client scale precision assetname storage)
+                      (error (c)
+                        (setq err (format nil "Error adding asset: ~a" c))))))
+             (if (setf (cw-error cw) err)
+                 (draw-assets cw scale precision assetname storage)
+                 (draw-assets cw)))
+            (updatepercent
+             (bind-parameters (percentcnt)
+               (dotimes (i (parse-integer percentcnt))
+                 (let ((assetid (parm (format nil "assetid~d" i)))
+                       (opercent (parm (format nil "opercent~d" i)))
+                       (percent (parm (format nil "percent~d" i))))
+                   (unless (equal percent opercent)
+                     (let ((asset nil))
+                       (handler-case
+                           (setq asset (getasset client assetid))
+                         (error ()
+                           (setq err (format nil "Can't find assetid: ~a" assetid))))
+                       (when asset
+                         (let ((scale (asset-scale asset))
+                               (precision (asset-precision asset))
+                               (assetname (asset-name asset)))
+                           (handler-case
+                               (addasset client scale precision assetname percent)
+                             (error (c) (setq err (format nil "~a" c)))))))
+                     (when err (return)))))
+               (setf (cw-error cw) err)
+               (draw-assets cw)))
+            (t (draw-balance cw))))))
+
+(defun do-admin (cw)
+  cw)
+
+(defun do-sync (cw)
+  (let ((client (cw-client cw))
+        (err nil))
+    (handler-case (reinit-balances client)
+      (error (c)
+        (setq err (format nil "~a" c))))
+    (setf (cw-error cw) err)
+    (draw-balance cw)))    
+
 #||
-
-// Here to add a new asset
-function do_asset() {
-  global $client;
-  global $error;
-
-  $t = $client->t;
-  $error = false;
-
-  $newasset = mqpost('newasset');
-  $updatepercent = mqpost('updatepercent');
-
-  if ($newasset) {
-    $scale = mqpost('scale');
-    $precision = mqpost('precision');
-    $assetname = mqpost('assetname');
-    $storage = mqpost('storage');
-    if (!((strlen($scale) > 0) && (strlen($precision) > 0) &&
-          (strlen($assetname) > 0))) {
-      $error = "Scale, Precision, and Asset name must all be specified";
-    } elseif (!(is_numeric($scale) && is_numeric($precision))) {
-      $error = "Scale and Precision must be numbers";
-    } elseif ($storage && !is_numeric($storage)) {
-      $error = "Storage fee must be a number";
-    } else {
-      $error = $client->addasset($scale, $precision, $assetname, $storage);
-    }
-    if ($error) draw_assets($scale, $precision, $assetname, $storage);
-    else draw_assets();
-  } elseif ($updatepercent) {
-    $percentcnt = mqpost('percentcnt');
-    for ($i=0; $i<$percentcnt; $i++) {
-      $assetid = mqpost("assetid$i");
-      $opercent = mqpost("opercent$i");
-      $percent = mqpost("percent$i");
-      if (!($percent === $opercent)) {   // Detect differences in trailing zeroes
-        $asset = $client->getasset($assetid);
-        if (is_string($asset)) {
-          $error = "Can't find assetid: $assetid";
-        } else {
-          $scale = $asset[$t->SCALE];
-          $precision = $asset[$t->PRECISION];
-          $assetname = $asset[$t->ASSETNAME];
-          $error = $client->addasset($scale, $precision, $assetname, $percent);
-        }
-        if ($error) break;
-      }
-    }
-    draw_assets();
-  } else draw_balance();
-}
-
-function do_admin() {
-  global $client;
-
-}
-
 function do_spend() {
   global $error;
   global $client;
@@ -717,7 +736,7 @@ function do_togglehistory() {
   (setf (user-preference (cw-client cw) "hideinstructions") value))
 
 (defun do-toggleinstructions (cw)
-  (let ((page (hunchentoot:parameter "page")))
+  (let ((page (parm "page")))
     (setf (hideinstructions cw)
           (and (blankp (hideinstructions cw)) "hide"))
     (if (equal page "history")
@@ -1008,8 +1027,8 @@ function do_togglehistory() {
                           (whots (s)
                             (:input :type "checkbox"
                                     :name selname
-                                    :checked t
-                                    "Remove")))
+                                    :checked t)
+                            "Remove"))
                          (date (datestr time))
                          (acctcode (if acctoptions
                                        (whots (s) (:td "&nbsp;"))
@@ -1223,6 +1242,8 @@ function do_togglehistory() {
                        (:br))))))
              (who (bal-stream)
                (:br)
+               (:a :href "./?cmd=sync" "Resync with bank")
+               (:br)
                (:a :href "./?cmd=rawbalance"
                    "Show raw balance")
                (:br)
@@ -1318,15 +1339,16 @@ function do_togglehistory() {
                            (:b "Spend amount:"))
                           (:td
                            (:input :type "text" :name "amount" :size "20"
-                                   :value spend-amount :style "text-align: right;")))
+                                   :value spend-amount :style "text-align: right;"
+                                   :id "spendamount")))
                          (:tr
                           (:td
                            (:b "Recipient:"))
                           (:td
                            (str recipopts)
                            (:input :type "checkbox" :name "mintcoupon"
-                                   :selected selectmint :disabled disablemint
-                                   "Mint coupon")))
+                                   :selected selectmint :disabled disablemint)
+                           "Mint coupon"))
                          (:tr
                           (:td (:b "Note:"))
                           (:td
@@ -1337,8 +1359,8 @@ function do_togglehistory() {
                           (:td
                            (:input :type "text" :name "recipientid" :size "40"
                                    :value recipientid)
-                           (:input :type "checkbox" :name "allowunregistered"
-                                   "Allow unregistered")))
+                           (:input :type "checkbox" :name "allowunregistered")
+                           "Allow unregistered"))
                          (:tr
                           (:td (:b "Nickname:"))
                           (:td
@@ -1382,6 +1404,13 @@ function do_togglehistory() {
                       (:p
                        (:a :href "./?cmd=togglehistory"
                            (str historytext) " history")
+                       (:br)
+                       (:a :href (if (cw-debugstr cw)
+                                     "./?debug"
+                                     "./?debug=true")
+                           (str (if (cw-debugstr cw)
+                                    "Disable debugging"
+                                    "Enable debugging")))
                        (when hideinstructions
                          (who (s)
                            (:br)
@@ -1421,7 +1450,8 @@ list with that nickname, or change the nickname of the selected
                       (whots (s)
                         (:span :style "color: red"
                                (str err)))))
-              (setf (cw-onload cw) "document.forms[0].amount.focus()")
+              (setf (cw-onload cw)
+                    "document.getElementById(\"spendamount\").focus()")
               (who (s (cw-html-output cw))
                 (str err)
                 (:br)
@@ -1636,17 +1666,18 @@ EOT;
                    (when (blankp name)
                      (setq name "unnamed"))
                    (who (stream)
-                     (:form
-                      :method "post" :action "./" :autocomplete "off"
-                      (:input :type "hidden" :name "cmd" :value "bank")
-                      (:input :type "hidden" :name "bank" :value bid)
-                      (:tr
-                       (:td (esc name))
-                       (:td (:a :href url (str url)))
-                       (:td (esc bid))
-                       (:td
+                     (:tr
+                      (:td (esc name))
+                      (:td (:a :href url (str url)))
+                      (:td (esc bid))
+                      (:td
+                       (:form
+                        :method "post" :action "./" :autocomplete "off"
+                        :style "margin: 0px;" ; prevent whitespace below button
+                        (:input :type "hidden" :name "cmd" :value "bank")
+                        (:input :type "hidden" :name "bank" :value bid)
                         (:input :type "submit" :name "selectbank"
-                                               :value "Choose"))))))))))))))
+                                :value "Choose"))))))))))))))
 
 (defun draw-contacts (cw &optional id nickname notes)
   (let* ((client (cw-client cw))

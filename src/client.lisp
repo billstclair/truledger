@@ -230,7 +230,7 @@
                    url (trim (car a))
                    coupon-number (trim (cadr a)))))
           (t (let* ((parse (tokenize coupon))
-                    (items (print (map 'vector #'cdr parse))))
+                    (items (map 'vector #'cdr parse)))
                ; [$id,coupon,$bankid,
                (unless (>= (length items) 7)
                  (error "Malformed coupon message"))
@@ -629,8 +629,11 @@
         (dolist (acct accts)
           (let ((assetids (db-contents db key acct)))
             (dolist (assetid assetids)
-              (let ((asset (getasset client assetid)))
-                (when asset (push asset res)))))))
+              (unless (find assetid res
+                            :test #'equal
+                            :key #'asset-assetid)
+                (let ((asset (getasset client assetid)))
+                  (when asset (push asset res))))))))
       (sort res #'asset-lessp))))
 
 (defmethod getasset ((client client) assetid &optional forceserver)
@@ -673,7 +676,7 @@
          (args (with-verify-sigs-p ((parser client) t)
                  (unpack-bankmsg client msg $ATASSET)))
          (msgargs (getarg $MSG args)))
-    (unless (and (equal (getarg $REQUEST  msgargs) $ASSET)
+    (unless (and (equal (getarg $REQUEST msgargs) $ASSET)
                  (equal (getarg $BANKID msgargs) bankid)
                  (equal (getarg $ASSET msgargs) assetid))
       (error "Bank wrapped wrong object with @asset"))
@@ -700,64 +703,84 @@
                (bal1 (and nonbankp
                           (balance-amount (or (getbalance client $MAIN tokenid)
                                               (error "No token balance")))))
-               (oldasset (ignore-errors (getasset client assetid)))
+               (oldasset (ignore-errors (getasset client assetid t)))
                (bal2 nil)
                (storage nil)
                (mainbals (make-equal-hash))
                (acctbals (make-equal-hash $MAIN mainbals))
                balancehash)
-          (when nonbankp
-            (let ((tokens (if oldasset 1 2))
-                  (ispos (>= (bccomp bal1 0) 0)))
-              (setq bal1 (bcsub bal1 tokens))
-              (when (and ispos (< (bccomp bal1 0) 0))
-                (error (if oldasset
-                           "You need 1 usage token to update an asset"
-                           "You need 2 usage tokens to create a new asset")))))
-          (setq bal1 (custmsg client $BALANCE bankid time tokenid bal1))
-          (unless oldasset
-            (setq bal2 (custmsg client $BALANCE bankid time assetid "-1")))
-          (when bal1
-            (setf (gethash tokenid mainbals) bal1))
-          (when bal2
-            (setf (gethash assetid mainbals) bal2))
-          (when nonbankp
-            (setq balancehash (balancehashmsg client time acctbals)))
+          (cond ((and oldasset
+                      (if (blankp percent)
+                          (blankp (asset-percent oldasset))
+                          (and (equal id (asset-issuer oldasset))
+                               (equal percent (asset-percent oldasset)))))
+                 ;; check to be sure we've got a balance in this asset
+                 (let ((db (db client)))
+                   (unless (dolist (acct (db-contents db (userbalancekey client)))
+                             (when (db-get db (userbalancekey client acct assetid))
+                               (return t)))
+                     (forceinit client))))                   
+                (t
+                 (when nonbankp
+                   (let ((tokens (if oldasset 1 2))
+                         (ispos (>= (bccomp bal1 0) 0)))
+                     (setq bal1 (bcsub bal1 tokens))
+                     (when (and ispos (< (bccomp bal1 0) 0))
+                       (error
+                        (if oldasset
+                            "You need 1 usage token to update an asset"
+                            "You need 2 usage tokens to create a new asset")))))
+                 (setq bal1 (custmsg client $BALANCE bankid time tokenid bal1))
+                 (unless oldasset
+                   (setq bal2 (custmsg client $BALANCE bankid time assetid "-1")))
+                 (when bal1
+                   (setf (gethash tokenid mainbals) bal1))
+                 (when bal2
+                   (setf (gethash assetid mainbals) bal2))
+                 (when nonbankp
+                   (setq balancehash (balancehashmsg client time acctbals)))
 
-          (when percent
-            (setq storage (custmsg client $STORAGE bankid time assetid percent))
-            (dotcat msg "." storage))
-          (when bal1 (dotcat msg "." bal1))
-          (when bal2 (dotcat msg "." bal2))
-          (when balancehash (dotcat msg "." balancehash))
+                 (unless (blankp percent)
+                   (unless (is-numeric-p percent)
+                     (error "percent must be numeric"))
+                   (setq storage
+                         (custmsg client $STORAGE bankid time assetid percent))
+                   (dotcat msg "." storage))
+                 (when bal1 (dotcat msg "." bal1))
+                 (when bal2 (dotcat msg "." bal2))
+                 (when balancehash (dotcat msg "." balancehash))
 
-          (setq msg (process server msg))
+                 (setq msg (process server msg))
 
-          ;; Request sent. Check for error
-          (let ((reqs (parse parser msg))
-                gotbal1
-                gotbal2
-                gotstorage)
-            (dolist (req reqs)
-              (let* ((args (match-bankreq client req))
-                     (msg (get-parsemsg req))
-                     (m (trim (get-parsemsg (getarg $MSG args)))))
-                (cond ((equal m bal1) (setq gotbal1 msg))
-                      ((equal m bal2) (setq gotbal2 msg))
-                      ((equal m storage) (setq gotstorage msg)))))
-            (when (or (and bal1 (not gotbal1))
-                      (and bal2 (not gotbal2)))
-              (error "While adding asset: missing returned balance from server"))
-            (when (and percent (not gotstorage))
-              (error "While adding asset: storage fee not returned from server"))
+                 ;; Request sent. Check for error
+                 (let ((reqs (parse parser msg))
+                       gotbal1
+                       gotbal2
+                       gotstorage)
+                   (dolist (req reqs)
+                     (let* ((args (match-bankreq client req))
+                            (msg (get-parsemsg req))
+                            (m (trim (get-parsemsg (getarg $MSG args)))))
+                       (cond ((equal m bal1) (setq gotbal1 msg))
+                             ((equal m bal2) (setq gotbal2 msg))
+                             ((equal m storage) (setq gotstorage msg)))))
+                   (when (or (and bal1 (not gotbal1))
+                             (and bal2 (not gotbal2)))
+                     (error
+                      "While adding asset: missing returned balance from server"))
+                   (when (and percent (not gotstorage))
+                     (error
+                      "While adding asset: storage fee not returned from server"))
 
-            ;; All is well. Commit the balance changes
-            (when bal1
-              (setf (db-get db (userbalancekey client $MAIN tokenid)) gotbal1))
-            (when bal2
-              (setf (db-get db (userbalancekey client $MAIN assetid)) gotbal2))
+                   ;; All is well. Commit the balance changes
+                   (when bal1
+                     (setf (db-get db (userbalancekey client $MAIN tokenid))
+                           gotbal1))
+                   (when bal2
+                     (setf (db-get db (userbalancekey client $MAIN assetid))
+                           gotbal2))
             
-            (getasset client assetid t)))))))
+                   (getasset client assetid t)))))))))
 
 (defstruct fee
   type
@@ -2344,6 +2367,12 @@
         (setf (syncedreq-p client) t))))
     reqnum))
 
+(defmethod reinit-balances ((client client))
+  "Synchronize with the bank"
+  (require-current-bank client "Can't reinitialize balances: ~a")
+  (forceinit client))
+
+;; Internal implementation of reinit-balances
 (defmethod forceinit ((client client))
   "Force a reinit of the client database for the current user"
   (let ((db (db client)))

@@ -336,6 +336,7 @@
    #:fraction-scale
    #:getfraction
    #:getstoragefee
+   #:reinit-balances
    #:spend
    #:spendreject
    #:gethistorytimes
