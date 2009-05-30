@@ -25,8 +25,8 @@
      (:file "timestamp")
      (:file "server")
      (:file "client")
-     (:file "client-web")
      (:file "server-web")
+     (:file "client-web")
      (:file "tests")
      ))))
 

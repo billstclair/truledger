@@ -1373,8 +1373,7 @@ function do_togglehistory() {
                            (who (s)
                              (:tr
                               (:td (:b "Transfer to:"))
-                              (:td (write-string
-                                    (or acctcode xfer-input) s)))
+                              (:td (str (or acctcode xfer-input))))
                              (when acctcode
                                (who (s)
                                  (:tr
