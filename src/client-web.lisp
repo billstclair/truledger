@@ -43,6 +43,11 @@
 (defun parm (name)
   (hunchentoot:parameter name))
 
+(defun parms (&key (post t) (get nil))
+  (let ((req hunchentoot:*request*))
+    (append (and post (hunchentoot:post-parameters req))
+            (and get (hunchentoot:get-parameters req)))))
+
 (defun append-debug (cw x)
   (let ((str (cw-debugstr cw)))
     (and str
@@ -303,7 +308,8 @@ enter its passphrase, and click the \"Show key\" button. Warning: if you
 forget your passphrase, <b>nobody can recover it, ever</b>."))
           (:tr
            (:td)
-           (:td (:textarea :name "privkey" :cols "64" :rows "42"
+           (:td (:textarea :name "privkey" :cols "65" :rows "44"
+                           :style "font-family: Monospace;"
                            (esc key))))))))))
 
 (defun settitle (cw subtitle)
@@ -352,8 +358,13 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
           (err nil))
       (when showkey
         (let ((key (ignore-errors (get-privkey client passphrase))))
-          (unless key (setf (cw-error cw) "No key for passphrase"))
-          (return-from do-login (draw-login cw key))))
+          (unwind-protect
+               (cond (key
+                      (setq privkey (encode-rsa-private-key key passphrase)))
+                     (t (setf (cw-error cw) "No key for passphrase")))
+            (when key
+              (rsa-free key))))
+        (return-from do-login (draw-login cw privkey)))
 
       (when newacct
         (setq login nil)
@@ -541,102 +552,89 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
     (setf (cw-error cw) err)
     (draw-balance cw)))    
 
+(defun do-spend (cw)
+  (let* ((client (cw-client cw))
+         (id (id client))
+         (err nil)
+         (acct2 nil))
+    (bind-parameters (amount recipient mintcoupon recipientid
+                      allowunregistered note nickname toacct tonewacct)
+      (when (blankp recipient)
+        (setq recipient recipientid)
+        (when (and (not (blankp recipient))
+                   (not (blankp allowunregistered))
+                   (id-p recipient)
+                   (not (ignore-errors (get-id client recipient))))
+          (setq err "Recipient ID not registered at bank")))
+
+      (cond ((blankp recipient)
+             (unless (blankp mintcoupon) (setq recipient $COUPON)))
+            ((not (blankp mintcoupon))
+             (setq err "To mint a coupon don't specify a recipient")))
+
+      (unless err
+        (cond ((blankp amount) (setq err "Spend amount missing"))
+              ((or (equal id recipient) (blankp recipient))
+               ;; Spend to yourself = transfer
+               (setq recipient id
+                     acct2 toacct)
+               (cond ((blankp acct2) (setq acct2 tonewacct))
+                     ((not (blankp tonewacct))
+                      (setq err "Choose \"Transfer to\" from the selector or by typing, but not both")))
+               (when (blankp acct2) (setq err "Recipient missing")))
+              ((and (not (equal recipient $COUPON))
+                    (not (ignore-errors (id-p recipient))))
+               (setq err "Recipient ID malformed"))))
+
+      (unless err
+        ;; Add contact if nickname specified
+        (unless (blankp nickname)
+          (addcontact client recipient nickname))
+
+        (setq err "Bug: can't find acct/asset to spend")
+
+        ;; Find the spent asset
+        (loop
+           for key.value in (parms)
+           for key = (car key.value)
+           with prefix = "spentasset"
+           with prelen = (length prefix)
+           do
+             (when (eql 0 (find prefix key))
+               (let ((acct-and-asset (explode "|" (subseq key prelen))))
+                 (cond ((not (eql (length acct-and-asset) 2))
+                        (setq err "Bug: don't understand spentasset"))
+                       (t (setq err (do-spend-internal
+                                        cw client acct-and-asset
+                                        recipient amount acct2 note)))))
+               (return)))
+        (setf (cw-error cw) err)
+        (if (blankp mintcoupon)
+            (if err
+                (draw-balance cw amount recipient note toacct tonewacct nickname)
+                (draw-balance cw))
+            (draw-coupon cw (last-spend-time client)))))))
+
+(defun do-spend-internal (cw client acct-and-asset
+                          recipient amount acct2 note)
+  (let* ((acctidx (first acct-and-asset))
+         (assetidx (second acct-and-asset))
+         (acct (parm (strcat "acct" acctidx)))
+         (assetid (parm (strcat "assetid" acctidx "|" assetidx)))
+         (err nil))
+    (cond ((or (blankp acct) (blankp assetid))
+           (setq err "Bug: blank acct or assetid"))
+          (t
+           (when acct2 (setq acct (list acct acct2)))
+           (handler-case
+               (progn
+                 (spend client recipient assetid amount acct note)
+                 (setf (cw-fraction-asset cw) assetid))
+             (error (c)
+               (setq err (format nil "~a" c))))))
+    err))
+
 #||
-function do_spend() {
-  global $error;
-  global $client;
-  global $fraction_asset;
-
-  $t = $client->t;
-  $u = $client->u;
-  $id = $client->id;
-
-  $amount = mqpost('amount');
-  $recipient = mqpost('recipient');
-  $mintcoupon = mqpost('mintcoupon');
-  $recipientid = mqpost('recipientid');
-  $allowunregistered = mqpost('allowunregistered');
-  $note = mqpost('note');
-  $nickname = mqpost('nickname');
-  $toacct = mqpost('toacct');
-  $tonewacct = mqpost('tonewacct');
-  $acct2 = '';
-
-  $error = false;
-  if (!$recipient) {
-    $recipient = $recipientid;
-    if ($recipient && !$allowunregistered &&
-        $u->is_id($recipient) && !$client->get_id($recipient)) {
-      $error = 'Recipient ID not registered at bank';
-    }
-  }
-  if (!$recipient) {
-    if ($mintcoupon) $recipient = $t->COUPON;
-  } elseif ($mintcoupon) $error = "To mint a coupon don't specify a recipient";
-  if (!$error) {
-    if (!($amount || ($amount === '0'))) $error = 'Spend amount missing';
-    elseif ($id == $recipient || !$recipient) {
-      // Spend to yourself = transfer
-      $recipient = $id;
-      $acct2 = $toacct;
-      if (!$acct2) $acct2 = $tonewacct;
-      elseif ($tonewacct) $error = 'Choose "Transfer to" from the selector or by typing, but not both';
-      if (!$acct2) $error = 'Recipient missing';
-    } elseif ($recipient != $t->COUPON && !$u->is_id($recipient)) {
-      $error = "Recipient ID malformed";
-    }
-  }
-  if ($error) {
-    draw_balance($amount, $recipient, $note, $toacct, $tonewacct, $nickname);
-  } else {
-    // Add contact if nickname specified
-    if ($nickname) {
-      $client->addcontact($recipient, $nickname);
-    }
-
-    // Find the spent asset
-    $found = false;
-    foreach ($_POST as $key => $value) {
-      $prefix = 'spentasset';
-      $prelen = strlen($prefix);
-      if (substr($key, 0, $prelen) == $prefix) {
-        $acctdotasset = substr($key, $prelen);
-        $acctdotasset = explode('|', $acctdotasset);
-        if (count($acctdotasset) != 2) {
-          $error = "Bug: don't understand spentasset";
-          draw_balance($amount, $recipient, $note, $toacct, $tonewacct, $nickname);
-        } else {
-          $acctidx = $acctdotasset[0];
-          $assetidx = $acctdotasset[1];
-          $acct = mqpost("acct$acctidx");
-          $assetid = mqpost("assetid$acctidx|$assetidx");
-          if (!$acct || !$assetid) {
-            $error = "Bug: blank acct or assetid";
-            draw_balance($amount, $recipient, $note, $toacct, $tonewacct, $nickname);
-          } else {
-            if ($acct2) $acct = array($acct, $acct2);
-            $error = $client->spend($recipient, $assetid, $amount, $acct, $note);
-            if ($error) {
-              draw_balance($amount, $recipient, $note, $toacct, $tonewacct, $nickname);
-            } elseif ($mintcoupon) {
-              draw_coupon($client->lastspendtime);
-            } else {
-              $fraction_asset = $assetid;
-              draw_balance();
-            }
-          }
-        }
-        $found = true;
-        break;
-      }
-    }
-    if (!$found) {
-      $error = "Bug: can't find acct/asset to spend";
-      draw_balance($amount, $recipient, $note, $toacct, $tonewacct, $nickname);
-    }
-  }
-}
-
 function do_canceloutbox() {
   global $error;
   global $client;
