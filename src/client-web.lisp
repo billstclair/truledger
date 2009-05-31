@@ -591,17 +591,19 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
         (unless (blankp nickname)
           (addcontact client recipient nickname))
 
+        ;; Will be cleared when we do the spend
         (setq err "Bug: can't find acct/asset to spend")
 
         ;; Find the spent asset
         (loop
-           for key.value in (parms)
-           for key = (car key.value)
            with prefix = "spentasset"
            with prelen = (length prefix)
+           for key.value in (parms)
+           for key = (car key.value)
            do
-             (when (eql 0 (find prefix key))
-               (let ((acct-and-asset (explode "|" (subseq key prelen))))
+             (when (eql 0 (search prefix key))
+               (let ((acct-and-asset (explode #\| (subseq key prelen))))
+                 (format t "key: ~s, acct-and-asset: ~s~%" key acct-and-asset)
                  (cond ((not (eql (length acct-and-asset) 2))
                         (setq err "Bug: don't understand spentasset"))
                        (t (setq err (do-spend-internal
@@ -801,10 +803,12 @@ function do_togglehistory() {
 
 (defun datestr (time)
   "Return the ready-for-html-output formatted date for a timestamp"
-  (let ((unixtime (if (stringp time)
-                      (parse-integer (strip-fract time))
-                      time)))
-    (hsc (cybertiggyr-time:format-time nil "%d-%m-%Y %I:%M:%S%p" unixtime))))
+  (let ((unix-time (if (stringp time)
+                       (parse-integer (strip-fract time))
+                       time)))
+    (hsc (cybertiggyr-time:format-time
+          nil "%d-%b-%y %I:%M:%S%p"
+          (unix-to-universal-time unixtime)))))
 
 (defmacro storing-error ((err-var format) &body body)
   `(do-storing-error (lambda (x) (setf ,err-var x)) ,format (lambda () ,@body)))

@@ -13,12 +13,19 @@
              :initform "0"
              :accessor timestamp-lasttime)))
 
+(defparameter *time-offset*
+  (- (encode-universal-time 0 0 0 1 1 1970)
+     (encode-universal-time 0 0 0 1 1 1900)))
+
+(defun get-unix-time ()
+  (- (get-universal-time) *time-offset*))
+
 (defmethod next ((timestamp timestamp) &optional
                  (lasttime (timestamp-lasttime timestamp)))
   "Get the next timestamp.
    This is the unix timestamp if > the last result.
    Otherwise, we add some fractions to make it bigger."
-  (let ((time (bcadd (get-universal-time))))
+  (let ((time (bcadd (get-unix-time))))
     (cond ((<= (bccomp time lasttime) 0)
            (let ((pos (position #\. lasttime))
                  (n 2)

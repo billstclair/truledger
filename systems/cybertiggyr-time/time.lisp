@@ -235,6 +235,16 @@ universal time or an association list."
 			    (broken-time-ss broken)))
 
   ;; Year, two digits.  DON'T Todo.  Two-digit years are wrong.
+  (deffmt "%y" "~2,'0D" #'(lambda (broken language)
+                            (declare (ignore language))
+                            (let* ((year (broken-time-yr broken))
+                                   (now
+                                    (nth-value 5 (decode-universal-time
+                                                  (get-universal-time)))))
+                              (cond ((or (< (- now 80) year now)
+                                         (<= now year (+ now 20)))
+                                     (mod year 100))
+                                    (t "??")))))
 
   ;; Year.  Four digits.
   (deffmt "%Y" "~4D" #'(lambda (broken language)

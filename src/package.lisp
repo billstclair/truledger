@@ -185,6 +185,9 @@
    #:timestamp
    #:next
    #:strip-fract
+   #:get-unix-time
+   #:unix-to-universal-time
+   #:universal-to-unix-time
 
    ;; utilities.lisp
    #:file-get-contents
