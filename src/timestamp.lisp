@@ -17,8 +17,14 @@
   (- (encode-universal-time 0 0 0 1 1 1970)
      (encode-universal-time 0 0 0 1 1 1900)))
 
+(defun unix-to-universal-time (unix-time)
+  (+ unix-time *time-offset*))
+
+(defun universal-to-unix-time (universal-time)
+  (- universal-time *time-offset*))
+
 (defun get-unix-time ()
-  (- (get-universal-time) *time-offset*))
+  (universal-to-unix-time (get-universal-time)))
 
 (defmethod next ((timestamp timestamp) &optional
                  (lasttime (timestamp-lasttime timestamp)))

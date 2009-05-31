@@ -808,7 +808,7 @@ function do_togglehistory() {
                        time)))
     (hsc (cybertiggyr-time:format-time
           nil "%d-%b-%y %I:%M:%S%p"
-          (unix-to-universal-time unixtime)))))
+          (unix-to-universal-time unix-time)))))
 
 (defmacro storing-error ((err-var format) &body body)
   `(do-storing-error (lambda (x) (setf ,err-var x)) ,format (lambda () ,@body)))
