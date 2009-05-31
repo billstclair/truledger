@@ -850,7 +850,7 @@
 (defun balance-lessp (b1 b2)
   (< (properties-compare b1 b2 '(balance-acct balance-assetid)) 0))
 
-(defmethod getbalance ((client client) &optional (acct t) assetid)
+(defmethod getbalance ((client client) &optional (acct t) assetid includeraw)
   "Get user balances for all sub-accounts or just one.
    Returns a list of (ACCT BALANCE ...) lists, where the
    BALANCE instances are sorted by ASSETNAME and ASSETID.
@@ -860,26 +860,30 @@
    The ASSETID arg is false for all assets or an ID for that asset only.
 
    If you include a specific ACCT and a specific ASSETID, the result
-   is a single BALANCE instance, not a list of lists."
+   is a single BALANCE instance, not a list of lists.
+
+   If INCLUDERAW is true, returns a second value, a hash table mapping
+   each BALANCE instance to the raw message that encodes it."
   (require-current-bank client "In getbalance(): Bank not set")
   (init-bank-accts client)
   (with-db-lock ((db client) (userreqkey client))
-    (getbalance-internal client acct assetid)))
+    (getbalance-internal client acct assetid includeraw)))
 
-(defmethod getbalance-internal ((client client) acct assetid)
+(defmethod getbalance-internal ((client client) acct assetid &optional includeraw)
   (unless acct (setq acct $MAIN))
   (let* ((db (db client))
          (accts (if (stringp acct)
                     (list acct)
                     (db-contents db (userbalancekey client))))
-         (res nil))
+         (res nil)
+         (rawhash (and includeraw (make-hash-table :test 'eq))))
     (dolist (acct accts)
       (let ((assetids (if assetid
                           (list assetid)
                           (db-contents db (userbalancekey client acct))))
             (balances nil))
         (dolist (assetid assetids)
-          (multiple-value-bind (amount time)
+          (multiple-value-bind (amount time msg)
               (userbalanceandtime client acct assetid)
             (when amount
               (unless (is-numeric-p amount t)
@@ -893,12 +897,16 @@
                                     :amount amount
                                     :time time
                                     :formatted-amount formatted-amount)
-                      balances)))))
+                      balances)
+                (when includeraw
+                  (setf (gethash (car balances) rawhash) msg))))))
         (when balances
           (push (cons acct (sort balances #'balance-lessp)) res))))
-    (if (and (stringp acct) assetid)
-        (cadar res)
-        (sort res #'string-lessp :key #'car))))
+    (values
+     (if (and (stringp acct) assetid)
+         (cadar res)
+         (sort res #'string-lessp :key #'car))
+     rawhash)))
 
 (defstruct fraction
   assetid
@@ -906,10 +914,12 @@
   amount
   scale)
 
-(defmethod getfraction ((client client) &optional assetid)
+(defmethod getfraction ((client client) &optional assetid includeraw)
   "Get the fraction balance for a particular assetid, or all assetids,
    Returns a list of FRACTION instances, or a single FRACTION instance,
-   if ASSETID is specified."
+   if ASSETID is specified.
+   If INCLUDERAW is true, return, as a second value, a hash table mapping
+   from FRACTION instances to message strings."
   (let ((db (db client)))
     (require-current-bank client "In getfraction(): Bank not set")
     (init-bank-accts client)
@@ -918,7 +928,8 @@
       (let ((assetids (if assetid
                           (list assetid)
                           (db-contents db (userfractionkey client))))
-            (res nil))
+            (res nil)
+            (msghash (and includeraw (make-hash-table :test 'eq))))
         (dolist (assetid assetids)
           (let* ((key (userfractionkey client assetid))
                  (msg (db-get db key)))
@@ -933,8 +944,12 @@
                                      :assetname assetname
                                      :amount fraction
                                      :scale scale)
-                      res)))))
-        (if assetid (car res) (nreverse res))))))
+                      res)
+                (when includeraw
+                  (setf (gethash (car res) msghash) msg))))))
+        (values
+         (if assetid (car res) (nreverse res))
+         msghash)))))
 
 (defmethod getstoragefee ((client client) &optional assetid)
   "Get the storagefee balance for a particular assetid, or all assetids,
@@ -1087,12 +1102,14 @@
             (storage-fee oldtoamount totime time percent digits))
           (wbp (digits)
             (setq storagefee (bcadd storagefee tofee)
-                  oldtoamount (bcsub oldtoamount tofee))
-            (setq newtoamount (bcadd oldtoamount amount digits))))
+                  oldtoamount (bcsub oldtoamount tofee))))
+        (wbp (digits)
+          (setq newtoamount (bcadd (or oldtoamount 0) amount digits)))
         (when percent
           (multiple-value-setq (newtoamount fraction)
             (normalize-balance newtoamount fraction digits)))
-        (when (and (< (bccomp oldtoamount 0) 0)
+        (when (and oldtoamount
+                   (< (bccomp oldtoamount 0) 0)
                    (>= (bccomp newtoamount 0) 0))
           ;; This shouldn't be possible.
           ;; If it happens, it means the asset is out of balance.
@@ -1150,8 +1167,9 @@
       (when need-fee-balance-p
         (setq feebal (custmsg client $BALANCE bankid time
                               tranfee-asset fee-balance))
-        (when feeandbal (dotcat feeandbal "."))
-        (dotcat feeandbal feebal))
+        (if feeandbal
+            (dotcat feeandbal "." feebal)
+            (setq feeandbal feebal)))
 
       (setq balance (custmsg client $BALANCE bankid time
                              assetid newamount acct))
@@ -1314,7 +1332,7 @@
          (id (id client))
          (server (server client))
          (parser (parser client))
-         (msg (or (useroutbox client time)
+         (msg (or (ignore-errors (useroutbox client time))
                   (error "No outbox entry at time: ~s" time)))
          (reqs (parse parser msg)))
     (dolist (req reqs)
@@ -2160,13 +2178,13 @@
   (userbalanceandtime client acct assetid))
 
 (defmethod userbalanceandtime ((client client) acct assetid)
-  "Returns two values: the balance and its time"
+  "Returns three values: the balance, time, and raw message"
   (when (null acct) (setq acct $MAIN))
   (let* ((msg (db-get (db client) (userbalancekey client acct assetid))))
     (when msg
       (let ((args (unpack-bankmsg client msg $ATBALANCE)))
         (setq args (getarg $MSG args))
-        (values (getarg $AMOUNT args) (getarg $TIME args))))))
+        (values (getarg $AMOUNT args) (getarg $TIME args) msg)))))
 
 (defmethod useroutboxkey ((client client) &optional time)
   (let ((key (userbankkey client $OUTBOX)))
