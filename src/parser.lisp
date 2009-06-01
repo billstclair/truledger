@@ -336,9 +336,9 @@
            (when (> msglen 0)
              (setq res (strcat res (subseq msg 0 (min msglen (+ i extralen))))))
            (setq msg (and tail (subseq tail matchlen))
-                 dotpos (position msg ".")
-                 leftpos (position msg "(")
-                 commapos (position msg ","))
+                 dotpos (position #\. msg)
+                 leftpos (position #\( msg)
+                 commapos (position #\, msg))
            (cond ((null dotpos)
                   (setq dotpos leftpos))
                  (leftpos
@@ -347,7 +347,7 @@
                   (setq dotpos commapos))
                  (commapos
                   (setq dotpos (min dotpos commapos))))
-           (let ((parenpos (position msg ")")))
+           (let ((parenpos (position #\) msg)))
              (cond ((and parenpos
                          (or (not dotpos) (< parenpos dotpos)))
                     (setq msg (subseq msg parenpos)))

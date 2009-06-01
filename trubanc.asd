@@ -27,6 +27,7 @@
      (:file "client")
      (:file "server-web")
      (:file "client-web")
+     (:file "history")
      (:file "tests")
      ))))
 

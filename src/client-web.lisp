@@ -158,7 +158,10 @@
     (let ((str (cw-debugstr cw)))
       (when str
         (setf (cw-debugstr cw)
-              (stringify str "<b>=== Debug log ===</b><br/><pre>~a</pre>~%"))))
+              (whots (s)
+                (:b "=== Debug log ===")
+                (:br)
+                (:pre (str str))))))
 
     (with-output-to-string (s)
       (setf (cw-html-output cw) s)
@@ -819,6 +822,27 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
       "&nbsp;"
       (str-replace $nl $brn note)))
 
+(defun namestr-html (cw otherid cnt-thunk idname textname &optional you)
+  (multiple-value-bind (namestr contact) (id-namestr cw otherid you)
+    (when (or (null contact)
+              (and contact
+                   (not (contact-contact-p contact))
+                   (not (equal otherid (id (cw-client cw))))
+                   (not (equal otherid $COUPON))))
+      (let* ((cnt (funcall cnt-thunk)))
+        (setq namestr
+              (whots (s)
+                (str namestr)
+                (:br)
+                (:input :type "hidden"
+                        :name (format nil "~a~d" idname cnt)
+                        :value otherid)
+                "Nickname: "
+                (:input :type "text"
+                        :name (format nil "~a~d" textname cnt)
+                        :size "10")))))
+    namestr))
+
 (defun draw-balance (cw &optional
                      spend-amount recipient note toacct tonewacct nickname)
   (let* ((client (cw-client cw))
@@ -961,7 +985,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                                       (date (datestr time)))
 
                                  (unless (find assetid assets
-                                               :test #'equal :key #'asset-id)
+                                               :test #'equal :key #'asset-assetid)
                                    (setq assetname
                                          (whots (s)
                                            (str assetname) " "
@@ -1027,22 +1051,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                          (date (datestr time))
                          (acctcode (if acctoptions
                                        (whots (s) (:td "&nbsp;"))
-                                       "")))
-                    (multiple-value-bind (namestr contact) (id-namestr cw fromid)
-                      (unless contact
-                        (setq namestr
-                              (whots (s)
-                                (str namestr)
-                                (:br)
-                                (:input :type "hidden"
-                                        :name (stringify nonspendcnt "nonspendid~d")
-                                        :value fromid)
-                                "Nickname: "
-                                (:input :type "text"
-                                        :name (stringify nonspendcnt
-                                                         "nonspendnick~d")
-                                        :size "10"))))
-                      (incf nonspendcnt)
+                                       ""))
+                         (namestr (namestr-html cw fromid
+                                                (lambda () (1- (incf nonspendcnt)))
+                                                "nonspendid" "nonspendnick")))
                       (who (inbox-stream)
                         (str timecode)
                         (:tr
@@ -1056,7 +1068,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                          (:td (str selcode))
                          (:td (str reply))
                          (str acctcode)
-                         (:td (str date)))))))))
+                         (:td (str date))))))))
       
              (setq
               inboxcode
@@ -1815,10 +1827,6 @@ list with that nickname, or change the nickname of the selected
            (:br)
            (:input :type "submit" :name "updatepercent"
                    :value "Update Storage Fees"))))))))
-
-(defun draw-history (cw)
-  (setf (cw-error cw) "History display not yet implemented")
-  (draw-balance cw))
 
 (defun draw-admin (cw)
   (setf (cw-error cw) "Admin page not yet implemtned")

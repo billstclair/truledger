@@ -2040,7 +2040,7 @@
          (args (cons id args))
          (msg (apply #'makemsg parser args))
          (sig (sign msg privkey)))
-    (trim (format nil "~a:~a~%" msg sig))))
+    (trim (format nil "~a:~%~a~%" msg sig))))
 
 (defmethod sendmsg ((client client) &rest args)
   "Send a customer message to the server.
@@ -2697,7 +2697,7 @@
               (setq text (subseq res 2 (- pos 2))
                     res (subseq res (+ pos 3))))))
         (when (and text showprocess)
-          (debugmsg client (format nil "<b>===SERVER SAID</b>: ~a" text)))
+          #+nil (debugmsg client (format nil "<b>===SERVER SAID</b>: ~a" text)))
     
         (when showprocess
           (debugmsg client (format nil "<b>===RETURNED</b>: ~a~%"

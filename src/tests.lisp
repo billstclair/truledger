@@ -68,11 +68,11 @@
 (defmethod getoutbox ((ts test-state) &optional includeraw)
   (getoutbox (client ts) includeraw))
 
-(defmethod getbalance ((ts test-state) &optional acct assetid)
-  (getbalance (client ts) acct assetid))
+(defmethod getbalance ((ts test-state) &optional acct assetid includeraw)
+  (getbalance (client ts) acct assetid includeraw))
 
-(defmethod getfraction ((ts test-state) &optional assetid)
-  (getfraction (client ts) assetid))
+(defmethod getfraction ((ts test-state) &optional assetid includeraw)
+  (getfraction (client ts) assetid includeraw))
 
 (defmethod getstoragefee ((ts test-state) &optional assetid)
   (getstoragefee (client ts) assetid))
