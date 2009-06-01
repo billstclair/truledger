@@ -295,7 +295,7 @@
       (:form
        :method "post" :action "./" :autocomplete "off"
        (:input :type "hidden" :name "cmd" :value "dohistory")
-       (:input :type "hidden" :name "cnt" :value "$cnt")
+       (:input :type "hidden" :name "cnt" :value cnt)
        (let ((disabled (<= start 1)))
          (who (s)
            (:input :type "submit" :name "top" :value "&lt;&lt;"
