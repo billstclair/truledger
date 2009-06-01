@@ -18,7 +18,10 @@
   value)
 
 (defun draw-history (cw &optional (start 1) count)
-  (handler-case (draw-history-internal cw start count)
+  (handler-case
+      (let ((text (draw-history-internal cw start count)))
+        (who (s (cw-html-output cw))
+          (str text)))
     (error (c)
       (setf (cw-error cw) (stringify c))))
   (when (cw-error cw)
@@ -26,13 +29,12 @@
 
 (defun draw-history-internal (cw start count)
   (let* ((client (cw-client cw))
-         (s (cw-html-output cw))
          (times (gethistorytimes client)))
     (unless count (setq count (historycount client)))
     (unless times (error "No saved history"))
 
-    (settitle cw :History:)
-    (setmenu "balance")
+    (settitle cw "History")
+    (setmenu cw "balance")
 
     ;; Need controls for pagination, and date search.
     ;; Eventually, recipient, note, and amount search, too. 
@@ -43,7 +45,7 @@
            (idx 0)
            (nickcnt 0)
            (req nil))
-      (who (s)
+      (whots (s)
         (:br)
         (scroller s start count cnt)
         (:form
@@ -59,135 +61,143 @@
            (:th "Time")
            (:th "Request")
            (:th "From")
-           (:th "th")
+           (:th "To")
            (:th :colspan "2" "Amount")
            (:th "Note")
            (:th "Response")
            (:th "x"))
-          (:tr
-           (dolist (time (nthcdr strt times))
-             (let* ((items (gethistoryitems client time))
-                    (timestr (hsc time))
-                    (datestr
-                     (whots (s)
-                       (:span :title timestr (str (datestr time)))))
-                    (item (car items))
-                    (request (getarg $REQUEST item)))
-               ;; There are currently three types of history items:
-               ;; 1) Spend
-               ;; 2) Process Inbox
-               ;;   a) Accept or reject of somebody else's spend
-               ;;   b) Acknowledgement of somebody else's accept or reject of my spend
-               (cond ((equal request $SPEND)
-                      (setq req "spend")
-                      (let* ((from "You")
-                             (toid (getarg $ID item))
-                             (amount (getarg $FORMATTEDAMOUNT item))
-                             (assetname (getarg $ASSETNAME item))
-                             (note (getarg $NOTE item))
-                             (to (namestr-html
-                                  cw toid
-                                  (lambda () (1- (incf nickcnt)))
-                                  "nickid" "nick")))
-                        (when (blankp note) (setq note "&nbsp;"))
-                        (who (s)
-                          (:tr
-                           (:td (str datestr))
-                           (:td (str req))
-                           (:td (str from))
-                           (:td (str to))
-                           (:td :align "right" :style "border-right-width: 0;"
-                                (str amount))
-                           (:td :style "border-left-width: 0;" (str assetname))
-                           (:td (str note))
-                           (:td "&nbsp;")
-                           (:td
-                            (:input :type "hidden"
-                                    :name (stringify idx "time~d")
-                                    :value timestr)
-                            (:input :type "checkbox"
-                                    :name (stringify idx "chk~d")))))))
-                     ((equal request $PROCESSINBOX)
-                      (pop items)
-                      (loop
-                         with rows = nil
-                         with id = (id client)
-                         while items
-                         with cancelp
-                         with toid
-                         with to
-                         with fromid
-                         with from
-                         with amount
-                         with assetname
-                         with note
-                         with response  
-                         do
-                           (loop
-                              while items
-                              for item = (pop items) 
-                              for request = (getarg $REQUEST item)
-                              do
-                              (cond ((or (equal request $SPENDACCEPT)
-                                         (equal request $SPENDREJECT))
-                                     (when req
-                                       (push item items)
-                                       (return))
-                                     (setq req (if (equal request $SPENDACCEPT)
-                                                   "accept" "reject"))
-                                     (setq
-                                      cancelp (equal (getarg $CUSTOMER item) id)
-                                      response (getarg $NOTE item)
-                                      toid (getarg $CUSTOMER item))
-                                     to (namestr-html
-                                         cw toid
-                                         (lambda () (1- (incf nickcnt)))
-                                         "nickid" "nick" "You"))
-                                    ((equal request $SPEND)
-                                     (setq
-                                      fromid (getarg $CUSTOMER item)
-                                      from (namestr-html
-                                            cw fromid
-                                            (lambda () (1- (incf nickcnt)))
-                                            "nickid" "nick" "You")
-                                      toid (getarg $ID item))
-                                     (cond ((not (blankp to))
-                                            ;; to set spendaccept/spendredeem code
-                                            (when (equal toid $COUPON)
-                                              (setq to
-                                                    (whots (s)
-                                                      "Coupon redeemed by:"
-                                                      (:br)
-                                                      "to"))))
-                                           (t
-                                            (setq to (namestr-html
-                                                      cw toid
-                                                      (lambda () (1- (incf nickcnt)))
-                                                      "nickid" "nick" "You"))))
-                                     (setq amount (getarg $FORMATTEDAMOUNT item)
-                                           assetname (getarg $ASSETNAME item)
-                                           note (getarg $NOTE item))
-                                     (when (equal (getarg $ATREQUEST item)
-                                                  $ATSPEND)
-                                       (setq req (stringify
-                                                  req (if cancelp "=~a" "@~a")))))))
-                           (when req
-                             (push (list req from to amount assetname note response)
-                                   rows)
-                             (setq req nil
-                                   from nil
-                                   to nil
-                                   amount nil
-                                   assetname nil
-                                   note nil
-                                   response nil))
-                         finally
-                           (when rows
-                             (setq rows (nreverse rows))
-                             (let ((rowcnt (length rows))
-                                   (first t))
-                               (who (s)
-                                 (:td :rowspan rowcnt (str datestr))
+          (dolist (time (nthcdr strt times))
+            (let* ((err nil)
+                   (items (handler-case (gethistoryitems client time)
+                            (error (c)
+                              (setq err (stringify c))
+                              nil)))
+                   (timestr (hsc time))
+                   (datestr
+                    (whots (s)
+                      (:span :title timestr (str (datestr time)))))
+                   (item (car items))
+                   (request (and item (getarg $REQUEST item))))
+              ;; There are currently three types of history items:
+              ;; 1) Spend
+              ;; 2) Process Inbox
+              ;;   a) Accept or reject of somebody else's spend
+              ;;   b) Acknowledgement of somebody else's accept or reject of my spend
+              (who (s)
+                (cond ((equal request $SPEND)
+                       (setq req "spend")
+                       (let* ((from "You")
+                              (toid (getarg $ID item))
+                              (amount (getarg $FORMATTEDAMOUNT item))
+                              (assetname (getarg $ASSETNAME item))
+                              (note (getarg $NOTE item))
+                              (to (namestr-html
+                                   cw toid
+                                   (lambda () (1- (incf nickcnt)))
+                                   "nickid" "nick")))
+                         (when (blankp note) (setq note "&nbsp;"))
+                         (who (s)
+                           (:tr
+                            (:td (str datestr))
+                            (:td (str req))
+                            (:td (str from))
+                            (:td (str to))
+                            (:td :align "right" :style "border-right-width: 0;"
+                                 (str amount))
+                            (:td :style "border-left-width: 0;" (str assetname))
+                            (:td (str note))
+                            (:td "&nbsp;")
+                            (:td
+                             (:input :type "hidden"
+                                     :name (stringify idx "time~d")
+                                     :value timestr)
+                             (:input :type "checkbox"
+                                     :name (stringify idx "chk~d")))))))
+                      ((equal request $PROCESSINBOX)
+                       (pop items)
+                       (setq req nil)
+                       (loop
+                          with rows = nil
+                          with id = (id client)
+                          while items
+                          with cancelp
+                          with toid
+                          with to
+                          with fromid
+                          with from
+                          with amount
+                          with assetname
+                          with note
+                          with response  
+                          do
+                          (loop
+                             while items
+                             for item = (pop items) 
+                             for request = (getarg $REQUEST item)
+                             do
+                             (cond ((or (equal request $SPENDACCEPT)
+                                        (equal request $SPENDREJECT))
+                                    (when req
+                                      (push item items)
+                                      (return))
+                                    (setq req (if (equal request $SPENDACCEPT)
+                                                  "accept" "reject"))
+                                    (setq
+                                     cancelp (equal (getarg $CUSTOMER item) id)
+                                     response (getarg $NOTE item)
+                                     toid (getarg $CUSTOMER item))
+                                    to (namestr-html
+                                        cw toid
+                                        (lambda () (1- (incf nickcnt)))
+                                        "nickid" "nick" "You"))
+                                   ((equal request $SPEND)
+                                    (setq
+                                     fromid (getarg $CUSTOMER item)
+                                     from (namestr-html
+                                           cw fromid
+                                           (lambda () (1- (incf nickcnt)))
+                                           "nickid" "nick" "You")
+                                     toid (getarg $ID item))
+                                    (cond ((not (blankp to))
+                                           ;; to set by spendaccept/spendredeem code
+                                           (when (equal toid $COUPON)
+                                             (setq to
+                                                   (whots (s)
+                                                     "Coupon redeemed by:"
+                                                     (:br)
+                                                     "to"))))
+                                          (t
+                                           (setq to (namestr-html
+                                                     cw toid
+                                                     (lambda () (1- (incf nickcnt)))
+                                                     "nickid" "nick" "You"))))
+                                    (setq amount (getarg $FORMATTEDAMOUNT item)
+                                          assetname (getarg $ASSETNAME item)
+                                          note (getarg $NOTE item))
+                                    (when (equal (getarg $ATREQUEST item)
+                                                 $ATSPEND)
+                                      (setq req (stringify
+                                                 req (if cancelp "=~a" "@~a")))))))
+                          (when req
+                            (push (list req from to amount assetname note response)
+                                  rows)
+                            (setq req nil
+                                  from nil
+                                  to nil
+                                  amount nil
+                                  assetname nil
+                                  note nil
+                                  response nil))
+                          finally
+                          (when rows
+                            (setq rows (nreverse rows))
+                            (let ((rowcnt (length rows))
+                                  (first t))
+                              (who (s)
+                                (:tr
+                                 (when first
+                                   (who (s)
+                                     (:td :rowspan rowcnt (str datestr))))
                                  (dolist (row rows)
                                    (destructuring-bind
                                          (req from to amount assetname note response)
@@ -213,13 +223,26 @@
                                                       :name (stringify idx "time~a")
                                                       :value timestr)
                                               (:input :type "checkbox"
-                                                      :name (stringify idx "chk~a"))))))))))))
-                     (t (setq request (hsc request))
-                        (who (s)
-                          (:td (str datestr))
-                          (:td (str request))
-                          (:td :colspan "6" "Unknown request type")))))))
-          (incf idx))
+                                                      :name (stringify idx "chk~a")))))))))))))
+                      (t (who (s)
+                           (:tr
+                            (:td (str datestr))
+                            (cond (err
+                                   (who (s)
+                                     (:td :colspan "7"
+                                          :style "color: red;"
+                                          "Error: " (esc err))))
+                                  (t
+                                   (who (s)
+                                     (:td (esc request))
+                                     (:td :colspan "6" "Unknown request type"))))
+                            (:td
+                             (:input :type "hidden"
+                                     :name (stringify idx "time~d")
+                                     :value timestr)
+                             (:input :type "checkbox"
+                                     :name (stringify idx "chk~d")))))))))
+            (incf idx)))
          (when (> nickcnt 0)
            (who (s)
              (:input :type "hidden" :name "nickcnt" :value nickcnt)))
@@ -251,7 +274,8 @@
                      (:td "You acknowledged your acceptance of a coupon you spent to yourself")))
                (:br)
                (:a :href "./?cmd=toggleinstructions&page=history"
-                   "Hide Instructions"))))))))
+                   "Hide Instructions"))))
+      (who (s) (:br))))))
 
 
 (defun scroller (s start count cnt)

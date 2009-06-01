@@ -824,11 +824,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
 
 (defun namestr-html (cw otherid cnt-thunk idname textname &optional you)
   (multiple-value-bind (namestr contact) (id-namestr cw otherid you)
-    (when (or (null contact)
-              (and contact
-                   (not (contact-contact-p contact))
-                   (not (equal otherid (id (cw-client cw))))
-                   (not (equal otherid $COUPON))))
+    (when (and contact
+               (not (contact-contact-p contact))
+               (not (equal otherid (id (cw-client cw))))
+               (not (equal otherid $COUPON)))
       (let* ((cnt (funcall cnt-thunk)))
         (setq namestr
               (whots (s)
