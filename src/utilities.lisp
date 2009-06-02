@@ -224,6 +224,9 @@
 (defun blankp (x)
   (or (null x) (equal x "")))
 
+(defun hsc (x)
+  (and x (hunchentoot:escape-for-html x)))
+
 (defun get-host-name ()
   (usocket::get-host-name))
 

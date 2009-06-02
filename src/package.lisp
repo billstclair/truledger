@@ -227,6 +227,7 @@
    #:str-replace
    #:zero-string
    #:blankp
+   #:hsc
 
    ;; client.lisp & server.lisp
    #:id
@@ -247,6 +248,8 @@
    ;; server-web.lisp
    #:trubanc-web-server
    #:stop-web-server
+   #:port-server
+   #:acceptor-port
    #:bind-parameters))
 
 (cl:defpackage :trubanc-server
@@ -386,7 +389,8 @@
    #:getoutbox
    #:redeem
    #:user-preference
-   #:userreq))
+   #:userreq
+   #:trimmsg))
 
 (cl:defpackage :trubanc-client-web
   (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens :trubanc-client)

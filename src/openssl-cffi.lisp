@@ -57,7 +57,12 @@
 (defun i2d-RSAPrivateKey ()
   (foreign-symbol-pointer "i2d_RSAPrivateKey"))
 
+;; PHP uses Triple-DES with CBC to encrypt private keys
 (defcfun ("EVP_des_ede3_cbc" evp-des-ede3-cbc) :pointer
+  )
+
+;; Trubanc uses AES-256 with CBC to encrypt private keys
+(defcfun ("EVP_aes_256_cbc" evp-aes-256-cbc) :pointer
   )
 
 (defconstant $pem-string-rsa-public "RSA PUBLIC KEY")
@@ -191,7 +196,7 @@
       (let ((res (if password
                      (with-foreign-strings ((passp password :encoding :latin-1))
                        (prog1 (%pem-write-bio-rsa-private-key
-                               bio rsa (evp-des-ede3-cbc) passp (length password))
+                               bio rsa (evp-aes-256-cbc) passp (length password))
                          (destroy-password passp (length password) 'mem-set-char)))
                      (%pem-write-bio-rsa-private-key bio rsa))))
         (when (eql res 0)

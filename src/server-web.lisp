@@ -16,6 +16,9 @@
 (defvar *trubanc-ports-to-acceptors*
   (make-hash-table :test 'eql))
 
+(defvar *trubanc-acceptors-to-ports*
+  (make-hash-table :test 'eq))
+
 (defvar *trubanc-ports-to-www-dirs*
   (make-hash-table :test 'eql))
 
@@ -32,10 +35,17 @@
   (gethash port *trubanc-ports-to-acceptors*))
 
 (defun (setf port-acceptor) (acceptor port)
-  (if acceptor
-      (setf (gethash port *trubanc-ports-to-acceptors*) acceptor)
-      (remhash port *trubanc-ports-to-acceptors*))
+  (cond (acceptor
+         (setf (gethash port *trubanc-ports-to-acceptors*) acceptor
+               (gethash acceptor *trubanc-acceptors-to-ports*) port))
+        (t (let ((acceptor (port-acceptor port)))
+             (remhash port *trubanc-ports-to-acceptors*)
+             (when acceptor
+               (remhash acceptor *trubanc-acceptors-to-ports*)))))
   acceptor)
+
+(defun acceptor-port (acceptor)
+  (gethash acceptor *trubanc-acceptors-to-ports*))
 
 (defun port-www-dir (port)
   (gethash port *trubanc-ports-to-www-dirs*))

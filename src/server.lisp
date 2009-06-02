@@ -419,7 +419,7 @@
                       q (apply #'implode #\, times))
                 (db-put db key q)))))
         (unless res (error "Timestamp not enqueued: ~s" time))
-        (when (> (bccomp (get-universal-time) (bcadd time (* 10 60)))
+        (when (> (bccomp (get-unix-time) (bcadd time (* 10 60)))
                  0)
           (error "Timestamp too old: ~s" time))))
     time))

@@ -876,7 +876,7 @@
                     (list acct)
                     (db-contents db (userbalancekey client))))
          (res nil)
-         (rawhash (and includeraw (make-hash-table :test 'eq))))
+         (msghash (and includeraw (make-hash-table :test 'eq))))
     (dolist (acct accts)
       (let ((assetids (if assetid
                           (list assetid)
@@ -899,14 +899,14 @@
                                     :formatted-amount formatted-amount)
                       balances)
                 (when includeraw
-                  (setf (gethash (car balances) rawhash) msg))))))
+                  (setf (gethash (car balances) msghash) msg))))))
         (when balances
           (push (cons acct (sort balances #'balance-lessp)) res))))
     (values
      (if (and (stringp acct) assetid)
          (cadar res)
          (sort res #'string-lessp :key #'car))
-     rawhash)))
+     msghash)))
 
 (defstruct fraction
   assetid
@@ -1442,7 +1442,7 @@
         (parser (parser client))
         (bankid (bankid client))
         (res nil)
-        (hash (and includeraw (make-hash-table :test #'eq)))
+        (msghash (and includeraw (make-hash-table :test #'eq)))
         (key (userinboxkey client)))
     (sync-inbox client)
     (dolist (time (db-contents db key))
@@ -1499,8 +1499,10 @@
                       (t (push item res)
                          (setq last-item nil)))
               (when (and includeraw (eq (car res) item))
-                (setf (gethash item hash) msg))))))))
-    (sort res (lambda (t1 t2) (< (bccomp t1 t2) 0)) :key #'inbox-time)))
+                (setf (gethash item msghash) msg))))))))
+    (values
+     (sort res (lambda (t1 t2) (< (bccomp t1 t2) 0)) :key #'inbox-time)
+     msghash)))
 
 (defmethod sync-inbox ((client client))
   "Synchronize the current customer inbox with the current bank.
@@ -1938,7 +1940,7 @@
          (parser (parser client))
          (bankid (bankid client))
          (res nil)
-         (msgs (make-hash-table :test #'eq))
+         (msghash (and includeraw (make-hash-table :test #'eq)))
          (key (useroutboxkey client))
          (outbox (db-contents db key)))
     (dolist (time outbox)
@@ -2005,9 +2007,11 @@
               (outbox-coupons item) coupons)
         (push item res)
         (when includeraw
-          (setf (gethash item msgs) msg))))
-    (sort res (lambda (x y) (< (bccomp x y) 0))
-          :key #'outbox-time)))
+          (setf (gethash item msghash) msg))))
+    (values
+     (sort res (lambda (x y) (< (bccomp x y) 0))
+           :key #'outbox-time)
+     msghash)))
 
 (defmethod redeem ((client client) coupon)
   "Redeem a coupon
@@ -2416,7 +2420,7 @@
 
         ;; Get account balances
         (setq msg (sendmsg client $GETBALANCE bankid reqnum))
-        (let ((reqs (parse parser msg t))
+        (let ((reqs (and msg (parse parser msg t)))
               (balances (make-equal-hash))
               (fractions (make-equal-hash))
               (balancehash nil))
@@ -2689,7 +2693,6 @@
                      (trubanc-server:process test-server msg)
                      (post url vars)))
             (text nil))
-        (unless res (error "Null result from server"))
         (when (and (> (length res) 2)
                    (equal "<<" (subseq res 0 2)))
           (let ((pos (search #.(format nil ">>~%") res)))
@@ -2701,7 +2704,7 @@
     
         (when showprocess
           (debugmsg client (format nil "<b>===RETURNED</b>: ~a~%"
-                                   (trimmsg res))))
+                                   (and msg (trimmsg res)))))
 
         res))))
 
@@ -2710,9 +2713,9 @@
          (tokens (mapcar #'cdr (tokenize msg)))
          (res ""))
     (dolist (token tokens)
-      (cond ((characterp token) (dotcat res (string token)))
-            ((ishex-p token) (dotcat res token))
-            (t (dotcat res "<b>" token "</b>"))))
+      (cond ((characterp token) (dotcat res (hsc (string token))))
+            ((ishex-p token) (dotcat res (hsc token)))
+            (t (dotcat res "<b>" (hsc token) "</b>"))))
     res))
 
 (defun ishex-p (str)
