@@ -738,7 +738,9 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
           (setq err "Recipient ID not registered at bank")))
 
       (cond ((blankp recipient)
-             (unless (blankp mintcoupon) (setq recipient $COUPON)))
+             (if (blankp mintcoupon)
+                 (setq err "Recipient missing")
+                 (setq recipient $COUPON)))
             ((not (blankp mintcoupon))
              (setq err "To mint a coupon don't specify a recipient")))
 
@@ -781,10 +783,11 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                (return)))
         (setf (cw-error cw) err)
         (if (blankp mintcoupon)
-            (if err
-                (draw-balance cw amount recipient note toacct tonewacct nickname)
-                (draw-balance cw))
-            (draw-coupon cw (last-spend-time client)))))))
+            (unless err (draw-balance cw))
+            (draw-coupon cw (last-spend-time client))))
+      (when err
+        (setf (cw-error cw) err)
+        (draw-balance cw amount recipient note toacct tonewacct nickname)))))
 
 (defun do-spend-internal (cw client acct-and-asset
                           recipient amount acct2 note)
