@@ -269,7 +269,7 @@
              (who (s)
                (:table
                 :class "prettytable"
-                (:tr (:th "Key"))
+                (:tr (:th :colspan 2 "Key"))
                 (:tr (:td "spend") (:td "You made a spend"))
                 (:tr (:td "accept" (:td "You accepted a spend")))
                 (:tr (:td "reject" (:td "You rejected a spend")))

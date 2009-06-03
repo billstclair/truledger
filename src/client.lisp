@@ -269,7 +269,7 @@
     (unless (coupon-number-p coupon-number)
       (error "Malformed coupon number: ~s" coupon-number))
 
-    (let* ((msg (strcat "(0," bankid ",0," coupon-number "):0"))
+    (let* ((msg (strcat "(0," $bankid ",0," coupon-number "):0"))
            (server (make-instance 'serverproxy :url url :client client))
            (msg (process server msg))
            (reqs (parse parser msg)))
@@ -285,6 +285,7 @@
    Return bankid, or error."
   (unless (url-p url)
     (error "Not a URL: ~s" url))
+  (when (blankp id) (setq id nil))
   (let* ((db (db client))
          (urlhash (sha1 url))
          (bankid (db-get db $BANK $BANKID urlhash)))
@@ -345,6 +346,8 @@
            (setq realurl url
                  bankid (verify-bank client url)))
           (t (multiple-value-setq (bankid realurl coupon) (parse-coupon url))
+             (unless (not (blankp bankid))
+               (setq bankid (verify-bank client realurl)))
              (unless couponok
                (verify-coupon client url bankid realurl))))
     (let ((already-registered-p t))
@@ -2066,10 +2069,10 @@
 
 (defmethod match-bankreq ((client client) req &optional request bankid)
   "Unpack a bank message that has already been parsed."
-  (unless bankid (setq bankid (bankid client)))
+  (unless (not (blankp bankid)) (setq bankid (bankid client)))
   (let* ((parser (parser client))
          (args (match-pattern parser req bankid)))
-    (unless (equal (getarg $CUSTOMER args) bankid)
+    (unless (or (not bankid) (equal (getarg $CUSTOMER args) bankid))
       (error "Return message not from bank"))
     (when (equal (getarg $REQUEST args) $FAILED)
       (error (format nil "Server error: ~a" (getarg $ERRMSG args))))

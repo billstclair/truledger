@@ -377,7 +377,7 @@
             (let ((bank-getter (parser-bank-getter parser)))
               (when bank-getter
                 (setq bankid (funcall bank-getter)))))
-          (unless (or (null bankid) (equal bankid args-bankid))
+          (unless (or (blankp bankid) (equal bankid args-bankid))
             (error "bankid mismatch, sb: ~s, was: ~s"
                    bankid args-bankid))))
       (when (> (length (gethash $NOTE args)) 4096)

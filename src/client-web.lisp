@@ -69,8 +69,20 @@
          (web-server-internal client)
       (finalize client))))
 
+(defun cookie-name (base &optional (acceptor hunchentoot:*acceptor*))
+  (let ((port (acceptor-port acceptor)))
+    (if (eql port 80)
+        base
+        (format nil "~a-~d" base port))))
+
+(defun get-cookie (name)
+  (hunchentoot:cookie-in (cookie-name name)))
+
+(defun set-cookie (name value)
+  (hunchentoot:set-cookie (cookie-name name) :value value))
+
 (defun delete-cookie (name)
-  (hunchentoot:set-cookie name :value "" :expires 0))
+  (hunchentoot:set-cookie (cookie-name name) :value "" :expires 0))
 
 ;; Map a (parm "cmd") value to a function to call
 (defparameter *command-map*
@@ -104,16 +116,16 @@
 (defun web-server-internal (client)
   (let* ((iphone (search "iPhone" (hunchentoot:user-agent)))
          (title "Trubanc Client")
-         (session (hunchentoot:cookie-in "session"))
+         (session (get-cookie "session"))
          (cw (make-cw :client client :iphone iphone :title title :session session))
          (cmd (parm "cmd"))
          (debug-parm (parm "debug"))
-         (debug (hunchentoot:cookie-in "debug")))
+         (debug (get-cookie "debug")))
     
     (when debug-parm
       (setq debug (not (blankp debug-parm)))
       (if debug
-          (hunchentoot:set-cookie "debug" :value "debug")
+          (set-cookie "debug" "debug")
           (delete-cookie "debug")))
     (when debug
       (setf (cw-debugstr cw) ""
@@ -274,7 +286,9 @@
   (let* ((s (cw-html-output cw))
          (keysize (or (ignore-errors
                         (parse-integer (parm "keysize")))
-                      3072)))
+                      3072))
+         (coupon (parm "coupon"))
+         (name (parm "name")))
     (flet ((keysize-option (size)
              (let ((size-str (stringify size "~d")))
                (who (s)
@@ -299,10 +313,10 @@
            (:td (:input :type "password" :name "passphrase2" :size "50")))
           (:tr
            (:td (:b "Coupon:"))
-           (:td (:input :type "text" :name "coupon" :size "64")))
+           (:td (:input :type "text" :name "coupon" :value coupon :size "64")))
           (:tr
            (:td (:b "Account Name" (:br) "(Optional):"))
-           (:td (:input :type "text" :name "name" :size "40")))
+           (:td (:input :type "text" :name "name" :value name :size "40")))
           (:tr
            (:td (:b "Key size:"))
            (:td
@@ -458,10 +472,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
               ;; if the client is accepting cookies.
               ;; Need to set a test cookie in the login page,
               ;; and check whether it comes back.
-              (hunchentoot:set-cookie "session" :value session)
+              (set-cookie "session" session)
               (when newacct
                 (unless (blankp coupon)
-                  (addbank client coupon name t)))
+                  (ignore-errors (addbank client coupon name t))))
               (init-bank cw)
               (return-from do-login
                 (if (bankid client)
@@ -471,8 +485,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
             (setq err (stringify c "Login error: ~a")))))
 
       (setf (cw-error cw) err)
-
-      (draw-login cw))))
+      (draw-login cw (parm "privkey")))))
 
 (defun do-bank (cw)
   "Here to change banks or add a new bank"
@@ -681,7 +694,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                    (unless err
                      (handler-case
                          (let ((session (login-new-session client passphrase)))
-                           (hunchentoot:set-cookie "session" :value session)
+                           (set-cookie "session" session)
                            (setbank client bankid)
                            (addcontact client admin-id admin-name
                                        "The bank administrator"))
@@ -1492,7 +1505,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                        (:tr
                         (:td (:b "Note:"))
                         (:td
-                         (:textarea :name "note" :cols "40" :rows "10"
+                         (:textarea :name "note" :cols "40" :rows "5"
                                     (str note))))
                        (:tr
                         (:td (:b "Recipient ID:"))
@@ -1650,44 +1663,37 @@ list with that nickname, or change the nickname of the selected
     (settitle cw "Raw Balance")
     (setmenu cw "balance")
 
+    (who (s)
+      (:br))
+
     (multiple-value-bind (inbox msghash) (getinbox client t)
-      (cond ((null inbox)
-             (who (s)
-               (:br)
-               :b "=== Inbox empty ==="
-               (:br)))
-            (t
-             (who (s)
-               (:table
-                :class "prettytable"
-                (:tr (:th :colspan 2 :style "text-align: left;" "Inbox"))
-                (dolist (item inbox)
-                  (let ((msg (gethash item msghash))
-                        (time (inbox-time item)))
-                    (unless (blankp msg)
-                      (who (s)
-                        (:tr
-                         (:td :valign "top" (esc time))
-                         (:td (:pre (str (trimmsg msg))))))))))))))
+      (when inbox
+        (who (s)
+          (:table
+           :class "prettytable"
+           (:tr (:th :colspan 2 :style "text-align: left;" "Inbox"))
+           (dolist (item inbox)
+             (let ((msg (gethash item msghash))
+                   (time (inbox-time item)))
+               (unless (blankp msg)
+                 (who (s)
+                   (:tr
+                    (:td :valign "top" (esc time))
+                    (:td (:pre (str (trimmsg msg)))))))))))))
 
     (multiple-value-bind (outbox msghash) (getoutbox client t)
-      (cond ((null outbox)
-             (who (s)
-               (:br)
-               (:b "=== Outbox empty ===")
-               (:br)))
-            (t
-             (who (s)
-               (:table
-                :class "prettytable"
-                (:tr (:th :colspan 2 :style "text-align: left;" (:b "Outbox")))
-                (dolist (item outbox)
-                  (let ((msg (gethash item msghash))
-                        (time (outbox-time item)))
-                    (who (s)
-                      (:tr
-                       (:td :valign "top" (esc time))
-                       (:td (:pre (str (trimmsg msg)))))))))))))
+      (when outbox
+        (who (s)
+          (:table
+           :class "prettytable"
+           (:tr (:th :colspan 2 :style "text-align: left;" (:b "Outbox")))
+           (dolist (item outbox)
+             (let ((msg (gethash item msghash))
+                   (time (outbox-time item)))
+               (who (s)
+                 (:tr
+                  (:td :valign "top" (esc time))
+                  (:td (:pre (str (trimmsg msg))))))))))))
 
     (multiple-value-bind (balance msghash) (getbalance client nil nil t)
       (loop
@@ -1813,7 +1819,7 @@ list with that nickname, or change the nickname of the selected
         (:tr
          (:td (:b "Notes" (:br) "(Optional):"))
          (:td
-          (:textarea :name "notes" :cols "30" :rows "10" (esc notes))))
+          (:textarea :name "notes" :cols "30" :rows "5" (esc notes))))
         (:tr
          (:td)
          (:td
