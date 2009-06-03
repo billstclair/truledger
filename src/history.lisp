@@ -62,8 +62,8 @@
          (:input :type "hidden" :name "count" :value count)
          (:input :type "hidden" :name "chkcnt" :value cnt)
          (:table
-          :border "1"
-          (:caption (:b "=== History ==="))
+          :class "prettytable"
+          (:caption (:b "History"))
           (:tr
            (:th "Time")
            (:th "Request")
@@ -268,8 +268,8 @@
             (t
              (who (s)
                (:table
-                :border "1"
-                (:caption (:b "=== Key ==="))
+                :class "prettytable"
+                (:tr (:th "Key"))
                 (:tr (:td "spend") (:td "You made a spend"))
                 (:tr (:td "accept" (:td "You accepted a spend")))
                 (:tr (:td "reject" (:td "You rejected a spend")))

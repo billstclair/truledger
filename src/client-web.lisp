@@ -187,7 +187,8 @@
         (:title (str title))
         (:meta :name "viewport" :content "width=device-width")
         (:link :rel "apple-touch-icon" :href="../site-icon.ico")
-        (:link :rel "shortcut icon" :href "../site-icon.ico"))
+        (:link :rel "shortcut icon" :href "../site-icon.ico")
+        (:link :rel "stylesheet" :type "text/css" :href "../css/tables.css"))
        (:body
         :onload (cw-onload cw)
         (:p
@@ -582,115 +583,119 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
 
 (defun do-admin (cw)
   (bind-parameters (bankname bankurl passphrase verification adminpass adminverify)
-    (let ((client (cw-client cw))
-          (server (get-running-server))
-          (err nil))
-      (cond (server
-             (setq err "Server already running"))
-            ((blankp bankname)
-             (setq err "Bank name must be set"))
-            ((or (blankp bankurl)
-                 (not (url-p bankurl)))
-             (setq err "Bank URL must be a web address"))
-            ((or (blankp passphrase)
-                 (not (equal passphrase verification)))
-             (setq err "Passphrase didn't match verification"))
-            ((or (blankp adminpass)
-                 (not (equal adminpass adminverify)))
-             (setq err "Admin Passphrase didn't match verification"))
-            ((let ((cl (make-client (client-db-dir))))
-               (handler-case
-                   (progn (login cl passphrase) t)
-                 (error ()
-                   nil)))
-             (setq err "Bank already has a client account. Not handled."))
-            (t (let ((server (handler-case
-                                 (make-server (server-db-dir) passphrase
-                                              :bankname bankname
-                                              :bankurl bankurl)
-                               (error (c)
-                                 (setq err (stringify
-                                            c "Error initializing bank: ~a"))))))
-                 (destroy-password verification)
-                 (destroy-password adminverify)
-                 (when server
-                   ;; Enable server web hosting
-                   (setf (port-server (acceptor-port hunchentoot:*acceptor*))
-                         server)
-                   (let ((bankid (bankid server))
-                         (admin-name (stringify bankname "~a Admin"))
-                         (admin-id nil)
-                         (admin-exists-p nil))
-                     ;; Login as admin on client, creating account if necessary
-                     (handler-case (login client adminpass)
-                       (error ()
-                         (handler-case
-                             (newuser client :passphrase adminpass)
-                           (error ()
-                             (setq err "Can't create admin account")))))
-                     (unless err
-                       (setq admin-id (id client))
-                       (ignore-errors
-                         ;; If we can set the bank, the admin user
-                         ;; already has an account.
-                         (setbank client bankid)
-                         (setq admin-exists-p t)))
-                     (unless err
-                       (let ((privkey-str
-                              (encode-rsa-private-key
-                               (privkey server) passphrase)))
-                         (handler-case
-                             (newuser client
-                                      :passphrase passphrase
-                                      :privkey (decode-rsa-private-key
-                                                privkey-str passphrase))
-                           (error (c)
-                             (setq err
-                                   (stringify
-                                    c "Can't create server account in client")))))
-                       (handler-case
-                           (addbank client bankurl bankname)
-                         (error (c)
-                           (setq err (stringify
-                                      c "Can't add bank to client: ~a")))))
-                     (unless (or err admin-exists-p)
-                       (handler-case
-                           (spend client admin-id (tokenid server) "200000")
-                         (error (c)
-                           (setq err (stringify
-                                      c "Can't spend to admin account: ~a"))))
-                       (unless err
-                         (handler-case
-                             (progn
-                               (login client adminpass)
-                               (addbank client bankurl admin-name)
-                               (addcontact client bankid bankname "The bank"))
-                           (error (c)
-                             (setq err (stringify
-                                        c "Can't add bank to admin account: ~a"))))))
+    (unwind-protect
+         (do-admin-internal
+             cw bankname bankurl passphrase verification adminpass adminverify)
+      (destroy-password passphrase)
+      (destroy-password verification)
+      (destroy-password adminpass)
+      (destroy-password adminverify))))
 
-                     (destroy-password adminpass)
-
+(defun do-admin-internal 
+    (cw bankname bankurl passphrase verification adminpass adminverify)
+  (let ((client (cw-client cw))
+        (server (get-running-server))
+        (err nil))
+    (cond (server
+           (setq err "Server already running"))
+          ((blankp bankname)
+           (setq err "Bank name must be set"))
+          ((or (blankp bankurl)
+               (not (url-p bankurl)))
+           (setq err "Bank URL must be a web address"))
+          ((or (blankp passphrase)
+               (not (equal passphrase verification)))
+           (setq err "Passphrase didn't match verification"))
+          ((or (blankp adminpass)
+               (not (equal adminpass adminverify)))
+           (setq err "Admin Passphrase didn't match verification"))
+          ((let ((cl (make-client (client-db-dir))))
+             (handler-case
+                 (progn (login cl passphrase) t)
+               (error ()
+                 nil)))
+           (setq err "Bank already has a client account. Not handled."))
+          (t (let ((server (handler-case
+                               (make-server (server-db-dir) passphrase
+                                            :bankname bankname
+                                            :bankurl bankurl)
+                             (error (c)
+                               (setq err (stringify
+                                          c "Error initializing bank: ~a"))))))
+               (when server
+                 ;; Enable server web hosting
+                 (setf (port-server (acceptor-port hunchentoot:*acceptor*))
+                       server)
+                 (let ((bankid (bankid server))
+                       (admin-name (stringify bankname "~a Admin"))
+                       (admin-id nil)
+                       (admin-exists-p nil))
+                   ;; Login as admin on client, creating account if necessary
+                   (handler-case (login client adminpass)
+                     (error ()
+                       (handler-case
+                           (newuser client :passphrase adminpass)
+                         (error ()
+                           (setq err "Can't create admin account")))))
+                   (unless err
+                     (setq admin-id (id client))
+                     (ignore-errors
+                       ;; If we can set the bank, the admin user
+                       ;; already has an account.
+                       (setbank client bankid)
+                       (setq admin-exists-p t)))
+                   (unless err
+                     (let ((privkey-str
+                            (encode-rsa-private-key
+                             (privkey server) passphrase)))
+                       (handler-case
+                           (newuser client
+                                    :passphrase passphrase
+                                    :privkey (decode-rsa-private-key
+                                              privkey-str passphrase))
+                         (error (c)
+                           (setq err
+                                 (stringify
+                                  c "Can't create server account in client")))))
+                     (handler-case
+                         (addbank client bankurl bankname)
+                       (error (c)
+                         (setq err (stringify
+                                    c "Can't add bank to client: ~a")))))
+                   (unless (or err admin-exists-p)
+                     (handler-case
+                         (spend client admin-id (tokenid server) "200000")
+                       (error (c)
+                         (setq err (stringify
+                                    c "Can't spend to admin account: ~a"))))
                      (unless err
                        (handler-case
-                           (let ((session (login-new-session client passphrase)))
-                             (hunchentoot:set-cookie "session" :value session)
-                             (setbank client bankid)
-                             (addcontact client admin-id admin-name
-                                         "The bank administrator"))
+                           (progn
+                             (login client adminpass)
+                             (addbank client bankurl admin-name)
+                             (addcontact client bankid bankname "The bank"))
                          (error (c)
                            (setq err (stringify
-                                      c "Can't login as bank: ~a")))))
+                                      c "Can't add bank to admin account: ~a"))))))
 
-                     (destroy-password passphrase)
+                   (unless err
+                     (handler-case
+                         (let ((session (login-new-session client passphrase)))
+                           (hunchentoot:set-cookie "session" :value session)
+                           (setbank client bankid)
+                           (addcontact client admin-id admin-name
+                                       "The bank administrator"))
+                       (error (c)
+                         (setq err (stringify
+                                    c "Can't login as bank: ~a")))))
 
-                     (unless err
-                       (setq bankname nil
-                             bankurl nil
-                             err "Server started!")))))))
+                   (unless err
+                     (setq bankname nil
+                           bankurl nil
+                           err "Server started!")))))))
 
-      (setf (cw-error cw) err)
-      (draw-admin cw bankname bankurl))))
+    (setf (cw-error cw) err)
+    (draw-admin cw bankname bankurl)))
 
 (defun do-sync (cw)
   (let ((client (cw-client cw))
@@ -752,7 +757,6 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
            do
              (when (eql 0 (search prefix key))
                (let ((acct-and-asset (explode #\| (subseq key prelen))))
-                 (format t "key: ~s, acct-and-asset: ~s~%" key acct-and-asset)
                  (cond ((not (eql (length acct-and-asset) 2))
                         (setq err "Bug: don't understand spentasset"))
                        (t (setq err (do-spend-internal
@@ -1057,155 +1061,152 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                        (who (s)
                          (:option :value acct (str acct))))))))
 
-      (cond ((null inbox)
-             (setq inboxcode
-                   (whots (s)
-                     (:b "=== Inbox empty ===") (:br) (:br))))
-            (t
-             (setq
-              inboxcode
-              (with-output-to-string (inbox-stream)
-                (when acctoptions
-                  (setq acctheader (whots (s) (:th "To Acct"))))
-                (setq seloptions
-                      (whots (s)
-                        (:option :value "accept" "Accept")
-                        (:option :value "reject" "Reject")
-                        (:option :value "ignore" "Ignore")))
+      (when inbox
+        (setq
+         inboxcode
+         (with-output-to-string (inbox-stream)
+           (when acctoptions
+             (setq acctheader (whots (s) (:th "To Acct"))))
+           (setq seloptions
+                 (whots (s)
+                   (:option :value "accept" "Accept")
+                   (:option :value "reject" "Reject")
+                   (:option :value "ignore" "Ignore")))
 
-                (setq assets (storing-error (err "Error getting assets: ~a")
-                               (getassets client)))
+           (setq assets (storing-error (err "Error getting assets: ~a")
+                          (getassets client)))
 
-                (dolist (item inbox)
-                  (let* ((request (inbox-request item))
-                         (fromid (inbox-id item))
-                         (time (inbox-time item)))
-                    (multiple-value-bind (namestr contact) (id-namestr cw fromid)
-                      (cond ((not (equal request $SPEND))
-                             (let* ((msgtime (inbox-msgtime item))
-                                    (outitem (find msgtime outbox
-                                                   :test #'equal
-                                                   :key #'outbox-time)))
-                               (setf (gethash msgtime inbox-msgtimes) item)
-                               (when outitem
-                                 (setf (inbox-assetname item) (outbox-assetname
-                                                               outitem)
-                                       (inbox-formattedamount item)
-                                       (outbox-formattedamount outitem)
-                                       (inbox-reply item) (inbox-note item)
-                                       (inbox-note item) (outbox-note outitem)))
-                               (push item nonspends)))
-                            (t (let* ((assetid (inbox-assetid item))
-                                      (assetname (hsc (inbox-assetname item)))
-                                      (amount (hsc (inbox-formattedamount item)))
-                                      (itemnote (normalize-note
-                                                 (hsc (inbox-note item))))
-                                      (selname (stringify spendcnt "spend~d"))
-                                      (notename (stringify spendcnt "spendnote~d"))
-                                      (acctselname (stringify spendcnt "acct~d"))
-                                      (timecode
-                                       (whots (s)
-                                         (:input :type "hidden"
-                                                 :name (stringify spendcnt
-                                                                  "spendtime~a")
-                                                 :value time)))
-                                      (selcode
-                                       (whots (s)
-                                         (:select :name selname (str seloptions))))
-                                      (acctcode
-                                       (if (not acctoptions)
-                                           ""
-                                           (whots (s)
-                                             (:td
-                                              (:select :name acctselname
-                                                       (str acctoptions))))))
-                                      (date (datestr time)))
+           (dolist (item inbox)
+             (let* ((request (inbox-request item))
+                    (fromid (inbox-id item))
+                    (time (inbox-time item)))
+               (multiple-value-bind (namestr contact) (id-namestr cw fromid)
+                 (cond ((not (equal request $SPEND))
+                        (let* ((msgtime (inbox-msgtime item))
+                               (outitem (find msgtime outbox
+                                              :test #'equal
+                                              :key #'outbox-time)))
+                          (setf (gethash msgtime inbox-msgtimes) item)
+                          (when outitem
+                            (setf (inbox-assetname item) (outbox-assetname
+                                                          outitem)
+                                  (inbox-formattedamount item)
+                                  (outbox-formattedamount outitem)
+                                  (inbox-reply item) (inbox-note item)
+                                  (inbox-note item) (outbox-note outitem)))
+                          (push item nonspends)))
+                       (t (let* ((assetid (inbox-assetid item))
+                                 (assetname (hsc (inbox-assetname item)))
+                                 (amount (hsc (inbox-formattedamount item)))
+                                 (itemnote (normalize-note
+                                            (hsc (inbox-note item))))
+                                 (selname (stringify spendcnt "spend~d"))
+                                 (notename (stringify spendcnt "spendnote~d"))
+                                 (acctselname (stringify spendcnt "acct~d"))
+                                 (timecode
+                                  (whots (s)
+                                    (:input :type "hidden"
+                                            :name (stringify spendcnt
+                                                             "spendtime~a")
+                                            :value time)))
+                                 (selcode
+                                  (whots (s)
+                                    (:select :name selname (str seloptions))))
+                                 (acctcode
+                                  (if (not acctoptions)
+                                      ""
+                                      (whots (s)
+                                        (:td
+                                         (:select :name acctselname
+                                                  (str acctoptions))))))
+                                 (date (datestr time)))
 
-                                 (unless (find assetid assets
-                                               :test #'equal :key #'asset-assetid)
-                                   (setq assetname
-                                         (whots (s)
-                                           (str assetname) " "
-                                           (:span :style "color: red;"
-                                                  (:i "(new)")))))
-                                 (unless contact
-                                   (setq namestr
-                                         (whots (s)
-                                           (str namestr)
-                                           (:br)
-                                           (:input :type "hidden"
-                                                   :name (stringify spendcnt
-                                                                    "spendid~a")
-                                                   :value fromid)
-                                           "Nickname: "
-                                           (:input :type "text"
-                                                   :name (stringify spendcnt
-                                                                 "spendnick~a")
-                                                   :size "10"))))
-                                 (incf spendcnt)
-                                 (who (inbox-stream)
-                                   (str timecode)
-                                   (:tr
-                                    (:td "Spend")
-                                    (:td (str namestr))
-                                    (:td :align "right"
-                                         :style "border-right-width: 0;"
-                                         (str amount))
-                                    (:td :style "border-left-width: 0;"
-                                         (str assetname))
-                                    (:td (str itemnote))
-                                    (:td (str selcode))
-                                    (:td
-                                     (:textarea
-                                      :name notename
-                                      :cols "20"
-                                      :rows "2"
-                                      "&nbsp;"))
-                                    (str acctcode)
-                                    (:td (str date))))))))))
+                            (unless (find assetid assets
+                                          :test #'equal :key #'asset-assetid)
+                              (setq assetname
+                                    (whots (s)
+                                      (str assetname) " "
+                                      (:span :style "color: red;"
+                                             (:i "(new)")))))
+                            (unless contact
+                              (setq namestr
+                                    (whots (s)
+                                      (str namestr)
+                                      (:br)
+                                      (:input :type "hidden"
+                                              :name (stringify spendcnt
+                                                               "spendid~a")
+                                              :value fromid)
+                                      "Nickname: "
+                                      (:input :type "text"
+                                              :name (stringify spendcnt
+                                                               "spendnick~a")
+                                              :size "10"))))
+                            (incf spendcnt)
+                            (who (inbox-stream)
+                              (str timecode)
+                              (:tr
+                               (:td "Spend")
+                               (:td (str namestr))
+                               (:td :align "right"
+                                    :style "border-right-width: 0;"
+                                    (str amount))
+                               (:td :style "border-left-width: 0;"
+                                    (str assetname))
+                               (:td (str itemnote))
+                               (:td (str selcode))
+                               (:td
+                                (:textarea
+                                 :name notename
+                                 :cols "20"
+                                 :rows "2"
+                                 "&nbsp;"))
+                               (str acctcode)
+                               (:td (str date))))))))))
 
-                (dolist (item nonspends)
-                  (let* ((request (inbox-request item))
-                         (fromid (inbox-id item))
-                         (reqstr (if (equal request $SPENDACCEPT) "Accept" "Reject"))
-                         (time (inbox-time item))
-                         (reply (normalize-note (hsc (inbox-reply item))))
-                         (assetname (hsc (inbox-assetname item)))
-                         (amount (hsc (inbox-formattedamount item)))
-                         (itemnote (normalize-note (hsc (inbox-note item))))
-                         (selname (stringify nonspendcnt "nonspend~d"))
-                         (timecode
-                          (whots (s)
-                            (:input :type "hidden"
-                                    :name (stringify nonspendcnt "nonspendtime~d")
-                                    :value time)))
-                         (selcode
-                          (whots (s)
-                            (:input :type "checkbox"
-                                    :name selname
-                                    :checked t)
-                            "Remove"))
-                         (date (datestr time))
-                         (acctcode (if acctoptions
-                                       (whots (s) (:td "&nbsp;"))
-                                       ""))
-                         (namestr (namestr-html cw fromid
-                                                (lambda () (1- (incf nonspendcnt)))
-                                                "nonspendid" "nonspendnick")))
-                      (who (inbox-stream)
-                        (str timecode)
-                        (:tr
-                         (:td (str reqstr))
-                         (:td (str namestr))
-                         (:td :align "right" :style "border-right-width: 0;"
-                              (str amount))
-                         (:td :style "border-left-width: 0;"
-                              (str assetname))
-                         (:td (str itemnote))
-                         (:td (str selcode))
-                         (:td (str reply))
-                         (str acctcode)
-                         (:td (str date))))))))
+           (dolist (item nonspends)
+             (let* ((request (inbox-request item))
+                    (fromid (inbox-id item))
+                    (reqstr (if (equal request $SPENDACCEPT) "Accept" "Reject"))
+                    (time (inbox-time item))
+                    (reply (normalize-note (hsc (inbox-reply item))))
+                    (assetname (hsc (inbox-assetname item)))
+                    (amount (hsc (inbox-formattedamount item)))
+                    (itemnote (normalize-note (hsc (inbox-note item))))
+                    (selname (stringify nonspendcnt "nonspend~d"))
+                    (timecode
+                     (whots (s)
+                       (:input :type "hidden"
+                               :name (stringify nonspendcnt "nonspendtime~d")
+                               :value time)))
+                    (selcode
+                     (whots (s)
+                       (:input :type "checkbox"
+                               :name selname
+                               :checked t)
+                       "Remove"))
+                    (date (datestr time))
+                    (acctcode (if acctoptions
+                                  (whots (s) (:td "&nbsp;"))
+                                  ""))
+                    (namestr (namestr-html cw fromid
+                                           (lambda () (1- (incf nonspendcnt)))
+                                           "nonspendid" "nonspendnick")))
+               (incf nonspendcnt)
+               (who (inbox-stream)
+                 (str timecode)
+                 (:tr
+                  (:td (str reqstr))
+                  (:td (str namestr))
+                  (:td :align "right" :style "border-right-width: 0;"
+                       (str amount))
+                  (:td :style "border-left-width: 0;"
+                       (str assetname))
+                  (:td (str itemnote))
+                  (:td (str selcode))
+                  (:td (str reply))
+                  (str acctcode)
+                  (:td (str date))))))))
       
              (setq
               inboxcode
@@ -1216,8 +1217,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                  (:input :type "hidden" :name "spendcnt" :value spendcnt)
                  (:input :type "hidden" :name "nonspendcnt" :value nonspendcnt)
                  (:table
-                  :border "1"
-                  (:caption (:b "=== Inbox ==="))
+                  :class "prettytable"
+                  (:caption (:b "Inbox"))
                   (:tr
                    (:th "Request")
                    (:th "From")
@@ -1228,9 +1229,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                    (str acctheader)
                    (:th "Time"))
                   (str inboxcode))
-                 (:br)
                  (:input :type "submit" :name "submit"
-                         :value "Process Inbox"))))))
+                         :value "Process Inbox")))))
 
       ;; Prepare outbox display
       (let ((cancelcount 0))
@@ -1285,8 +1285,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
           (setq outboxcode
                 (whots (s)
                   (:table
-                   :border "1"
-                   (:caption (:b "=== Outbox ==="))
+                   :class "prettytable"
+                   (:caption (:b "Outbox"))
                    (:tr
                     (:th "Time")
                     (:th "Recipient")
@@ -1340,7 +1340,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                (who (bal-stream)
                  (:tr
                   (:th :colspan "3"
-                       "- " (str acct) " -"))
+                       (str acct)))
                  (str assetcode)))
              (unless (blankp newassetlist)
                (unless assetlist-stream
@@ -1359,13 +1359,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
          balcode
          (whots (bal-stream)
            (:table
-            :border "1"
-            (:caption (:b "=== Balances ==="))
+            :class "prettytable"
+            (:caption (:b "Balances"))
             (:tr
-             (:td
-              (:table
-               (:tr
-                (str balcode))))))
+             (str balcode)))
 
            (let ((enabled (if (keep-history-p client)
                               "enabled"
@@ -1384,7 +1381,6 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                            (:sup "-" (str scale))))
                        (:br))))))
              (who (bal-stream)
-               (:br)
                (:a :href "./?cmd=sync" "Resync with bank")
                (:br)
                (:a :href "./?cmd=rawbalance"
@@ -1450,8 +1446,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                        :method "post" :action "./" :autocomplete "off"
                        (:input :type "hidden" :name "cmd" :value "storagefees")
                        (:table
-                        :border "1"
-                        (:caption (:b "=== Storage Fees ==="))
+                        :class "prettytable"
+                        (:caption (:b "Storage Fees"))
                         (:tr
                          (:td
                           (:table
@@ -1629,9 +1625,10 @@ list with that nickname, or change the nickname of the selected
                                     (esc note)))))))
                  (who (s (cw-html-output cw))
                    (:br)
-                   (:b "Coupon for outbox entry at " (str datestr))
                    (:table
-                    :border "1"
+                    :class "prettytable"
+                    (:tr
+                     (:th :colspan 2 "Coupon for outbox entry at " (str datestr)))
                     (:tr
                      (:td (:b "Amount:"))
                      (:td
@@ -1661,11 +1658,9 @@ list with that nickname, or change the nickname of the selected
                (:br)))
             (t
              (who (s)
-               (:br)
-               (:b "=== Inbox ===")
-               (:br)
                (:table
-                :border "1"
+                :class "prettytable"
+                (:tr (:th :colspan 2 :style "text-align: left;" "Inbox"))
                 (dolist (item inbox)
                   (let ((msg (gethash item msghash))
                         (time (inbox-time item)))
@@ -1683,11 +1678,9 @@ list with that nickname, or change the nickname of the selected
                (:br)))
             (t
              (who (s)
-               (:br)
-               (:b "=== Outbox===")
-               (:br)
                (:table
-                :border "1"
+                :class "prettytable"
+                (:tr (:th :colspan 2 :style "text-align: left;" (:b "Outbox")))
                 (dolist (item outbox)
                   (let ((msg (gethash item msghash))
                         (time (outbox-time item)))
@@ -1701,11 +1694,9 @@ list with that nickname, or change the nickname of the selected
          for (acct . bals) in balance
          do
            (who (s)
-             (:br)
-             (:b (esc acct))
-             (:br)
              (:table
-              :border "1"
+              :class "prettytable"
+              (:tr (:th :colspan 2 :style "text-align: left;" (:b (esc acct))))
               (dolist (bal bals)
                 (let ((msg (gethash bal msghash))
                       (assetname (balance-assetname bal)))
@@ -1717,11 +1708,9 @@ list with that nickname, or change the nickname of the selected
     (multiple-value-bind (fractions msghash) (getfraction client nil t)
       (when fractions
         (who (s)
-          (:br)
-          (:b "=== Fractional Balances ===")
-          (:br)
           (:table
-           :border "1"
+           :class "prettytable"
+           (:tr (:th :colspan "2" :style "text-align: left;" "Fractional Balances"))
            (dolist (frac fractions)
              (let ((msg (gethash frac msghash))
                    (assetname (fraction-assetname frac)))
@@ -1770,7 +1759,7 @@ list with that nickname, or change the nickname of the selected
     (when banks
       (who (stream)
           (:table
-           :border "1"
+           :class "prettytable"
            (:tr
             (:th "Bank")
             (:th "URL")
@@ -1837,7 +1826,7 @@ list with that nickname, or change the nickname of the selected
            (:input :type "hidden" :name "cmd" :value "contact")
            (:input :type "hidden" :name "chkcnt" :value (length contacts))
            (:table
-            :border "1"
+            :class "prettytable"
             (:tr
              (:th "Nickname")
              (:th "Name")
@@ -1914,7 +1903,7 @@ list with that nickname, or change the nickname of the selected
       (:form
        :method "post" :action "./" :autocomplete "off"
        (:table
-        :border "1"
+        :class "prettytable"
         (:tr
          (:th "Asset name")
          (:th "Scale")

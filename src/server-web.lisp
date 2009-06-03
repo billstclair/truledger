@@ -518,6 +518,25 @@
  AAAAB//w//8AAAAf//D//8AAAD//8P//+AAB///w////AA////D/////////8P//
  ///////w")
 
+(defparameter *tables-css*
+  "table.prettytable {
+  margin: 0em 0.5em 0.5em 0.5em;
+  background: whitesmoke;
+  border-collapse: collapse;
+}
+table.prettytable th, table.prettytable td {
+  border: 1px silver solid;
+  padding: 0.2em;
+}
+table.prettytable th {
+  background: gainsboro;
+  text-align: center;
+}
+table.prettytable caption {
+  margin-left: inherit;
+  margin-right: inherit;
+}")
+
 (defun from-now-rfc-1123 (delta-seconds)
   (hunchentoot:rfc-1123-date
    (+ (get-universal-time) delta-seconds)))
@@ -537,10 +556,15 @@
         (from-now-rfc-1123 (* 10 365 24 60 60)))
   string)
 
+(defun do-text (string)
+  (setf (hunchentoot:content-type*) "text/html")
+  string)
+
 (defparameter *coded-files*
   `(("/little-lambda.png" do-png ,(b642s *little-lambda-base64*))
     ("/trubanc-logo-50x49.gif" do-png ,(b642s *trubanc-logo-base64*) "image/gif")
-    ("/site-icon.ico" do-png ,(b642s *site-icon-base64*) "image/x-icon")))
+    ("/site-icon.ico" do-png ,(b642s *site-icon-base64*) "image/x-icon")
+    ("/css/tables.css" do-text ,*tables-css*)))
 
 (defun do-static-file ()
   (let* ((acceptor hunchentoot:*acceptor*)
@@ -551,6 +575,8 @@
           (t
            (let* ((uri (hunchentoot:request-uri hunchentoot:*request*))
                   (coded-file (cdr (assoc uri *coded-files* :test 'string-equal))))
+             ;; Change this to look for the coded file in the file system first,
+             ;; and use that if it's there.
              (cond (coded-file (apply (car coded-file) (cdr coded-file)))
                    (t (let ((file (merge-pathnames (strcat dir "/." uri))))
                         (hunchentoot:handle-static-file
