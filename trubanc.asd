@@ -28,6 +28,7 @@
      (:file "server-web")
      (:file "client-web")
      (:file "history")
+     (:file "toplevel")
      (:file "tests")
      ))))
 

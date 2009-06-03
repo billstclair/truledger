@@ -357,8 +357,11 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
 
 (defun server-db-exists-p ()
   (or (get-running-server)
-      (let ((db (make-fsdb (server-db-dir))))
-        (not (null (db-get db $PRIVKEY))))))
+      (server-privkey-file-exists-p)))
+
+(defun server-privkey-file-exists-p ()
+  (let ((db (make-fsdb (server-db-dir))))
+    (not (null (db-get db $PRIVKEY)))))
 
 (defun is-local-server-bank-p (cw &optional (acceptor hunchentoot:*acceptor*))
   (let* ((port (acceptor-port acceptor))

@@ -110,6 +110,8 @@
    #:df
    #:arglist
    #:gc
+   #:save-application
+   #:command-line-arguments
 
    ;; openssl-cffi.lisp
    #:decode-rsa-private-key
@@ -128,6 +130,8 @@
    #:pubkey-id
    #:id-p
    #:destroy-password
+   #:mem-set-char
+   #:bad-rsa-key-or-password
 
    ;; loomrandom.lisp
    #:urandom-bytes
@@ -228,6 +232,7 @@
    #:zero-string
    #:blankp
    #:hsc
+   #:run-startup-functions
 
    ;; client.lisp & server.lisp
    #:id
@@ -247,10 +252,14 @@
 
    ;; server-web.lisp
    #:trubanc-web-server
+   #:web-server-active-p
    #:stop-web-server
    #:port-server
    #:acceptor-port
-   #:bind-parameters))
+   #:bind-parameters
+
+   ;; toplevel.lisp
+   #:save-trubanc-application))
 
 (cl:defpackage :trubanc-server
   (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)
@@ -393,7 +402,7 @@
    #:trimmsg))
 
 (cl:defpackage :trubanc-client-web
-  (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens :trubanc-client)
+  (:use :cl :cffi :cl-base64 :cl-who :trubanc :trubanc-tokens :trubanc-client)
   (:export
    #:web-server))
 

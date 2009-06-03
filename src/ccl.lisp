@@ -27,19 +27,28 @@
 (defun gc ()
   (ccl:gc))
 
+(defclass trubanc-application (ccl::application)
+  ())
+
 (defun save-application (filename &rest rest &key
                          toplevel-function
                          init-file
                          error-handler
-                         application-class
+                         (application-class 'trubanc-application)
                          clear-clos-caches
                          purify
                          impurify
                          prepend-kernel)
   (declare (ignore toplevel-function init-file error-handler
-                   application-class clear-clos-caches purify
+                   clear-clos-caches purify
                    impurify prepend-kernel))
-  (apply 'ccl:save-application filename rest))
+  (apply 'ccl:save-application
+         filename
+         :application-class application-class
+         rest))
+
+(defun command-line-arguments ()
+  ccl:*command-line-argument-list*)
 
 ;;;
 ;;; Locking.
