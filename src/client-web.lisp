@@ -57,7 +57,10 @@
                (strcat str x)))))
 
 (defun client-db-dir ()
-  "dbs/clientdb")
+  "trubanc-dbs/clientdb")
+
+(defun server-db-dir ()
+  "trubanc-dbs/serverdb")
 
 ;; Called from do-trubanc-client in server-web.lisp
 ;; Returns a string with the contents of the client web page.
@@ -349,9 +352,6 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
           (if highlightp
               (who (s) (:b :style "font-size: 120%;" (str text)))
               (who (s) (str text)))))))
-
-(defun server-db-dir ()
-  "dbs/serverdb")
 
 (defun server-db-exists-p ()
   (or (get-running-server)

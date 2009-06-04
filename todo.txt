@@ -1,0 +1,43 @@
+https connections to client and server.
+
+History has some blank lines. Figure out where they come from. Also
+some bad parses.
+
+Add fractional balances to Raw Balance screen.
+
+Add a build timestamp to the bottom of the raw balance page.
+
+Maybe the server should be started by logging in to the client with
+the bank passphrase. Then there's no reason for any interaction with
+the shell, and we can hide it on windows. Also, this allows the app to
+be run with nohup, since it never reads or prints anything. It could
+even automagically nohup itself if not run that way.
+
+Then we'd need to be able to stop the server on the Admin page. Start
+this by grabbing the timestamp lock.
+
+If you login to the server from a second place, the only way to get
+REQ back in sync is the "Resync with bank" link. It should do this
+automatically, retrying invisibly. Really need to implement the error
+type mechanism that's in the docs.
+
+If you add as administrator account from the "Admin" page, an account
+that already has another bank, the tokens are spend to that account,
+but the bank isn't added. Or something like that. I had to add the
+bank. The contacts appeared then, so something is wierd.
+
+Why is getreq called four times a the end of login?
+
+Bug
+---
+Do two spends with the same asset to the same recipient.
+Recipient accepts one and ignores the other.
+He gets the total of the two, but only one is queued on your inbox.
+
+Windows needs OpenSSL.
+  Works in Vista-64:
+    http://download.microsoft.com/download/d/2/4/d242c3fb-da5a-4542-ad66-f9661d0a8d19/vcredist_x64.exe
+    http://www.slproweb.com/download/Win64OpenSSL_Light-0_9_8k.exe
+  For Vista-32:
+    http://www.microsoft.com/downloads/details.aspx?FamilyID=9b2da534-3e03-4391-8a4d-074b9f2bc1bf&displaylang=en
+   http://slproweb.com/download/Win32OpenSSL_Light-0_9_8k.exe
