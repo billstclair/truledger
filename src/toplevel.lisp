@@ -83,7 +83,23 @@
   (process-wait "Server shutdown"
                 (lambda () (not (web-server-active-p)))))
 
-(defun save-trubanc-application (&optional (filename "trubanc-app"))
+(defun target-suffix ()
+  (or
+   (progn
+     #+darwinx86-target "dx86cl"
+     #+darwinx8664-target "dx86cl64"
+     #+freebsdx86-target "fx86cl"
+     #+freebsdx8664-target "fx86cl64"
+     #+linuxx86-target "lx86cl"
+     #+linuxx8664-target "lx86cl64"
+     #+win32-target "wx86cl"
+     #+win64-target "wx86cl64")
+   "app"))
+
+(defun application-name ()
+  (stringify (target-suffix) "trubanc-~a"))
+
+(defun save-trubanc-application (&optional (filename (application-name)))
   (stop-web-server)
   (save-application filename
                     :toplevel-function #'toplevel-function

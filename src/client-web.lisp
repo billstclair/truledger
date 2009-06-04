@@ -13,8 +13,6 @@
 (eval-when nil ;; (:compile-toplevel :execute :load-toplevel)
   (setq cl-who::*indent* t))
 
-(defparameter *require-coupon* nil)
-
 (defparameter *default-menuitems*
   '(("balance" . "Balance")
     ("contacts" . "Contacts")
@@ -445,11 +443,14 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                      (handler-case (verify-coupon client coupon bankid url)
                        (error (c) (setq err (stringify c)))))
                  (error ()
-                   ;; See if "coupon" is just a URL, meaning the user
-                   ;; already has an account at that bank.
-                   (handler-case (verify-bank client coupon)
-                     (error (c) (setq err (stringify c "Invalid coupon: ~a")))))))
-              ((and *require-coupon* (not (stringp privkey)))
+                   (cond ((server-privkey-file-exists-p)
+                          ;; If there's a server privkey, we require a coupon
+                          (setq err "Malformed coupon"))
+                         (t (handler-case (verify-bank client coupon)
+                              ;; Ensure that coupon is a URL for a proper bank
+                              (error (c)
+                                (setq err (stringify c "Invalid coupon: ~a")))))))))
+              ((server-privkey-file-exists-p)
                (setq err "Bank coupon required for registration")))
 
         (unless err
@@ -738,9 +739,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
           (setq err "Recipient ID not registered at bank")))
 
       (cond ((blankp recipient)
-             (if (blankp mintcoupon)
-                 (setq err "Recipient missing")
-                 (setq recipient $COUPON)))
+             (cond ((blankp mintcoupon)
+                    (unless (not (and (blankp toacct) (blankp tonewacct)))
+                      (setq err "Recipient missing")))
+                   (t (setq recipient $COUPON))))
             ((not (blankp mintcoupon))
              (setq err "To mint a coupon don't specify a recipient")))
 

@@ -556,15 +556,15 @@ table.prettytable caption {
         (from-now-rfc-1123 (* 10 365 24 60 60)))
   string)
 
-(defun do-text (string)
-  (setf (hunchentoot:content-type*) "text/html")
+(defun do-text (string &optional (type "text/html"))
+  (setf (hunchentoot:content-type*) type)
   string)
 
 (defparameter *coded-files*
   `(("/little-lambda.png" do-png ,(b642s *little-lambda-base64*))
     ("/trubanc-logo-50x49.gif" do-png ,(b642s *trubanc-logo-base64*) "image/gif")
     ("/site-icon.ico" do-png ,(b642s *site-icon-base64*) "image/x-icon")
-    ("/css/tables.css" do-text ,*tables-css*)))
+    ("/css/tables.css" do-text ,*tables-css* "text/text")))
 
 (defun do-static-file ()
   (let* ((acceptor hunchentoot:*acceptor*)

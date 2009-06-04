@@ -80,10 +80,13 @@
         (parser-always-verify-sigs-p (parser client)) t))
 
 (defmethod finalize ((client client))
-  (let ((privkey (privkey client)))
+  (let ((privkey (privkey client))
+        (proxy (server client)))
     (when privkey
       (setf (privkey client) nil)
-      (rsa-free privkey))))
+      (rsa-free privkey))
+    (when (and proxy (typep proxy 'serverproxy))
+      (finalize proxy))))
 
 ;; API Methods
 
@@ -2394,7 +2397,7 @@
 
 (defmethod reinit-balances ((client client))
   "Synchronize with the bank"
-  (require-current-bank client "Can't reinitialize balances: ~a")
+  (require-current-bank client "Can't reinitialize balances")
   (forceinit client))
 
 ;; Internal implementation of reinit-balances
@@ -2659,15 +2662,44 @@
         :accessor url)
    (client :type client
            :initarg :client
-           :accessor client)))
+           :accessor client)
+   (stream :initform nil
+           :accessor post-stream)))
 
-(defun post (url &optional parameters)
-  (drakma:http-request url
-                       :method :post
-                       :parameters parameters
-                       :form-data t
-                       :close nil
-                       :keep-alive t))
+(defmethod finalize ((proxy serverproxy))
+  (let ((stream (post-stream proxy)))
+    (when stream
+      (setf (post-stream proxy) nil)
+      (ignore-errors (close stream)))))
+
+(defmethod post ((proxy serverproxy) url &optional parameters)
+  (let* ((stream (post-stream proxy)))
+    (multiple-value-bind (res status headers uri stream)
+        (block nil
+          (handler-bind ((err (lambda (c)
+                                (declare (ignore c))
+                                (when stream
+                                  (ignore-errors (close stream))
+                                  (setf (post-stream proxy) nil)
+                                  ;; I don't know if this is necessary
+                                  (return (drakma:http-request
+                                           url
+                                           :method :post
+                                           :parameters parameters
+                                           :form-data t
+                                           :close nil
+                                           :keep-alive t))))))
+            (drakma:http-request
+             url
+             :method :post
+             :parameters parameters
+             :form-data t
+             :stream stream
+             :close nil
+             :keep-alive t)))
+      (declare (ignore status headers uri))
+      (setf (post-stream proxy) stream)
+      res)))
 
 (defmethod process ((proxy serverproxy) msg)
   (let* ((url (url proxy))
@@ -2694,7 +2726,7 @@
 
       (let ((res (if test-server
                      (trubanc-server:process test-server msg)
-                     (post url vars)))
+                     (post proxy url vars)))
             (text nil))
         (when (and (> (length res) 2)
                    (equal "<<" (subseq res 0 2)))
