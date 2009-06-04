@@ -2676,19 +2676,19 @@
   (let* ((stream (post-stream proxy)))
     (multiple-value-bind (res status headers uri stream)
         (block nil
-          (handler-bind ((err (lambda (c)
-                                (declare (ignore c))
-                                (when stream
-                                  (ignore-errors (close stream))
-                                  (setf (post-stream proxy) nil)
-                                  ;; I don't know if this is necessary
-                                  (return (drakma:http-request
-                                           url
-                                           :method :post
-                                           :parameters parameters
-                                           :form-data t
-                                           :close nil
-                                           :keep-alive t))))))
+          (handler-bind ((error (lambda (c)
+                                  (declare (ignore c))
+                                  (when stream
+                                    (ignore-errors (close stream))
+                                    (setf (post-stream proxy) nil)
+                                    ;; I don't know if this is necessary
+                                    (return (drakma:http-request
+                                             url
+                                             :method :post
+                                             :parameters parameters
+                                             :form-data t
+                                             :close nil
+                                             :keep-alive t))))))
             (drakma:http-request
              url
              :method :post

@@ -1020,7 +1020,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
          (assetidx 0)
          (acctidx 0)
          (gotbal nil)
-         (contacts (getcontacts client))
+         (contacts (storing-error (err "Error getting contacts: ~a")
+                     (getcontacts client)))
          inbox
          outbox
          accts
