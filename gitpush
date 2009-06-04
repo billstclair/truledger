@@ -5,3 +5,7 @@
 # git remote add github git@github.com:billstclair/trubanc-lisp.git
 git push trubanc
 git push github
+
+
+# useful for remote machines
+# git remote add github git://github.com/billstclair/trubanc-lisp.git

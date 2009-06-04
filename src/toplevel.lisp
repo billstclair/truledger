@@ -92,8 +92,8 @@
      #+freebsdx8664-target "fx86cl64"
      #+linuxx86-target "lx86cl"
      #+linuxx8664-target "lx86cl64"
-     #+win32-target "wx86cl"
-     #+win64-target "wx86cl64")
+     #+win32-target "wx86cl.exe"
+     #+win64-target "wx86cl64.exe")
    "app"))
 
 (defun application-name ()

@@ -1,4 +1,7 @@
 _darcs
 *.dx64fsl
 trubanc-app
+trubanc-dx86cl64
 server.cfg
+dbs
+
