@@ -7,23 +7,29 @@
 
 (in-package :trubanc-client-web)
 
-#-windows
+#-(or windows-target linux-target)
 (defctype size-t :unsigned-int)
 
-#-windows
+#-(or windows-target linux-target)
 (defcfun ("readpassphrase" %read-passphrase) :pointer
   (prompt :pointer)
   (buf :pointer)
   (bufsiz size-t)
   (flags :int))
 
-#-windows
+#+linux-target
+(defcfun ("getpass" %getpass) :pointer
+  (prompt :pointer))
+
+#-windows-target
 (defun read-passphrase (prompt)
   (let ((bufsize 132)
-        (flags 0))    
+        #-linux-target
+	(flags 0))    
     (with-foreign-string (p prompt)
       (with-foreign-pointer (buf bufsize)
-        (let ((res (%read-passphrase p buf bufsize flags)))
+        (let ((res #-linux-target (%read-passphrase p buf bufsize flags)
+		   #+linux-target (%getpass p)))
           (when (null-pointer-p res) (error "Error reading passphrase"))
           (prog1 (foreign-string-to-lisp res :encoding :latin-1)
             ;; Erase the passphrase from memory
