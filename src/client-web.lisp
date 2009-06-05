@@ -2036,7 +2036,7 @@ list with that nickname, or change the nickname of the selected
            (str (cond (server "Server is running.")
                       (disable-p "Server database exists but server not running.")
                       (t "Server database not yet created. Enter info below.")))
-           (when disable-p
+           (when (and disable-p (not server))
              (who (s)
                (:br)
                (str "To start it, log out, and log back in as the bank.")))

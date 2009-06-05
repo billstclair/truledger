@@ -591,15 +591,40 @@ table.prettytable caption {
                              file))))))))))
 
 (defparameter *default-server-port* 8080)
+(defparameter *default-server-ssl-port* 8443)
 
-(defun trubanc-web-server (server &key (www-dir "www") (port *default-server-port*))
+#|| Creating a self-signed certificate
+openssl genrsa -out key.pem
+openssl req -key key.pem -out req.pem -new 
+openssl x509 -req -in req.pem -signkey key.pem -out cert.pem
+openssl x509 -in cert.pem -text -noout
+||#
+
+(defun trubanc-web-server (server &key
+                           (www-dir "www")
+                           ssl-certificate-file
+                           ssl-privatekey-file
+                           (port (if ssl-privatekey-file
+                                     *default-server-ssl-port*
+                                     *default-server-port*))
+                           (forwarding-port *default-server-port*))
   "Start the client, and, if SERVER is non-NIL, server web servers.
    Use 'dbs/clientdb/' and 'dbs/serverdb/' as the database directories,
    relative to the default directory."
+  ;; In the SSL case, this will be a port to auto-forward to the SSL port.
+  ;; Not coded yet.
+  (declare (ignore forwarding-port))
+  (when (xor ssl-certificate-file ssl-privatekey-file)
+    (error "Both or neither required of SSL-CERTIFICATE-FILE and SSL-PRIVATEKEY-FILE"))
   (setf (port-server port) server
         (port-www-dir port) www-dir)
   (or (port-acceptor port)
-      (let ((acceptor (make-instance 'hunchentoot:acceptor :port port)))
+      (let ((acceptor (if ssl-privatekey-file
+                          (make-instance 'hunchentoot:ssl-acceptor
+                                         :port port
+                                         :ssl-certificate-file ssl-certificate-file
+                                         :ssl-privatekey-file ssl-privatekey-file)
+                          (make-instance 'hunchentoot:acceptor :port port))))
         (setf (get-web-script-handler port "/" acceptor)
               'do-trubanc-web-server
               (get-web-script-handler port "/client" acceptor)

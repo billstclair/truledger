@@ -239,6 +239,13 @@
   (dolist (function (reverse *startup-functions*))
     (funcall function)))
 
+(defun xor (&rest args)
+  "True if an even number of args are true"
+  (let ((res nil))
+    (dolist (arg args)
+      (when arg (setq res (not res))))
+    res))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair

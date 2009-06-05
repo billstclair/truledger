@@ -1,15 +1,8 @@
-The server should be started by logging in to the client with the bank
-passphrase. Then there's no reason for any interaction with the shell,
-and we can hide it on windows. Also, this allows the app to be run
-with nohup, since it never reads or prints anything. It could even
-automagically nohup itself if not run that way.
-
-Then we'd need to be able to stop the server on the Admin page. Start
-this by grabbing the timestamp lock.
-
 https connections to client and server.
-
-Auto-start browser when app starts.
+  I've got the client starting with SSL.
+  Need to query the server with SSL,
+  and allow changing of the server URL for that.
+  Maybe allow client SSL and server plaintext, but probably not necessary.
 
 Contacts should cross bank boundaries automatically, so you recognize
 the same ID at different banks. How to make this efficient? Don't want

@@ -234,6 +234,7 @@
    #:blankp
    #:hsc
    #:run-startup-functions
+   #:xor
 
    ;; client.lisp & server.lisp
    #:id
