@@ -7,47 +7,6 @@
 
 (in-package :trubanc-client-web)
 
-#-(or windows-target linux-target)
-(defctype size-t :unsigned-int)
-
-#-(or windows-target linux-target)
-(defcfun ("readpassphrase" %read-passphrase) :pointer
-  (prompt :pointer)
-  (buf :pointer)
-  (bufsiz size-t)
-  (flags :int))
-
-#+linux-target
-(defcfun ("getpass" %getpass) :pointer
-  (prompt :pointer))
-
-#-windows-target
-(defun read-passphrase (prompt)
-  (let ((bufsize 132)
-        #-linux-target
-	(flags 0))    
-    (with-foreign-string (p prompt)
-      (with-foreign-pointer (buf bufsize)
-        (let ((res #-linux-target (%read-passphrase p buf bufsize flags)
-		   #+linux-target (%getpass p)))
-          (when (null-pointer-p res) (error "Error reading passphrase"))
-          (prog1 (foreign-string-to-lisp res :encoding :latin-1)
-            ;; Erase the passphrase from memory
-            (destroy-password buf bufsize #'mem-set-char)))))))
-
-;; Need to figure out how not to echo on Windows
-#+windows
-(defun read-passphrase (prompt)
-  (format t "~a" prompt)
-  (finish-output)
-  (read-line))
-
-(defun start-server (passphrase port)
-  (cond ((server-privkey-file-exists-p)
-         (let* ((server (make-server (server-db-dir) passphrase)))
-           (trubanc-web-server server :port port)))
-        (t (trubanc-web-server nil :port port))))
-
 (defun toplevel-function ()
   (handler-case (toplevel-function-internal)
     (error (c)
@@ -55,39 +14,52 @@
       (finish-output)
       (quit))))
 
+(defparameter *allowed-parameters*
+  '((("-p" "--port") :port . t)))
+
+(defun usage-error (app)
+  (error "Usage is: ~a [-p port]" app))
+
+(defun parse-args (&optional (args (command-line-arguments)))
+  (let ((app (pop args))
+        (res nil))
+    (loop
+       while args
+       for switch = (pop args)
+       for key-and-argp = (cdr (assoc switch *allowed-parameters*
+                                  :test (lambda (x y)
+                                          (member x y :test #'string-equal))))
+       for key = (car key-and-argp)
+       for argp = (cdr key-and-argp)
+       do
+         (cond (argp
+                (when (and argp (null args))
+                  (usage-error app))
+                (push (cons key (and argp (pop args))) res))
+               (t (usage-error app))))
+    (values (nreverse res) app)))
+
 (defun toplevel-function-internal ()
   (run-startup-functions)
-  (let ((port (third (command-line-arguments))) ; app - port
-        passphrase)
-    (setq port (if port (parse-integer port) 8080))
-    (loop
-       (when (server-privkey-file-exists-p)
-         (when (blankp (setq passphrase (read-passphrase "Bank passphrase: ")))
-           (quit)))
-       (unwind-protect
-            (handler-case
-                (progn
-                  (start-server passphrase port)
-                  (destroy-password passphrase)
-                  (format t "~a started on port ~d~%"
-                          (if (port-server port)
-                              "Server"
-                              "Client web server")
-                          port)
-                  (format t "Local web address: http://localhost:~d/client/~%"
-                          port)
-                  (finish-output)
-                  (return))
-              (bad-rsa-key-or-password ()
-                (format t "Bad passphrase. Try again.~%")
-                (finish-output))
-              (error (c)
-                (format t "Error starting server on port ~d: ~a~%" port c)
-                (finish-output)
-                (quit)))
-         (destroy-password passphrase))))
-  (process-wait "Server shutdown"
-                (lambda () (not (web-server-active-p)))))
+  (let (port)
+    (multiple-value-bind (args app) (parse-args)
+      (setq port (cdr (assoc :port args)))
+      (setq port (if port
+                     (handler-case (parse-integer port)
+                       (error () (usage-error app)))
+                     8080)))
+    (handler-case
+        (progn (trubanc-web-server nil :port port)
+               (format t "Client web server started on port ~a.~%" port)
+               (format t "Web address: http://localhost:~a/~%" port)
+               (finish-output))
+      (error (c)
+        (format t "Error starting server on port ~d: ~a~%" port c)
+        (finish-output)
+        (quit -1))))
+  (process-wait
+   "Server shutdown"
+   (lambda () (not (web-server-active-p)))))
 
 (defun target-suffix ()
   (or

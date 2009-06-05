@@ -2635,11 +2635,13 @@
 (defmethod user-preference ((client client) pref)
   "Get or set a user preference.
    Include the $value to set."
+  (require-current-user client)
   (let* ((db (db client))
          (key (user-preference-key client pref)))
     (db-get db key)))
 
 (defmethod (setf user-preference) (value (client client) pref)
+  (require-current-user client)
   (let* ((db (db client))
          (key (user-preference-key client pref)))
     (setf (db-get db key) value)))

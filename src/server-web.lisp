@@ -66,6 +66,9 @@
                  params)
      ,@body))
 
+(defun server-db-dir ()
+  "trubanc-dbs/serverdb")
+
 (defun do-trubanc-web-server ()
   (let* ((acceptor hunchentoot:*acceptor*)
          (port (hunchentoot:acceptor-port acceptor))
@@ -80,7 +83,10 @@
                                    msg res)))
                res))
             ((not server)
-             (hunchentoot:redirect "/client/"))
+             (if msg
+                 (let ((downmsg (db-get (make-fsdb (server-db-dir)) $SHUTDOWNMSG)))
+                   (or downmsg "Server is down"))
+                 (hunchentoot:redirect "/client/")))
             (t (do-static-file))))))
 
 (defvar *last-uri* nil)

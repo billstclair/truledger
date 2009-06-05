@@ -59,9 +59,6 @@
 (defun client-db-dir ()
   "trubanc-dbs/clientdb")
 
-(defun server-db-dir ()
-  "trubanc-dbs/serverdb")
-
 ;; Called from do-trubanc-client in server-web.lisp
 ;; Returns a string with the contents of the client web page.
 (defun web-server ()
@@ -144,9 +141,7 @@
       (setf (cw-session cw) session))
 
     (cond ((id client)
-           (let ((keephistory (user-preference client "keephistory")))
-             (unless keephistory (setq keephistory "keep"))
-             (setf (keep-history-p client) (equal keephistory "keep")))
+           (initialize-client-history client)
 
            (init-bank cw)
 
@@ -365,11 +360,24 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
   (let* ((port (acceptor-port acceptor))
          (server (port-server port))
          (client (cw-client cw)))
-    (or (and server client (id client) (equal (id client) (bankid server)))
+    (or (and client (id client)
+             (equal (id client)
+                    (cond (server (bankid server))
+                          ((server-db-exists-p)
+                           (ignore-errors
+                             (let* ((db (make-fsdb (server-db-dir)))
+                                    (reqs (parse (parser client)
+                                                 (db-get db $BANKID))))
+                               (and reqs
+                                    (null (cdr reqs))
+                                    (getarg 2 (car reqs)))))))))
         (and (not server) (not (server-db-exists-p))))))
 
-(defun get-running-server (&optional (acceptor hunchentoot:*acceptor*))
-  (port-server (acceptor-port acceptor)))
+(defun get-running-server ()
+  (port-server (get-current-port)))
+
+(defun get-current-port (&optional (acceptor hunchentoot:*acceptor*))
+  (acceptor-port acceptor))
 
 (defun setmenu (cw &optional highlight (menuitems *default-menuitems*))
   (let ((menu nil)
@@ -392,13 +400,30 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
            (setq menu (menuitem "logout" "Logout"  nil))))
     (setf (cw-menu cw) menu)))
 
-(defun do-logout (cw)
+(defun do-logout (cw &optional no-draw)
   (when (cw-session cw)
     (logout (cw-client cw)))
   (delete-cookie "session")
   (setf (cw-bankline cw) nil
         (cw-error cw) nil)
-  (draw-login cw))
+  (unless no-draw
+    (draw-login cw)))
+
+(defun maybe-start-server-web (client passphrase)
+  (when (and (not (get-running-server))
+             (server-privkey-file-exists-p))
+    (let* ((db (make-fsdb (server-db-dir)))
+           (bankid-reqs
+            (ignore-errors (parse (parser client) (db-get db $BANKID))))
+           (bankid (and (eql 1 (length bankid-reqs))
+                        (gethash 0 (car bankid-reqs)))))
+      (when (and bankid (equal bankid (id client)))
+        (handler-case
+            (let ((server (make-server (server-db-dir) passphrase)))
+              (setf (port-server (acceptor-port hunchentoot:*acceptor*))
+                    server))
+          (error (c)
+            (error "While starting server: ~a" c)))))))
 
 ;; Here from the login page when the user presses one of the buttons
 (defun do-login (cw)
@@ -477,6 +502,9 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
               ;; Need to set a test cookie in the login page,
               ;; and check whether it comes back.
               (set-cookie "session" session)
+              (when (maybe-start-server-web client passphrase)
+                (setf (cw-error cw)
+                      "Server started!"))
               (when newacct
                 (unless (blankp coupon)
                   (ignore-errors (addbank client coupon name t))))
@@ -599,120 +627,127 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
             (t (draw-balance cw))))))
 
 (defun do-admin (cw)
-  (bind-parameters (bankname bankurl passphrase verification adminpass adminverify)
+  (bind-parameters (passphrase verification adminpass adminverify)
     (unwind-protect
          (do-admin-internal
-             cw bankname bankurl passphrase verification adminpass adminverify)
+             cw passphrase verification adminpass adminverify)
       (destroy-password passphrase)
       (destroy-password verification)
       (destroy-password adminpass)
       (destroy-password adminverify))))
 
 (defun do-admin-internal 
-    (cw bankname bankurl passphrase verification adminpass adminverify)
-  (let ((client (cw-client cw))
-        (server (get-running-server))
-        (err nil))
-    (cond (server
-           (setq err "Server already running"))
-          ((blankp bankname)
-           (setq err "Bank name must be set"))
-          ((or (blankp bankurl)
-               (not (url-p bankurl)))
-           (setq err "Bank URL must be a web address"))
-          ((or (blankp passphrase)
-               (not (equal passphrase verification)))
-           (setq err "Passphrase didn't match verification"))
-          ((or (blankp adminpass)
-               (not (equal adminpass adminverify)))
-           (setq err "Admin Passphrase didn't match verification"))
-          ((let ((cl (make-client (client-db-dir))))
-             (handler-case
-                 (progn (login cl passphrase) t)
-               (error ()
-                 nil)))
-           (setq err "Bank already has a client account. Not handled."))
-          (t (let ((server (handler-case
-                               (make-server (server-db-dir) passphrase
-                                            :bankname bankname
-                                            :bankurl bankurl)
-                             (error (c)
-                               (setq err (stringify
-                                          c "Error initializing bank: ~a"))))))
-               (when server
-                 ;; Enable server web hosting
-                 (setf (port-server (acceptor-port hunchentoot:*acceptor*))
-                       server)
-                 (let ((bankid (bankid server))
-                       (admin-name (stringify bankname "~a Admin"))
-                       (admin-id nil)
-                       (admin-exists-p nil))
-                   ;; Login as admin on client, creating account if necessary
-                   (handler-case (login client adminpass)
-                     (error ()
-                       (handler-case
-                           (newuser client :passphrase adminpass)
-                         (error ()
-                           (setq err "Can't create admin account")))))
-                   (unless err
-                     (setq admin-id (id client))
-                     (ignore-errors
-                       ;; If we can set the bank, the admin user
-                       ;; already has an account.
-                       (setbank client bankid)
-                       (setq admin-exists-p t)))
-                   (unless err
-                     (let ((privkey-str
-                            (encode-rsa-private-key
-                             (privkey server) passphrase)))
-                       (handler-case
-                           (newuser client
-                                    :passphrase passphrase
-                                    :privkey (decode-rsa-private-key
-                                              privkey-str passphrase))
-                         (error (c)
-                           (setq err
-                                 (stringify
-                                  c "Can't create server account in client")))))
-                     (handler-case
-                         (addbank client bankurl bankname)
-                       (error (c)
-                         (setq err (stringify
-                                    c "Can't add bank to client: ~a")))))
-                   (unless (or err admin-exists-p)
-                     (handler-case
-                         (spend client admin-id (tokenid server) "200000")
-                       (error (c)
-                         (setq err (stringify
-                                    c "Can't spend to admin account: ~a"))))
+    (cw passphrase verification adminpass adminverify)
+  (bind-parameters (bankname bankurl killclient killserver)
+    (let ((client (cw-client cw))
+          (server (get-running-server))
+          (err nil))
+      (cond (killclient
+             ;; Bye-bye birdy
+             (do-logout cw t)
+             (stop-web-server (get-current-port)))
+            (killserver
+             (setf (port-server (get-current-port)) nil))
+            (server
+             (setq err "Server already running"))
+            ((blankp bankname)
+             (setq err "Bank name must be set"))
+            ((or (blankp bankurl)
+                 (not (url-p bankurl)))
+             (setq err "Bank URL must be a web address"))
+            ((or (blankp passphrase)
+                 (not (equal passphrase verification)))
+             (setq err "Passphrase didn't match verification"))
+            ((or (blankp adminpass)
+                 (not (equal adminpass adminverify)))
+             (setq err "Admin Passphrase didn't match verification"))
+            ((let ((cl (make-client (client-db-dir))))
+               (handler-case
+                   (progn (login cl passphrase) t)
+                 (error ()
+                   nil)))
+             (setq err "Bank already has a client account. Not handled."))
+            (t (let ((server (handler-case
+                                 (make-server (server-db-dir) passphrase
+                                              :bankname bankname
+                                              :bankurl bankurl)
+                               (error (c)
+                                 (setq err (stringify
+                                            c "Error initializing bank: ~a"))))))
+                 (when server
+                   ;; Enable server web hosting
+                   (setf (port-server (acceptor-port hunchentoot:*acceptor*))
+                         server)
+                   (let ((bankid (bankid server))
+                         (admin-name (stringify bankname "~a Admin"))
+                         (admin-id nil)
+                         (admin-exists-p nil))
+                     ;; Login as admin on client, creating account if necessary
+                     (handler-case (login client adminpass)
+                       (error ()
+                         (handler-case
+                             (newuser client :passphrase adminpass)
+                           (error ()
+                             (setq err "Can't create admin account")))))
                      (unless err
+                       (setq admin-id (id client))
+                       (ignore-errors
+                         ;; If we can set the bank, the admin user
+                         ;; already has an account.
+                         (setbank client bankid)
+                         (setq admin-exists-p t)))
+                     (unless err
+                       (let ((privkey-str
+                              (encode-rsa-private-key
+                               (privkey server) passphrase)))
+                         (handler-case
+                             (newuser client
+                                      :passphrase passphrase
+                                      :privkey (decode-rsa-private-key
+                                                privkey-str passphrase))
+                           (error (c)
+                             (setq err
+                                   (stringify
+                                    c "Can't create server account in client")))))
                        (handler-case
-                           (progn
-                             (login client adminpass)
-                             (addbank client bankurl admin-name)
-                             (addcontact client bankid bankname "The bank"))
+                           (addbank client bankurl bankname)
                          (error (c)
                            (setq err (stringify
-                                      c "Can't add bank to admin account: ~a"))))))
+                                      c "Can't add bank to client: ~a")))))
+                     (unless (or err admin-exists-p)
+                       (handler-case
+                           (spend client admin-id (tokenid server) "200000")
+                         (error (c)
+                           (setq err (stringify
+                                      c "Can't spend to admin account: ~a"))))
+                       (unless err
+                         (handler-case
+                             (progn
+                               (login client adminpass)
+                               (addbank client bankurl admin-name)
+                               (addcontact client bankid bankname "The bank"))
+                           (error (c)
+                             (setq err (stringify
+                                        c "Can't add bank to admin account: ~a"))))))
 
-                   (unless err
-                     (handler-case
-                         (let ((session (login-new-session client passphrase)))
-                           (set-cookie "session" session)
-                           (setbank client bankid)
-                           (addcontact client admin-id admin-name
-                                       "The bank administrator"))
-                       (error (c)
-                         (setq err (stringify
-                                    c "Can't login as bank: ~a")))))
+                     (unless err
+                       (handler-case
+                           (let ((session (login-new-session client passphrase)))
+                             (set-cookie "session" session)
+                             (setbank client bankid)
+                             (addcontact client admin-id admin-name
+                                         "The bank administrator"))
+                         (error (c)
+                           (setq err (stringify
+                                      c "Can't login as bank: ~a")))))
 
-                   (unless err
-                     (setq bankname nil
-                           bankurl nil
-                           err "Server started!")))))))
+                     (unless err
+                       (setq bankname nil
+                             bankurl nil
+                             err "Server started!")))))))
 
-    (setf (cw-error cw) err)
-    (draw-admin cw bankname bankurl)))
+      (setf (cw-error cw) err)
+      (draw-admin cw bankname bankurl))))
 
 (defun do-sync (cw)
   (let ((client (cw-client cw))
@@ -875,16 +910,18 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
         (setf (cw-error cw) (stringify c))))
     (draw-balance cw)))
 
+(defun initialize-client-history (client)
+  (let* ((keephistory (or (user-preference client "keephistory")
+                          "keep")))
+    (setf (keep-history-p client) (equal keephistory "keep"))))
+
 (defun do-togglehistory (cw)
   (let* ((client (cw-client cw))
-         (keephistory-p
-          (not (equal (or (user-preference client "keephistory") "keep")
-                      "keep"))))
-    (setf (keep-history-p client) keephistory-p)
+         (keephistory-p (initialize-client-history client)))
     (setf (user-preference client "keephistory")
-          (if keephistory-p "keep" "forget"))
+          (if keephistory-p "forget" "keep"))
     (setf (cw-error cw)
-          (if keephistory-p "History enabled" "History disabled"))
+          (if keephistory-p "History disabled" "History enabled"))
     (draw-balance cw)))
 
 (defun hideinstructions(cw)
@@ -1386,7 +1423,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
             (:tr
              (str balcode)))
 
-           (let ((enabled (if (keep-history-p client)
+           (let ((enabled (if (initialize-client-history client)
                               "enabled"
                               "disabled")))
              (when (and (cw-fraction-asset cw) (showprocess client))
@@ -1558,7 +1595,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                    (who (s)
                      (:tr (write-amt s)))))))))
 
-          (let* ((historytext (if (keep-history-p client) "Disable" "Enable"))
+          (let* ((historytext (if (initialize-client-history client)
+                                  "Disable" "Enable"))
                  (hideinstructions (hideinstructions cw)))
             (setq instructions
                   (whots (s)
@@ -1970,7 +2008,8 @@ list with that nickname, or change the nickname of the selected
 (defun draw-admin (cw &optional bankname bankurl)
   (let ((s (cw-html-output cw))
         (disable-p (server-db-exists-p))
-        (server (get-running-server)))
+        (server (get-running-server))
+        (port (get-current-port)))
     (setf (cw-onload cw) "document.forms[0].bankname.focus()")
     (settitle cw "Admin")
     (setmenu cw "admins")
@@ -1982,57 +2021,80 @@ list with that nickname, or change the nickname of the selected
     (who (s)
       (:span :style "color: red;" (str (cw-error cw)))
       (:br)
-      (str (cond (server "Server is running")
-                 (disable-p "Server database exists but server not running")
-                 (t "Server database not yet created. Enter info below.")))
       (:form
        :method "post" :action "./" :autocomplete "off"
        (:input :type "hidden" :name "cmd" :value "admin")
-       (:table
-        (:tr
-         (:td (:b "Bank Name:"))
-         (:td (:input :type "text"
-                      :name "bankname"
-                      :value bankname
-                      :disabled disable-p
-                      :size 30)))
-        (:tr
-         (:td (:b "Bank URL:"))
-         (:td (:input :type "text"
-                      :name "bankurl"
-                      :value bankurl
-                      :disabled disable-p
-                      :size 30)))
-        (unless disable-p
-          (who (s)
-            (:tr
-             (:td (:b "Bank Passphrase:"))
-             (:td (:input :type "password"
-                          :name "passphrase"
-                          :value ""
-                          :size 50)))
-            (:tr
-             (:td (:b "Verification:"))
-             (:td (:input :type "password"
-                          :name "verification"
-                          :value ""
-                          :size 50)))
-            (:tr
-             (:td (:b "Admin Passphrase:"))
-             (:td (:input :type "password"
-                          :name "adminpass"
-                          :value ""
-                          :size 50)))
-            (:tr
-             (:td (:b "Verification:"))
-             (:td (:input :type "password"
-                          :name "adminverify"
-                          :value ""
-                          :size 50)))
-            (:tr
-             (:td)
-             (:td (:input :type "submit" :name "create" :value "Start Server")
-                  (:input :type "submit" :name "cancel" :value "Cancel"))))))))))
+       (str (if port
+                (stringify port "Client web server is running on port ~d.")
+                "Web server shut down. Say goodnight, Dick."))
+       (when port
+         (who (s)
+           (:br)
+           (:input :type "submit" :name "killclient"
+                   :value "Shut down web server")
+           (:br)(:br)
+           (str (cond (server "Server is running.")
+                      (disable-p "Server database exists but server not running.")
+                      (t "Server database not yet created. Enter info below.")))
+           (when disable-p
+             (who (s)
+               (:br)
+               (str "To start it, log out, and log back in as the bank.")))
+           (when server
+             (who (s)
+               (:br
+                (:input :type "submit" :name "killserver"
+                        :value "Stop Server"))))
+           (when (or server (not disable-p))
+             (who (s)
+               (:br)
+               (:table
+                (:tr
+                 (:td (:b "Bank Name:"))
+                 (:td (:input :type "text"
+                              :name "bankname"
+                              :value bankname
+                              :disabled disable-p
+                              :size 30)))
+                (:tr
+                 (:td (:b "Bank URL:"))
+                 (:td (:input :type "text"
+                              :name "bankurl"
+                              :value bankurl
+                              :disabled disable-p
+                              :size 30)))
+                (unless disable-p
+                  (who (s)
+                    (:tr
+                     (:td (:b "Bank Passphrase:"))
+                     (:td (:input :type "password"
+                                  :name "passphrase"
+                                  :value ""
+                                  :size 50)))
+                    (:tr
+                     (:td (:b "Verification:"))
+                     (:td (:input :type "password"
+                                  :name "verification"
+                                  :value ""
+                                  :size 50)))
+                    (:tr
+                     (:td (:b "Admin Passphrase:"))
+                     (:td (:input :type "password"
+                                  :name "adminpass"
+                                  :value ""
+                                  :size 50)))
+                    (:tr
+                     (:td (:b "Verification:"))
+                     (:td (:input :type "password"
+                                  :name "adminverify"
+                                  :value ""
+                                  :size 50)))
+                    (:tr
+                     (:td)
+                     (:td (:input :type "submit" :name "create"
+                                  :value "Start Server")
+                          (:input :type "submit" :name "cancel"
+                                  :value "Cancel"))))))))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

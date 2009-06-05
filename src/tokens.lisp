@@ -18,6 +18,7 @@
 (defconstant $PUBKEY "pubkey")
 (defconstant $PUBKEYSIG "pubkeysig")
 (defconstant $ASSET "asset")
+(defconstant $SHUTDOWNMSG "shutdownmsg")
 (defconstant $STORAGE "storage")
 (defconstant $STORAGEFEE "storagefee")
 (defconstant $FRACTION "fraction")

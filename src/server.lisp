@@ -76,7 +76,8 @@
                            :keydb pubkeydb
                            :bank-getter (lambda () (bankid server))
                            :always-verify-sigs-p (always-verify-sigs-p server)))
-    (setup-db server passphrase)))
+    (setup-db server passphrase)
+    (set-shutdown-msg server)))
 
 (defmethod gettime ((server server))
   (let* ((db (db server)))
@@ -315,6 +316,18 @@
                    (t (setf (getarg $UNPACK-REQS-KEY args) reqs) ; save parse results
                       args))))))
 
+(defmethod unpack-bank-name ((server server))
+  (let ((db (db server))
+        (bankid (bankid server)))
+    (unpack-bankmsg
+     server (db-get db $PUBKEYSIG bankid) $ATREGISTER $REGISTER $NAME)))
+
+(defmethod set-shutdown-msg ((server server))
+  (let ((db (db server)))
+    (unless (db-get db $SHUTDOWNMSG)
+      (setf (db-get db $SHUTDOWNMSG)
+            (failmsg server "" "Server is shut down")))))
+
 (defmethod setup-db ((server server) passphrase)
   "Initialize the database, if it needs initializing."
   (let ((db (db server)))
@@ -325,6 +338,7 @@
           (setf (privkey server) privkey
                 (bankid server) bankid
                 (bankurl server) (db-get db $BANKURL)
+                (bankname server) (unpack-bank-name server)
                 (tokenid server) (unpack-bank-param server $TOKENID)
                 (regfee server) (unpack-bank-param server $REGFEE $AMOUNT)
                 (tranfee server) (unpack-bank-param server $TRANFEE $AMOUNT)))

@@ -1,4 +1,38 @@
+The server should be started by logging in to the client with the bank
+passphrase. Then there's no reason for any interaction with the shell,
+and we can hide it on windows. Also, this allows the app to be run
+with nohup, since it never reads or prints anything. It could even
+automagically nohup itself if not run that way.
+
+Then we'd need to be able to stop the server on the Admin page. Start
+this by grabbing the timestamp lock.
+
 https connections to client and server.
+
+Auto-start browser when app starts.
+
+Contacts should cross bank boundaries automatically, so you recognize
+the same ID at different banks. How to make this efficient? Don't want
+to query for all contacts at every bank. Maybe remember a list of
+banks for each contact, and when an ID you know pops up in a spend,
+add that bank to the list for that contact. A little more client work,
+but no extra client <-> server traffic. Will need startup code to move
+the contacts directory from each bank to the account.
+
+Test for client accepting cookies. Send a cookie with the login page.
+Check for that cookie with the login post. If it isn't there, then
+the browser doesn't accept cookies.
+
+Investigate using an SSH tunnel, as root, in a screen session to
+forward port 80 to port 8080. Currently shut out on trubanc.com by
+firewall. Can't do it there anyway, since port 80 needs to be used by
+the web server, but may work on other systems, that don't need Apache
+running.
+
+Backup mechanism. Write to log files, which are sent out in chunks to
+a backup server, which loads the transactions into its
+database. Should be able to disable transactions on the backup serer,
+so nobody can do stuff there until enabled.
 
 History has some blank lines. Figure out where they come from. Also
 some bad parses.
@@ -6,15 +40,6 @@ some bad parses.
 Add fractional balances to Raw Balance screen.
 
 Add a build timestamp to the bottom of the raw balance page.
-
-Maybe the server should be started by logging in to the client with
-the bank passphrase. Then there's no reason for any interaction with
-the shell, and we can hide it on windows. Also, this allows the app to
-be run with nohup, since it never reads or prints anything. It could
-even automagically nohup itself if not run that way.
-
-Then we'd need to be able to stop the server on the Admin page. Start
-this by grabbing the timestamp lock.
 
 If you login to the server from a second place, the only way to get
 REQ back in sync is the "Resync with bank" link. It should do this

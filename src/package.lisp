@@ -18,6 +18,7 @@
    #:$PUBKEY
    #:$PUBKEYSIG
    #:$ASSET
+   #:$SHUTDOWNMSG
    #:$STORAGE
    #:$STORAGEFEE
    #:$FRACTION
@@ -251,6 +252,7 @@
    #:finalize
 
    ;; server-web.lisp
+   #:server-db-dir
    #:trubanc-web-server
    #:web-server-active-p
    #:stop-web-server
