@@ -246,6 +246,8 @@
   (setf (cw-onload cw) "document.forms[0].passphrase.focus()")
   (setmenu cw nil)
 
+  (set-cookie "test" "test")
+
   (who (s (cw-html-output cw))
     (:form
      :method "post" :action "./" :autocomplete "off"
@@ -269,6 +271,8 @@
   (settitle cw "Register")
   (setmenu cw nil)
   (setf (cw-onload cw) "document.forms[0].passphrase.focus()")
+
+  (set-cookie "test" "test")
 
   (let* ((s (cw-html-output cw))
          (keysize (or (ignore-errors
@@ -417,9 +421,13 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
 
 ;; Here from the login page when the user presses one of the buttons
 (defun do-login (cw)
-  (bind-parameters (passphrase passphrase2 coupon name keysize login
-                               newacct showkey privkey)
+  (bind-parameters (passphrase passphrase2)
+    (unwind-protect (do-login-internal cw passphrase passphrase2)
+      (destroy-password passphrase)
+      (destroy-password passphrase2))))
 
+(defun do-login-internal (cw passphrase passphrase2)
+  (bind-parameters (coupon name keysize login newacct showkey privkey)
     (let ((client (cw-client cw))
           (err nil))
       (when showkey
@@ -430,7 +438,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                      (t (setf (cw-error cw) "No key for passphrase")))
             (when key
               (rsa-free key))))
-        (return-from do-login (draw-login cw privkey)))
+        (return-from do-login-internal (draw-login cw privkey)))
 
       (when newacct
         (setq login nil)
@@ -449,7 +457,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
 
         (when err
           (setf (cw-error cw) err)
-          (return-from do-login (draw-login cw)))
+          (return-from do-login-internal (draw-login cw)))
 
         (cond ((not (blankp coupon))
                (handler-case
@@ -493,13 +501,17 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
               ;; and check whether it comes back.
               (set-cookie "session" session)
               (when (maybe-start-server-web client passphrase)
-                (setf (cw-error cw)
-                      "Server started!"))
+                (setf (cw-error cw) "Server started!"))
+              (cond ((get-cookie "test") (delete-cookie "test"))
+                    (t (setf
+                        (cw-error cw)
+                        #.(format nil "Cookies appear to be disabled.~%
+                                       This client won't work without them."))))
               (when newacct
                 (unless (blankp coupon)
                   (ignore-errors (addbank client coupon name t))))
               (init-bank cw)
-              (return-from do-login
+              (return-from do-login-internal
                 (if (bankid client)
                     (draw-balance cw)
                     (draw-banks cw))))

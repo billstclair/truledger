@@ -21,7 +21,13 @@
     ("--nonsslport" :nonsslport . t)))
 
 (defun usage-error (app)
-  (error "Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport]"
+  (error
+"Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport]
+port defaults to 8080, unless keyfile & certfile are included, then 8443.
+If port defaults to 8443, then nonsslport defaults to 0,
+otherwise the application doesn't listen on a non-ssl port.
+keyfile is the path to an SSL private key file.
+certfile is the path to an SSL certificate file."
          app))
 
 (defun parse-args (&optional (args (command-line-arguments)))
