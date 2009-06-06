@@ -15,10 +15,14 @@
       (quit))))
 
 (defparameter *allowed-parameters*
-  '((("-p" "--port") :port . t)))
+  '((("-p" "--port") :port . t)
+    ("--key" :key . t)
+    ("--cert" :cert . t)
+    ("--nonsslport" :nonsslport . t)))
 
 (defun usage-error (app)
-  (error "Usage is: ~a [-p port]" app))
+  (error "Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport]"
+         app))
 
 (defun parse-args (&optional (args (command-line-arguments)))
   (let ((app (pop args))
@@ -28,7 +32,9 @@
        for switch = (pop args)
        for key-and-argp = (cdr (assoc switch *allowed-parameters*
                                   :test (lambda (x y)
-                                          (member x y :test #'string-equal))))
+                                          (member x
+                                                  (if (listp y) y (list y))
+                                                  :test #'string-equal))))
        for key = (car key-and-argp)
        for argp = (cdr key-and-argp)
        do
@@ -41,17 +47,33 @@
 
 (defun toplevel-function-internal ()
   (run-startup-functions)
-  (let (port)
+  (let (port keyfile certfile nonsslport)
     (multiple-value-bind (args app) (parse-args)
-      (setq port (cdr (assoc :port args)))
-      (setq port (if port
-                     (handler-case (parse-integer port)
-                       (error () (usage-error app)))
-                     8080)))
+      (handler-case
+          (setq port (parse-integer (or (cdr (assoc :port args)) "8080"))
+                keyfile (cdr (assoc :key args))
+                certfile (cdr (assoc :cert args))
+                nonsslport (parse-integer
+                            (or (cdr (assoc :nonsslport args)) "0")))
+        (error () (usage-error app))))
+    (when (xor keyfile certfile)
+      (error "Both or neither required of --key & --cert"))
+    (when keyfile
+      (unless (and (probe-file keyfile) (probe-file certfile))
+        (error "Key or cert file missing")))
+    (when (eql 0 nonsslport)
+      (setq nonsslport nil))
     (handler-case
-        (progn (trubanc-web-server nil :port port)
-               (format t "Client web server started on port ~a.~%" port)
-               (format t "Web address: http://localhost:~a/~%" port)
+        (progn (trubanc-web-server
+                nil
+                :port port
+                :ssl-privatekey-file keyfile
+                :ssl-certificate-file certfile
+                :forwarding-port nonsslport)
+               (format t "Client web server started on port ~a.~%"
+                       (or nonsslport port))
+               (format t "Web address: http://localhost:~a/~%"
+                       (or nonsslport port))
                (finish-output))
       (error (c)
         (format t "Error starting server on port ~d: ~a~%" port c)
