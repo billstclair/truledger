@@ -50,19 +50,20 @@
   (let (port keyfile certfile nonsslport)
     (multiple-value-bind (args app) (parse-args)
       (handler-case
-          (setq port (parse-integer (or (cdr (assoc :port args)) "8080"))
-                keyfile (cdr (assoc :key args))
+          (setq keyfile (cdr (assoc :key args))
                 certfile (cdr (assoc :cert args))
+                port (parse-integer (or (cdr (assoc :port args))
+                                        (if keyfile "8443" "8080")))
                 nonsslport (parse-integer
-                            (or (cdr (assoc :nonsslport args)) "0")))
+                            (or (cdr (assoc :nonsslport args))
+                                (if (assoc :port args) "0" "8080"))))
         (error () (usage-error app))))
     (when (xor keyfile certfile)
       (error "Both or neither required of --key & --cert"))
     (when keyfile
       (unless (and (probe-file keyfile) (probe-file certfile))
         (error "Key or cert file missing")))
-    (when (eql 0 nonsslport)
-      (setq nonsslport nil))
+    (when (eql 0 nonsslport) (setq nonsslport nil))
     (handler-case
         (progn (trubanc-web-server
                 nil
