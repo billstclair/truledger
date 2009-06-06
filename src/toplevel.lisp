@@ -90,6 +90,17 @@ certfile is the path to an SSL certificate file."
    "Server shutdown"
    (lambda () (not (web-server-active-p)))))
 
+(defun last-commit ()
+  (let ((str (ignore-errors
+               (with-output-to-string (s)
+                 (run-program "./last-commit" nil :output s)))))
+    (when str
+      ;; str = "commit <number>"
+      (second (explode #\ (trim str))))))
+
+(defvar *last-commit* nil)
+(defvar *save-application-time* nil)
+
 (defun target-suffix ()
   (or
    (progn
@@ -108,6 +119,8 @@ certfile is the path to an SSL certificate file."
 
 (defun save-trubanc-application (&optional (filename (application-name)))
   (stop-web-server)
+  (setq *last-commit* (last-commit))
+  (setq *save-application-time* (get-universal-time))
   (save-application filename
                     :toplevel-function #'toplevel-function
                     :prepend-kernel t

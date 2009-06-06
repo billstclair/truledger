@@ -139,7 +139,7 @@
         (items nil))
     (dolist (name contents)
       (unless (member name removed-names :test 'equal)
-        (let* ((msg (db-get db (strcat key "/" name)))
+        (let* ((msg (db-get db (append-db-keys key name)))
                (args (funcall unpacker msg))
                (req (gethash $MSG args)))
           (unless req
@@ -150,9 +150,9 @@
     (when newitem
       (if (stringp newitem)
           (push newitem items)
-          (setq items (append items newitem))))
-    (setq items (sort items 'string-lessp))
-    (let* ((str (apply 'implode "." (mapcar 'trim items)))
+          (setq items (append items (copy-list newitem)))))
+    (setq items (sort (mapcar #'trim items) 'string-lessp))
+    (let* ((str (apply 'implode "." items))
            (hash (sha1 str)))
       (values hash (length items)))))
 
@@ -186,7 +186,7 @@
                 (push msg newitems)
                 (push assetid removed-names)))
          (multiple-value-bind (hash1 cnt)
-             (dirhash db (strcat balancekey "/" acct) unpacker
+             (dirhash db (append-db-keys balancekey acct) unpacker
                       newitems removed-names)
            (setq hash (if hash (strcat hash "." hash1) hash1))
            (incf hashcnt cnt)))

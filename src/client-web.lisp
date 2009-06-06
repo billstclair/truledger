@@ -202,6 +202,21 @@
         (write-idcode cw)
         (str (cw-body cw))
         (str (cw-debugstr cw))
+        (when (or *last-commit* *save-application-time*)
+          (who (s)
+            (:p :class "version"
+             (when *last-commit*
+               (who (s)
+                 "Build: "
+                 (:a :class "version"
+                     :href (stringify
+                            *last-commit*
+                            "http://github.com/billstclair/trubanc-lisp/commit/~a")
+                     (str *last-commit*))))
+             (when *save-application-time*
+               (let ((datestr (datestr
+                               (universal-to-unix-time *save-application-time*))))
+                 (who (s) " " (str datestr)))))))
         (:p
          (:a :href "http://common-lisp.net/"
              (:img
@@ -1744,7 +1759,7 @@ list with that nickname, or change the nickname of the selected
                   (:td :valign "top" (esc time))
                   (:td (:pre (str (trimmsg msg))))))))))))
 
-    (multiple-value-bind (balance msghash) (getbalance client nil nil t)
+    (multiple-value-bind (balance msghash) (getbalance client t nil t)
       (loop
          for (acct . bals) in balance
          do

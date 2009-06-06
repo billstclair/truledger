@@ -107,6 +107,7 @@
   (:export
 
    ;; ccl.lisp
+   #:run-program
    #:quit
    #:df
    #:arglist

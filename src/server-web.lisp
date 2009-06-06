@@ -566,7 +566,24 @@ table.prettytable th {
 table.prettytable caption {
   margin-left: inherit;
   margin-right: inherit;
-}")
+}
+a.version:link {
+  color: #AAAAAA;
+}
+a.version:visited {
+  color: #AAAAAA;
+}
+a.version:active {
+  color: #FF0000;
+}
+a.version:hover {
+  background: #DDDDFF;
+}
+p.version {
+  font-size: 80%;
+  color: #AAAAAA;
+}
+")
 
 (defun from-now-rfc-1123 (delta-seconds)
   (hunchentoot:rfc-1123-date
