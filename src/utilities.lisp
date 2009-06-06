@@ -227,6 +227,15 @@
 (defun hsc (x)
   (and x (hunchentoot:escape-for-html x)))
 
+(defun parm (name &rest args)
+  (hunchentoot:parameter
+   (if args (apply #'format nil name args) name)))
+
+(defun parms (&key (post t) (get nil))
+  (let ((req hunchentoot:*request*))
+    (append (and post (hunchentoot:post-parameters req))
+            (and get (hunchentoot:get-parameters req)))))
+
 (defun get-host-name ()
   (usocket::get-host-name))
 

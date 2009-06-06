@@ -38,15 +38,6 @@
   fraction-asset
   )
 
-(defun parm (name &rest args)
-  (hunchentoot:parameter
-   (if args (apply #'format nil name args) name)))
-
-(defun parms (&key (post t) (get nil))
-  (let ((req hunchentoot:*request*))
-    (append (and post (hunchentoot:post-parameters req))
-            (and get (hunchentoot:get-parameters req)))))
-
 (defun stringify (x &optional format)
   (format nil (or format "~a") x))
 
@@ -419,9 +410,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                         (gethash 0 (car bankid-reqs)))))
       (when (and bankid (equal bankid (id client)))
         (handler-case
-            (let ((server (make-server (server-db-dir) passphrase)))
-              (setf (port-server (acceptor-port hunchentoot:*acceptor*))
-                    server))
+            (let* ((server (make-server (server-db-dir) passphrase)))
+              (setf (port-server (get-current-port)) server))
           (error (c)
             (error "While starting server: ~a" c)))))))
 

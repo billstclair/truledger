@@ -503,7 +503,7 @@
   (< (properties-compare a1 a2 keys comparef) 0))
 
 (defun contacts-lessp (c1 c2)
-  (properties-lessp c1 c2 '(contact-nickname contat-name contact-id)))
+  (properties-lessp c1 c2 '(contact-nickname contact-name contact-id)))
 
 (defmethod getcontacts ((client client))
   "Get contacts for the current bank.
@@ -1514,16 +1514,18 @@
   "Synchronize the current customer inbox with the current bank.
    Assumes that there IS a current user and bank.
    Does no database locking."
+  (handler-case (sync-inbox-internal client)
+    (error ()
+      (forceinit client)
+      (sync-inbox-internal client))))
+
+(defmethod sync-inbox-internal ((client client))
   (let* ((db (db client))
          (bankid (bankid client))
          (parser (parser client))
          (server (server client))
          (msg (custmsg client $GETINBOX bankid (getreq client)))
-         (bankmsg (handler-case (process server msg)
-                    (error ()
-                      (forceinit client)
-                      (setq msg (custmsg client $GETINBOX bankid (getreq client)))
-                      (process server msg))))
+         (bankmsg (process server msg))
          (reqs (parse parser bankmsg))
          (inbox (make-equal-hash))
          (times nil)
@@ -2675,6 +2677,9 @@
       (setf (post-stream proxy) nil)
       (ignore-errors (close stream)))))
 
+;; Don't know what makes sense here, but not infinite
+(defparameter *max-redirect-count* 5)
+
 (defmethod post ((proxy serverproxy) url &optional parameters)
   (let* ((stream (post-stream proxy)))
     (multiple-value-bind (res status headers uri stream)
@@ -2690,6 +2695,7 @@
                                              :method :post
                                              :parameters parameters
                                              :form-data t
+                                             :redirect *max-redirect-count*
                                              :close nil
                                              :keep-alive t))))))
             (drakma:http-request
@@ -2697,12 +2703,13 @@
              :method :post
              :parameters parameters
              :form-data t
+             :redirect *max-redirect-count*
              :stream stream
              :close nil
              :keep-alive t)))
-      (declare (ignore status headers uri))
+      (declare (ignore uri))
       (setf (post-stream proxy) stream)
-      res)))
+      (values res status headers))))
 
 (defmethod process ((proxy serverproxy) msg)
   (let* ((url (url proxy))
@@ -2729,7 +2736,15 @@
 
       (let ((res (if test-server
                      (trubanc-server:process test-server msg)
-                     (post proxy url vars)))
+                     (multiple-value-bind (res status headers)
+                         (post proxy url vars)
+                       (cond ((eql status 301)
+                              (let ((location
+                                     (cdr (assoc :location headers :test #'eq))))
+                                (cond (location
+                                       (setf (url proxy) location)
+                                       (post proxy location vars)))))
+                             (t res)))))
             (text nil))
         (when (and (> (length res) 2)
                    (equal "<<" (subseq res 0 2)))

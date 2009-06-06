@@ -10,54 +10,80 @@
 
 (in-package :trubanc)
 
-(defvar *trubanc-ports-to-servers*
+(defvar *ports-to-servers*
   (make-hash-table :test 'eql))
 
-(defvar *trubanc-ports-to-acceptors*
+(defvar *ports-to-acceptors*
   (make-hash-table :test 'eql))
 
-(defvar *trubanc-acceptors-to-ports*
+(defvar *acceptors-to-ports*
   (make-hash-table :test 'eq))
 
-(defvar *trubanc-ports-to-www-dirs*
+(defvar *ports-to-www-dirs*
+  (make-hash-table :test 'eql))
+
+(defvar *port-forwarding-hash*
   (make-hash-table :test 'eql))
 
 (defun port-server (port)
-  (gethash port *trubanc-ports-to-servers*))
+  (gethash port *ports-to-servers*))
 
 (defun (setf port-server) (server port)
   (if server
-      (setf (gethash port *trubanc-ports-to-servers*) server)
-      (remhash port *trubanc-ports-to-servers*))
+      (setf (gethash port *ports-to-servers*) server)
+      (remhash port *ports-to-servers*))
+  (let ((forwarded-from (port-forwarded-from port)))
+    (when forwarded-from
+      (setf (gethash forwarded-from *ports-to-servers*) server)))
   server)
 
 (defun port-acceptor (port)
-  (gethash port *trubanc-ports-to-acceptors*))
+  (gethash port *ports-to-acceptors*))
 
 (defun (setf port-acceptor) (acceptor port)
   (cond (acceptor
-         (setf (gethash port *trubanc-ports-to-acceptors*) acceptor
-               (gethash acceptor *trubanc-acceptors-to-ports*) port))
+         (setf (gethash port *ports-to-acceptors*) acceptor
+               (gethash acceptor *acceptors-to-ports*) port))
         (t (let ((acceptor (port-acceptor port)))
-             (remhash port *trubanc-ports-to-acceptors*)
+             (remhash port *ports-to-acceptors*)
              (when acceptor
-               (remhash acceptor *trubanc-acceptors-to-ports*)))))
+               (remhash acceptor *acceptors-to-ports*)))))
   acceptor)
 
 (defun acceptor-port (acceptor)
-  (gethash acceptor *trubanc-acceptors-to-ports*))
+  (gethash acceptor *acceptors-to-ports*))
 
 (defun port-www-dir (port)
-  (gethash port *trubanc-ports-to-www-dirs*))
+  (gethash port *ports-to-www-dirs*))
 
 (defun (setf port-www-dir) (www-dir port)
   (if www-dir
-      (setf (gethash port *trubanc-ports-to-www-dirs*) www-dir)
-      (remhash port *trubanc-ports-to-www-dirs*))
+      (setf (gethash port *ports-to-www-dirs*) www-dir)
+      (remhash port *ports-to-www-dirs*))
   www-dir)
 
+(defun port-forwarded-to (port)
+  (cdr (gethash port *port-forwarding-hash*)))
+
+(defun port-forwarded-from (port)
+  (car (gethash port *port-forwarding-hash*)))
+
+(defun (setf port-forwarded-to) (forwarded-to port)
+  (cond ((null forwarded-to)
+         (let ((forwarded-to (port-forwarded-to port)))
+           (when forwarded-to (remhash forwarded-to *port-forwarding-hash*)))
+         (remhash port *port-forwarding-hash*))
+        (t (let ((cell (or (gethash forwarded-to *port-forwarding-hash*)
+                           (setf (gethash forwarded-to *port-forwarding-hash*)
+                                 (cons nil nil)))))
+             (setf (car cell) port))
+           (let ((cell (or (gethash port *port-forwarding-hash*)
+                           (setf (gethash port *port-forwarding-hash*)
+                                 (cons nil nil)))))
+             (setf (cdr cell) forwarded-to)))))
+
 (defun web-server-active-p ()
-  (> (hash-table-count *trubanc-ports-to-acceptors*) 0))
+  (> (hash-table-count *ports-to-acceptors*) 0))
 
 (defmacro bind-parameters ((&rest params) &body body)
   `(let ,(mapcar (lambda (param)
@@ -97,26 +123,25 @@
 (defvar *web-script-handlers*
   (make-hash-table :test 'equal))
 
-(defun get-web-script-handler (port script-name acceptor)
-  (gethash (list port script-name acceptor) *web-script-handlers*))
+(defun get-web-script-handler (port script-name)
+  (gethash (list port script-name) *web-script-handlers*))
 
-(defun (setf get-web-script-handler) (handler port script-name acceptor)
-  (setf (gethash (list port script-name acceptor) *web-script-handlers*)
+(defun (setf get-web-script-handler) (handler port script-name)
+  (setf (gethash (list port script-name) *web-script-handlers*)
         handler))
 
-(defun remove-web-script-handlers (port acceptor)
+(defun remove-web-script-handlers (port)
   (loop
      for key being the hash-key of *web-script-handlers*
      do
-       (when (and (eql port (car key))
-                  (eq acceptor (third key)))
+       (when (eql port (car key))
          (remhash key *web-script-handlers*))))
 
 (hunchentoot:define-easy-handler (trubanc-server :uri 'identity) ()
-  (let* ((script (hunchentoot:script-name hunchentoot:*request*))
+  (let* ((script (hunchentoot:script-name*))
          (acceptor hunchentoot:*acceptor*)
          (port (hunchentoot:acceptor-port acceptor))
-         (handler (get-web-script-handler port script acceptor)))
+         (handler (get-web-script-handler port script)))
     (cond (handler (funcall handler))
           ((search "/.." script)
            (abort-request))
@@ -607,48 +632,93 @@ openssl x509 -in cert.pem -text -noout
                            (port (if ssl-privatekey-file
                                      *default-server-ssl-port*
                                      *default-server-port*))
-                           (forwarding-port *default-server-port*))
+                           forwarding-port)
   "Start the client, and, if SERVER is non-NIL, server web servers.
    Use 'dbs/clientdb/' and 'dbs/serverdb/' as the database directories,
    relative to the default directory."
   ;; In the SSL case, this will be a port to auto-forward to the SSL port.
   ;; Not coded yet.
-  (declare (ignore forwarding-port))
   (when (xor ssl-certificate-file ssl-privatekey-file)
-    (error "Both or neither required of SSL-CERTIFICATE-FILE and SSL-PRIVATEKEY-FILE"))
-  (setf (port-server port) server
-        (port-www-dir port) www-dir)
-  (or (port-acceptor port)
-      (let ((acceptor (if ssl-privatekey-file
-                          (make-instance 'hunchentoot:ssl-acceptor
-                                         :port port
-                                         :ssl-certificate-file ssl-certificate-file
-                                         :ssl-privatekey-file ssl-privatekey-file)
-                          (make-instance 'hunchentoot:acceptor :port port))))
-        (setf (get-web-script-handler port "/" acceptor)
-              'do-trubanc-web-server
-              (get-web-script-handler port "/client" acceptor)
-              #'(lambda () (hunchentoot:redirect "/client/"))
-              (get-web-script-handler port "/client/" acceptor)
-              'do-trubanc-web-client)        
-        (setf (port-acceptor port) acceptor)
-        (hunchentoot:start acceptor)
-        acceptor)))
+    (error
+     "Both or neither required of SSL-CERTIFICATE-FILE and SSL-PRIVATEKEY-FILE"))
+  (prog1
+      (or (let ((acceptor (port-acceptor port)))
+            (cond ((and acceptor
+                        (typep acceptor
+                               (if ssl-privatekey-file
+                                   'hunchentoot:ssl-acceptor
+                                   'hunchentoot:acceptor)))
+                   acceptor)
+                  (t (stop-web-server port)
+                     nil)))
+          (let ((acceptor (if ssl-privatekey-file
+                              (make-instance
+                               'hunchentoot:ssl-acceptor
+                               :port port
+                               :ssl-certificate-file ssl-certificate-file
+                               :ssl-privatekey-file ssl-privatekey-file)
+                              (make-instance 'hunchentoot:acceptor :port port))))
+            (setf (port-server port) server
+                  (port-www-dir port) www-dir)
+            (setf (get-web-script-handler port "/")
+                  'do-trubanc-web-server
+                  (get-web-script-handler port "/client")
+                  #'(lambda () (hunchentoot:redirect "/client/"))
+                  (get-web-script-handler port "/client/")
+                  'do-trubanc-web-client)        
+            (setf (port-acceptor port) acceptor)
+            (hunchentoot:start acceptor)
+            acceptor))
+    (when (and ssl-certificate-file forwarding-port)
+      ;; 
+      (let ((acceptor (make-instance 'hunchentoot:acceptor :port forwarding-port)))
+        (setf (port-server forwarding-port) server
+              (port-www-dir forwarding-port) www-dir
+              (port-forwarded-to forwarding-port) port)
+        (setf (get-web-script-handler forwarding-port "/")
+              (lambda () (maybe-redirect-to-ssl port))
+              (get-web-script-handler forwarding-port "/client")
+              (lambda () (hunchentoot:redirect "/client/"))
+              (get-web-script-handler forwarding-port "/client/")
+              (lambda () (maybe-redirect-to-ssl port))
+              (port-acceptor forwarding-port) acceptor)
+        (hunchentoot:start acceptor)))))
 
+(defun maybe-redirect-to-ssl (to-port)
+  (let ((script (hunchentoot:script-name*)))
+    (cond ((equal script "/")
+           (if (parm "msg")
+               (redirect-to-ssl to-port)
+               (do-trubanc-web-server)))
+          ((equal script "/client/")
+           (redirect-to-ssl to-port))
+          (t (do-trubanc-web-server)))))
+
+(defun redirect-to-ssl (to-port)
+  (hunchentoot:redirect
+   (hunchentoot:request-uri*)
+   :port to-port
+   :protocol :https
+   :code hunchentoot:+http-moved-permanently+))
+              
 (defun stop-web-server (&optional (port :all))
   "Stop the web server on PORT, or all web servers if PORT is :ALL (the default)."
   (cond ((eq port :all)
          (let ((ports (loop
                          for port being the hash-keys
-                         of *trubanc-ports-to-acceptors*
+                         of *ports-to-acceptors*
                          collect port)))
            (mapc 'stop-web-server ports)))
-        (t (let ((acceptor (port-acceptor port)))
+        (t (let ((forwarded-from (port-forwarded-from port)))
+             (when forwarded-from
+               (setf (port-forwarded-to forwarded-from) nil)
+               (stop-web-server forwarded-from)))
+           (let ((acceptor (port-acceptor port)))
              (setf (port-server port) nil
                    (port-acceptor port) nil
                    (port-www-dir port) nil)
              (when acceptor
-               (remove-web-script-handlers port acceptor)
+               (remove-web-script-handlers port)
                (let ((started nil))
                  (process-run-function
                   (format nil "Stop port ~d" port)
@@ -659,8 +729,7 @@ openssl x509 -in cert.pem -text -noout
                ;; Need to make a request in order to get the server to shut down
                (ignore-errors
                  (dotimes (i 3)
-                   (drakma:http-request (format nil "http://localhost:~d/" port))))
-               )))))
+                   (drakma:http-request (format nil "http://localhost:~d/" port)))))))))
 
 (defun send-bank-request (uri &optional msg-p)
   (drakma:http-request

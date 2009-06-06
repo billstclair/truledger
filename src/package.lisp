@@ -233,6 +233,8 @@
    #:zero-string
    #:blankp
    #:hsc
+   #:parm
+   #:parms
    #:run-startup-functions
    #:xor
 
@@ -258,6 +260,7 @@
    #:web-server-active-p
    #:stop-web-server
    #:port-server
+   #:port-forwarded-from
    #:acceptor-port
    #:bind-parameters
 
