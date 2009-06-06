@@ -728,11 +728,12 @@ openssl x509 -in cert.pem -text -noout
                  (process-wait "Server stopper" (lambda () started)))
                ;; Need to make a request in order to get the server to shut down
                (ignore-errors
-                 (let ((https (type (port-acceptor port) 'hunchentoot:ssl-acceptor)))
-                 (drakma:http-request
-                  (format nil "~a://localhost:~d/"
-                          (if https "https" "http") httport)
-                  :redirect nil))))))))
+                 (let ((ssl-p (hunchentoot:ssl-p acceptor)))
+                   (dotimes (i 3)
+                     (drakma:http-request
+                      (format nil "~a://localhost:~d/"
+                              (if ssl-p "https" "http") port)
+                      :redirect nil)))))))))
 
 (defun send-bank-request (uri &optional msg-p)
   (drakma:http-request
