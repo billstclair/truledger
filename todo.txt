@@ -1,3 +1,7 @@
+Sanity check the URL to make sure that the HTTPS matches that for the client.
+
+Client displays client build info. Also display server build info.
+
 Contacts should cross bank boundaries automatically, so you recognize
 the same ID at different banks. How to make this efficient? Don't want
 to query for all contacts at every bank. Maybe remember a list of

@@ -1145,11 +1145,12 @@
                (error "Insufficient destination balance for transaction fee")))
             (t
              (let ((old-fee-balance (userbalance client $MAIN tranfee-asset)))
-               (setq fee-balance (bcsub old-fee-balance tranfee-amt)
-                     need-fee-balance-p t)
-               (when (and (>= (bccomp old-fee-balance 0) 0)
-                          (< (bccomp fee-balance 0) 0))
-                 (error "Insufficient tokens for transaction fee"))))))
+               (unless (eql 0 (bccomp tranfee-amt 0))
+                 (setq fee-balance (bcsub old-fee-balance tranfee-amt)
+                       need-fee-balance-p t)
+                 (when (and (>= (bccomp old-fee-balance 0) 0)
+                            (< (bccomp fee-balance 0) 0))
+                   (error "Insufficient tokens for transaction fee")))))))
 
     ;; Numbers are computed and validated.
     ;; Create messages for server.
@@ -1188,33 +1189,15 @@
 
       ;; Compute balancehash
       (unless (equal id bankid)
-        (let ((acctbals (make-equal-hash)))
-          (cond (feebal
-                 (cond ((equal $MAIN acct)
-                        (setf (gethash acct acctbals)
-                              (make-equal-hash assetid balance
-                                               tranfee-asset feebal))
-                        (when tobalance
-                          (setf (gethash toacct acctbals)
-                                (make-equal-hash assetid tobalance))))
-                       ((and (equal id toid)
-                             (equal $MAIN toacct))
-                        (setf (gethash acct acctbals)
-                              (make-equal-hash assetid balance)
-                              (gethash $MAIN acctbals)
-                              (make-equal-hash assetid tobalance
-                                               tranfee-asset feebal)))
-                       (t
-                        (setf (gethash acct acctbals)
-                              (make-equal-hash assetid balance)
-                              (gethash $MAIN acctbals)
-                              (make-equal-hash tranfee-asset feebal)))))
-                (t
-                 (setf (gethash acct acctbals)
-                       (make-equal-hash  assetid balance))
-                 (when tobalance
-                   (setf (gethash toacct acctbals)
-                         (make-equal-hash assetid tobalance)))))
+        (let* ((acctbals (make-equal-hash)))
+          (setf (gethash assetid (get-inited-hash acct acctbals))
+                balance)
+          (when feebal
+            (setf (gethash tranfee-asset (get-inited-hash $MAIN acctbals))
+                  feebal))
+          (when tobalance
+            (setf (gethash assetid (get-inited-hash toacct acctbals))
+                  tobalance))
           (setq balancehash (balancehashmsg client time acctbals))))
 
       ;; Prepare storage fee related message components
