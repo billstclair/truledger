@@ -496,8 +496,11 @@
 
 (defun properties-compare (a1 a2 keys &optional (comparef #'string-compare))
   (dolist (key keys 0)
-    (let ((res (funcall comparef (funcall key a1) (funcall key a2))))
-      (unless (eql 0 res) (return res)))))
+    (let ((comparef comparef))
+      (when (listp key)
+        (setq comparef (cdr key) key (car key)))
+      (let ((res (funcall comparef (funcall key a1) (funcall key a2))))
+        (unless (eql 0 res) (return res))))))
 
 (defun properties-lessp (a1 a2 keys &optional (comparef #'string-compare))
   (< (properties-compare a1 a2 keys comparef) 0))
@@ -601,6 +604,16 @@
                 (when needstore (setf (db-get db key) pubkeysig))
                 (values pubkeysig name)))))))))
 
+(defun acct-compare (a1 a2)
+  (cond ((equal a1 a2) 0)
+        ((equal a1 $MAIN) -1)
+        ((equal a2 $MAIN) 1)
+        ((string-lessp a1 a2) -1)
+        (t 1)))
+  
+(defun acct-lessp (a1 a2)
+  (< (acct-compare a1 a2) 0))
+
 (defmethod getaccts ((client client))
   "GET sub-account names.
    Returns an error string or an array of the sub-account names."
@@ -609,7 +622,7 @@
     (require-current-bank client "In getaccts(): Bank not set")
     (init-bank-accts client)
     
-    (sort (db-contents db (userbalancekey client)) #'string-lessp)))
+    (sort (db-contents db (userbalancekey client)) #'acct-lessp)))
 
 (defstruct asset
   id
@@ -847,14 +860,8 @@
   time
   formatted-amount)
 
-(defun acct-lessp (a1 a2)
-  (cond ((equal a1 a2) nil)
-        ((equal a1 $MAIN) t)
-        ((equal a2 $MAIN) nil)
-        (t (string-lessp a1 a2))))
-
 (defun balance-lessp (b1 b2)
-  (< (properties-compare b1 b2 '(balance-acct balance-assetid)) 0))
+  (< (properties-compare b1 b2 '((balance-acct . acct-compare) balance-assetid)) 0))
 
 (defmethod getbalance ((client client) &optional (acct t) assetid includeraw)
   "Get user balances for all sub-accounts or just one.
@@ -911,7 +918,7 @@
     (values
      (if (and (stringp acct) assetid)
          (cadar res)
-         (sort res #'string-lessp :key #'car))
+         (sort res #'acct-lessp :key #'car))
      msghash)))
 
 (defstruct fraction
