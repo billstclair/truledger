@@ -81,6 +81,8 @@ certfile is the path to an SSL certificate file."
                        (or nonsslport port))
                (format t "Web address: http://localhost:~a/~%"
                        (or nonsslport port))
+               (when (server-db-exists-p)
+                 (format t "REMEMBER TO LOG IN AS THE BANK TO START THE SERVER!!~%"))
                (finish-output))
       (error (c)
         (format t "Error starting server on port ~d: ~a~%" port c)
@@ -97,9 +99,6 @@ certfile is the path to an SSL certificate file."
     (when str
       ;; str = "commit <number>"
       (second (explode #\ (trim str))))))
-
-(defvar *last-commit* nil)
-(defvar *save-application-time* nil)
 
 (defun target-suffix ()
   (or
@@ -120,7 +119,7 @@ certfile is the path to an SSL certificate file."
 (defun save-trubanc-application (&optional (filename (application-name)))
   (stop-web-server)
   (setq *last-commit* (last-commit))
-  (setq *save-application-time* (get-universal-time))
+  (setq *save-application-time* (get-unix-time))
   (save-application filename
                     :toplevel-function #'toplevel-function
                     :prepend-kernel t

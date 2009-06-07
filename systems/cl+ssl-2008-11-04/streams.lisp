@@ -61,8 +61,9 @@
     ((ssl-stream-handle stream)
      (unless abort
        (force-output stream))
-     (ssl-free (ssl-stream-handle stream))
-     (setf (ssl-stream-handle stream) nil)
+     (let ((handle (ssl-stream-handle stream)))
+       (setf (ssl-stream-handle stream) nil)
+       (ssl-free handle))
      (when (streamp (ssl-stream-socket stream))
        (close (ssl-stream-socket stream)))
      (when (functionp (ssl-close-callback stream))

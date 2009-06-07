@@ -51,6 +51,8 @@
 (defconstant $GETOUTBOX "getoutbox")
 (defconstant $GETBALANCE "getbalance")
 (defconstant $COUPONENVELOPE "couponenvelope")
+(defconstant $GETVERSION "getversion")
+(defconstant $VERSION "version")
 
 ;; Affirmations
 (defconstant $ATREGISTER "@register")

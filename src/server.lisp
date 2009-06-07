@@ -862,7 +862,9 @@
                   (setq balancehash-req req
                         balancehash-msg reqmsg
                         balancehash (getarg $HASH reqargs)
-                        balancehash-cnt (getarg $COUNT reqargs)))
+                        balancehash-cnt (getarg $COUNT reqargs))
+                  (debugmsg "do-spend-internal, got balancehash: ~a~%~
+                             msg: ~a~%" balancehash reqmsg))
                  (t
                   (error "~s not valid for spend. Only ~s, ~s, ~s, ~s, ~s, & ~s"
                          request
@@ -1950,6 +1952,20 @@
 
         msg))))
 
+;; These are set by trubanc-client-web::save-trubanc-application
+(defvar *last-commit* nil)
+(defvar *save-application-time* nil)
+
+(define-message-handler do-getversion $GETVERSION (server args reqs)
+  (declare (ignore reqs))
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args)))
+    (with-db-lock (db (acct-time-key id))
+      (checkreq server args)
+      (bankmsg server $VERSION
+               (or *last-commit* "")
+               (stringify (or *save-application-time* (get-unix-time)) "~d")))))
+
 ;;;
 ;;; End request processing
 ;;;
@@ -1975,7 +1991,8 @@
                       ,$GETASSET
                       ,$ASSET
                       ,$GETOUTBOX
-                      ,$GETBALANCE))
+                      ,$GETBALANCE
+                      ,$GETVERSION))
              (commands (make-hash-table :test #'equal)))
       (loop
          for name in names
@@ -1996,7 +2013,7 @@
       ((error
         (lambda (c)
           (when (debug-stream-p)
-            (debugmsg (backtrace-string)))
+            (debugmsg "Server error: ~a~%~a" c (backtrace-string)))
           (return-from process
             (failmsg server msg (format nil "~a" c))))))
     (process-internal server msg)))

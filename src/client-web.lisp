@@ -35,10 +35,8 @@
   menu
   onload
   fraction-asset
+  refresh-version
   )
-
-(defun stringify (x &optional format)
-  (format nil (or format "~a") x))
 
 (defun client-db-dir ()
   "trubanc-dbs/clientdb")
@@ -204,21 +202,33 @@
               (:b "=== Debug log ===")
               (:br)
               (:pre (str debugstr)))))
-        (when (or *last-commit* *save-application-time*)
+        (flet ((write-version (s label version time)
+                 (unless (blankp version)
+                   (who (s)
+                     (who (s)
+                       (esc label)
+                       (:a
+                        :class "version"
+                        :href
+                        (stringify
+                         version
+                         "http://github.com/billstclair/trubanc-lisp/commit/~a")
+                        (str version)))
+                     (when time
+                       (let ((datestr (datestr time)))
+                         (who (s) " " (str datestr)))))
+                   t)))
           (who (s)
-            (:p :class "version"
-             (when *last-commit*
-               (who (s)
-                 "Build: "
-                 (:a :class "version"
-                     :href (stringify
-                            *last-commit*
-                            "http://github.com/billstclair/trubanc-lisp/commit/~a")
-                     (str *last-commit*))))
-             (when *save-application-time*
-               (let ((datestr (datestr
-                               (universal-to-unix-time *save-application-time*))))
-                 (who (s) " " (str datestr)))))))
+            (:p
+             :class "version"
+             (when (write-version s "Build: " *last-commit* *save-application-time*)
+               (who (s) (:br)))
+             (when (bankid (cw-client cw))
+               (multiple-value-bind (version time)
+                   (ignore-errors
+                     (getversion (cw-client cw) (cw-refresh-version cw)))
+                 (unless (equal *last-commit* version)
+                   (write-version s "Server: " version time)))))))
         (:p
          (:a :href "http://common-lisp.net/"
              (:img
@@ -361,7 +371,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
               (who (s) (str text)))))))
 
 (defun server-db-exists-p ()
-  (or (get-running-server)
+  (or (ignore-errors (get-running-server))
       (server-privkey-file-exists-p)))
 
 (defun server-privkey-file-exists-p ()
@@ -438,6 +448,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
 
 ;; Here from the login page when the user presses one of the buttons
 (defun do-login (cw)
+  (setf (cw-refresh-version cw) t)
   (bind-parameters (passphrase passphrase2)
     (unwind-protect (do-login-internal cw passphrase passphrase2)
       (destroy-password passphrase)
@@ -1499,7 +1510,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
           (cond ((equal (id client) (bankid client))
                  (setq disablemint t))
                 ((equal recipient $COUPON)
-                 (setq selectmint t)))
+                 (setq selectmint t))
+                ((equal recipient (id client))
+                 (setq selectmint t
+                       recipient "")))
 
           (when (and (not found) (not (equal recipient $COUPON)))
             (setq recipientid recipient))
@@ -1565,7 +1579,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                         (:td
                          (str recipopts)
                          (:input :type "checkbox" :name "mintcoupon"
-                                                  :selected selectmint :disabled disablemint)
+                                 :checked selectmint
+                                 :disabled disablemint)
                          "Mint coupon"))
                        (:tr
                         (:td (:b "Note:"))

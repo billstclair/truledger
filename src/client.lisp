@@ -2022,6 +2022,20 @@
     (unpack-bankmsg client msg $ATCOUPONENVELOPE))
   nil)
 
+(defmethod getversion ((client client) &optional forceserver)
+  "Returns two values: version & time."
+  (let* ((db (db client))
+         (key (userversionkey client)))
+    (require-current-bank client "In getversion(): Bank not set")
+    (with-db-lock (db (userreqkey client))
+      (let ((msg (unless forceserver (db-get db key))))
+        (unless msg
+          (setq msg (sendmsg client $GETVERSION (bankid client) (getreq client))
+                forceserver t))
+        (let ((args (unpack-bankmsg client msg $VERSION)))
+          (when forceserver (setf (db-get db key) msg))
+          (values (getarg $VERSION args) (getarg $TIME args)))))))
+
 ;;;
 ;;; End of API methods
 ;;;
@@ -2223,6 +2237,9 @@
 
 (defmethod userhistorykey ((client client))
   (userbankkey client $HISTORY))
+
+(defmethod userversionkey ((client client))
+  (userbankkey client $VERSION))
 
 (defmethod format-asset-value ((client client) value assetid &optional (incnegs t))
   "Format an asset value from the asset ID or $this->getasset($assetid)"
@@ -2730,7 +2747,7 @@
               (setq text (subseq res 2 pos)
                     res (subseq res (+ pos 3))))))
         (when text
-          (debugmsg "<b>===SERVER SAID</b>: ~a" text)
+          (debugmsg "<b>===SERVER SAID</b>: ~a" (hsc text))
           (let ((len (length text)))
             (unless (and (> len 0) (eql #\newline (aref text (1- len))))
               (debugmsg "~%"))))

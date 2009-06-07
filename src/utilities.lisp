@@ -224,6 +224,9 @@
 (defun blankp (x)
   (or (null x) (equal x "")))
 
+(defun stringify (x &optional format)
+  (format nil (or format "~a") x))
+
 (defun hsc (x)
   (and x (hunchentoot:escape-for-html x)))
 

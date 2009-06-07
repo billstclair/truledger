@@ -49,6 +49,8 @@
    #:$GETOUTBOX
    #:$GETBALANCE
    #:$COUPONENVELOPE
+   #:$GETVERSION
+   #:$VERSION
    #:$ATREGISTER
    #:$ATOUTBOXHASH
    #:$ATSTORAGE
@@ -234,6 +236,7 @@
    #:str-replace
    #:zero-string
    #:blankp
+   #:stringify
    #:hsc
    #:parm
    #:parms
@@ -255,6 +258,8 @@
    #:privkey
    #:db
    #:finalize
+   #:*last-commit*
+   #:*save-application-time*
 
    ;; server-web.lisp
    #:with-debug-stream
@@ -409,6 +414,7 @@
    #:outbox-coupons
    #:getoutbox
    #:redeem
+   #:getversion
    #:user-preference
    #:userreq
    #:trimmsg))

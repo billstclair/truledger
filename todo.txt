@@ -1,5 +1,8 @@
 Still getting balancehash mismatches on transfers between accounts.
 
+Distinguish intentional from unintentional server errors. Give
+backtrace only on unintentional messages. TRUBANC-ERROR.
+
 Sanity check the URL to make sure that the HTTPS matches that for the client.
 
 Client displays client build info. Also display server build info.

@@ -56,7 +56,7 @@
   "Return the id for an asset"
   (sha1 (format nil "~a,~a,~a,~a" id scale precision name)))
 
-(defvar *patterns* nil)
+(defparameter *patterns* nil)
 
 ;; Patterns for non-request data
 (defun patterns ()
@@ -88,6 +88,8 @@
                         (,$STORAGEFEES . (,$BANKID ,$REQ))
                         (,$GETTIME . (,$BANKID ,$REQ))
                         (,$COUPONENVELOPE . (,$ID ,$ENCRYPTEDCOUPON))
+                        (,$GETVERSION . (,$BANKID ,$REQ))
+                        (,$VERSION . (,$VERSION ,$TIME))
 
                         ;; Bank signed messages
                         (,$FAILED . (,$MSG ,$ERRMSG))
@@ -152,9 +154,10 @@
           (push newitem items)
           (setq items (append items (copy-list newitem)))))
     (setq items (sort (mapcar #'trim items) 'string-lessp))
-    (let* ((str (apply 'implode "." items))
-           (hash (sha1 str)))
-      (values hash (length items)))))
+    (when items
+      (let* ((str (apply 'implode "." items))
+             (hash (sha1 str)))
+        (values hash (length items))))))
 
 (defmethod balancehash ((db db) unpacker balancekey acctbals)
   "Compute the balance hash as two values: hash & count.
@@ -188,8 +191,9 @@
          (multiple-value-bind (hash1 cnt)
              (dirhash db (append-db-keys balancekey acct) unpacker
                       newitems removed-names)
-           (setq hash (if hash (strcat hash "." hash1) hash1))
-           (incf hashcnt cnt)))
+           (when hash1
+             (setq hash (if hash (strcat hash "." hash1) hash1))
+             (incf hashcnt cnt))))
     (when (> hashcnt 1) (setq hash (sha1 hash)))
     (values hash hashcnt)))
 
