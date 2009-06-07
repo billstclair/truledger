@@ -196,37 +196,37 @@
         (write-bankline cw)
         (write-idcode cw)
         (str (cw-body cw))
-        (let ((debugstr (get-debug-stream-string)))
-          (when debugstr
-            (who (s)
-              (:b "=== Debug log ===")
-              (:br)
-              (:pre (str debugstr)))))
-        (flet ((write-version (s label version time)
-                 (unless (blankp version)
-                   (who (s)
+        (multiple-value-bind (version time)
+            (ignore-errors
+              (getversion (cw-client cw) (cw-refresh-version cw)))
+          (let ((debugstr (get-debug-stream-string)))
+            (when debugstr
+              (who (s)
+                (:b "=== Debug log ===")
+                (:br)
+                (:pre (str debugstr)))))
+          (flet ((write-version (s label version time)
+                   (unless (blankp version)
                      (who (s)
-                       (esc label)
-                       (:a
-                        :class "version"
-                        :href
-                        (stringify
-                         version
-                         "http://github.com/billstclair/trubanc-lisp/commit/~a")
-                        (str version)))
-                     (when time
-                       (let ((datestr (datestr time)))
-                         (who (s) " " (str datestr)))))
-                   t)))
-          (who (s)
-            (:p
-             :class "version"
-             (when (write-version s "Build: " *last-commit* *save-application-time*)
-               (who (s) (:br)))
-             (when (bankid (cw-client cw))
-               (multiple-value-bind (version time)
-                   (ignore-errors
-                     (getversion (cw-client cw) (cw-refresh-version cw)))
+                       (who (s)
+                         (esc label)
+                         (:a
+                          :class "version"
+                          :href
+                          (stringify
+                           version
+                           "http://github.com/billstclair/trubanc-lisp/commit/~a")
+                          (str version)))
+                       (when time
+                         (let ((datestr (datestr time)))
+                           (who (s) " " (str datestr)))))
+                     t)))
+            (who (s)
+              (:p
+               :class "version"
+               (when (write-version s "Build: " *last-commit* *save-application-time*)
+                 (who (s) (:br)))
+               (when (bankid (cw-client cw))
                  (unless (equal *last-commit* version)
                    (write-version s "Server: " version time)))))))
         (:p
