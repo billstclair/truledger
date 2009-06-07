@@ -94,9 +94,11 @@ certfile is the path to an SSL certificate file."
 
 (defun last-commit ()
   (ignore-errors
-    (let* ((s (run-program "git" '("log") :output :stream))
-           (str (read-line s)))
-      (close s)
+    (let* ((s #-windows (run-program "git" '("log") :output :stream)
+	      #+windows (progn (run-program "git-log.bat" nil)
+			       (open "git.log")))	   
+	   (str (unwind-protect (read-line s)
+		  (close s))))
       (when str
         ;; str = "commit <number>"
         (second (explode #\ (trim str)))))))
