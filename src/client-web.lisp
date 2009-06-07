@@ -115,8 +115,7 @@
                   (when debug
                     (who (s)
                       (:br)
-                      (:pre (str (backtrace-string))))))))))
-        (error "foo")
+                      (:pre (esc (backtrace-string))))))))))
         (web-server-really-internal client)))))
 
 (defun web-server-really-internal (client)
@@ -1446,7 +1445,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
            (let ((enabled (if (initialize-client-history client)
                               "enabled"
                               "disabled")))
-             (when (and (cw-fraction-asset cw) (showprocess client))
+             (when (and (cw-fraction-asset cw) (debug-stream-p))
                (let* ((fraction (car (getfraction client (cw-fraction-asset cw)))))
                  (when fraction
                    (let ((amt (fraction-amount fraction))

@@ -2727,7 +2727,7 @@
                    (equal "<<" (subseq res 0 2)))
           (let ((pos (search #.(format nil ">>~%") res)))
             (when pos
-              (setq text (subseq res 2 (- pos 2))
+              (setq text (subseq res 2 pos)
                     res (subseq res (+ pos 3))))))
         (when text
           (debugmsg "<b>===SERVER SAID</b>: ~a" text)

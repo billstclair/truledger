@@ -130,7 +130,7 @@
                     (res (with-debug-stream (debugmsgs)
                            (unwind-protect
                                 (process server msg)
-                             (setq debugstr (debug-stream-string))))))
+                             (setq debugstr (get-debug-stream-string))))))
                (cond (debug
                       (setq res
                             (format nil

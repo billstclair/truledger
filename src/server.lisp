@@ -1992,10 +1992,14 @@
 (defmethod process ((server server) msg)
   "Process a message and return the response.
    This is usually all you'll call from outside."
-  (handler-case
-      (process-internal server msg)
-    (error (c)
-      (failmsg server msg (format nil "~a" c)))))
+  (handler-bind
+      ((error
+        (lambda (c)
+          (when (debug-stream-p)
+            (debugmsg (backtrace-string)))
+          (return-from process
+            (failmsg server msg (format nil "~a" c))))))
+    (process-internal server msg)))
 
 (defun process-internal (server msg)
   (let* ((parser (parser server))
