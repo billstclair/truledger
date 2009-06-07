@@ -10,8 +10,11 @@
 ;; This noticeably speeds things up
 (ccl:egc nil)
 
-(defun run-program (program args &key input output)
-  (ccl:run-program program args :input input :output output))
+(defun run-program (program args &key input output (wait (not (eq output :stream))))
+  (let ((proc (ccl:run-program program args :input input :output output :wait wait)))
+    (if (eq output :stream)
+        (ccl:external-process-output-stream proc)
+        proc)))
 
 (defun quit (&optional (exit-status 0))
   (ccl:quit exit-status))

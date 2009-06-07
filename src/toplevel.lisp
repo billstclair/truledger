@@ -93,12 +93,13 @@ certfile is the path to an SSL certificate file."
    (lambda () (not (web-server-active-p)))))
 
 (defun last-commit ()
-  (let ((str (ignore-errors
-               (with-output-to-string (s)
-                 (run-program "./last-commit" nil :output s)))))
-    (when str
-      ;; str = "commit <number>"
-      (second (explode #\ (trim str))))))
+  (ignore-errors
+    (let* ((s (run-program "git" '("log") :output :stream))
+           (str (read-line s)))
+      (close s)
+      (when str
+        ;; str = "commit <number>"
+        (second (explode #\ (trim str)))))))
 
 (defun target-suffix ()
   (or
