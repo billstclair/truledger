@@ -114,6 +114,7 @@
    #:gc
    #:save-application
    #:command-line-arguments
+   #:backtrace-string
 
    ;; openssl-cffi.lisp
    #:decode-rsa-private-key
@@ -256,6 +257,10 @@
    #:finalize
 
    ;; server-web.lisp
+   #:with-debug-stream
+   #:get-debug-stream-string
+   #:debugmsg
+   #:debug-stream-p
    #:server-db-dir
    #:trubanc-web-server
    #:web-server-active-p

@@ -60,13 +60,7 @@
    (always-verify-sigs-p :type boolean
                          :initarg :always-verify-sigs-p
                          :initform t
-                         :accessor always-verify-sigs-p)
-   (debugmsgs-p :type boolean           ;of strings
-                :initform nil
-                :accessor debugmsgs-p)
-   (debugstr :type string
-             :initform ""
-             :accessor debugstr)))
+                         :accessor always-verify-sigs-p)))
 
 (defmethod initialize-instance :after ((server server) &key db passphrase)
   (let ((pubkeydb (db-subdir db $PUBKEY)))
@@ -592,10 +586,6 @@
             (setf (storage-info-fee asset-info)
                   (wbp (digits)
                     (bcadd (storage-info-fee asset-info) fee)))))))))
-
-(defmethod debugmsg ((server server) msg)
-  (when (debugmsgs-p server)
-    (setf (debugstr server) (strcat (debugstr server) msg))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

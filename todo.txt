@@ -19,6 +19,9 @@ add that bank to the list for that contact. A little more client work,
 but no extra client <-> server traffic. Will need startup code to move
 the contacts directory from each bank to the account.
 
+Save/restore contacts, encrypted, to/from the server, merging with
+what's there.
+
 Server switch to disallow minting of cookies or spends to unknown IDs.
 This allows central control over membership.
 Add to client "Admin" page.

@@ -50,6 +50,14 @@
 (defun command-line-arguments ()
   ccl:*command-line-argument-list*)
 
+(defun backtrace-string ()
+  (let ((bt (ccl::backtrace-as-list))
+        (i 0))
+    (with-output-to-string (s)
+      (dolist (b (cdr bt))              ;Don't print the backtrace-string frame
+        (format s "~d:~{ ~a~}~%" i b)
+        (incf i)))))
+
 ;;;
 ;;; Locking.
 ;;;

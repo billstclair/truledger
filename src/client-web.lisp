@@ -29,7 +29,6 @@
   error
   bankline
   bankname
-  debugstr
   session
   html-output
   body
@@ -40,12 +39,6 @@
 
 (defun stringify (x &optional format)
   (format nil (or format "~a") x))
-
-(defun append-debug (cw x)
-  (let ((str (cw-debugstr cw)))
-    (and str
-         (setf (cw-debugstr cw)
-               (strcat str x)))))
 
 (defun client-db-dir ()
   "trubanc-dbs/clientdb")
@@ -103,23 +96,36 @@
            "history" draw-history)))
 
 (defun web-server-internal (client)
+  (let ((debug-parm (parm "debug"))
+        (debug (not (blankp (get-cookie "debug")))))
+    (when debug-parm
+      (let* ((new-debug (not (blankp debug-parm))))
+        (setq debug new-debug)
+        (when (xor debug new-debug)
+          (if debug
+              (set-cookie "debug" "debug")
+              (delete-cookie "debug")))))
+    (with-debug-stream (debug)
+      (handler-bind
+          ((error
+            (lambda (c)
+              (return-from web-server-internal
+                (whots (s)
+                  "Error: " (str c)
+                  (when debug
+                    (who (s)
+                      (:br)
+                      (:pre (str (backtrace-string))))))))))
+        (error "foo")
+        (web-server-really-internal client)))))
+
+(defun web-server-really-internal (client)
   (let* ((iphone (search "iPhone" (hunchentoot:user-agent)))
          (title "Trubanc Client")
          (session (get-cookie "session"))
          (cw (make-cw :client client :iphone iphone :title title :session session))
-         (cmd (parm "cmd"))
-         (debug-parm (parm "debug"))
-         (debug (get-cookie "debug")))
+         (cmd (parm "cmd")))
     
-    (when debug-parm
-      (setq debug (not (blankp debug-parm)))
-      (if debug
-          (set-cookie "debug" "debug")
-          (delete-cookie "debug")))
-    (when debug
-      (setf (cw-debugstr cw) ""
-            (showprocess client) (lambda (x) (append-debug cw x))))
-
     (unless (blankp session)
       (handler-case
           (progn
@@ -160,14 +166,6 @@
                     (t (draw-login cw))))))
 
     ;; Use title, body, onload, and debugstr to fill the page template.
-    (let ((str (cw-debugstr cw)))
-      (when str
-        (setf (cw-debugstr cw)
-              (whots (s)
-                (:b "=== Debug log ===")
-                (:br)
-                (:pre (str str))))))
-
     (with-output-to-string (s)
       (setf (cw-html-output cw) s)
       (write-template cw))))
@@ -201,7 +199,12 @@
         (write-bankline cw)
         (write-idcode cw)
         (str (cw-body cw))
-        (str (cw-debugstr cw))
+        (let ((debugstr (get-debug-stream-string)))
+          (when debugstr
+            (who (s)
+              (:b "=== Debug log ===")
+              (:br)
+              (:pre (str debugstr)))))
         (when (or *last-commit* *save-application-time*)
           (who (s)
             (:p :class "version"
@@ -836,7 +839,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                                         recipient amount acct2 note)))))
                (return)))
         (setf (cw-error cw) err)
-        (if (blankp mintcoupon)
+        (if (or err (blankp mintcoupon))
             (unless err (draw-balance cw))
             (draw-coupon cw (last-spend-time client))))
       (when err
@@ -1621,10 +1624,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                      (:a :href "./?cmd=togglehistory"
                          (str historytext) " history")
                      (:br)
-                     (:a :href (if (cw-debugstr cw)
+                     (:a :href (if (debug-stream-p)
                                    "./?debug"
                                    "./?debug=true")
-                         (str (if (cw-debugstr cw)
+                         (str (if (debug-stream-p)
                                   "Disable debugging"
                                   "Enable debugging")))
                      (:br)

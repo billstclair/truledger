@@ -95,19 +95,51 @@
 (defun server-db-dir ()
   "trubanc-dbs/serverdb")
 
+(defvar *debug-stream* nil)
+
+(defmacro with-debug-stream ((&optional (only-if-p t)) &body body)
+  (let ((thunk (gensym)))
+    `(flet ((,thunk () ,@body))
+       (declare (dynamic-extent #',thunk))
+       (call-with-debug-stream #',thunk ,only-if-p))))
+
+(defun call-with-debug-stream (thunk only-if-p)
+  (let ((*debug-stream* (and only-if-p (make-string-output-stream))))
+    (funcall thunk)))
+
+(defun get-debug-stream-string ()
+  (and *debug-stream*
+       (get-output-stream-string *debug-stream*)))
+
+(defun debugmsg (format-string &rest format-args)
+  (declare (dynamic-extent format-args))
+  (when (and *debug-stream* (stringp format-string))
+    (apply #'format *debug-stream* format-string format-args)))
+
+(defun debug-stream-p ()
+  (not (null *debug-stream*)))
+
 (defun do-trubanc-web-server ()
   (let* ((acceptor hunchentoot:*acceptor*)
          (port (hunchentoot:acceptor-port acceptor))
          (server (port-server port)))
-    (bind-parameters (msg debug)
+    (bind-parameters (msg debug debugmsgs)
       (setf (hunchentoot:content-type*) "text/html")
       (cond ((and msg server)
-             (let ((res (process server msg)))
-               (when debug
-                 (setq res (format nil
-                                   "msg: <pre>~a</pre>~%response: <pre>~a</pre>~%"
-                                   msg res)))
-               res))
+             (let* ((debugstr nil)
+                    (res (with-debug-stream (debugmsgs)
+                           (unwind-protect
+                                (process server msg)
+                             (setq debugstr (debug-stream-string))))))
+               (cond (debug
+                      (setq res
+                            (format nil
+                                    "msg: <pre>~a</pre>~%response: <pre>~a</pre>~%"
+                                    msg res))
+                      (unless (blankp debugstr)
+                        (setq res (format nil "~a<pre>~a</pre>" res debugstr))))
+                     ((blankp debugstr) res)
+                     (t (format nil "<<~a>>~%~a" debugstr res)))))
             ((not server)
              (if msg
                  (let ((downmsg (db-get (make-fsdb (server-db-dir)) $SHUTDOWNMSG)))

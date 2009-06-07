@@ -63,11 +63,7 @@
    ;; Used to accumulate timing information from server (perf.lisp)
    (server-times :type (or hash-table null)
                  :initform nil
-                 :accessor server-times)
-
-   ;; If non-nil, a function to call with debug strings
-   (showprocess :initform nil
-                :accessor showprocess)))
+                 :accessor server-times)))
 
 (defmethod initialize-instance :after ((client client) &rest rest)
   (declare (ignore rest))
@@ -2071,7 +2067,7 @@
     (unless (or (not bankid) (equal (getarg $CUSTOMER args) bankid))
       (error "Return message not from bank"))
     (when (equal (getarg $REQUEST args) $FAILED)
-      (error (format nil "Server error: ~a" (getarg $ERRMSG args))))
+      (error "Server error: ~a" (getarg $ERRMSG args)))
     (when (and request (not (equal (getarg $REQUEST args) request)))
       (error "Wrong return type from bank; sb: ~s, was: ~s"
              request (getarg $REQUEST args)))
@@ -2639,13 +2635,6 @@
          (key (user-preference-key client pref)))
     (setf (db-get db key) value)))
 
-(defmethod debugmsg ((client client) x)
-  "Add a string to the debug output.
-   Does NOT add a newline.
-   Use var_export($val, true) to dump arrays"
-  (let ((showprocess (showprocess client)))
-    (when showprocess (funcall showprocess x))))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Connection to the server
@@ -2714,15 +2703,13 @@
     (unless (eql #\/ (aref url (1- (length url))))
       (dotcat url "/"))
 
-    (let* ((showprocess (showprocess client))
-           (vars `(("msg" . ,msg))))
+    (let* ((vars `(("msg" . ,msg))))
 
-      (when showprocess
+      (when (debug-stream-p)
         (push '("debugmsgs" . "true") vars))
 
-      (when showprocess
-        (debugmsg client (format nil "<b>===SENT</b>: ~a~%"
-                                 (trimmsg msg))))
+      (when (debug-stream-p)
+        (debugmsg "<b>===SENT</b>: ~a~%" (trimmsg msg)))
 
       (let ((res (if test-server
                      (trubanc-server:process test-server msg)
@@ -2742,12 +2729,14 @@
             (when pos
               (setq text (subseq res 2 (- pos 2))
                     res (subseq res (+ pos 3))))))
-        (when (and text showprocess)
-          #+nil (debugmsg client (format nil "<b>===SERVER SAID</b>: ~a" text)))
+        (when text
+          (debugmsg "<b>===SERVER SAID</b>: ~a" text)
+          (let ((len (length text)))
+            (unless (and (> len 0) (eql #\newline (aref text (1- len))))
+              (debugmsg "~%"))))
     
-        (when showprocess
-          (debugmsg client (format nil "<b>===RETURNED</b>: ~a~%"
-                                   (and msg (trimmsg res)))))
+        (when (debug-stream-p)
+          (debugmsg "<b>===RETURNED</b>: ~a~%" (and msg (trimmsg res))))
 
         res))))
 
