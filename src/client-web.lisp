@@ -489,9 +489,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
 
         (cond ((not (blankp coupon))
                (handler-case
-                   (multiple-value-bind (bankid url)
-                       (parse-coupon coupon)
-                     (handler-case (verify-coupon client coupon bankid url)
+                   (let ((url (parse-coupon coupon)))
+                     (handler-case (verify-coupon client coupon nil url)
                        (error (c) (setq err (stringify c)))))
                  (error ()
                    (cond ((server-privkey-file-exists-p)

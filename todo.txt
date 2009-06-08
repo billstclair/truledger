@@ -1,4 +1,4 @@
-Encode coupons as double-clickable strings.
+Add your sponsor as a contact when creating an account.
 
 Initializing server from "Admin" page hangs in Linux. It creates the
 server db, and creates the bank account in the client db, but never

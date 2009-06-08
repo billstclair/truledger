@@ -197,59 +197,56 @@
 
 (defun url-p (url)
   "Returns true if $url might be a properly-formed URL."
-  (and (stringp url)
-       (>= (length url) 5)
-       (or (string-equal (subseq url 0 5) "http:")
-           (and (>= (length url) 6)
-                (string-equal (subseq url 0 6) "https:")))))
+  (ignore-errors (puri:parse-uri url)))
 
 (defun encode-coupon (url number)
-  (assert (eql (length number) 32))
-  (strcat (base64-encode url) number))
+  (format nil "[~a ~a]" url number))
+
+(defun decode-coupon (coupon)
+  (check-type coupon string)
+  (handler-case
+      (let* ((coupon (trim coupon))
+             (len (length coupon)))
+        (when (eql #\] (aref coupon (1- len)))
+          (setq coupon (subseq coupon 0 (1- len))))
+        (when (eql #\[ (aref coupon 0))
+          (setq coupon (subseq coupon 1)))
+        (setq coupon (substitute #\space #\, coupon))
+        (let* ((pos (position #\space coupon))
+               (pos2 (position #\space coupon
+                               :start pos
+                               :test (lambda (x y) (not (eql x y))))))
+          (values (subseq coupon 0 pos)
+                  (subseq coupon pos2))))
+    (error ()
+      (error "Malformed coupon"))))
+  
 
 (defun parse-coupon (coupon)
   "Parse a coupon into bankid, url, and coupon number.
-   Returns three values:
-     1) bankid
-     2) url
-     3) coupon-number
+   Returns two values:
+     1) url
+     2) coupon-number
    Coupon can be [$url,$coupon_number] or
    ($bankid,coupon,$url,$coupon_number,$asset,$amount,note:$note)"
-  (unless (stringp coupon)
-    (error "Coupon not a string"))
-
-  ;; Coupon can be just [$url,$coupon_number]
-  ;; or ($id,coupon,$bankurl,$coupon,$asset,$amount,note=$note)
-  (setq coupon (trim coupon))
-  (unless (> (length coupon) 0) (error "Blank coupon"))
-  (let (bankid url coupon-number)
-    (unless (and (eql (aref coupon 0) #\[)
-                 (eql #\] (aref coupon (1- (length coupon)))))
-      (error "Malformed coupon string"))
-    (let* ((a (explode #\, (subseq coupon 1 (1- (length coupon))))))
-      (unless (eql (length a) 2)
-        (error "Malformed coupon string"))
-      (setq bankid ""
-            url (trim (car a))
-            coupon-number (trim (cadr a))))
+  (multiple-value-bind (url coupon-number) (decode-coupon coupon)
     (unless (url-p url)
       (error "Coupon url isn't a url: ~s" url))
     (unless (coupon-number-p coupon-number)
       (error "Coupon number malformed: ~a" coupon-number))
-    (values bankid url coupon-number)))
+    (values url coupon-number)))
 
 (defmethod verify-coupon ((client client) coupon bankid url)
   "Verify that a message is a valid coupon.
    Check that it is actually signed by the bank that it
    claims to be from.
    Ask the bank whether a coupon of that number exists."
-  (setq coupon (trim coupon))
   (let ((parser (parser client))
-        (coupon-number (nth-value 2 (parse-coupon coupon))))
+        (coupon-number (nth-value 1 (parse-coupon coupon))))
     (verify-bank client url bankid)
-    (unless (coupon-number-p coupon-number)
-      (error "Malformed coupon number: ~s" coupon-number))
-    (let* ((msg (strcat "(0," $bankid ",0," coupon-number "):0"))
+    (let* ((msg (if (id client)
+                    (custmsg client $BANKID "0" coupon-number)
+                    (strcat "(0," $BANKID ",0," coupon-number "):0")))
            (server (make-instance 'serverproxy :url url :client client))
            (msg (process server msg))
            (reqs (parse parser msg)))
@@ -270,7 +267,7 @@
          (urlhash (sha1 url))
          (bankid (db-get db $BANK $BANKID urlhash)))
     (cond (bankid
-           (when (and id (not (eql id bankid)))
+           (when (and id (not (equal id bankid)))
              (error "verifybank: id <> bankid"))
            (unless id (setq id bankid)))
           (t
@@ -325,9 +322,8 @@
     (cond ((url-p url)
            (setq realurl url
                  bankid (verify-bank client url)))
-          (t (multiple-value-setq (bankid realurl coupon) (parse-coupon url))
-             (unless (not (blankp bankid))
-               (setq bankid (verify-bank client realurl)))
+          (t (multiple-value-setq (realurl coupon) (parse-coupon url))
+             (setq bankid (verify-bank client realurl))
              (unless couponok
                (verify-coupon client url bankid realurl))))
     (let ((already-registered-p t))
