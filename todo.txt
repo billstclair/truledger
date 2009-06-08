@@ -1,4 +1,8 @@
-Still getting balancehash mismatches on transfers between accounts.
+Encode coupons as double-clickable strings.
+
+Initializing server from "Admin" page hangs in Linux. It creates the
+server db, and creates the bank account in the client db, but never
+creates the admin account in the server db.
 
 Distinguish intentional from unintentional server errors. Give
 backtrace only on unintentional messages. TRUBANC-ERROR.

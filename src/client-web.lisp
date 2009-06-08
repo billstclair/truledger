@@ -1169,89 +1169,77 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
              (let* ((request (inbox-request item))
                     (fromid (inbox-id item))
                     (time (inbox-time item)))
-               (multiple-value-bind (namestr contact) (id-namestr cw fromid)
-                 (cond ((not (equal request $SPEND))
-                        (let* ((msgtime (inbox-msgtime item))
-                               (outitem (find msgtime outbox
-                                              :test #'equal
-                                              :key #'outbox-time)))
-                          (setf (gethash msgtime inbox-msgtimes) item)
-                          (when outitem
-                            (setf (inbox-assetname item) (outbox-assetname
-                                                          outitem)
-                                  (inbox-formattedamount item)
-                                  (outbox-formattedamount outitem)
-                                  (inbox-reply item) (inbox-note item)
-                                  (inbox-note item) (outbox-note outitem)))
-                          (push item nonspends)))
-                       (t (let* ((assetid (inbox-assetid item))
-                                 (assetname (hsc (inbox-assetname item)))
-                                 (amount (hsc (inbox-formattedamount item)))
-                                 (itemnote (normalize-note
-                                            (hsc (inbox-note item))))
-                                 (selname (stringify spendcnt "spend~d"))
-                                 (notename (stringify spendcnt "spendnote~d"))
-                                 (acctselname (stringify spendcnt "acct~d"))
-                                 (timecode
-                                  (whots (s)
-                                    (:input :type "hidden"
-                                            :name (stringify spendcnt
-                                                             "spendtime~a")
-                                            :value time)))
-                                 (selcode
-                                  (whots (s)
-                                    (:select :name selname (str seloptions))))
-                                 (acctcode
-                                  (if (not acctoptions)
-                                      ""
-                                      (whots (s)
-                                        (:td
-                                         (:select :name acctselname
-                                                  (str acctoptions))))))
-                                 (date (datestr time)))
+               (cond ((not (equal request $SPEND))
+                      (let* ((msgtime (inbox-msgtime item))
+                             (outitem (find msgtime outbox
+                                            :test #'equal
+                                            :key #'outbox-time)))
+                        (setf (gethash msgtime inbox-msgtimes) item)
+                        (when outitem
+                          (setf (inbox-assetname item) (outbox-assetname
+                                                        outitem)
+                                (inbox-formattedamount item)
+                                (outbox-formattedamount outitem)
+                                (inbox-reply item) (inbox-note item)
+                                (inbox-note item) (outbox-note outitem)))
+                        (push item nonspends)))
+                     (t (let* ((assetid (inbox-assetid item))
+                               (assetname (hsc (inbox-assetname item)))
+                               (amount (hsc (inbox-formattedamount item)))
+                               (itemnote (normalize-note
+                                          (hsc (inbox-note item))))
+                               (selname (stringify spendcnt "spend~d"))
+                               (notename (stringify spendcnt "spendnote~d"))
+                               (acctselname (stringify spendcnt "acct~d"))
+                               (namestr (namestr-html cw fromid
+                                                      (lambda () spendcnt)
+                                                      "spendid" "spendnick"))
+                               (timecode
+                                (whots (s)
+                                  (:input :type "hidden"
+                                          :name (stringify spendcnt
+                                                           "spendtime~a")
+                                          :value time)))
+                               (selcode
+                                (whots (s)
+                                  (:select :name selname (str seloptions))))
+                               (acctcode
+                                (if (not acctoptions)
+                                    ""
+                                    (whots (s)
+                                      (:td
+                                       (:select :name acctselname
+                                                (str acctoptions))))))
+                               (date (datestr time)))
 
-                            (unless (find assetid assets
-                                          :test #'equal :key #'asset-assetid)
-                              (setq assetname
-                                    (whots (s)
-                                      (str assetname) " "
-                                      (:span :style "color: red;"
-                                             (:i "(new)")))))
-                            (unless contact
-                              (setq namestr
-                                    (whots (s)
-                                      (str namestr)
-                                      (:br)
-                                      (:input :type "hidden"
-                                              :name (stringify spendcnt
-                                                               "spendid~a")
-                                              :value fromid)
-                                      "Nickname: "
-                                      (:input :type "text"
-                                              :name (stringify spendcnt
-                                                               "spendnick~a")
-                                              :size "10"))))
-                            (incf spendcnt)
-                            (who (inbox-stream)
-                              (str timecode)
-                              (:tr
-                               (:td "Spend")
-                               (:td (str namestr))
-                               (:td :align "right"
-                                    :style "border-right-width: 0;"
-                                    (str amount))
-                               (:td :style "border-left-width: 0;"
-                                    (str assetname))
-                               (:td (str itemnote))
-                               (:td (str selcode))
-                               (:td
-                                (:textarea
-                                 :name notename
-                                 :cols "20"
-                                 :rows "2"
-                                 "&nbsp;"))
-                               (str acctcode)
-                               (:td (str date))))))))))
+                          (unless (find assetid assets
+                                        :test #'equal :key #'asset-assetid)
+                            (setq assetname
+                                  (whots (s)
+                                    (str assetname) " "
+                                    (:span :style "color: red;"
+                                           (:i "(new)")))))
+                          (who (inbox-stream)
+                            (str timecode)
+                            (:tr
+                             (:td "Spend")
+                             (:td (str namestr))
+                             (:td :align "right"
+                                  :style "border-right-width: 0;"
+                                  (str amount))
+                             (:td :style "border-left-width: 0;"
+                                  (str assetname))
+                             (:td (str itemnote))
+                             (:td (str selcode))
+                             (:td
+                              (:textarea
+                               :name notename
+                               :cols "20"
+                               :rows "2"
+                               "&nbsp;"))
+                             (str acctcode)
+                             (:td (str date))))
+                          (incf spendcnt))))))
 
            (dolist (item nonspends)
              (let* ((request (inbox-request item))
@@ -1399,50 +1387,53 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
            for assetcode-stream = (make-string-output-stream)
            for newassetlist-stream = (make-string-output-stream)
            do
-           (setq acct (hsc acct))
-           (dolist (bal assets)
-             (unless (eql 0 (bccomp (balance-amount bal) 0))
-               (let ((assetid (hsc (balance-assetid bal)))
-                     (assetname (hsc (balance-assetname bal)))
-                     (formattedamount (hsc (balance-formatted-amount bal))))
-                 (setq gotbal t)
-                 (who (newassetlist-stream)
-                   (:input :type "hidden"
-                           :name (format nil "assetid~d|~d" acctidx assetidx)
-                           :value assetid))
-                 (who (assetcode-stream)
-                   (:tr
-                    (:td :align "right"
-                         (:span :style "margin-right: 5px"
-                                (str formattedamount)))
-                    (:td :title assetid (str assetname))
-                    (:td
-                     (:input :type "submit"
-                             :name (format nil "spentasset~d|~d"
-                                           acctidx assetidx)
-                             :value "Spend"))))
-                 (incf assetidx))))
+             (setq acct (hsc acct))
+             (who (assetcode-stream)
+               (dolist (bal assets)
+                 (unless (eql 0 (bccomp (balance-amount bal) 0))
+                   (let ((assetid (hsc (balance-assetid bal)))
+                         (assetname (hsc (balance-assetname bal)))
+                         (formattedamount (hsc (balance-formatted-amount bal))))
+                     (setq gotbal t)
+                     (who (newassetlist-stream)
+                       (:input :type "hidden"
+                               :name (format nil "assetid~d|~d" acctidx assetidx)
+                               :value assetid))
+                     (who (assetcode-stream)
+                       (:tr
+                        (:td :align "right"
+                             :style "border-right-width: 0;"
+                             (str formattedamount))
+                        (:td :title assetid
+                             :style "border-left-width: 0;"
+                             (str assetname))
+                        (:td
+                         (:input :type "submit"
+                                 :name (format nil "spentasset~d|~d"
+                                               acctidx assetidx)
+                                 :value "Spend"))))
+                     (incf assetidx)))))
 
-           (let ((assetcode (get-output-stream-string assetcode-stream))
-                 (newassetlist (get-output-stream-string newassetlist-stream)))
-             (unless (blankp assetcode)
-               (who (bal-stream)
-                 (:tr
-                  (:th :colspan "3"
-                       (str acct)))
-                 (str assetcode)))
-             (unless (blankp newassetlist)
-               (unless assetlist-stream
-                 (setq assetlist-stream (make-string-output-stream)))
-               (who (assetlist-stream)
-                 (:input :type "hidden"
-                         :name (stringify acctidx "acct~d")
-                         :value acct)
-                 (str newassetlist))
-               (incf acctidx)))
+             (let ((assetcode (get-output-stream-string assetcode-stream))
+                   (newassetlist (get-output-stream-string newassetlist-stream)))
+               (unless (blankp assetcode)
+                 (who (bal-stream)
+                   (:tr
+                    (:th :colspan "3"
+                         (str acct)))
+                   (str assetcode)))
+               (unless (blankp newassetlist)
+                 (unless assetlist-stream
+                   (setq assetlist-stream (make-string-output-stream)))
+                 (who (assetlist-stream)
+                   (:input :type "hidden"
+                           :name (stringify acctidx "acct~d")
+                           :value acct)
+                   (str newassetlist))
+                 (incf acctidx)))
 
            finally
-           (setq balcode (get-output-stream-string bal-stream)))
+             (setq balcode (get-output-stream-string bal-stream)))
 
         (setq
          balcode
@@ -1539,25 +1530,24 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                        (:input :type "hidden" :name "cmd" :value "storagefees")
                        (:table
                         :class "prettytable"
-                        (:caption (:b "Storage Fees"))
                         (:tr
-                         (:td
-                          (:table
-                           (dolist (storagefee storagefees)
-                             (let* ((formattedamount
-                                     (balance-formatted-amount storagefee))
-                                    (assetname (balance-assetname storagefee))
-                                    (time (balance-time storagefee))
-                                    (date (datestr time)))
-                               (who (s)
-                                 (:tr
-                                  (:td :align "right"
-                                       (:span :style "margin-right: 5px"
-                                              (str formattedamount)))
-                                  (:td
-                                   (:span :style "margin-right: 5px"
-                                          (str assetname)))
-                                  (:td (str date))))))))))
+                         (:th :colspan 3 (str "Storage Fees")))
+                        (dolist (storagefee storagefees)
+                          (let* ((formattedamount
+                                  (balance-formatted-amount storagefee))
+                                 (assetname (balance-assetname storagefee))
+                                 (time (balance-time storagefee))
+                                 (date (datestr time)))
+                            (who (s)
+                              (:tr
+                               (:td :align "right"
+                                    :style "border-right-width: 0;"
+                                    (str formattedamount))
+                               (:td
+                                :style
+                                "margin-right: 5px; border-left-width: 0;"
+                                (str assetname))
+                               (:td (str date)))))))
                        (:input :type "submit" :name "accept"
                                :value "Move to Inbox"))))))
 

@@ -195,7 +195,7 @@
              (setq hash (if hash (strcat hash "." hash1) hash1))
              (incf hashcnt cnt))))
     (when (> hashcnt 1) (setq hash (sha1 hash)))
-    (values hash hashcnt)))
+    (values (or hash "") hashcnt)))
 
 (defun hex-char-p (x)
   "Predicate. True if x is 0-9, a-f, or A-F"

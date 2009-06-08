@@ -15,6 +15,9 @@ table.prettytable caption {
   margin-left: inherit;
   margin-right: inherit;
 }
+table.innertable th, table.innertable td {
+  border: 0;
+}
 a.version:link {
   color: #AAAAAA;
 }

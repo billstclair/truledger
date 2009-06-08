@@ -112,8 +112,8 @@
      do
        (setf (mem-ref pointer :unsigned-char p) byte)))
 
-(defun base64-encode (string)
-  (string-to-base64-string string :columns 64))
+(defun base64-encode (string &optional (columns 64))
+  (string-to-base64-string string :columns columns))
 
 (defun base64-decode (string)
   (base64-string-to-string string))

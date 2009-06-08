@@ -126,7 +126,7 @@
 (defun inbox-key (id)
   (append-db-keys (account-dir id) $INBOX))
 
-(defmethod storage-info ((server server) id assetid)
+(defmethod storage-info ((server server) id assetid &optional for-issuer-p)
   "Get the values necessary to compute the storage fee.
    Inputs:
     ID - the user ID
@@ -152,7 +152,7 @@
           (unless (equal (getarg $REQUEST args) $STORAGE)
             (return-from storage-info nil))
           (let ((issuer (getarg $CUSTOMER args)))
-            (unless (equal issuer id)
+            (unless (and (not for-issuer-p) (equal issuer id))
               (let* ((percent (getarg $PERCENT args))
                      (fraction "0")
                      (fractime "0")
@@ -178,7 +178,9 @@
 
 (defmethod outbox-hash ((server server) id &optional newitem removed-items)
   (let ((db (db server)))
-    (dirhash db (outbox-key id) (unpacker server) newitem removed-items)))
+    (multiple-value-bind (hash cnt)
+        (dirhash db (outbox-key id) (unpacker server) newitem removed-items)
+      (values (or hash "") (or cnt 0)))))
 
 (defmethod outbox-hash-msg ((server server) id)
   (multiple-value-bind (hash count) (outbox-hash server id)
@@ -1697,7 +1699,7 @@
               (error "Asset mismatch, sb: ~s, was: ~s"
                      assetid (getarg $ASSET args)))
             (multiple-value-bind (percent fraction)
-                (storage-info server id assetid)
+                (storage-info server id assetid t)
               (let ((digits (fraction-digits percent)))
                 (multiple-value-setq (amount fraction)
                   (normalize-balance amount fraction digits)))

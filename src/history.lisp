@@ -19,9 +19,10 @@
 
 (defun draw-history (cw &optional (start 1) count)
   (handler-case
-      (let ((text (draw-history-internal cw start count)))
-        (who (s (cw-html-output cw))
-          (str text)))
+      (let ((str (draw-history-internal cw start count)))
+        (settitle cw "History")
+        (setmenu cw "balance")
+        (princ str (cw-html-output cw)))        
     (error (c)
       (setf (cw-error cw) (stringify c))))
   (when (cw-error cw)
@@ -32,9 +33,6 @@
          (times (gethistorytimes client)))
     (unless count (setq count (historycount client)))
     (unless times (error "No saved history"))
-
-    (settitle cw "History")
-    (setmenu cw "balance")
 
     (when (stringp start) (setq start (parse-integer start)))
     (when (stringp count)

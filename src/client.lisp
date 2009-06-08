@@ -203,6 +203,10 @@
            (and (>= (length url) 6)
                 (string-equal (subseq url 0 6) "https:")))))
 
+(defun encode-coupon (url number)
+  (assert (eql (length number) 32))
+  (strcat (base64-encode url) number))
+
 (defun parse-coupon (coupon)
   "Parse a coupon into bankid, url, and coupon number.
    Returns three values:
@@ -217,35 +221,17 @@
   ;; Coupon can be just [$url,$coupon_number]
   ;; or ($id,coupon,$bankurl,$coupon,$asset,$amount,note=$note)
   (setq coupon (trim coupon))
+  (unless (> (length coupon) 0) (error "Blank coupon"))
   (let (bankid url coupon-number)
-    (cond ((and (> (length coupon) 0)
-                (eql (aref coupon 0) #\[))
-           (unless (eql #\] (aref coupon (1- (length coupon))))
-             (error "Malformed coupon string"))
-           (let* ((a (explode #\, (subseq coupon 1 (1- (length coupon))))))
-             (unless (eql (length a) 2)
-               (error "Malformed coupon string"))
-             (setq bankid ""
-                   url (trim (car a))
-                   coupon-number (trim (cadr a)))))
-          (t (let* ((parse (tokenize coupon))
-                    (items (map 'vector #'cdr parse)))
-               ; [$id,coupon,$bankid,
-               (unless (>= (length items) 7)
-                 (error "Malformed coupon message"))
-               (unless (equal (elt items 0) #\()
-                 (error "Message doesn't start with left paren"))
-               (setq bankid (elt items 1)
-                     url (elt items 5)
-                     coupon-number (elt items 7))
-               (unless (id-p bankid)
-                 (error "Coupon bankid not an id"))
-               (unless (equal #\, (aref items 2))
-                 (error "Coupon missing comma 1"))
-               (unless (equal (elt items 3) $COUPON)
-                 (error "Coupon isn't a coupon message"))
-               (unless (equal (aref items 4) #\,)
-                 (error "Coupon missing comma 2")))))
+    (unless (and (eql (aref coupon 0) #\[)
+                 (eql #\] (aref coupon (1- (length coupon)))))
+      (error "Malformed coupon string"))
+    (let* ((a (explode #\, (subseq coupon 1 (1- (length coupon))))))
+      (unless (eql (length a) 2)
+        (error "Malformed coupon string"))
+      (setq bankid ""
+            url (trim (car a))
+            coupon-number (trim (cadr a))))
     (unless (url-p url)
       (error "Coupon url isn't a url: ~s" url))
     (unless (coupon-number-p coupon-number)
@@ -257,17 +243,12 @@
    Check that it is actually signed by the bank that it
    claims to be from.
    Ask the bank whether a coupon of that number exists."
+  (setq coupon (trim coupon))
   (let ((parser (parser client))
-        coupon-number)
+        (coupon-number (nth-value 2 (parse-coupon coupon))))
     (verify-bank client url bankid)
-    (setq coupon (trim coupon))
-    (if (eql #\[ (aref coupon 0))
-        (setq coupon-number (nth-value 2 (parse-coupon coupon)))
-        (let ((args (unpack-bankmsg client coupon $COUPON bankid)))
-          (setq coupon-number (getarg $COUPON args))))
     (unless (coupon-number-p coupon-number)
       (error "Malformed coupon number: ~s" coupon-number))
-
     (let* ((msg (strcat "(0," $bankid ",0," coupon-number "):0"))
            (server (make-instance 'serverproxy :url url :client client))
            (msg (process server msg))
@@ -2556,7 +2537,7 @@
         (key (useroutboxkey client)))
     (multiple-value-bind (hash hashcnt)
         (dirhash db key (unpacker client) newitem removed-times)
-      (custmsg client $OUTBOXHASH bankid transtime hashcnt hash))))
+      (custmsg client $OUTBOXHASH bankid transtime (or hashcnt 0) (or hash "")))))
 
 ;; Web client session support
 
