@@ -320,7 +320,6 @@
           (:tr
            (:td (:b "Passphrase:"))
            (:td (:input :type "password" :name "passphrase" :size "50")
-                (:input :type "submit" :name "login" :value "Login")
                 (:input :type "hidden" :name "page" :value "register")))
           (:tr
            (:td)
@@ -341,7 +340,8 @@
             (:select :name "keysize"
                      (mapc #'keysize-option '(512 1024 2048 3072 4096)))
             (:input :type "submit" :name "newacct" :value "Create account")
-            (:input :type "submit" :name "showkey" :value "Show key")))
+            (:input :type "submit" :name "showkey" :value "Show key")
+            (:input :type "submit" :name "login" :value "Login")))
           (:tr
            (:td)
            (:td
