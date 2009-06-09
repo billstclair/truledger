@@ -973,6 +973,14 @@
                           res)))))))
         (if assetid (car res) (sort res #'balance-lessp))))))
 
+(define-condition validation-error (simple-error)
+  ())
+
+(defun validation-error (format-control &rest format-arguments)
+  (error 'validation-error
+         :format-control format-control
+         :format-arguments format-arguments))
+
 (defmethod spend ((client client) toid assetid formattedamount &optional acct note)
   "Initiate a spend
    TOID is the id of the recipient of the spend
@@ -989,19 +997,20 @@
     (require-current-bank client "In spend(): Bank not set")
     (init-bank-accts client)
     (handler-bind
-        ((error (lambda (c)
+        ((validation-error #'signal)
+         (error (lambda (c)
                   (declare (ignore c))
                   (forceinit client))))
       (with-verify-sigs-p (parser nil)
         (with-db-lock (db (userreqkey client))
           (handler-bind
-              ((error (lambda (c)
-                       (declare (ignore c))
-                       ;; Storage fee may have changed. Reload the asset.
-                       (if (reload-asset-p client assetid)
-                           (return-from spend
-                             (spend-internal
-                              client toid assetid formattedamount acct note))))))
+              ((validation-error #'signal)
+               (error (lambda (c)
+                        (declare (ignore c))
+                        (if (reload-asset-p client assetid)
+                            (return-from spend
+                              (spend-internal
+                               client toid assetid formattedamount acct note))))))
             (spend-internal client toid assetid formattedamount acct note)))))))
 
 (defmethod spend-internal ((client client) toid assetid formattedamount acct note)
@@ -1035,7 +1044,7 @@
     (assert (and (stringp acct) (stringp toacct)))
 
     (when (and (equal id toid) (equal acct toacct))
-      (error "Transfer from and to the same acct (~s). Nothing to do."
+      (validation-error "Transfer from and to the same acct (~s). Nothing to do."
              acct))
 
     ;; Must get time before accessing balances since GETTIME may FORCEINIT.
@@ -1044,13 +1053,15 @@
     (when (< (bccomp amount 0) 0)
       (let ((bal (userbalance client acct assetid)))
         (unless (eql 0 (bccomp bal amount))
-          (error "Negative spends must be for the whole issuer balance"))))
+          (validation-error
+           "Negative spends must be for the whole issuer balance"))))
 
     (multiple-value-setq (oldamount oldtime)
       (userbalanceandtime client acct assetid))
     (cond (oldamount
            (unless (is-numeric-p oldamount t)
-             (error "Error getting balance for asset in acct ~s: ~s" acct oldamount))
+             (validation-error
+              "Error getting balance for asset in acct ~s: ~s" acct oldamount))
 
            (multiple-value-setq (percent fraction fractime)
              (client-storage-info client assetid))
@@ -1077,7 +1088,7 @@
              ;; storage fee put it over. Reduce amount to leave 0 in ACCT
              (setq amount oldamount
                    newamount 0))
-            (t (error "Insufficient balance"))))
+            (t (validation-error "Insufficient balance"))))
 
     (when (equal id toid)
       (let (totime tofee)
@@ -1099,7 +1110,7 @@
                    (>= (bccomp newtoamount 0) 0))
           ;; This shouldn't be possible.
           ;; If it happens, it means the asset is out of balance.
-          (error "Asset out of balance on self-spend"))))
+          (validation-error "Asset out of balance on self-spend"))))
 
     (unless (equal id bankid)
       (setq tranfee (getfees client)
@@ -1113,16 +1124,17 @@
              (setq newamount (bcsub newamount tranfee-amt))
              (when (and (>= (bccomp oldamount 0) 0)
                         (< (bccomp newamount 0) 0))
-               (error "Insufficient balance for transaction fee")))
+               (validation-error "Insufficient balance for transaction fee")))
             ((and (equal id toid)
                   (equal tranfee-asset assetid)
                   (equal $MAIN toacct))
              (setq newtoamount (bcsub newtoamount tranfee-amt))
              (when (eql 0 (bccomp newtoamount oldtoamount))
-               (error "Transferring one token to a new acct is silly"))
+               (validation-error "Transferring one token to a new acct is silly"))
              (when (and (>= (bccomp oldtoamount 0) 0)
                         (< (bccomp newtoamount 0) 0))
-               (error "Insufficient destination balance for transaction fee")))
+               (validation-error
+                "Insufficient destination balance for transaction fee")))
             (t
              (let ((old-fee-balance (userbalance client $MAIN tranfee-asset)))
                (unless (eql 0 (bccomp tranfee-amt 0))
@@ -1130,7 +1142,8 @@
                        need-fee-balance-p t)
                  (when (and (>= (bccomp old-fee-balance 0) 0)
                             (< (bccomp fee-balance 0) 0))
-                   (error "Insufficient tokens for transaction fee")))))))
+                   (validation-error
+                    "Insufficient tokens for transaction fee")))))))
 
     ;; Numbers are computed and validated.
     ;; Create messages for server.

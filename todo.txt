@@ -1,22 +1,16 @@
 Add your sponsor as a contact when creating an account.
 
-Initializing server from "Admin" page hangs in Linux. It creates the
-server db, and creates the bank account in the client db, but never
-creates the admin account in the server db.
+Coupon still appears redeemable (in the outbox) after redemption.
 
-Distinguish intentional from unintentional server errors. Give
-backtrace only on unintentional messages. TRUBANC-ERROR.
+Show the database location on the client screen, unless disabled in server config.
 
-Sanity check the URL to make sure that the HTTPS matches that for the client.
+archive passphrase on server. Double encrypted, stored at hash of second
+passphrase.
 
-Client displays client build info. Also display server build info.
-
-Default the bank URL on the Admin page, to the current URL.
-
-Don't fill in the "Recipient" field with your own ID. Happens when a transfer
-gets an error.
-
-Sometimes it hangs on shutting down the web server.
+Backup mechanism. Write to log files, which are sent out in chunks to
+a backup server, which loads the transactions into its
+database. Should be able to disable transactions on the backup serer,
+so nobody can do stuff there until enabled.
 
 Contacts should cross bank boundaries automatically, so you recognize
 the same ID at different banks. How to make this efficient? Don't want
@@ -29,6 +23,33 @@ the contacts directory from each bank to the account.
 Save/restore contacts, encrypted, to/from the server, merging with
 what's there.
 
+SERVER CONFIG
+=============
+New client accounts:
+  No restrictions on creating new accounts.
+  Allow new accounts with a private key.
+  No new account without a coupon.
+
+Coupons:
+  Normal: allow coupons and spends to unknown IDs.
+  Disabled: Coupons only creatable by specified IDs.
+
+Asset storage fees:
+  Limit, 10% default
+=============
+
+Asset nicknames
+
+Distinguish intentional from unintentional server errors. Give
+backtrace only on unintentional messages. TRUBANC-ERROR.
+
+Sanity check the server URL to make sure that the HTTPS matches that
+for the client.
+
+Default the bank URL on the Admin page, to the current URL.
+
+Sometimes it hangs on shutting down the web server.
+
 Server switch to disallow minting of cookies or spends to unknown IDs.
 This allows central control over membership.
 Add to client "Admin" page.
@@ -36,11 +57,6 @@ If disallowed, the check boxes don't appear on the "Balance" page.
 Protocol for this should be general:
   (<id>,getprop,<bankid>,<req>,<name>)
   (<bankid>,prop,<bankid>,<time>,<name>,<value>)
-
-Backup mechanism. Write to log files, which are sent out in chunks to
-a backup server, which loads the transactions into its
-database. Should be able to disable transactions on the backup serer,
-so nobody can do stuff there until enabled.
 
 Change bank URL from the client "Admin" page.
 Client login should query bank for URL, and fix stuff if it's wrong.

@@ -369,6 +369,7 @@
    #:getfraction
    #:getstoragefee
    #:reinit-balances
+   #:validation-error
    #:spend
    #:spendreject
    #:gethistorytimes

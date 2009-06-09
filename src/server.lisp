@@ -864,9 +864,7 @@
                   (setq balancehash-req req
                         balancehash-msg reqmsg
                         balancehash (getarg $HASH reqargs)
-                        balancehash-cnt (getarg $COUNT reqargs))
-                  (debugmsg "do-spend-internal, got balancehash: ~a~%~
-                             msg: ~a~%" balancehash reqmsg))
+                        balancehash-cnt (getarg $COUNT reqargs)))
                  (t
                   (error "~s not valid for spend. Only ~s, ~s, ~s, ~s, ~s, & ~s"
                          request

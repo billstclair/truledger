@@ -98,9 +98,8 @@
         (debug (not (blankp (get-cookie "debug")))))
     (when debug-parm
       (let* ((new-debug (not (blankp debug-parm))))
-        (setq debug new-debug)
-        (when (xor debug new-debug)
-          (if debug
+        (unless (eq debug new-debug)
+          (if (setq debug new-debug)
               (set-cookie "debug" "debug")
               (delete-cookie "debug")))))
     (with-debug-stream (debug)
@@ -500,7 +499,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                               ;; Ensure that coupon is a URL for a proper bank
                               (error (c)
                                 (setq err (stringify c "Invalid coupon: ~a")))))))))
-              ((server-privkey-file-exists-p)
+              ((and (get-running-server) (server-privkey-file-exists-p))
                (setq err "Bank coupon required for registration")))
 
         (unless err
@@ -529,7 +528,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
               (set-cookie "session" session)
               (when (maybe-start-server-web client passphrase)
                 (setf (cw-error cw) "Server started!"))
-              (cond ((get-cookie "test") (delete-cookie "test"))
+              (cond ((equal (get-cookie "test") "test") (delete-cookie "test"))
                     (t (setf
                         (cw-error cw)
                         #.(format nil "Cookies appear to be disabled.~%
@@ -853,7 +852,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
             (draw-coupon cw (last-spend-time client))))
       (when err
         (setf (cw-error cw) err)
-        (draw-balance cw amount recipient note toacct tonewacct nickname)))))
+        (draw-balance
+         cw amount recipient note toacct tonewacct nickname mintcoupon)))))
 
 (defun do-spend-internal (cw client acct-and-asset
                           recipient amount acct2 note)
@@ -1072,7 +1072,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
     namestr))
 
 (defun draw-balance (cw &optional
-                     spend-amount recipient note toacct tonewacct nickname)
+                     spend-amount recipient note toacct tonewacct nickname
+                     mintcoupon)
   (let* ((client (cw-client cw))
          (bankid (bankid client))
          (banks (getbanks client))
@@ -1474,7 +1475,6 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
 
         (let ((recipopts nil)
             (found nil)
-            (selectmint nil)
             (disablemint nil)
             (recipientid nil)
             (acctcode nil)
@@ -1497,15 +1497,12 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                            (:option :value recipid :selected selected
                                     (str namestr)))))))))
 
-          (cond ((equal (id client) (bankid client))
-                 (setq disablemint t))
-                ((equal recipient $COUPON)
-                 (setq selectmint t))
-                ((equal recipient (id client))
-                 (setq selectmint t
-                       recipient "")))
+          (when (equal (id client) (bankid client))
+            (setq disablemint t))
 
-          (when (and (not found) (not (equal recipient $COUPON)))
+          (when (and (not found)
+                     (not (equal recipient $COUPON))
+                     (not (equal (id client) recipient)))
             (setq recipientid recipient))
 
           (when (> (length accts) 1)
@@ -1568,7 +1565,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
                         (:td
                          (str recipopts)
                          (:input :type "checkbox" :name "mintcoupon"
-                                 :checked selectmint
+                                 :checked mintcoupon
                                  :disabled disablemint)
                          "Mint coupon"))
                        (:tr

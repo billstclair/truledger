@@ -157,7 +157,8 @@
          (dir (directory (db-filename db key)
                         :directories t
                         :all nil)))
-    (mapcar 'file-namestring-or-last-directory dir)))
+    ;; DIRECTORY doesn't necessarily return sorted on FreeBSD
+    (sort (mapcar 'file-namestring-or-last-directory dir) #'string-lessp)))
 
 (defmethod db-subdir ((db fsdb) key)
   (make-instance 'fsdb :dir (strcat (fsdb-dir db) "/" key)))
