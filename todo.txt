@@ -1,7 +1,5 @@
 Add your sponsor as a contact when creating an account.
 
-Coupon still appears redeemable (in the outbox) after redemption.
-
 Show the database location on the client screen, unless disabled in server config.
 
 archive passphrase on server. Double encrypted, stored at hash of second
@@ -29,6 +27,7 @@ New client accounts:
   No restrictions on creating new accounts.
   Allow new accounts with a private key.
   No new account without a coupon.
+  Always allow a new account with an existing private key
 
 Coupons:
   Normal: allow coupons and spends to unknown IDs.

@@ -1168,13 +1168,14 @@ forget your passphrase, <b>nobody can recover it, ever</b>."))
            (dolist (item inbox)
              (let* ((request (inbox-request item))
                     (fromid (inbox-id item))
-                    (time (inbox-time item)))
+                    (time (inbox-time item))
+                    (msgtime (inbox-msgtime item)))
+               (when msgtime
+                 (setf (gethash msgtime inbox-msgtimes) item))
                (cond ((not (equal request $SPEND))
-                      (let* ((msgtime (inbox-msgtime item))
-                             (outitem (find msgtime outbox
+                      (let* ((outitem (find msgtime outbox
                                             :test #'equal
                                             :key #'outbox-time)))
-                        (setf (gethash msgtime inbox-msgtimes) item)
                         (when outitem
                           (setf (inbox-assetname item) (outbox-assetname
                                                         outitem)
