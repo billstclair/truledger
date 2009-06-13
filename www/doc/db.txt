@@ -1,0 +1,956 @@
+Items in angle brackets are variables
+Items not in angle brackets are literals
+"--" comment to the end of the line
+<dir>/ is a directory
+<key>=<value> is a file named <key> with contents <value>
+Items whose names end with "#" are sequence numbers.
+name:<item> denotes an optional item, passed by position or name
+Items in parens  are signed. Signature omitted here.
+
+trubanc-dbs/serverdb/
+  time=(<bankid>,time,<time#>)  -- The global timestamp
+  privkey=<privkey>   -- the private key. Maybe this shouldn't be in
+                      -- the database, so it doesn't get backed up,
+                      -- But once we have a stand-alone server, it
+                      -- will need a passphrase to use
+  tokenid=(<bankid>,tokenid,<tokenid>)  -- The assetid of the usage token asset
+  regfee=(<bankid>,regfee,<time#>,<tokenid>,<amount>)
+                   -- Usage tokens paid for registration
+                   -- default: 10 (pubkey/<id> (2),
+                                  account/<id>/(time, last, req, outboxhash),
+                                  and a few for good luck)
+  tranfee=(<bankid>,tranfee,<bankid>,<time#>,<tokenid>,<amount>)
+                   -- Usage tokens paid for a transaction.
+                   -- Returned when the transaction completes.
+                   -- Given to recipient when he rejects a spend (anti-spam)
+                   -- Default: 2 (inbox & outbox entry)
+  fee/  -- permanent fees, paid for transactions of the given type
+        -- Default: none
+    spend=(<bankid>,fee|spend,<fee#>,<assetid>,<amount>)[...]
+    selfspend=(<bankid>,fee|selfspend,<fee#>,<assetid>,<amount>)[...]
+    createasset=(<bankid>,fee|createasset,<fee#>,<assetid>,<amount>)[...]
+  pubkey/  -- for fast lookup. Must verify that <id> = hash(<pubkey>)
+    <id>=<pubkey>
+  pubkeysig/
+    <id>=(<bankid>,@register,(<id>,register,<bankid>,<pubkey>,name=<name>))
+  data/
+    <hash>=<id>,<anonymousok>,<data>
+  asset/ -- Where the asset types are stored
+    <assetid>=(<bankid>,@asset,(<id>,asset,<bankid>,<assetid>,<scale>,<precision>,<assetname>)).
+              (<bankid>,@storage,(<id>,storage,<bankid>,<time#>,<assetid>,<percent>))
+        -- The assetid is the sha1 hash of a comma-separated
+        -- concatenation of <id>,<scale>,<precision>,<assetname>
+        -- This makes an assetid impossible to forge, though there
+        -- can be multiple assets with the same name. Customer beware.
+        -- Note that because the assetid is unique, it can cross bank boundaries.
+        -- @storage fees are optional
+        -- <percent> is a decimal number giving the percent charge per year
+  coupon
+    <couponhash>=(<bankid>,@spend,(<id>,spend,<bankid>,<time#>,coupon,<assetid>,<amount>,note:<note>))
+  account/
+    <id>/
+      time=<time#>  -- 0 when no outstanding transaction, or the
+                       <time#> for the next transaction. Will contain
+                       <time#>,<time2#> after an "inbox" query.
+      last=<time#>  -- The last used value of /account/<id>/time
+      req=<req#>    -- starts at 0. New requests must have a higher number
+      fraction/     -- fractional amounts due to storage fees
+        <assetid>=(<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid>,<amount>))
+      balancehash=(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<count>,<hash>))
+      balance/
+        <acct>/  -- "main" is the default acct name
+          <assetid>=(<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>))
+      outboxhash=(<bankid>,@outboxhash,(<id>,outboxhash,<bankid>,<time#>,<count>,<hash>))
+      outbox/
+        <time2#>=(<bankid>,@spend,(<id>,spend,<bankid>,<time2#>,<id2>,<assetid2>,<amount2>,note:<note2>)).
+                 (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time2#>,<tokenid>,<amount2fee>))
+        <time3#>=(<bankid>,@spend,(<id>,spend,<bankid>,<time3#>,<id3>,<assetid3>,<amount3>,note:<note3>)).
+                 (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time3#>,<tokenid>,<amount3fee>))
+      inbox/
+        <time5#>=(<bankid>,inbox,<time5#>,(<id2>,spend|accept,<bankid>,<time2#>,<id>,note:<note22>))
+        <time6#>=(<bankid>,inbox,<time6#>,(<id3>,spend|reject,<bankid>,<time3#>,<id>,note:<note32>))
+        <time7#>=(<bankid>,inbox,<time7#>,(<id4>,spend,<bankid>,<time4#>,<id>,<assetid4>,<amount4>,note:<note4>)).
+                 (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time4#>,<tokenid>,<amount4fee>))
+      storagefee/  -- accumulators for storage fees. <amount>s have fractions
+        <assetid>=(<bankid>,storagefee,<bankid>,<time#>,<assetid>,<amount>)
+      vendacct=(<bankid>,@vendacct,(<id>,vendacct,<bankid>,<time#>,<acct>))
+      defvend/
+        <vend#>=(<bankid>,@defvend,(<id>,defvend,<bankid>,<time#>,<vend#>,expires=<time#>,note=<note>).
+               (<id>,vendin,<bankid>,<time#>,<vend#>,<assetid1>,<amount1>).
+               (<id>,vendin,<bankid>,<time#>,<vend#>,<assetid2>,<amount2>).
+               ...
+               (<id>,vendin,<bankid>,<time#>,<vend#>,<assetidN>,<amountN>).
+               (<id>,vendout,<bankid>,<time#>,<vend#>,<assetid-o1>,<amount-o1>).
+               (<id>,vendout,<bankid>,<time#>,<vend#>,<assetid-o2>,<amount-o2>).
+               ...
+               (<id>,vendout,<bankid>,<time#>,<vend#>,assetid-oN>,<amount-oN>))
+      vendpool/
+        <assetid>=(<bankid>,spend,<bankid>,<time#>,<id>,<assetid>,<amount>)
+      transaction/
+        (<bankid>,@spend,(<id>,spend,<time#>,<id2>,<bankid>,<assetid>,<amount>,note:<note>))...
+          or
+        (<bankid,@processinbox,(<id>,processinbox,<bankid>,<time11#>,<time7#>|<time8#>|<time9#>)...
+
+
+=== Transactions ===
+
+Note that <bankid> is sent in almost all transactions. This guarantees
+that the request is actually meant for that bank. It also makes it
+easy to notice if somebody steals the machine, but not the bank's
+private key passphrase. They will be able to resign all the database
+contents, but since all the customer-signed data contains the original
+bankid, a customer will notice the change, and be able to prove it.
+The bank checks, for all request, that the <bankid> sent matches. I
+won't repeat this requirement below.
+
+
+Get bankid
+----------
+  Customer sends:
+
+(<id>,bankid,<pubkey>)
+
+  If <id> is the public key ID for <pubkey>, bank returns:
+
+(<bankid>,register,<bankid>,<pubkey>,name=<name>)
+
+  The <bankid> is required for the other requests, and the bank's
+  public key, to validate them. So a new customer will need to do this
+  first.
+
+  If there's a mismatch, bank returns:
+
+(<bankid>,failed,(<id>,bankid,<pubkey>),errcode:<errcode>,reason:<reason>)
+
+  Which the client will be unable to parse, not knowing the bank's public key.
+
+  In order to make this command possible to send without first
+  generating a public key pair, you can use "0" for the <id>,
+  anything, including blank, for the <pubkey>, and any non-blank
+  string as the signature. E.g.:
+
+(0,bankid,):0
+
+
+Create account
+--------------
+
+  Customer sends:
+
+(<id>,register,<bankid>,<pubkey>,name=<name>)
+
+  If the id is new, matches the pubkey, the <bankid> is correct, the
+  signature is OK, and the customer has enough usage tokens in his
+  inbox (spending usage tokens to a new <id> is how the account
+  directory is actually created), bank adds a negative spend for the
+  registration tokens to customer's inbox, and responds with:
+
+(<bankid>,@register,(<id>,register,<bankid>,<pubkey>,name=<name>))
+
+  This is the first time the bank will have seen the customer's
+  pubkey.  The parsing code notices these "id" messages, and verifies
+  pubkey if unknown, before using it to verify the registration
+  message itself.  Customer will need to process his inbox to transfer
+  his introduction tokens, and the bank's charges against them, to his
+  balance. Banks can choose to put negative spends in your inbox to
+  charge periodic fees. You usually won't be able to spend an asset
+  to anyone but the asset issuer until you pay those fees. Banks can
+  also choose to allow negative spends from any customer to
+  another. This is a request for money, and can be denied like any
+  other spend.
+
+(<bankid>,failed,(<id>,register,<pubkey>),errcode:<errcode>,reason:<reason>)
+
+  Note that pubkeys bigger than 4096 bits won't be accepted. Really
+  big keys are a good way to DOS attack the server.
+
+  Customer can append "couponenvelope" messages to the "register"
+  message to make an initial deposit. These messages may contain
+  the usage tokens necessary to fund the new account, plus other
+  assets:
+
+(<id>,register,<bankid>,<pubkey>,name=<name>).
+(<id>,couponenvelope,<bankid>,<encrytped-coupon>)...
+
+  Where <encrypted-coupon> is the following, encrypted to the bank's
+  public key.
+
+(<bankid>,coupon,<bankurl>,<coupon>,<assetid>,<amount>,note:<note>)
+
+  The bank will append the normal couponenvelope response to the
+  register response:
+
+(<bankid>,@register,(<id>,register,<bankid>,<pubkey>,name=<name>)).
+(<bankid>,@couponenvelope,(<id>,couponenvelope,<bankid>,<encrytped-coupon>))
+
+Look up pubkey
+--------------
+
+  Customer sends:
+
+(<id>,id,<bankid>,<id2>)
+
+  Use 0 for <id2> to look up the bank's key.
+  If <id2> is registered, bank responds with:
+
+(<bankid>,@register,(<id2>,register,<bankid>,<pubkey>,name=<name>))
+
+  If there is no such id, bank responds with:
+
+(<bankid>,failed,(<id>,id,<bankid>,<id2>),errcode:<errcode>,reason:<reason>)
+
+  Note that only registered customers can ask for another customer's
+  public key. Otherwise, the bank won't know the public key with which
+  to validate the request. Also note that this request can be replayed.
+  The response is always the same, so what's the harm?
+
+
+Get Req
+-------
+
+  Customer sends:
+
+(<id>,getreq,<bankid>)
+
+  Bank returns:
+
+(<bankid>,req,<id>,<req#>)
+
+  Note that this request can be replayed. The customer needs to have
+  some way of getting back in sync for requests. This is it.  It makes
+  no changes to the server database, just returns the customer's most
+  recent request <req#>.
+
+
+Get timestamp
+-------------
+
+  Customer sends:
+
+(<id>,gettime,<bankid>,<req#>)
+
+  Bank compares <req#> to /accounts/<id>/req. If <req#> is greater,
+  bank sets /account/<id>/req to <req#>, increments /time to <time#>,
+  sets /account/<id>/time to <time#>, and returns:
+
+(<bankid>,time,<id>,<time#>)
+
+  Otherwise, bank returns:
+
+(<bankid>,failed,(<id>,gettime,<bankid>,<req#>),errcode:<errcode>,reason:<reason>)
+
+  Note that this always creates a new <time#>, larger than any
+  timestamp in the bank. If the cusomter didn't use the last <time#>
+  returned from this request, it is overwritten, and can no longer be
+  used.
+
+Get fees
+--------
+
+  Customer sends:
+
+(<id>,getfees,<bankid>,<req#>,operation=<operation>)
+
+  Bank compares <req#> to /account/<id>/req. If <req#>
+  is greater, bank sets /account/<id>/req to <req#>,
+  increments /time to <time#>, and returns /regfeesig,
+  /tranfeesig, and /feesig/<operation>, or all feesig
+  items if operation is not included.
+
+(<bankid>regfee,<time#>,0,<amount>).
+  (<bankid>,tranfee,<time2#>,0,<amount>).
+  (<bankid>,fee|<operation>,<time3#>,<assetid>,<amount>).
+  (<bankid>,fee|<operation2>,<time4#>,assetid2>,<amount2>).
+  ...
+  (<bankid>,fee|<operationN>,<timeN#>,<assetidN>,<amountN>)
+
+  Otherwise, bank returns:
+
+(<bankid>,failed,(<id>,getfees,<bankid>,<req#>,<operation>),errcode:<errcode>,reason:<reason>)
+
+
+Spend
+-----
+
+  Customer sends the following. Second and subsequent balance items
+  are for the fee assets. Customer can pick whatever accounts he likes
+  for the fees to be taken from. The bank figures out if it can make
+  it work.
+
+(<id>,spend,<bankid>,<time#>,<id2>,<assetid>,<amount>,note:<note>).
+  (<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>).
+  (<id>,storagefee,<bankid>,<time#>,<assetid>,<storageamount>).
+  (<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>).
+  (<id>,fraction,<bankid>,<time#>,<assetid>,<fractionamount>).
+  (<id>,balance,<bankid>,<time#>,<assetid2>,<amount2>,acct:<acctN>).
+  ...
+  (<id>,balance,<bankid>,<time#>,<assetidN>,<amountN>,acct:<acctN>).
+  (<id>,outboxhash,<bankid>,<time#>,<outboxcount>,<outboxhash>).
+  (<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>)
+
+  Bank checks that the <time#> is equal to /account/<id>/time, that
+  the balances match (after subtracting the spend amount fees), and
+  that the hashes match what the customer sent. If they match, bank
+  computes the item list below, stores it in the database in the file
+  /account/<id>/outbox, and returns:
+
+(<bankid>,@spend,(<id>,spend,<time#>,<id2>,<bankid>,<assetid>,<amount>,note:<note>)).
+  (<bankid>,@storagefee,(<id>,storagefee,<bankid>,<time#>,<assetid>,<storageamount>)).
+  (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>)).
+  (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,<assetid>,<amount>,acct:<acct>)).
+  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid>,<amount>)).
+  (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,assetid2>,<amount2>,acct:<acct2>)).
+  ...
+  (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,<assetidN>,<amountN>,acct:<acctN>)).
+  (<bankid,@outboxhash,(<id>,outboxhash,<bankid>,<time#>,<outboxcount>,<outboxhash>)).
+  (<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))
+
+If they don't match, bank returns:
+
+(<bankid>,failed,(<id>,spend,<bankid>,<time#>,<id2>,<assetid>,<amount>,note:<note>),errcode:<errcode>,reason:<reason>)
+
+  This is the first phase of the two-phase commit for spends.
+
+  Note that there's an outbox hash and a balance hash. The outbox hash
+  is the sha1 hash of the customer "spend"."tranfee" items,
+  alphabetically sorted by timestamp, and tacked together with
+  periods. The hash for a particular <acct>, is the sha1 hash of the
+  customer "balance" items in that <acct>, alphabetically sorted by
+  <assetid>, and tacked together with periods. If there is only one
+  <acct>, the balancehash is that <acct>'s hash. If there is more than
+  one <acct>, then the balance hash is the sha1 hash of a string made
+  by tacking together the hash for each <acct>, sorted by <acct> and
+  separated by periods. The two hashes also contain a count, which is
+  the number of user items that participated in the hashing. This
+  isn't strictly necessary, but it can help to identify problems if
+  the client and server disagree on something.
+
+  To commit the transaction, the customer countersigns the
+  balancehash, and sends it back to the bank:
+
+(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>)))
+
+  The bank checks that <time#> matches the timestamp in the saved
+  transaction. If it does the bank sets /account/<id>/time to 0,
+  stores the spend in /account/<id>/outbox/<time#> and
+  /account/<id2>/inbox/<time#>, sets the
+  /account/<id>/balance/<acct>/<assetid> to the balances from
+  /account/<id>/transaction, udpates /account/<id>/outboxhash, and
+  /account/<id>/balancehash with the signed hashes, and sends:
+
+(<bankid>,@commit,(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))))
+
+  If the bank no longer has a record of the first phase of the
+  transaction, it will send:
+
+(<bankid>,failed,(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))),errcode:<errcode>,reason:<reason>)
+
+  If the customer disagrees with the banks first response, he can rollback
+  the transaction by sending:
+
+(<id>,rollback,<bankid>,<time#>)
+
+  The bank removes the /account/<id>/transaction file, and responds
+  with:
+
+(<bankid>,@rollback,(<id>,rollback,<bankid>,<time#>))
+
+  If the bank charges non-refunable fees for spends, they must be
+  included with the customer's spend message, and they will be
+  included in the return message, signed with the same timestamp as
+  the customer's spend message.
+
+  The refundable fees are stored in the outbox and included in the
+  bank response in case they change between the time the spend is
+  initiated and when it is closed. Note that the bank does NOT credit
+  its own account with the refundable fees. Those are left in the
+  outbox, pending acceptance or rejection of the spend. If accepted,
+  the fees are credited back to the customer account. If the recipient
+  rejects, they are credited to his account at rejection time. Hence,
+  auditing the transaction fee asset requires looking at accounts,
+  outbox items, and inbox items. spend|reject inbox items cancel out
+  the fees in the corresponding outbox item. spend_accept inbox items
+  do not.
+
+Cancel Spend
+------------
+
+  Customer sends:
+
+(<id>,spend|reject,<bankid>,<time#>,<id>,note:<note>)
+
+  Bank ensures that there is an outbox entry for <time#>, and that it
+  has not been accepted or rejected by its recipient. Removes the
+  inbox entry from the recipient, and adds an inbox entry to
+  customer's inbox that looks just like the recipient rejected the
+  spend, except that it's from the customer instead of the recipient.
+  The customer can use processinbox on it just like any other rejected
+  spend. The usage tokens paid for the spend are taken by the bank,
+  just like any other rejected spend. This discourages lots of
+  cancelling of spends. Bank returns:
+
+(<bankid>,INBOX,<time2#>,(<id>,spend|cancel,<bankid>,<time#>,<id>,note:<note>))
+
+  If there's no outbox entry for <time#>, or the recipient has already
+  accepted or rejected the spend, bank returns:
+
+(<bankid>,failed,(<id>,spend|reject,<bankid>,<time#>,<id>,note:<note>),errcode:<errcode>,reason:<reason>)
+
+
+Query Inbox
+------------
+
+  Customer sends:
+
+(<id>,getinbox,<bankid>,<req#>)
+
+  Bank compares <req#> to /account/<id>/req. If <req#> is greater,
+  bank sets /account/<id>/req to <req#> and responds with contents of
+  /account/<id>/inbox/, separated by periods. Bank also sets
+  /account/<id>/last to the highest of the timestamps in the inbox.
+
+(<bankid>,@getinbox,(<id>,getinbox,<bankid>,<req#>).
+  (<bankid>,inbox,<time6#>,(<id2>,spend|accept,<bankid>,<time2#>,note:<note22>)).
+  (<bankid>,inbox,<time7#>,(<id3>,spend|reject,<bankid>,<time3#>,note:<note32>)).
+  (<bankid>,inbox,<time8#>,(<id4>,spend,<bankid>,<time4#>,note:<note4>)).
+  (<bankid>,@tranfee,(<id4>,tranfee,<bankid>,<time4#>,<tokenid>,<amount4fee>)).
+  (<bankid>,inbox,<time9#>,(<id5>,spend,<bankid>,time5#>,note:<note5>)).
+  (<bankid>,@tranfee,(<id5>,tranfee,<bankid>,<time5#>,<tokenid>,<amount5fee>)).
+  (<bankid>,storagefee,<bankid>,<time10#>,<assetid>,<amount>).
+  (<bankid>,storagefee,<bankid>,<time11#>,<assetid2>,<amount>)
+
+  Otherwise, bank sends:
+
+(<bankid>,failed,(<id>,inbox,<bankid>,<req#>),errcode:<errcode>,reason:<reason>)
+
+  The bank will not allow a spend to be done if there are any inbox
+  entries with a bank-signed timestamp less than /account/<id>/last,
+  except the first spend after a processinbox that clears the
+  inbox. This forces customers to complete inbox transactions, and be
+  in sync with the bank about their balances and outbox contents, if
+  they want to be able to do spends. Allowing the first spend after
+  the inbox is cleared to got through ensures that frequent spends
+  into your account don't lock you out from doing spends yourself.
+
+Process Inbox
+-------------
+
+  Customer sends:
+
+(<id>,processinbox,<bankid>,<time12#>,<time6#>|<time7#>|<time8#>|<time9#>).
+  (<id>,spend|accept,<bankid>,<id4>,<time4#>,note:<note42>).
+  (<id>,spend|reject,<bankid,<id5>,<time5#>,note:<note52>).
+  (<id>,balance,<bankid>,<time12#>,<assetid>,<amount>,acct:<acct>).
+  (<id>,storagefee,<bankid>,<time12#>,<assetid>,<storageamount>).
+  (<id>,fraction,<bankid>,<time12#>,<assetid>,<fractionamount>).
+  (<id>,balance,<bankid>,<time12#>,assetid2>,<amount2>,acct:<acct2>).
+  (<id>,storagefee,<bankid>,<time12#>,<assetid2>,<storageamount2>).
+  (<id>,fraction,<bankid>,<time12#>,<assetid2>,<fractionamount2>).
+  ...
+  (<id>,balance,<bankid>,<time12#>,<assetidN>,<amount3>,acct:<acctN>).
+  (<id>,storagefee,<bankid>,<time12#>,<assetidN>,<storageamountN>).
+  (<id>,fraction,<bankid>,<time12#>,<assetidN>,<fractionamountN>).
+  (<id>,outboxhash,<bankid>,<time12#>,<outboxcount>,<outboxhash>).
+  (<id>,balancehash,<bankid>,<time12#>,<balancecount>,<balancehash>)
+
+  Bank compares <time12#> to /account/<id>/time. If it's the
+  same. Bank processes the requested inbox transactions, and compares
+  the result to the balances and hashes sent by customer. If
+  correct, bank computes the response below, stores it in
+  /account/<id>/tranaction, and responds with:
+
+(<bankid,@processinbox,(<id>,processinbox,<bankid>,<time12#>,<time7#>|<time8#>|<time9#>).
+  (<bankid>,@spend|accept,(<id>,spend|accept,<bankid>,<id4>,<time4#>,note:<note42>)).
+  (<bankid,@spend|reject,(<id>,spend|reject,<bankid,<id5>,<time5#>,note:<note52>)).
+  (<bankid>,@balance,(<id>,balance,<bankid>,<time12#>,<assetid>,<amount>,acct:<acct>)).
+  (<bankid>,@balance,(<id>,balance,<bankid>,time12#>,assetid2>,<amount2>,acct:<acct2>)).
+  ...
+  (<bankid>,@balance,(<id>,balance,<bankid>,<time12#>,<assetidN>,<amount3>,acct:<acctN>)).
+  (<bankid>,@outboxhash,(<id>,outboxhash,<bankid>,<time12#>,<outboxcount>,<outboxhash>)).
+  (<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time12#>,<balancecount>,<balancehash>))
+
+  Otherwise, bank returns:
+
+(<bankid>,failed,(<id>,processinbox,<bankid>,<time12#>|<time6#>|<time7#>|<time8#>|<time9#>),errcode:<errcode>,reason:<reason>)
+
+  Again, that was the first phase of the two phase commit.
+
+  To commit the transaction, the customer countersigns the
+  balancehash, and sends it back to the bank:
+
+(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time12#>,<balancecount>,<balancehash>)))
+
+  The bank sets /account/<id>/time to <time12#>, removes the
+  transaction from /account/<id>/inbox/, removes completed
+  transactions from /account/<id>/outbox/, signs and adds spend|accept
+  and spend|reject items to the other customers' inboxes, updates the
+  /account/<id>/balance/<acctN>/<assetidN> with the balances from
+  /account/<id>/transaction, updates /account/<id>/outboxhash, and
+  /account/<id>/balancehash with the signed hashes, and sends back:
+
+(<bankid>,@commit,(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time12#>,<balancecount>,<balancehash>))))
+
+  If the bank no longer has a record of the first phase of the
+  transaction, it will send:
+
+(<bankid>,failed,(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))),errcode:<errcode>,reason:<reason>)
+
+  If the customer disagrees with the banks first response, he can
+  rollback the transaction by sending:
+
+(<id>,rollback,<bankid>,<time12#>)
+
+  The bank removes the /account/<id>/transaction file, and responds
+  with:
+
+(<bankid>,@rollback,(<id>,rollback,<bankid>,<time12#>))
+
+  This is the most complicated function in the system. It has to deal
+  with two kinds of inbox items. The first is spontaneous spends from
+  another customer. These get deposited in your account if you
+  accept. Whether accepted or rejected gets put in the other guys
+  inbox, where it becomes the second type of inbox item. These
+  acknowledge earlier spends. When you process one of them, it and the
+  corresponding outbox item can be removed, forever.
+
+  Note that the customer decides which <acct> names will get the spends
+  and the usage token refunds by where he specifies the balances in the
+  "balance" items. The bank only verifies that the assets can be
+  distributed as the customer requested.
+
+  Rejected spends credit the usage tokens to the recipient, not the
+  spender. This discourages spam, even in an otherwise free bank.
+
+
+Accept storage fees
+-------------------
+
+  Customer sends:
+
+(<id>,storagefees,<bankid>,<req#>)
+
+  Bank compares <req#> to /account/<id>/req. If <req#> is greater,
+  bank sets /account/<id>/req to <req#>. Then bank subtracts the
+  integer parts from the storage fees in /account/<id>/storagefee,
+  turns them into bank spends on the inbox, and returns:
+
+(<bankid>,@storagefees,(<id>,storagefees,<bankid>,<req#>))
+
+  Otherwise, bank returns:
+
+(<bankid>,failed,(<id>,storagefees,<bankid>,<req#>),errcode:<errcode>,reason:<reason>)
+
+Lookup asset
+------------
+
+  Customer sends:
+
+(<id>,getasset,<req#>,<bankid>,<assetid>)
+
+  Bank compares <req#> to /account/<id>/req. If <req#>
+  is greater, bank sets /account/<id>/req to <req#>. Then,
+  if <assetid> exists in /asset, bank returns:
+
+(<bankid>,@asset,(<issuerid>,asset,<bankid>,<assetid>,<scale>,<precision>,<assetname>)).
+(<bankid>,@storage,(<issuerid>,storage,<bankid>,<time#>,<assetid>,<percent>))
+
+  Where the @storage item is optional.
+  Otherwise, bank returns:
+
+(<bankid>,failed,(<id>,getasset,<bankid>,<assetid>,<random>),errcode:<errcode>,reason:<reason>)
+
+
+Create asset
+------------
+
+  Customer sends:
+
+(<id>,asset,<bankid>,<assetid>,<scale>,<precision>,<assetname>).
+  (<id>,storage,<bankid>,<assetid>,<time4#>,<percent>).
+  (<id>,balance,<bankid>,<time4#>,<assetid>,-1,acct:<acct1>).
+  (<id>,balance,<bankid>,<time4#>,assetid2>,<amount2>acct:<acct2>).
+  ...
+  (<id>,balance,<bankid>,<time4#>,<assetidN>,<amountN>,acct:<acctN>).
+  (<id>,balancehash,<bankid>,<time4#>,<balancecount>,<balancehash>)
+
+  Note that the balance for the new asset is "-1". Like loom, the sum
+  of all balances for an <assetid> add up to -1. A negative balance
+  means that the owner is the issuer. I haven't worked out the process
+  to switch issuer ownership.
+
+  If <assetid> is the hash of <id>,<scale>,<precision>,<assetname>,
+  /asset/<assetid> does not exist, <time4#> is equal to
+  /account/<id>/time, the customer has properly subtracted the
+  createasset fees from the balances in /account/<id>/balance/<acctN>
+  (including 1 usage token for the /asset/<assetid file and 1 usage
+  token for the balance file for the new asset), and the balancehash
+  matches, then bank adds
+  <assetid>=(<id>,asset,<assetid>,<scale>,<precision>,<assetname>) to
+  /asset/, clears /account/<id>/time, and returns:
+
+(<bankid>,@asset,(<id>,asset,<bankid>,<assetid>,<assetname>)).
+  (<bankid>,@storage,(<id>,storage,<bankid>,<time4#>,<assetid>,<percent>)).
+  (<bankid>,@balance,(<id>,balance,<bankid>,<time4#>,<assetid>,-1,acct:<acct1>)).
+  (<bankid>,@balance,(<id>,balance,<bankid>,<time4#>,assetid2>,<amount2>acct:<acct2>)).
+  ...
+  (<bankid>,@balance,(<id>,balance,<bankid>,<time4#>,assetidN>,<amountN>acct:<acctN>)).
+  (<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time4#>,<balancecount>,<balancehash>))
+
+  Otherwise, bank returns:
+
+(<bankid>,failed,(<id>,asset,<bankid>,<assetid>,<assetname>),errcode:<errcode>,reason:<reason>)
+
+  The "storage" fee is optional. To change or add a storage fee, send a new
+  "asset" message with the new storage fee. This costs 1 usage token, even
+  though it doesn't use up any more files in storage. This prevents
+  too-frequent changes, and forces using a new timestamp.
+
+Get outbox
+----------
+
+  If customer needs to get back in sync with his outbox, he can send:
+
+(<id>,getoutbox,<bankid>,req#>)
+
+  Bank compares <req#> to /account/<id>/req. If <req#>
+  is greater, bank sets /account/<id>/req to <req#>. Then,
+  if the <id> exists, bank returns:
+
+(<bankid>,@getoutbox,(<id>,getoutbox,<bankid>,<req#>).
+  (<bankid>,@spend,(<id>,spend,<time2#>,<id2>,<bankid>,<assetid2>,<amount2>,note:<note2>,acct:<acct2>))
+  (<bankid>,@spend,<id>,spend,<time3#>,<id3>,<bankid>,<assetid3>,<amount3>,note:<note3>,acct:<acct3>))
+  ...
+  (<bankid>,@outboxhash,(<id>,outboxhash,<time#>,<bankid>,<hash>))
+
+  Otherwise, bank returns:
+
+(<bankid>,failed,(<id>,getoutbox,<bankid>,req#>),errcode:<errcode>,reason:<reason>)
+
+
+Get balance
+-----------
+
+  If the customer loses track of a balance, customer can send:
+
+(<id>,getbalance,<bankid>,<req#>,acct:<acct>,asset:<assetid>)
+
+  Bank compares <req#> to /account/<id>/req. If <req#> is greater,
+  bank sets /account/<id>/req to <req#>.  Then bank returns
+  information about the specified <acct>s and <assetid>s If acct is
+  not specified then information about all accounts is returned. If
+  assetid is not specified, then information about all assetids is
+  returned. The "fraction" balances are returned only if <acct> is not
+  specified.
+
+(<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>)).
+(<bankid>,@balance,(<id>,balance,<bankid>,<time2#>,<assetid2>,<amount2>,acct:<acct2>)).
+...
+(<bankid>,@balance,(<id>,balance,<bankid>,<timeN#>,<assetidN>,<amountN>,acct:<acctN>)).
+(<bankid>,@fraction,(<id>,fraction,<bankid>,<timef1#>,<assetid>,<amountf1>).
+(<bankid>,@fraction,(<id>,fraction,<bankid>,<timef2#>,<assetid>,<amountf2>).
+...
+(<bankid>,@fraction,(<id>,fraction,<bankid>,<timefN#>,<assetid>,<amountfN>).
+(<bankid>,storagefee,<bankid>,<time#>,<assetid>,<amount>).
+(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))
+
+  Otherwise, bank returns:
+
+(<bankid>,failed,(<id>,getbalance,<bankid>,<req#>,acct:<acct>,assetid:<assetid>),errcode:<errcode>,reason:<reason>)
+
+
+Coupons
+-------
+  Customer sends:
+
+(<id>,spend,<bankid>,<time#>,coupon,<assetid>,<amount>,note:<note>))
+  (<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>).
+  (<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>).
+  (<id>,balance,<bankid>,<time#>,<assetid2>,<amount2>,acct:<acct2>).
+  ...
+  (<id>,balance,<bankid>,<time#>,<assetidN>,<amountN>,acct:<acctN>).
+  (<id>,outboxhash,<bankid>,<time#>,<outboxcount>,<outboxhash>).
+  (<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>)
+
+  Bank checks that the <time#> is equal to /account/<id>/time, that
+  the balances match (after subtracting the spend amount fees), and
+  that the hashes match what the customer sent. If they match, bank
+  computes the item list below, stores it in the database in the file
+  /account/<id>/outbox, and returns:
+
+(<bankid>,@spend,(<id>,spend,<time#>,spend,<bankid>,<assetid>,<amount>,note:<note>,acct:<acct>)).
+  (<bankid>,couponenvelope,<id>,<encrypted-coupon>).
+  (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>)).
+  (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,<assetid>,<amount>,acct:<acct>)).
+  (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,assetid2>,<amount2>,acct:<acct2>)).
+  ...
+  (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,<assetidN>,<amountN>,acct:<acctN>)).
+  (<bankid,@outboxhash,(<id>,outboxhash,<bankid>,<time#>,<outboxcount>,<outboxhash>)).
+  (<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))
+
+  Where <encrypted-coupon> is the following, encrypted with the public
+  key for <id>:
+
+(<bankid>,coupon,<bankurl>,<coupon>,<assetid>,<amount>,note:<note>)
+
+  <coupon> is the coupon number, a random ID.
+
+  Bank also stores, at coupon/<couponhash> (the hash of the <coupon>
+  number)  the following:
+
+(<bankid>,@spend,(<id>,spend,<bankid>,<time#>,coupon,<assetid>,<amount>,note:<note>))
+
+  Note that this makes it impossible for the bank alone to reproduce
+  the coupon, since there's no plain-text copy of the coupon number.
+  The only copy of the coupon number is in the customer's outbox,
+  encrypted to his public key. This doesn't really matter for the
+  current web server implementation, where the bank's private key is
+  stored in the database, but an eventual stand-alone servrer, that
+  requires the passphrase for the bank's private key at startup time,
+  could be fully secure, even if the database is revealed.
+
+  If the balances, balancehash, or outboxhash don't match, bank returns:
+
+(<bankid>,failed,(<id>,spend,<bankid>,<time#>,coupon,<assetid>,<amount>,note:<note>),errcode:<errcode>,reason:<reason>)
+
+  This is an alternative form of the "spend" command. It creates a
+  bearer coupon. Intead of putting an entry in the inbox of the
+  recipient, it stores it in the "coupon" area of the database. It
+  returns the coupon to the spender, encrypted with his public key.
+  He can then give it to whomever he pleases, and that person can
+  redeem it, with the couponenvelope request below. This is the normal
+  way to introduce someone to a Trubanc server.
+
+
+Redeeming Coupons
+-----------------
+  Customer sends:
+
+(<id>,couponenvelope,<bankid>,<encrytped-coupon>)
+
+  Where <encrypted-coupon> is the following, encrypted to the bank's
+  public key.
+
+(<bankid>,coupon,<bankurl>,<coupon>,<assetid>,<amount>,note:<note>)
+
+  Bank checks at coupon/<coupon> to make sure the coupon hasn't yet
+  been spent, enters in the inbox of <id>, an entry that looks like a
+  spend from the bank for <assetid><amount>, enters in the inbox of
+  the original creator of the coupon an entry that looks like a
+  spendaccept from the bank for the spend that created the coupon, and
+  returns:
+
+(<bankid>,@couponenvelope,(<id>,couponenvelope,<bankid>,<encrytped-coupon>))
+
+  Where <encrypted-coupon> is the coupon above, encrypted to the
+  bank's public key.
+
+  If the coupon has already been spent, bank returns:
+
+(<bankid>,failed,(<id>,couponenvelope,<bankid>,<encrytped-coupon>),errcode:<errcode>,reason:<reason>)
+
+
+Switching Asset Issuance
+------------------------
+
+Asset issuance is switched by doing a negative spend of the whole
+negative amount from the <acct> holding the negative amount. This can
+move issuance to another <acct> or to another customer.
+
+
+Write data
+----------
+
+  Customer sends:
+
+(<id>,writedata,<bankid>,<time#>,<anonymousok>,<key>,<data>).
+(<id>,balance,<bankid>,<time#>,<tokenid>,<feeamount>).
+(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>)
+
+  Bank returns:
+
+(<bankid>,@writedata,<id>,<time#>,<anonymousok>,<key>).
+(<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<tokenid>,<feeamount>)).
+(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))
+
+  You'll get an error if another <id> wrote the same <key>.
+  Unlikely if it's the hash of something likely to be unique,
+  but possible. It costs 1 token per 4096-bytes of saved data.
+  Any non-blank value of <anonymousok> will allow the data to be fetched
+  with an unsigned readdata request. Otherwise, only the <id> who wrote
+  the message can read it.
+
+
+Read Data
+---------
+
+  Customer sends:
+
+(<id>,readdata,<bankid>,<req#>,<hash>)
+
+  Or, for <anonymousok> writes:
+
+(0,readdata,<bankid>,0,<hash>):0
+
+  Bank returns:
+
+(<bankid>,@readdata,<id>,<hash>,<anonymousok>,<data>)
+
+  Unsigned messages are allowed to fetch <anonymousok> data, so that
+  this can be used to cache private keys on the server, stored with
+  the hash of the user's passphrase.
+
+
+Setting the Automatic Vend Acct
+-------------------------------
+  Customer sends:
+
+(<id>,vendacct,<bankid>,<time#>,<acct>)
+
+  Bank checks that <time#> is equal to /account/<id>/time, then signs
+  the message, stores it in /account/<id>/vendacct, and returns:
+
+(<bankid>,@vendacct,(<id>,vendacct,<bankid>,<time#>,<acct>))
+
+  This specified the acct that will be used as a source for automatic
+  vends. The default is the "main" acct.
+
+
+Creating an Automatic Vend
+--------------------------
+  Customer sends:
+
+(<id>,defvend,<bankid>,<time#>,<vend#>,expires=<expirationtime#>,note=<description>).
+  (<id>,vendin,<bankid>,<time#>,<vend#>,<assetid1>,<amount1>).
+  (<id>,vendin,<bankid>,<time#>,<vend#>,<assetid2>,<amount2>).
+  ...
+  (<id>,vendin,<bankid>,<time#>,<vend#>,<assetidN>,<amountN>).
+  (<id>,vendout,<bankid>,<time#>,<vend#>,<assetid-o1>,<amount-o1>).
+  (<id>,vendout,<bankid>,<time#>,<vend#>,<assetid-o2>,<amount-o2>).
+  ...
+  (<id>,vendout,<bankid>,<time#>,<vend#>,assetid-oM>,<amount-oM>)
+
+  Bank checks that <time#> is equal to /account/<id>/time, checks that
+  there is no overlap between the <assetidI> and the <assetid-oI>,
+  then signs the entire message (not each component), stores that in
+  the database at /defvend/<vend#>, overwriting an earlier definition
+  for the same <vend#>, if there, and returns:
+
+(<bankid>,@defvend,
+  (<id>,defvend,<bankid>,<time#>,<vend#>,expires=<expirationtime#>,note=<description>).
+  (<id>,vendin,<bankid>,<time#>,<vend#>,<assetid1>,<amount1>).
+  (<id>,vendin,<bankid>,<time#>,<vend#>,<assetid2>,<amount2>).
+  ...
+  (<id>,vendin,<bankid>,<time#>,<vend#>,<assetidN>,<amountN>).
+  (<id>,vendout,<bankid>,<time#>,<vend#>,<assetid-o1>,<amount-o1>).
+  (<id>,vendout,<bankid>,<time#>,<vend#>,<assetid-o2>,<amount-o2>).
+  ...
+  (<id>,vendout,<bankid>,<time#>,<vend#>,assetid-oN>,<amount-oN>))
+
+  This defines a vending machine, an automated trade. Anyone who knows
+  <id> and <vend#> can invoke this trade with the "vend" message
+  below, by spending a multiple of the "vendin" assets, to receive the
+  same multiple of the "vendout" assets. Spent assets come from the
+  "vendacct", set above. Received assets go into the "vendpool", from
+  which they can be transferred to the inbox with the "vendpool"
+  message below.
+
+
+Trade with an Automated Vend
+----------------------------
+  Customer sends:
+
+(<id>,vend,<bankid>,<time#>,<id2>,<vend#>,<count>).
+  (<id>,spend,<bankid>,<time#>,<assetid1>,<amount1>).
+  (<id>,spend,<bankid>,<time#>,assetid2>,<amount2>).
+  ...
+  (<id>,spend,<bankid>,<time#>,<assetidN>,<amountN>).
+  (<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>).
+  (<id>,storagefee,<bankid>,<time#>,<assetid>,<storageamount>).
+  (<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>).
+  (<id>,fraction,<bankid>,<time#>,<assetid>,<fractionamount>).
+  (<id>,balance,<bankid>,<time#>,<assetid2>,<amount2>,acct:<acct2>).
+  (<id>,fraction,<bankid>,<time#>,<assetid2>,<fractionamount2>).
+  ...
+  (<id>,balance,<bankid>,<time#>,<assetidN>,<amountN>,acct:<acctN>).
+  (<id>,fraction,<bankid>,<time#>,<assetidN>,<fractionamountN>).
+  (<id>,balance,<bankid>,<time#>,<assetid-o1>,<amount>,acct:<acct>).
+  (<id>,fraction,<bankid>,<time#>,<assetid-o1>,<fractionamount>).
+  (<id>,balance,<bankid>,<time#>,<assetid-o2>,<amount2>,acct:<acct2>).
+  (<id>,fraction,<bankid>,<time#>,<assetid-o2>,<fractionamount2>).
+  ...
+  (<id>,balance,<bankid>,<time#>,<assetid-oN>,<amount-oN>,acct:<acctN>).
+  (<id>,fraction,<bankid>,<time#>,<assetid-oN>,<fractionamount-oN>).
+  (<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>)
+
+  Bank checks that <time#> is equal to /account/<id>/time, checks that
+  the spends on the <assetidI> are <count> times the "vendin" values
+  in the definition at /account/<id2>/defvend/<vend#>, and that the
+  existing user balances minus the "spend"s match the corresponding
+  "balance" and "fraction" messages, and that the user balances plus
+  the vending machine "vendout" items times <count> match the
+  corresponding "balance" and "fraction" messages. It also verifies
+  that the passed-in "balancehash" is what it ought to be, given the
+  updates balances. "tranfee" usage tokens are charged only for new
+  balance items; the transaction itself is free to the trader. Next,
+  it updates the /vendpool/<id2>/<assetI> and
+  /vendpool/<id2>/asset-oI> messages with the "spend" amounts received
+  and the "vendout" amounts spent. Finally, it updates the user
+  balances, fractions, and balancehash, with bank-signed messages, and
+  returns:
+
+(<bankid>,@vend,(<id>,vend,<bankid>,<time#>,<id2>,<vend#>,<count>).
+  (<bankid>,@spend,(<id>,spend,<bankid>,<time#>,<id2>,<assetid1>,<amount1>)).
+  (<bankid>,@spend,(<id>,spend,<bankid>,<time#>,<id2>,assetid2>,<amount2>)).
+  ...
+  (<bankid>,@spend,(<id>,spend,<bankid>,<time#>,<id2>,<assetidN>,<amountN>)).
+  (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>)).
+  (<bankid>,@storagefee,(<id>,storagefee,<bankid>,<time#>,<assetid>,<storageamount>)).
+  (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>)).
+  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid>,<fractionamount>)).
+  (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid2>,<amount2>,acct:<acct2>)).
+  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid2>,<fractionamount2>)).
+  ...
+  (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetidN>,<amountN>,acct:<acctN>)).
+  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetidN>,<fractionamountN>)).
+  (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid-o1>,<amount>,acct:<acct>)).
+  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid-o1>,<fractionamount>)).
+  (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid-o2>,<amount2>,acct:<acct2>)).
+  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid-o2>,<fractionamount2>)).
+  ...
+  (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid-oN>,<amount-oN>,acct:<acctN>)).
+  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid-oN>,<fractionamount-oN>)).
+  (<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))
+
+  
+Accept Automatic Vends
+----------------------
+
+  Customer sends:
+
+(<id>,vendpool,<bankid>,<req#>)
+
+  Bank compares <req#> to /account/<id>/req. If <req#> is greater,
+  bank sets /account/<id>/req to <req#>. Then bank signs, as "inbox"
+  items, and moves the spends on /account/<id>/vendpool to the
+  customer's inbox, and returns:
+
+(<bankid>,@vendpool,(<id>,vendpool,<bankid>,<time#>))
+
+  Otherwise, bank returns:
+
+(<bankid>,failed,(<id>,vendpool,<bankid>,<time#>),errcode:<errcode>,reason:<reason>)
+
+
+// Copyright 2008-2009 Bill St. Clair
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions
+// and limitations under the License.

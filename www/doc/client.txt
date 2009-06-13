@@ -1,0 +1,91 @@
+The sample trubanc client handles multiple users of multiple banks.
+More details in db.txt, the description of the server database and protocol.
+
+Items in angle brackets are variables
+Items not in angle brackets are literals
+"--" comment to the end of the line
+<dir>/ is a directory
+<key>=<value> is a file named <key> with contents <value>
+Items whose names end with "#" are sequence numbers.
+name:<item> denotes an optional item, passed by position or name
+Items in parens  are signed. Signature omitted here.
+
+trubanc-dbs/clientdb/
+  privkey/            -- private keys indexed by the hash of their passphrases
+    <hash>=<privkey>
+  pubkey/  -- for fast lookup. Must verify that <id> = hash(<pubkey>)
+    <id>=<pubkey>
+  bank/               -- banks
+    bankid/
+      sha1(<url>)=<bankid>
+    <bankid>/
+      url=<url>       -- web address of the server
+      name=<name>     -- Bank's name
+      tokenid=(<bankid>,tokenid,<tokenid>)
+      regfee=(<bankid>,regfee,<time#>,<tokenid>,<amount>)
+      tranfee=(<bankid>,tranfee,<bankid>,<time#>,<tokenid>,<amount>)
+      fee/
+        spend=(<bankid>,fee|spend,<fee#>,<assetid>,<amount>)[...]
+        selfspend=(<bankid>,fee|spend,<fee#>,<assetid>,<amount>)[...]
+        createasset=(<bankid>,fee|createasset,<fee#>,<assetid>,<amount>)[...]
+      asset/
+        <assetid>=(<bankid>,@asset,(<id>,asset,<bankid>,<assetid>,<scale>,<precision>,<assetname>))
+  session/
+    <sessionhash>=<encrypted_passphrase>
+  account/
+    <id>/
+      session=<sessionhash>
+      preference
+        <pref>=<value>
+      bank
+        <bankid>/
+          time=<time#>[,<time#>]
+          req=<req#>
+          pubkeysig/
+            <id>=(<bankid>,@register,(<id>,register,<bankid>,<pubkey>,name=<name>))
+          contact/
+            <otherid>/
+              nickname=<nickname>
+              note=<note>
+              name=<name>
+              pubkeysig=<pubkeysig>
+          fraction/     -- fractional amounts due to storage fees
+            <assetid>=(<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid>,<amount>))
+          balancehash=(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<count>,<hash>))
+          balance/
+            <acct>/  -- "main" is the default acct name
+              <assetid>=(<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>))
+          outboxhash=(<bankid>,@outboxhash,(<id>,outboxhash,<bankid>,<time#>,<count>,<hash>))
+          outbox/
+            <time2#>=(<bankid>,@spend,(<id>,spend,<bankid>,<time2#>,<id2>,<assetid2>,<amount2>,note:<note2>,acct:<acct2>)).
+                     (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time2#>,<tokenid>,<amount2fee>))
+            <time3#>=(<bankid>,@spend,(<id>,spend,<bankid>,<time3#>,<id3>,<assetid3>,<amount3>,note:<note3>,acct:<acct3>)).
+                     (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time3#>,<tokenid>,<amount3fee>))
+          inbox/
+            <time5#>=(<bankid>,inbox,<time5#>,(<id2>,spend|accept,<bankid>,<time2#>,<id>,note:<note22>))
+            <time6#>=(<bankid>,inbox,<time6#>,(<id3>,spend|reject,<bankid>,<time3#>,<id>,note:<note32>))
+            <time7#>=(<bankid>,inbox,<time7#>,(<id4>,spend,<bankid>,<time4#>,<id>,<assetid4>,<amount4>,note:<note4>)).
+                     (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time4#>,<tokenid>,<amount4fee>))
+          transaction/
+            (<bankid>,@spend,(<id>,spend,<time#>,<id2>,<bankid>,<assetid>,<amount>,note:<note>,acct:<acct>))...
+              or
+            (<bankid,@processinbox,(<id>,processinbox,<bankid>,<time11#>,<time7#>|<time8#>|<time9#>)...
+          history/
+            -- Needs more work. Likely wants to be indexed multiple ways
+            -- and probably organized in directories to keep any one listing
+            -- from getting too long to handle
+            <time>=<message>...
+
+// Copyright 2008-2009 Bill St. Clair
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions
+// and limitations under the License.
