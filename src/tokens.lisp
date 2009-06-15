@@ -31,6 +31,7 @@
 (defconstant $OUTBOXHASH "outboxhash")
 (defconstant $INBOX "inbox")
 (defconstant $COUPON "coupon")
+(defconstant $DATA "data")
 
 ;; request names
 (defconstant $ID "id")
@@ -53,6 +54,8 @@
 (defconstant $COUPONENVELOPE "couponenvelope")
 (defconstant $GETVERSION "getversion")
 (defconstant $VERSION "version")
+(defconstant $WRITEDATA "writedata")
+(defconstant $READDATA "readdata")
 
 ;; Affirmations
 (defconstant $ATREGISTER "@register")
@@ -73,6 +76,8 @@
 (defconstant $ATBALANCEHASH "@balancehash")
 (defconstant $ATCOUPON "@coupon")
 (defconstant $ATCOUPONENVELOPE "@couponenvelope")
+(defconstant $ATWRITEDATA "@writedata")
+(defconstant $ATREADDATA "@readdata")
 
 ;; request parameter names
 (defconstant $CUSTOMER "customer")
@@ -97,6 +102,9 @@
 (defconstant $ENCRYPTEDCOUPON "encryptedcoupon")
 (defconstant $COUPONNUMBERHASH "couponnumberhash")
 (defconstant $ISSUER "issuer")
+(defconstant $ANONYMOUS "anonymous")
+(defconstant $KEY "key")
+(defconstant $SIZE "size")
 
 ;; Client database keys
 (defconstant $BANK "bank")

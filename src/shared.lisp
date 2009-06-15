@@ -90,6 +90,8 @@
                         (,$COUPONENVELOPE . (,$ID ,$ENCRYPTEDCOUPON))
                         (,$GETVERSION . (,$BANKID ,$REQ))
                         (,$VERSION . (,$VERSION ,$TIME))
+                        (,$WRITEDATA . (,$BANKID ,$TIME ,$ANONYMOUS ,$KEY ,$DATA))
+                        (,$READDATA . (,$BANKID ,$REQ ,$KEY (,$SIZE)))
 
                         ;; Bank signed messages
                         (,$FAILED . (,$MSG ,$ERRMSG))
@@ -120,6 +122,8 @@
                         (,$ATGETOUTBOX . (,$MSG))
                         (,$ATCOUPON . (,$COUPON ,$SPEND))
                         (,$ATCOUPONENVELOPE . (,$MSG))
+                        (,$ATWRITEDATA . (,$ID ,$TIME ,$ANONYMOUS ,$KEY))
+                        (,$ATREADDATA . (,$ID ,$TIME ,$DATA))
                         ))
             (hash (make-hash-table :test 'equal)))
         (loop
@@ -271,6 +275,13 @@
   (declare (ignore element-type prologue indent))
   `(cl-who:with-html-output-to-string (,var ,string-form ,@rest)
      ,@body))
+
+;; Computing costs for the $WRITEDATA request
+(defun data-cost (data)
+  (if (blankp data)
+      0
+      (1+ (ceiling (if (integerp data) data (length data)) 4096))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

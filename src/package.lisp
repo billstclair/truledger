@@ -51,6 +51,12 @@
    #:$COUPONENVELOPE
    #:$GETVERSION
    #:$VERSION
+   #:$WRITEDATA
+   #:$READDATA
+   #:$ANONYMOUS
+   #:$KEY
+   #:$DATA
+   #:$SIZE
    #:$ATREGISTER
    #:$ATOUTBOXHASH
    #:$ATSTORAGE
@@ -69,6 +75,8 @@
    #:$ATBALANCEHASH
    #:$ATCOUPON
    #:$ATCOUPONENVELOPE
+   #:$ATWRITEDATA
+   #:$ATREADDATA
    #:$CUSTOMER
    #:$REQUEST
    #:$NAME
@@ -217,6 +225,8 @@
    #:normalize-balance
    #:who
    #:whots
+   #:data-contents
+   #:data-cost
    #:fraction-digits
    #:storage-fee
    #:coupon-number-p

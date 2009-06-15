@@ -2026,6 +2026,93 @@
           (when forceserver (setf (db-get db key) msg))
           (values (getarg $VERSION args) (getarg $TIME args)))))))
 
+(defmethod readdata ((client client) key &key
+                     anonymous-p size-p bankurl)
+  (unless anonymous-p
+    (require-current-bank client "In readdata(): Bank not set"))
+  (let* ((bankid (or (and anonymous-p
+                          bankurl
+                          (verify-bank client bankurl))
+                     (bankid client)
+                     (error "Can't determine bankid")))
+         (size-arg (and size-p (list "Y")))
+         (msg (if anonymous-p
+                  (strcat
+                   (apply #'makemsg (parser client)
+                          "0" $READDATA bankid "0" key size-arg)
+                   ":0")
+                 (apply #'custmsg client
+                        $READDATA bankid (getreq client) key size-arg)))
+         (bankmsg (process (server client) msg))
+         (args (unpack-bankmsg client bankmsg))
+         (request (getarg $REQUEST args))
+         (reqid (getarg $ID args))
+         (time (getarg $TIME args))
+         (data (getarg $DATA args)))
+    (unless (equal request $ATREADDATA)
+      (error "Unknown response type: ~s, expected: ~s" request $ATREADDATA))
+    (unless (equal (if anonymous-p "0" (id client)) reqid)
+      (error "Wrong id returned from readdata"))
+    (values data time)))
+
+(defmethod writedata ((client client) key data &optional anonymous-p)
+  (require-current-bank client "In writedata(): Bank not set")
+  (handler-case (writedata-internal client key data anonymous-p)
+    (error ()
+      (forceinit client)
+      (writedata-internal client key data anonymous-p))))
+
+(defmethod writedata-internal ((client client) key data anonymous-p)
+  (let ((db (db client)))
+    (with-db-lock (db (userreqkey client))
+      (let* ((oldsize (ignore-errors
+                        (parse-integer (readdata client key
+                                                 :anonymous-p anonymous-p
+                                                 :size-p t))))
+             (old-cost (if oldsize (data-cost oldsize) 0))
+             (new-cost (data-cost data))
+             (net-cost (- new-cost old-cost))
+             (tokenid (fee-assetid (getfees client)))
+             (bal (balance-amount (getbalance client $MAIN tokenid)))
+             (newbal (bcsub bal net-cost)))
+        (unless (>= (bccomp newbal 0) 0)
+          (error "Insufficient balance, need ~a tokens" net-cost))
+        (let* ((time (gettime client))
+               (bankid (bankid client))
+               (anonymous (if anonymous-p "T" ""))
+               (msg (custmsg client $WRITEDATA bankid time anonymous key data))
+               (balmsg (custmsg client $BALANCE bankid time tokenid newbal))
+               (acctbals (make-equal-hash $MAIN (make-equal-hash tokenid newbal)))
+               (balhashmsg (balancehashmsg client time acctbals))
+               (bankmsg (process (server client)
+                                 (strcat msg "." balmsg "." balhashmsg)))
+               (reqs (parse (parser client) bankmsg t))
+               (args (match-bankreq client (car reqs) $ATWRITEDATA)))
+          (unless (and (equal (getarg $ID args) (id client))
+                       (equal (getarg $TIME args) time)
+                       (equal (getarg $ANONYMOUS args) anonymous)
+                       (equal (getarg $KEY args) key))
+            (error "Bad return message from bank"))
+          (unless (eql 3 (length reqs))
+            (error "Wrong number of return messages"))
+          (let* ((balreq (second reqs))
+                 (balhashreq (third reqs))
+                 (bankbalmsg (get-parsemsg balreq))
+                 (bankbalhashmsg (get-parsemsg balhashreq)))
+            (unless (equal balmsg
+                           (get-parsemsg
+                            (getarg
+                             $MSG (match-bankreq client balreq $ATBALANCE))))
+              (error "Returned balance message mismatch"))
+            (unless (equal balhashmsg
+                           (get-parsemsg
+                            (getarg
+                             $MSG (match-bankreq client balhashreq $ATBALANCEHASH))))
+              (error "Returns balancehash message mismatch"))
+            (setf (db-get db (userbalancekey client $MAIN tokenid)) bankbalmsg
+                  (db-get db (userbalancehashkey client)) bankbalhashmsg)
+            data))))))
+
 ;;;
 ;;; End of API methods
 ;;;

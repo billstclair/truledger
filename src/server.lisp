@@ -1966,6 +1966,116 @@
                (or *last-commit* "")
                (stringify (or *save-application-time* (get-unix-time)) "~d")))))
 
+(defun data-key-hash (key id)
+  (sha1 (if id (strcat id "." key) key)))
+
+(define-message-handler do-writedata $WRITEDATA (server args reqs)
+  (let* ((db (db server))
+         (parser (parser server))
+         (tokenid (tokenid server))
+         (id (getarg $CUSTOMER args))
+         (time (getarg $TIME args))
+         (anonymous (getarg $ANONYMOUS args))
+         (anonymous-p (not (blankp anonymous)))
+         (key (getarg $KEY args))
+         (data (getarg $DATA args))
+         (keyhash (data-key-hash key (unless anonymous-p id)))
+         (contents (unless (blankp data) (bankmsg server $ATREADDATA id time data)))
+         (old-contents (db-get db $DATA keyhash))
+         (oldargs (and old-contents (match-message parser old-contents)))
+         (old-data (and oldargs (getarg $DATA oldargs)))
+         (old-cost (if old-data (data-cost old-data) 0))
+         (net-cost (- (data-cost data) old-cost))
+         balancemsg
+         balance
+         balancehashmsg
+         balancehashcnt
+         balancehash)
+
+    ;; Burn the transaction
+    (deq-time server id time)
+
+    ;; Get the balance and balancehash messages
+    (dolist (req (cdr reqs))
+      (let* ((msg (get-parsemsg req))
+             (reqargs (match-pattern parser req))
+             (request (getarg $REQUEST reqargs))
+             (reqtime (getarg $TIME reqargs)))
+        (checktime reqtime time request)
+        (cond ((equal request $BALANCE)
+               (when balancemsg (error "Duplicate balance message"))
+               (unless (equal (getarg $ASSET reqargs) tokenid)
+                 (error "Asset in balance message not tokenid"))
+               (setq balancemsg msg
+                     balance (getarg $AMOUNT reqargs)))
+              ((equal request $BALANCEHASH)
+               (when balancehashmsg (error "Duplication balancehash message"))
+               (setq balancehashmsg msg
+                     balancehashcnt (getarg $COUNT reqargs)
+                     balancehash (getarg $HASH reqargs)))
+              (t (error "Bad request in writedata: ~s" request)))))
+
+    ;; Check balance
+    (unless balancemsg
+      (error "Balance message missing"))
+    (let ((bal (bcsub (asset-balance server id tokenid) net-cost)))
+      (unless (eql 0 (bccomp bal balance))
+        (error "Balance mismatch, sb: ~s, was: ~s" bal balance)))
+
+    ;; Check balance hash
+    (unless balancehashmsg
+      (error "Balance hash message missing"))
+    (let ((acctbals (make-equal-hash $MAIN (make-equal-hash tokenid balance))))
+      (multiple-value-bind (hash hashcnt)
+          (balancehash db (unpacker server) (balance-key id) acctbals)
+        (unless (and (equal balancehash hash)
+                     (eql 0 (bccomp balancehashcnt hashcnt)))
+          (error "~s mismatch, hash: ~s, sb: ~s, count: ~s, sb: ~s"
+                   $BALANCEHASH balancehash hash balancehashcnt hashcnt))))
+
+    ;; All is well.
+    ;; Bank wrap the balance and balancehash
+    (setq balancemsg (bankmsg server $ATBALANCE balancemsg)
+          balancehashmsg (bankmsg server $ATBALANCEHASH balancehashmsg))
+
+    ;; Write the data, balance, and balancehash
+    (setf (db-get db $DATA keyhash) contents
+          (db-get db (asset-balance-key id tokenid)) balancemsg
+          (db-get db (balance-hash-key id)) balancehashmsg)
+
+    ;; And cons up the return message
+    (strcat (bankmsg server $ATWRITEDATA id time anonymous key)
+            "."
+            balancemsg
+            "."
+            balancehashmsg)))
+
+(define-message-handler do-readdata $READDATA (server args reqs)
+  (declare (ignore reqs))
+  (let* ((db (db server))
+         (id (getarg $CUSTOMER args))
+         (id-zero-p (equal id "0"))
+         (key (getarg $KEY args))
+         (size (getarg $SIZE args)))
+    (unless id-zero-p
+      (checkreq server args))
+    (let* ((keyhash (data-key-hash key (unless id-zero-p id)))
+           (contents (or (db-get db $DATA keyhash) (error "No data for key")))
+           (args (match-message (parser server) contents))
+           (request (getarg $REQUEST args))
+           (data-id (getarg $ID args))
+           (time (getarg $TIME args))
+           (data (getarg $DATA args)))
+      (unless (equal request $ATREADDATA)
+        (error "Wrong request in readdata db message: ~s" request))
+      (unless (or id-zero-p (equal id data-id))
+        ;; Bloody unlikely, but possible, I suppose
+        (error "Attempt to read data from another id"))
+      (let ((res-data (if (blankp size)
+                          data
+                          (stringify (length data)))))
+        (bankmsg server $ATREADDATA id time res-data)))))
+      
 ;;;
 ;;; End request processing
 ;;;
@@ -1992,7 +2102,9 @@
                       ,$ASSET
                       ,$GETOUTBOX
                       ,$GETBALANCE
-                      ,$GETVERSION))
+                      ,$GETVERSION
+                      ,$WRITEDATA
+                      ,$READDATA))
              (commands (make-hash-table :test #'equal)))
       (loop
          for name in names

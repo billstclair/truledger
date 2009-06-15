@@ -144,7 +144,9 @@
                         ((eq state :sig)
                          (setq id (and dict (gethash 0 dict)))
                          (when (not (and (equal id "0")
-                                         (equal (gethash 1 dict) "bankid")))
+                                         (member (gethash 1 dict)
+                                                 '("bankid" "readdata")
+                                                 :test 'equal)))
                            (unless id
                              (error "Signature without ID at ~d" pos))
                            (when (or verify-sigs-p

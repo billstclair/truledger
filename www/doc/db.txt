@@ -34,7 +34,7 @@ trubanc-dbs/serverdb/
   pubkeysig/
     <id>=(<bankid>,@register,(<id>,register,<bankid>,<pubkey>,name=<name>))
   data/
-    <hash>=<id>,<anonymousok>,<data>
+    <keyhash>=<id>,<data>
   asset/ -- Where the asset types are stored
     <assetid>=(<bankid>,@asset,(<id>,asset,<bankid>,<assetid>,<scale>,<precision>,<assetname>)).
               (<bankid>,@storage,(<id>,storage,<bankid>,<time#>,<assetid>,<percent>))
@@ -762,22 +762,26 @@ Write data
 
   Customer sends:
 
-(<id>,writedata,<bankid>,<time#>,<anonymousok>,<key>,<data>).
+(<id>,writedata,<bankid>,<time#>,<anonymous>,<key>,<data>).
 (<id>,balance,<bankid>,<time#>,<tokenid>,<feeamount>).
 (<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>)
 
   Bank returns:
 
-(<bankid>,@writedata,<id>,<time#>,<anonymousok>,<key>).
+(<bankid>,@writedata,<id>,<time#>,<anonymous>,<key>).
 (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<tokenid>,<feeamount>)).
 (<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))
 
-  You'll get an error if another <id> wrote the same <key>.
-  Unlikely if it's the hash of something likely to be unique,
-  but possible. It costs 1 token per 4096-bytes of saved data.
-  Any non-blank value of <anonymousok> will allow the data to be fetched
-  with an unsigned readdata request. Otherwise, only the <id> who wrote
-  the message can read it.
+  <id>.<time#>.<data> is written to the database at dir/<keyhash>,
+  where <keyhash> is sha1(<key>), if <anonymous> is non-blank, or
+  sha1(<id>.<key>) otherwise. If there's already data stored for a
+  different <id> at data/<keyhash>, which is unlikely, unless you
+  choose a common value for <key>, and are writing <anonymous>ly,
+  you'll get an error. It costs 1 token per 4096-bytes of saved data
+  (counting the entire <id>.<time#>.<data> string). A non-blank value
+  of <anonymous> will allow the data to be fetched with an unsigned
+  readdata request. Otherwise, only the <id> who wrote the data can
+  read it.
 
 
 Read Data
@@ -785,19 +789,22 @@ Read Data
 
   Customer sends:
 
-(<id>,readdata,<bankid>,<req#>,<hash>)
+(<id>,readdata,<bankid>,<req#>,<key>,size=<size>)
 
   Or, for <anonymousok> writes:
 
-(0,readdata,<bankid>,0,<hash>):0
+(0,readdata,<bankid>,0,<key>,size=<size>):0
 
   Bank returns:
 
-(<bankid>,@readdata,<id>,<hash>,<anonymousok>,<data>)
+(<bankid>,@readdata,<id>,<time#>,<key>,<data>)
 
   Unsigned messages are allowed to fetch <anonymousok> data, so that
   this can be used to cache private keys on the server, stored with
-  the hash of the user's passphrase.
+  the hash of the user's passphrase. If <size> is non-blank, The
+  <data> returned will be the size of the data, as an integer, not the
+  data itself.
+
 
 
 Setting the Automatic Vend Acct
