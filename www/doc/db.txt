@@ -791,7 +791,7 @@ Read Data
 
 (<id>,readdata,<bankid>,<req#>,<key>,size=<size>)
 
-  Or, for <anonymousok> writes:
+  Or, for <anonymous> writes:
 
 (0,readdata,<bankid>,0,<key>,size=<size>):0
 
@@ -799,7 +799,7 @@ Read Data
 
 (<bankid>,@readdata,<id>,<time#>,<key>,<data>)
 
-  Unsigned messages are allowed to fetch <anonymousok> data, so that
+  Unsigned messages are allowed to fetch <anonymous> data, so that
   this can be used to cache private keys on the server, stored with
   the hash of the user's passphrase. If <size> is non-blank, The
   <data> returned will be the size of the data, as an integer, not the

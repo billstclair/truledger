@@ -305,7 +305,8 @@
                         (parse-integer (parm "keysize")))
                       3072))
          (coupon (parm "coupon"))
-         (name (parm "name")))
+         (name (parm "name"))
+         (cache-privkey-p (if coupon (not (blankp (parm "cacheprivkey"))) t)))
     (flet ((keysize-option (size)
              (let ((size-str (stringify size "~d")))
                (who (s)
@@ -334,6 +335,12 @@
            (:td (:b "Account Name" (:br) "(Optional):"))
            (:td (:input :type "text" :name "name" :value name :size "40")))
           (:tr
+           (:td)
+           (:td (:input :type "checkbox"
+                        :name "cacheprivkey"
+                        :checked cache-privkey-p)
+                "Cache encrypted private key on server"))
+          (:tr
            (:td (:b "Key size:"))
            (:td
             (:select :name "keysize"
@@ -344,14 +351,16 @@
           (:tr
            (:td)
            (:td
-            "To generate a new private key, leave the area below blank, enter a
+            "<p>To generate a new private key, leave the area below blank, enter a
 passphrase, the passphrase again to verify, a bank coupon, an optional
 account name, a key size, and click the \"Create account\" button. To
 use an existing private key, paste the private key below, enter its
 passphrase above, a bank coupon, an optional account name, and click
 the \"Create account\" button.  To show your encrypted private key,
 enter its passphrase, and click the \"Show key\" button. Warning: if you
-forget your passphrase, <b>nobody can recover it, ever</b>."))
+forget your passphrase, <b>nobody can recover it, ever</b>.</p>
+
+<p>If you lose your private key, which is stored on the computer running this client, nobody can recover that either. To protect against that, you can choose to cache your encrypted private key on the server, with the checkbox above. If you wish to create a new account in this client, using a previously-cached private key, enter your \"Passphrase\", enter the URL of the bank (e.g \"http://trubanc.com/\") as the \"Coupon\", and press the \"Create account\" button."))
           (:tr
            (:td)
            (:td (:textarea :name "privkey" :cols "65" :rows "44"
