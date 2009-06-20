@@ -37,18 +37,19 @@ trubanc-dbs/clientdb/
       session=<sessionhash>
       preference
         <pref>=<value>
+      contact/
+        <otherid>/
+          nickname=<nickname>
+          note=<note>
+          name=<name>
+          pubkeysig=<pubkeysig>
+          banks=<bankid-list>
       bank
         <bankid>/
           time=<time#>[,<time#>]
           req=<req#>
           pubkeysig/
             <id>=(<bankid>,@register,(<id>,register,<bankid>,<pubkey>,name=<name>))
-          contact/
-            <otherid>/
-              nickname=<nickname>
-              note=<note>
-              name=<name>
-              pubkeysig=<pubkeysig>
           fraction/     -- fractional amounts due to storage fees
             <assetid>=(<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid>,<amount>))
           balancehash=(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<count>,<hash>))

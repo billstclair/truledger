@@ -108,6 +108,7 @@
 
 ;; Client database keys
 (defconstant $BANK "bank")
+(defconstant $BANKS "banks")
 (defconstant $URL "url")
 (defconstant $NICKNAME "nickname")
 (defconstant $CONTACT "contact")

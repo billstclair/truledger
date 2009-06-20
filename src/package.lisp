@@ -100,6 +100,7 @@
    #:$COUPONNUMBERHASH
    #:$ISSUER
    #:$BANK
+   #:$BANKS
    #:$URL
    #:$NICKNAME
    #:$CONTACT
@@ -338,6 +339,7 @@
    #:contact-name
    #:contact-nickname
    #:contact-note
+   #:contact-banks
    #:contact-contact-p
    #:getcontacts
    #:getcontact

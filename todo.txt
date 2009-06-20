@@ -10,16 +10,12 @@ a backup server, which loads the transactions into its
 database. Should be able to disable transactions on the backup serer,
 so nobody can do stuff there until enabled.
 
-Contacts should cross bank boundaries automatically, so you recognize
-the same ID at different banks. How to make this efficient? Don't want
-to query for all contacts at every bank. Maybe remember a list of
-banks for each contact, and when an ID you know pops up in a spend,
-add that bank to the list for that contact. A little more client work,
-but no extra client <-> server traffic. Will need startup code to move
-the contacts directory from each bank to the account.
-
 Save/restore contacts, encrypted, to/from the server, merging with
 what's there.
+
+Use Pound or Apache mod_proxy to put server on port 80. Alternatively,
+start the process as root, start Hunchentoot, and use SETUID and
+SETGID to change to a non-root user.
 
 SERVER CONFIG
 =============

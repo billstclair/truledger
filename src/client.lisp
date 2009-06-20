@@ -244,9 +244,7 @@
   (let ((parser (parser client))
         (coupon-number (nth-value 1 (parse-coupon coupon))))
     (verify-bank client url bankid)
-    (let* ((msg (if (id client)
-                    (custmsg client $BANKID "0" coupon-number)
-                    (strcat "(0," $BANKID ",0," coupon-number "):0")))
+    (let* ((msg (strcat "(0," $BANKID ",0," coupon-number "):0"))
            (server (make-instance 'serverproxy :url url :client client))
            (msg (process server msg))
            (reqs (parse parser msg)))
@@ -460,7 +458,10 @@
   name
   nickname
   note
-  contact-p)
+  banks)
+
+(defmethod contact-contact-p ((contact contact))
+  (not (null (contact-banks contact))))
 
 (defun string-compare (s1 s2)
   (cond ((string-lessp s1 s2) 1)
@@ -481,19 +482,69 @@
 (defun contacts-lessp (c1 c2)
   (properties-lessp c1 c2 '(contact-nickname contact-name contact-id)))
 
-(defmethod getcontacts ((client client))
+;; Move contacts from old location, under bank, to new location,
+;; top-level of contact.
+(defmethod fix-contacts ((client client))
+  (let ((db (db client))
+        (id (id client)))
+    (when (and id (not (db-contents db $ACCOUNT id $CONTACT $BANKS)))
+      (let ((bankkey (append-db-keys $ACCOUNT id $BANK))
+            (contactkey (append-db-keys $ACCOUNT id $CONTACT)))
+        (dolist (bankid (db-contents db bankkey))
+          (dolist (otherid (db-contents db bankkey bankid $CONTACT))
+            (let ((old-contactkey (append-db-keys bankkey bankid $CONTACT otherid))
+                  (new-contactkey (append-db-keys contactkey otherid)))
+              (unless (db-get db new-contactkey $NICKNAME)
+                (setf (db-get db new-contactkey $NICKNAME)
+                      (db-get db old-contactkey $NICKNAME)))
+              (setf (db-get db new-contactkey $NOTE)
+                    (let ((note (db-get db new-contactkey $NOTE))
+                          (new-note (db-get db old-contactkey $NOTE)))
+                      (cond (note
+                             (if new-note
+                                 (strcat note #\newline new-note)
+                                 note))
+                            (t note))))
+              (unless (db-get db new-contactkey $NAME)
+                (setf (db-get db new-contactkey $NAME)
+                      (db-get db old-contactkey $NAME)))
+              (unless (db-get db new-contactkey $PUBKEYSIG)
+                (setf (db-get db new-contactkey $PUBKEYSIG)
+                      (db-get db old-contactkey $PUBKEYSIG)))
+              (let ((banks (adjoin bankid
+                                   (explode
+                                    #\space (db-get db new-contactkey $BANKS))
+                                   :test #'equal)))
+                (setf (db-get db new-contactkey $BANKS)
+                      (apply #'implode #\space banks)))
+              (setf (db-get db old-contactkey $NICKNAME) nil
+                    (db-get db old-contactkey $NOTE) nil
+                    (db-get db old-contactkey $NAME) nil
+                    (db-get db old-contactkey $PUBKEYSIG) nil))))))))
+
+(defmethod getcontacts ((client client) &optional all-p)
   "Get contacts for the current bank.
    Contacts are sorted by nickname, name, id
-   Signals an error or returns a list of CONTACT instances."
+   Signals an error or returns a list of CONTACT instances.
+   If ALL-P is true, return all contacts.
+   Otherwise, return only contacts for the current bank."
   (let ((db (db client)))
     (require-current-bank client "In getcontacts(): Bank not set")
+    (fix-contacts client)
     (with-db-lock (db (userreqkey client))
       (let* ((ids (db-contents db (contactkey client)))
+             (bankid (bankid client))
              (res (loop
                      for otherid in ids
                      for contact = (getcontact-internal client otherid nil nil)
                      when contact
                      collect contact)))
+        (unless all-p
+          (setq res
+                (delete-if (lambda (contact)
+                             (not (member bankid (contact-banks contact)
+                                          :test #'equal)))
+                           res)))
         (sort res #'contacts-lessp)))))
 
 (defmethod getcontact ((client client) otherid &optional add)
@@ -503,6 +554,7 @@
       (getcontact-internal client otherid add))))
 
 (defmethod getcontact-internal ((client client) otherid &optional add (probebank t))
+  (fix-contacts client)
   (let ((pubkeysig (contactprop client otherid $PUBKEYSIG)))
     (unless pubkeysig
       (cond (add
@@ -518,7 +570,7 @@
        :name (contactprop client otherid $NAME)
        :nickname (contactprop client otherid $NICKNAME)
        :note (contactprop client otherid $NOTE)
-       :contact-p t))))
+       :banks (explode #\space (contactprop client otherid $BANKS))))))
   
 (defmethod addcontact ((client client) otherid &optional nickname note)
   "Add a contact to the current bank.
@@ -531,6 +583,11 @@
   (let ((db (db client))
         pubkeysig
         name)
+    (let* ((bankid (bankid client))
+           (banks (explode #\space (contactprop client otherid $BANKS))))
+      (unless (member bankid banks :test #'equal)
+        (setf (db-get db (contactkey client otherid $BANKS))
+              (strcat bankid " " banks))))
     (cond ((contactprop client otherid $PUBKEYSIG)
            (when nickname
              (setf (db-get db (contactkey client otherid $NICKNAME)) nickname))
@@ -2301,7 +2358,7 @@
   (userbankkey client $INBOX))
 
 (defmethod contactkey ((client client) &optional otherid prop)
-  (let ((key (userbankkey client $CONTACT)))
+  (let ((key (append-db-keys $ACCOUNT (id client) $CONTACT)))
     (cond (otherid
            (setq key (append-db-keys key otherid))
            (if prop
