@@ -1066,7 +1066,14 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                    (not (contact-contact-p contact)))
                (not (equal otherid (id (cw-client cw))))
                (not (equal otherid $COUPON)))
-      (let* ((cnt (funcall cnt-thunk)))
+      (let* ((cnt (funcall cnt-thunk))
+             (nickname (contact-nickname contact))
+             (client (cw-client cw)))
+        (ignore-errors
+          (unless (equal otherid (bankid client))
+            (let* ((tokenid (fee-assetid (getfees client))))
+              (unless (getbalance client nil tokenid)
+                (setq nickname "My Sponsor")))))
         (setq namestr
               (whots (s)
                 (str namestr)
@@ -1077,7 +1084,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                 "Nickname: "
                 (:input :type "text"
                         :name (format nil "~a~d" textname cnt)
-                        :size "10")))))
+                        :size "10"
+                        :value nickname)))))
     namestr))
 
 (defun draw-balance (cw &optional
