@@ -116,6 +116,8 @@
 (defconstant $PREFERENCE "preference")
 (defconstant $TOKEN "token")
 (defconstant $HISTORY "history")
+(defconstant $PRIVKEYCACHEDP "privkeycachedp")
+(defconstant $NEEDPRIVKEYCACHE "needprivkeycache")
 
 ;; Other client tokens
 (defconstant $FORMATTEDAMOUNT "formattedamount")

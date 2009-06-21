@@ -197,7 +197,9 @@
 
 (defun url-p (url)
   "Returns true if $url might be a properly-formed URL."
-  (ignore-errors (puri:parse-uri url)))
+  (ignore-errors
+    (and (not (blankp url))
+         (puri:parse-uri url))))
 
 (defun encode-coupon (url number)
   (format nil "[~a ~a]" url number))
@@ -452,6 +454,58 @@
         (setf (db-get db (userbankkey client $PUBKEYSIG) id) msg
               (db-get db (userbankkey client $REQ)) "-1")))))
 
+(defconstant $PRIVKEY-CACHE-SALT "privkey-cache-salt")
+
+(defmethod privkey-cached-p ((client client) &optional bankid)
+  (unless bankid
+    (require-current-bank client "In privkey-cached-p: no current bank")
+    (setq bankid (bankid client)))
+  (equal "cached" (userbankprop client $PRIVKEYCACHEDP bankid)))
+
+(defmethod (setf privkey-cached-p) (value (client client) &optional bankid)
+  (unless bankid
+    (require-current-bank client "In (setf privkey-cached-p): no current bank")
+    (setf bankid (bankid client)))
+  (setf (userbankprop client $PRIVKEYCACHEDP bankid) (and value "cached"))
+  value)
+
+(defmethod need-privkey-cache-p ((client client) &optional bankid)
+  (unless bankid
+    (require-current-bank client "In privkey-cached-p: no current bank")
+    (setq bankid (bankid client)))
+  (equal $NEEDPRIVKEYCACHE (userbankprop client $NEEDPRIVKEYCACHE bankid)))
+
+(defmethod (setf need-privkey-cache-p) (value (client client) &optional bankid)
+  (unless bankid
+    (require-current-bank client "In privkey-cached-p: no current bank")
+    (setq bankid (bankid client)))
+  (setf (userbankprop client $NEEDPRIVKEYCACHE bankid)
+        (and value $NEEDPRIVKEYCACHE))
+  value)
+
+;; We could encrypt the private key again, so it doesn't look like a
+;; private key, but that's really not any more secure, since it will
+;; only use the passphrase a second time. We could require yet
+;; another passphrase, but users will forget that, since they'll
+;; hardly ever use it.
+(defmethod cache-privkey ((client client) sessionid &optional uncache-p)
+  (require-current-bank client "In cache-privkey: no current bank")
+  (flet ((doit (passphrase)
+           (let* ((db (db client))
+                  (data (if uncache-p
+                            ""
+                            (db-get db $PRIVKEY (passphrase-hash passphrase))))
+                  (key (passphrase-hash passphrase $PRIVKEY-CACHE-SALT)))
+             (writedata client key data t)
+             (setf (privkey-cached-p client) (not uncache-p))
+             nil)))
+    (let ((passphrase (session-passphrase client sessionid)))
+      (unwind-protect (doit passphrase)
+        (destroy-password passphrase)))))
+
+(defmethod fetch-privkey ((client client) bankurl passphrase)
+  (let ((key (passphrase-hash passphrase $PRIVKEY-CACHE-SALT)))
+    (readdata client key :anonymous-p t :bankurl bankurl)))
 
 (defstruct contact
   id
@@ -2106,8 +2160,14 @@
                    ":0")
                  (apply #'custmsg client
                         $READDATA bankid (getreq client) key size-arg)))
-         (bankmsg (process (server client) msg))
-         (args (unpack-bankmsg client bankmsg))
+         (server (if (and anonymous-p bankurl)
+                     (make-instance 'serverproxy :url bankurl :client client)
+                     (server client)))
+         (save-bankid (prog1 (bankid client)
+                        (setf (bankid client) bankid)))
+         (bankmsg (process server msg))
+         (args (unwind-protect (unpack-bankmsg client bankmsg)
+                 (setf (bankid client) save-bankid)))
          (request (getarg $REQUEST args))
          (reqid (getarg $ID args))
          (time (getarg $TIME args))
@@ -2181,8 +2241,8 @@
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun passphrase-hash (passphrase)
-  (sha1 (trim passphrase)))
+(defun passphrase-hash (passphrase &optional salt)
+  (sha1 (xor-salt (trim passphrase) salt)))
 
 (defmethod custmsg ((client client) &rest args)
   "Create a signed customer message.
@@ -2296,6 +2356,10 @@
 
 (defmethod userbankprop ((client client) &optional prop (bankid (bankid client)))
   (db-get (db client) (userbankkey client prop bankid)))
+
+(defmethod (setf userbankprop) (value (client client) prop
+                                &optional (bankid (bankid client)))
+  (setf (db-get (db client) (userbankkey client prop bankid)) value))
 
 (defmethod userreqkey ((client client) &optional (bankid (bankid client)))
   (userbankkey client $REQ bankid))

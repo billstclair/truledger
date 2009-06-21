@@ -258,6 +258,39 @@
       (when arg (setq res (not res))))
     res))
 
+(defun xor-salt (string salt)
+  (if (blankp salt)
+      string
+      (let* ((strlen (length string))
+             (saltlen (length salt))
+             (saltstr (make-string strlen))
+             (idx 0))
+        (dotimes (i strlen)
+          (setf (aref saltstr i) (aref salt idx))
+          (when (>= (incf idx) saltlen) (setq idx 0)))
+        (xor-strings string saltstr))))
+
+(defun xor-strings (s1 s2)
+  (with-output-to-string (s)
+    (let ((s1-len (length s1))
+          (s2-len (length s2))
+          s-tail s-tail-offset s-tail-len)
+      (dotimes (i (min s1-len s2-len))
+        (write-char
+         (code-char
+          (logxor (char-code (aref s1 i)) (char-code (aref s2 i))))
+         s))
+      (if (> s1-len s2-len)
+          (setq s-tail s1
+                s-tail-offset s2-len
+                s-tail-len (- s1-len s2-len))
+          (setq s-tail s2
+                s-tail-offset s1-len
+                s-tail-len (- s2-len s1-len)))
+      (dotimes (i s-tail-len)
+        (write-char (aref s-tail (+ s-tail-offset i)) s)))))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair

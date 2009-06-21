@@ -108,6 +108,8 @@
    #:$PREFERENCE
    #:$TOKEN
    #:$HISTORY
+   #:$PRIVKEYCACHEDP
+   #:$NEEDPRIVKEYCACHE
    #:$FORMATTEDAMOUNT
    #:$MSGTIME
    #:$ATREQUEST
@@ -253,6 +255,8 @@
    #:parms
    #:run-startup-functions
    #:xor
+   #:xor-salt
+   #:xor-strings
 
    ;; client.lisp & server.lisp
    #:id
@@ -334,6 +338,10 @@
    #:setbank
    #:current-bank
    #:register
+   #:privkey-cached-p
+   #:need-privkey-cache-p
+   #:cache-privkey
+   #:fetch-privkey
    #:contact
    #:contact-id
    #:contact-name

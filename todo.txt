@@ -1,6 +1,3 @@
-archive passphrase on server. Double encrypted, stored at hash of second
-passphrase.
-
 Save/restore contacts, encrypted, to/from the server, merging with
 what's there.
 

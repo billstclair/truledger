@@ -463,9 +463,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
       (destroy-password passphrase2))))
 
 (defun do-login-internal (cw passphrase passphrase2)
-  (bind-parameters (coupon name keysize login newacct showkey privkey)
+  (bind-parameters (coupon name cacheprivkey keysize login newacct showkey privkey)
     (let ((client (cw-client cw))
-          (err nil))
+          (err nil)
+          (url-p (url-p coupon)))
       (when showkey
         (let ((key (ignore-errors (get-privkey client passphrase))))
           (unwind-protect
@@ -480,7 +481,9 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
         (setq login nil)
         (cond ((blankp passphrase)
                (setq err "Passphrase may not be blank"))
-              ((and (blankp privkey) (not (equal passphrase passphrase2)))
+              ((and (not url-p)
+                    (blankp privkey)
+                    (not (equal passphrase passphrase2)))
                (setq err "Passphrase didn't match Verification"))
               ((not (blankp privkey))
                ;; Support adding a passphrase to a private key without one
@@ -495,29 +498,30 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
           (setf (cw-error cw) err)
           (return-from do-login-internal (draw-login cw)))
 
-        (cond ((not (blankp coupon))
-               (handler-case
-                   (let ((url (parse-coupon coupon)))
-                     (handler-case (verify-coupon client coupon nil url)
-                       (error (c) (setq err (stringify c)))))
-                 (error ()
-                   (cond ((server-privkey-file-exists-p)
-                          ;; If there's a server privkey, we require a coupon
-                          (setq err "Malformed coupon"))
-                         (t (handler-case (verify-bank client coupon)
-                              ;; Ensure that coupon is a URL for a proper bank
-                              (error (c)
-                                (setq err (stringify c "Invalid coupon: ~a")))))))))
-              ((and (get-running-server) (server-privkey-file-exists-p))
-               (setq err "Bank coupon required for registration")))
+        (unless (blankp coupon)
+          (handler-case
+              (let ((url (parse-coupon coupon)))
+                (handler-case (verify-coupon client coupon nil url)
+                  (error (c) (setq err (stringify c)))))
+            (error ()
+              (handler-case
+                  ;; Ensure that coupon is a URL for a proper bank
+                  (progn (verify-bank client coupon)
+                         (when (blankp passphrase2)
+                           (setq privkey
+                                 (fetch-privkey client coupon passphrase))))
+                (error (c)
+                  (setq err (stringify c "Invalid coupon: ~a")))))))
 
         (unless err
           (let ((allocated-privkey-p nil))
             (handler-case
                 (progn
-                  (unless (integerp privkey)
-                    (setq privkey (decode-rsa-private-key privkey passphrase)
-                          allocated-privkey-p t))
+                  (cond ((integerp privkey)
+                         (when (or (blankp coupon) (server-privkey-file-exists-p))
+                           (error "Bank coupon required for registration")))
+                        (t (setq privkey (decode-rsa-private-key privkey passphrase)
+                                 allocated-privkey-p t)))
                   (newuser client :passphrase passphrase :privkey privkey)
                   (setq login t))
               (error (c)
@@ -530,10 +534,6 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
       (when login
         (handler-case
             (let ((session (login-new-session client passphrase)))
-              ;; Hunchentoot doesn't appear to have a way to tell
-              ;; if the client is accepting cookies.
-              ;; Need to set a test cookie in the login page,
-              ;; and check whether it comes back.
               (set-cookie "session" session)
               (when (maybe-start-server-web client passphrase)
                 (setf (cw-error cw) "Server started!"))
@@ -544,7 +544,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                                        This client won't work without them."))))
               (when newacct
                 (unless (blankp coupon)
-                  (ignore-errors (addbank client coupon name t))))
+                  (ignore-errors
+                    (addbank client coupon name t)
+                    (when cacheprivkey
+                      (setf (need-privkey-cache-p client) t)))))
               (init-bank cw)
               (return-from do-login-internal
                 (if (bankid client)
@@ -558,7 +561,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
 (defun do-bank (cw)
   "Here to change banks or add a new bank"
-  (bind-parameters (newbank selectbank bankurl name bank)
+  (bind-parameters (newbank selectbank cacheprivkey uncacheprivkey bankurl name bank)
     (let ((client (cw-client cw))
           (err nil))
       (cond (newbank
@@ -572,7 +575,21 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                     (setq err "You must choose a bank"))
                    (t (setf (user-preference client "bankid") bank)
                       (init-bank cw t)
-                      (setq err (cw-error cw))))))
+                      (setq err (cw-error cw)))))
+            ((or cacheprivkey uncacheprivkey)
+             (let ((bankid (bankid client)))
+               (unwind-protect
+                    (handler-case
+                        (progn (unless (equal bank bankid)
+                                 (setbank client bank))
+                               (cache-privkey
+                                client (get-cookie "session") uncacheprivkey)
+                               (setq err (if cacheprivkey
+                                             "Private key cached on server"
+                                             "Private key removed from server")))
+                      (error (c) (setq err (stringify c))))
+                 (unless (equal bankid (bankid client))
+                   (setbank client bankid))))))                    
       (cond (err
              (setf (cw-error cw) err)
              (draw-banks cw bankurl name))
@@ -935,7 +952,13 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
       (when directions
         (setq directions (nreverse directions))
-        (handler-case (processinbox client directions)
+        (handler-case
+            (progn (processinbox client directions)
+                   (ignore-errors
+                     (when (need-privkey-cache-p client)
+                       (unless (privkey-cached-p client)
+                         (cache-privkey client (get-cookie "session")))
+                       (setf (need-privkey-cache-p client) nil))))
           (error (c)
             (setf (cw-error cw) (stringify c "Error from processinbox: ~a")))))
 
@@ -1855,27 +1878,33 @@ list with that nickname, or change the nickname of the selected
             (:th "Bank")
             (:th "URL")
             (:th "ID")
-            (:th "Choose"))
+            (:th "Choose")
+            (:th "Private Key"))
            (dolist (bank banks)
              (let ((bid (bank-id bank)))
                (unless (equal (userreq client bid) "-1")
                  (let ((name (bank-name bank))
-                       (url (hsc (bank-url bank))))
+                       (url (hsc (bank-url bank)))
+                       (cached-p (privkey-cached-p client bid)))
                    (when (blankp name)
                      (setq name "unnamed"))
                    (who (stream)
-                     (:tr
-                      (:td (esc name))
-                      (:td (:a :href url (str url)))
-                      (:td (esc bid))
-                      (:td
-                       (:form
-                        :method "post" :action "./" :autocomplete "off"
-                        :style "margin: 0px;" ; prevent whitespace below button
-                        (:input :type "hidden" :name "cmd" :value "bank")
-                        (:input :type "hidden" :name "bank" :value bid)
+                     (:form
+                      :method "post" :action "./" :autocomplete "off"
+                      :style "margin: 0px;" ; prevent whitespace below button
+                      (:input :type "hidden" :name "cmd" :value "bank")
+                      (:input :type "hidden" :name "bank" :value bid)
+                      (:tr
+                       (:td (esc name))
+                       (:td (:a :href url (str url)))
+                       (:td (esc bid))
+                       (:td
                         (:input :type "submit" :name "selectbank"
-                                :value "Choose"))))))))))))))
+                                :value "Choose"))
+                       (:td :style "text-align: center;"                        
+                        (:input :type "submit"
+                                :name (if cached-p "uncacheprivkey" "cacheprivkey")
+                                :value (if cached-p "Uncache" "Cache")))))))))))))))
 
 (defun draw-contacts (cw &optional id nickname notes)
   (let* ((client (cw-client cw))
