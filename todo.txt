@@ -1,17 +1,15 @@
-Add your sponsor as a contact when creating an account.
-
-Show the database location on the client screen, unless disabled in server config.
-
 archive passphrase on server. Double encrypted, stored at hash of second
 passphrase.
+
+Save/restore contacts, encrypted, to/from the server, merging with
+what's there.
 
 Backup mechanism. Write to log files, which are sent out in chunks to
 a backup server, which loads the transactions into its
 database. Should be able to disable transactions on the backup serer,
 so nobody can do stuff there until enabled.
 
-Save/restore contacts, encrypted, to/from the server, merging with
-what's there.
+Show the database location on the client screen, unless disabled in server config.
 
 Use Pound or Apache mod_proxy to put server on port 80. Alternatively,
 start the process as root, start Hunchentoot, and use SETUID and

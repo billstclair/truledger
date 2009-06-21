@@ -458,10 +458,14 @@
   name
   nickname
   note
-  banks)
+  banks
+  client)
 
 (defmethod contact-contact-p ((contact contact))
-  (not (null (contact-banks contact))))
+  (and (contact-client contact)
+       (member (bankid (contact-client contact))
+               (contact-banks contact)
+               :test #'equal)))
 
 (defun string-compare (s1 s2)
   (cond ((string-lessp s1 s2) 1)
@@ -563,14 +567,16 @@
             (probebank
              (multiple-value-bind (pubkeysig name) (get-id client otherid)
                (return-from getcontact-internal
-                 (and pubkeysig (make-contact :id otherid :name name)))))))
+                 (and pubkeysig (make-contact :id otherid :name name
+                                              :client client)))))))
     (when pubkeysig
       (make-contact
        :id otherid
        :name (contactprop client otherid $NAME)
        :nickname (contactprop client otherid $NICKNAME)
        :note (contactprop client otherid $NOTE)
-       :banks (explode #\space (contactprop client otherid $BANKS))))))
+       :banks (explode #\space (contactprop client otherid $BANKS))
+       :client client))))
   
 (defmethod addcontact ((client client) otherid &optional nickname note)
   "Add a contact to the current bank.
@@ -587,7 +593,7 @@
            (banks (explode #\space (contactprop client otherid $BANKS))))
       (unless (member bankid banks :test #'equal)
         (setf (db-get db (contactkey client otherid $BANKS))
-              (strcat bankid " " banks))))
+              (apply #'implode #\space bankid banks))))
     (cond ((contactprop client otherid $PUBKEYSIG)
            (when nickname
              (setf (db-get db (contactkey client otherid $NICKNAME)) nickname))
