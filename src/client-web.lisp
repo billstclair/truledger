@@ -518,7 +518,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
             (handler-case
                 (progn
                   (cond ((integerp privkey)
-                         (when (or (blankp coupon) (server-privkey-file-exists-p))
+                         (when (and (blankp coupon) (server-privkey-file-exists-p))
                            (error "Bank coupon required for registration")))
                         (t (setq privkey (decode-rsa-private-key privkey passphrase)
                                  allocated-privkey-p t)))
