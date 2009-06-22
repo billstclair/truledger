@@ -466,7 +466,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
   (bind-parameters (coupon name cacheprivkey keysize login newacct showkey privkey)
     (let ((client (cw-client cw))
           (err nil)
-          (url-p (url-p coupon)))
+          (url-p (url-p coupon))
+          fetched-privkey-p)
       (when showkey
         (let ((key (ignore-errors (get-privkey client passphrase))))
           (unwind-protect
@@ -509,7 +510,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                   (progn (verify-bank client coupon)
                          (when (blankp passphrase2)
                            (setq privkey
-                                 (fetch-privkey client coupon passphrase))))
+                                 (fetch-privkey client coupon passphrase)
+                                 fetched-privkey-p t)))
                 (error (c)
                   (setq err (stringify c "Invalid coupon: ~a")))))))
 
@@ -546,8 +548,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                 (unless (blankp coupon)
                   (ignore-errors
                     (addbank client coupon name t)
-                    (when cacheprivkey
-                      (setf (need-privkey-cache-p client) t)))))
+                    (cond (fetched-privkey-p
+                           (setf (privkey-cached-p client) t))
+                          (cacheprivkey
+                           (setf (need-privkey-cache-p client) t))))))
               (init-bank cw)
               (return-from do-login-internal
                 (if (bankid client)
@@ -598,7 +602,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 (defun do-contact (cw)
   (let ((client (cw-client cw))
         (err nil))
-    (bind-parameters (addcontact deletecontacts chkcnt id nickname notes)
+    (bind-parameters (addcontact synccontacts deletecontacts
+                                 chkcnt id nickname notes)
       (setq chkcnt
             (if (blankp chkcnt)
                 0
@@ -625,6 +630,13 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
              (if (setf (cw-error cw) err)
                (draw-contacts cw id nickname notes)
                (draw-contacts cw)))
+            (synccontacts
+             (handler-case (sync-contacts client)
+               (error (c)
+                 (setq err (stringify c "Can't sync contacts: ~a"))))
+             (if (setf (cw-error cw) err)
+                 (draw-contacts cw id nickname notes)
+                 (draw-contacts cw)))
             (deletecontacts
              (dotimes (i chkcnt)
                (let ((chki (parm "chk~d" i)))
@@ -1938,6 +1950,7 @@ list with that nickname, or change the nickname of the selected
          (:td)
          (:td
           (:input :type "submit" :name "addcontact" :value "Add/Change Contact")
+          (:input :type "submit" :name "synccontacts" :value "Sync with Server")
           (:input :type "submit" :name "cancel" :value "Cancel"))))
 
        (when contacts

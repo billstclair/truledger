@@ -672,6 +672,102 @@
         (dolist (k (db-contents db key))
           (setf (db-get db key k) nil))))))
 
+(defconstant $SERVER-CONTACTS-SALT "server-contacts-salt")
+
+(defun server-contacts-key (client)
+  (sha1 (xor-salt (id client) $SERVER-CONTACTS-SALT)))
+
+(defmethod %get-server-contacts ((client client))
+  (ignore-errors
+    (readdata client (server-contacts-key client))))
+
+(defmethod (setf %get-server-contacts) (value client)
+  (writedata client (server-contacts-key client) (or value ""))
+  value)
+
+(defun pack-contact (contact)
+  (check-type contact contact)
+  `(:id ,(contact-id contact)
+    :name ,(contact-name contact)
+    :nickname ,(contact-nickname contact)
+    :note ,(contact-note contact)
+    :banks ,(contact-banks contact)))
+
+(defun unpack-contact (client list)
+  (apply #'make-contact :client client list))
+
+(defun pack-contacts (contacts)
+  (prin1-to-string (mapcar #'pack-contact contacts)))
+
+(defun unpack-contacts (client string)
+  (mapcar (lambda (parms) (unpack-contact client parms))
+          (read-from-string string)))
+
+(defmethod get-server-contacts ((client client))
+  (let ((string (%get-server-contacts client)))
+    (and string
+         (unpack-contacts
+          client (privkey-decrypt string (privkey client))))))
+
+(defmethod (setf get-server-contacts) (value (client client))
+  (setf (%get-server-contacts client)
+        (pubkey-encrypt (pack-contacts value) (privkey client)))
+  value)
+
+(defun merge-strings (old new &optional (separator #\newline))
+  (cond ((blankp old) new)
+        ((blankp new) old)
+        ((search new old :test #'string-equal) old)
+        (t (strcat old separator new))))
+
+(defmethod sync-contacts ((client client))
+  (let ((contacts (getcontacts client t))
+        (server-contacts (ignore-errors (get-server-contacts client)))
+        (changed-p nil))
+    (dolist (sc server-contacts)
+      (let* ((otherid (contact-id sc))
+             (c (find otherid contacts :test #'equal :key #'contact-id)))
+        (cond (c
+               (let ((new-nick
+                      (merge-strings
+                       (contact-nickname c) (contact-nickname sc) "/"))
+                     (new-note
+                      (merge-strings
+                      (contact-note c) (contact-note sc) #\newline))
+                     (new-banks
+                      (union (contact-banks c) (contact-banks sc)
+                             :test #'equal)))
+                 (unless (equal new-nick (contact-nickname c))
+                   (setf (contact-nickname c) new-nick
+                         changed-p t
+                         (contactprop client otherid $NICKNAME) new-nick))
+                 (unless (equal new-note (contact-note c))
+                   (setf (contact-note c) new-note
+                         changed-p t
+                         (contactprop client otherid $NOTE) new-note))
+                 (unless (eql (length new-banks) (length (contact-banks c)))
+                   (setf (contact-banks c) new-banks
+                         changed-p t
+                         (contactprop client otherid $BANKS)
+                         (apply #'implode #\space new-banks)))))
+              (t (push sc contacts)
+                 (setq changed-p t)
+                 (let ((pubkeysig (and (not (contactprop client otherid $PUBKEYSIG))
+                                       (ignore-errors (get-id client otherid)))))
+                   (when pubkeysig
+                     (setf (contactprop client otherid $PUBKEYSIG) pubkeysig))
+                   (setf (contactprop client otherid $NICKNAME)
+                         (contact-nickname sc)
+                         (contactprop client otherid $NOTE)
+                         (contact-note sc)
+                         (contactprop client otherid $NAME)
+                         (contact-name sc)
+                         (contactprop client otherid $BANKS)
+                         (apply #'implode #\space (contact-banks sc))))))))
+    (when (or changed-p (not (eql (length contacts) (length server-contacts))))
+      (setf (get-server-contacts client) contacts))
+    (values contacts changed-p)))
+
 (defmethod get-id ((client client) id)
   "Check for an id at the bank. Return false if not there.
    Return two values: pubkeysig & name"
@@ -2439,6 +2535,9 @@
 
 (defmethod contactprop ((client client) otherid prop)
     (db-get (db client) (contactkey client otherid prop)))
+
+(defmethod (setf contactprop) (value (client client) otherid prop)
+  (setf (db-get (db client) (contactkey client otherid prop)) value))
 
 (defmethod userhistorykey ((client client))
   (userbankkey client $HISTORY))

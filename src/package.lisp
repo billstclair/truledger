@@ -353,6 +353,7 @@
    #:getcontact
    #:addcontact
    #:deletecontact
+   #:sync-contacts
    #:get-id
    #:getaccts
    #:asset
