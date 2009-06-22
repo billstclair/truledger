@@ -714,11 +714,8 @@
         (pubkey-encrypt (pack-contacts value) (privkey client)))
   value)
 
-(defun merge-strings (old new &optional (separator #\newline))
-  (cond ((blankp old) new)
-        ((blankp new) old)
-        ((search new old :test #'string-equal) old)
-        (t (strcat old separator new))))
+(defun merge-contact-strings (old new)
+  (if (blankp old) new old))
 
 (defmethod sync-contacts ((client client))
   (let ((contacts (getcontacts client t))
@@ -729,27 +726,30 @@
              (c (find otherid contacts :test #'equal :key #'contact-id)))
         (cond (c
                (let ((new-nick
-                      (merge-strings
-                       (contact-nickname c) (contact-nickname sc) "/"))
+                      (merge-contact-strings
+                       (contact-nickname c) (contact-nickname sc)))
                      (new-note
-                      (merge-strings
-                      (contact-note c) (contact-note sc) #\newline))
+                      (merge-contact-strings
+                      (contact-note c) (contact-note sc)))
                      (new-banks
                       (union (contact-banks c) (contact-banks sc)
                              :test #'equal)))
                  (unless (equal new-nick (contact-nickname c))
                    (setf (contact-nickname c) new-nick
-                         changed-p t
                          (contactprop client otherid $NICKNAME) new-nick))
                  (unless (equal new-note (contact-note c))
                    (setf (contact-note c) new-note
-                         changed-p t
                          (contactprop client otherid $NOTE) new-note))
                  (unless (eql (length new-banks) (length (contact-banks c)))
                    (setf (contact-banks c) new-banks
-                         changed-p t
                          (contactprop client otherid $BANKS)
-                         (apply #'implode #\space new-banks)))))
+                         (apply #'implode #\space new-banks)))
+                 (unless changed-p
+                   (setq changed-p
+                         (not (and (equal new-nick (contact-nickname sc))
+                                   (equal new-note (contact-note sc))
+                                   (eql (length new-banks)
+                                        (length (contact-banks sc)))))))))
               (t (push sc contacts)
                  (setq changed-p t)
                  (let ((pubkeysig (and (not (contactprop client otherid $PUBKEYSIG))
