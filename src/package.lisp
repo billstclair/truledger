@@ -253,6 +253,7 @@
    #:hsc
    #:parm
    #:parms
+   #:post-parm
    #:run-startup-functions
    #:xor
    #:xor-salt
@@ -279,6 +280,8 @@
    ;; server-web.lisp
    #:with-debug-stream
    #:get-debug-stream-string
+   #:enable-debug-stream
+   #:debug-stream-enabled-p
    #:debugmsg
    #:debug-stream-p
    #:server-db-dir

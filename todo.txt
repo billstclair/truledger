@@ -1,7 +1,5 @@
-Save/restore contacts should take local info, if there is any, not
-merge with server. Gotta be able to get rid of server info somehow.
-Or maybe we need read and write operations, but I think that's too
-complicated.
+Make sure client web site transactions can't be initiated with GET,
+only POST. That will make it safe to use links to populate for spends.
 
 Backup mechanism. Write to log files, which are sent out in chunks to
 a backup server, which loads the transactions into its

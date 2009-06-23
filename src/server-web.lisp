@@ -95,7 +95,7 @@
 (defun server-db-dir ()
   "trubanc-dbs/serverdb")
 
-(defvar *debug-stream* nil)
+(defvar *debug-stream* t)
 
 (defmacro with-debug-stream ((&optional (only-if-p t)) &body body)
   (let ((thunk (gensym)))
@@ -110,6 +110,14 @@
 (defun get-debug-stream-string ()
   (and *debug-stream*
        (get-output-stream-string *debug-stream*)))
+
+(defun enable-debug-stream (&optional (enable t))
+  (when (eq *debug-stream* t)
+    (error "Not inside with-debug-stream"))
+  (setq *debug-stream* (and enable (make-string-output-stream))))
+
+(defun debug-stream-enabled-p ()
+  (and *debug-stream* (not (eq *debug-stream* t))))
 
 (defun debugmsg (format-string &rest format-args)
   (declare (dynamic-extent format-args))

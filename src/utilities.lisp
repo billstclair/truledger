@@ -239,6 +239,10 @@
     (append (and post (hunchentoot:post-parameters req))
             (and get (hunchentoot:get-parameters req)))))
 
+(defun post-parm (name &rest args)
+  (hunchentoot:post-parameter
+   (if args (apply #'format nil name args) name)))
+
 (defun get-host-name ()
   (usocket::get-host-name))
 

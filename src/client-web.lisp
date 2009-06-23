@@ -65,23 +65,26 @@
   (hunchentoot:set-cookie (cookie-name name) :value "" :expires 0))
 
 ;; Map a (parm "cmd") value to a function to call
+;; Put the function inside a list to force that command to be a POST,
+;; not a GET
 (defparameter *command-map*
   (apply #'make-equal-hash
          '(nil draw-login
            "logout" do-logout
-           "login" do-login
-           "contact" do-contact
-           "bank" do-bank
-           "asset" do-asset
-           "admin" do-admin
-           "spend" do-spend
-           "sync" do-sync
-           "canceloutbox" do-canceloutbox
-           "processinbox" do-processinbox
-           "storagefees" do-storagefees
-           "dohistory" do-history
-           "togglehistory" do-togglehistory
-           "toggleinstructions" do-toggleinstructions
+           "login" (do-login)
+           "contact" (do-contact)
+           "bank" (do-bank)
+           "asset" (do-asset)
+           "admin" (do-admin)
+           "spend" (do-spend)
+           "sync" (do-sync)
+           "canceloutbox" (do-canceloutbox)
+           "processinbox" (do-processinbox)
+           "storagefees" (do-storagefees)
+           "dohistory" (do-history)
+           "togglehistory" (do-togglehistory)
+           "toggleinstructions" (do-toggleinstructions)
+           "toggledebug" (do-toggledebug)
 
            "register" draw-register
            "balance" draw-balance
@@ -94,26 +97,18 @@
            "history" draw-history)))
 
 (defun web-server-internal (client)
-  (let ((debug-parm (parm "debug"))
-        (debug (not (blankp (get-cookie "debug")))))
-    (when debug-parm
-      (let* ((new-debug (not (blankp debug-parm))))
-        (unless (eq debug new-debug)
-          (if (setq debug new-debug)
-              (set-cookie "debug" "debug")
-              (delete-cookie "debug")))))
-    (with-debug-stream (debug)
-      (handler-bind
-          ((error
-            (lambda (c)
-              (return-from web-server-internal
-                (whots (s)
-                  "Error: " (str c)
-                  (when debug
-                    (who (s)
-                      (:br)
-                      (:pre (esc (backtrace-string))))))))))
-        (web-server-really-internal client)))))
+  (with-debug-stream ((not (blankp (get-cookie "debug"))))
+    (handler-bind
+        ((error
+          (lambda (c)
+            (return-from web-server-internal
+              (whots (s)
+                "Error: " (str c)
+                (when (debug-stream-enabled-p)
+                  (who (s)
+                    (:br)
+                    (:pre (esc (backtrace-string))))))))))
+      (web-server-really-internal client))))
 
 (defun web-server-really-internal (client)
   (let* ((iphone (search "iPhone" (hunchentoot:user-agent)))
@@ -157,6 +152,9 @@
           (with-output-to-string (s)
             (setf (cw-html-output cw) s)
             (let ((f (gethash cmd *command-map*)))
+              (when (consp f)
+                (setq f
+                      (and (equal (post-parm "cmd") cmd) (car f))))
               (cond (f (funcall f cw))
                     (session (draw-balance cw))
                     (t (draw-login cw))))))
@@ -264,6 +262,15 @@
           (:b "Your ID: ") (str id)
           (:br))))))
 
+(defmacro form ((s &optional cmd &rest form-params) &body body)
+  (let ((stream (gensym "STREAM")))
+    `(who (,stream ,s)
+       (:form
+        :method "post" :action "./" :autocomplete "off"
+        ,@form-params
+        ,@(and cmd `((:input :type "hidden" :name "cmd" :value ,cmd)))
+        ,@body))))
+
 (defun draw-login (cw &optional key)
   (let ((page (parm "page")))
     (when (equal page "register")
@@ -275,23 +282,21 @@
   (set-cookie "test" "test")
 
   (who (s (cw-html-output cw))
-    (:form
-     :method "post" :action "./" :autocomplete "off"
-     (:input :type "hidden" :name "cmd" :value "login")
-     (:table
-      (:tr
-       (:td (:b "Passphrase:"))
-       (:td (:input
-             :type "password" :name "passphrase" :size "50")
-            " "
-            (:input
-             :type "submit" :name "login" :value "Login")))
-      (:tr
-       (:td)
-       (:td :style "color: red"
-            (str (or (cw-error cw) "&nbsp;")))))
-     (:a :href "./?cmd=register"
-         "Register a new account"))))
+    (form (s "login")
+      (:table
+       (:tr
+        (:td (:b "Passphrase:"))
+        (:td (:input
+              :type "password" :name "passphrase" :size "50")
+             " "
+             (:input
+              :type "submit" :name "login" :value "Login")))
+       (:tr
+        (:td)
+        (:td :style "color: red"
+             (str (or (cw-error cw) "&nbsp;")))))
+      (:a :href "./?cmd=register"
+          "Register a new account"))))
 
 (defun draw-register (cw &optional key)
   (settitle cw "Register")
@@ -313,45 +318,43 @@
                  (:option :value size-str :selected (equal keysize size)
                           (str size-str))))))
       (who (s)
-        (:form
-         :method "post" :action "./" :autocomplete "off"
-         (:input :type "hidden" :name "cmd" :value "login")
-         (:table
-          (:tr
-           (:td (:b "Passphrase:"))
-           (:td (:input :type "password" :name "passphrase" :size "50")
-                (:input :type "hidden" :name "page" :value "register")))
-          (:tr
-           (:td)
-           (:td :style "color: red"
-                (str (or (cw-error cw) "&nbsp;"))))
-          (:tr
-           (:td (:b "Verification:"))
-           (:td (:input :type "password" :name "passphrase2" :size "50")))
-          (:tr
-           (:td (:b "Coupon:"))
-           (:td (:input :type "text" :name "coupon" :value coupon :size "64")))
-          (:tr
-           (:td (:b "Account Name" (:br) "(Optional):"))
-           (:td (:input :type "text" :name "name" :value name :size "40")))
-          (:tr
-           (:td)
-           (:td (:input :type "checkbox"
-                        :name "cacheprivkey"
-                        :checked cache-privkey-p)
-                "Cache encrypted private key on server"))
-          (:tr
-           (:td (:b "Key size:"))
-           (:td
-            (:select :name "keysize"
-                     (mapc #'keysize-option '(512 1024 2048 3072 4096)))
-            (:input :type "submit" :name "newacct" :value "Create account")
-            (:input :type "submit" :name "showkey" :value "Show key")
-            (:input :type "submit" :name "login" :value "Login")))
-          (:tr
-           (:td)
-           (:td
-            "<p>To generate a new private key, leave the area below blank, enter a
+        (form (s "login")
+          (:table
+           (:tr
+            (:td (:b "Passphrase:"))
+            (:td (:input :type "password" :name "passphrase" :size "50")
+                 (:input :type "hidden" :name "page" :value "register")))
+           (:tr
+            (:td)
+            (:td :style "color: red"
+                 (str (or (cw-error cw) "&nbsp;"))))
+           (:tr
+            (:td (:b "Verification:"))
+            (:td (:input :type "password" :name "passphrase2" :size "50")))
+           (:tr
+            (:td (:b "Coupon:"))
+            (:td (:input :type "text" :name "coupon" :value coupon :size "64")))
+           (:tr
+            (:td (:b "Account Name" (:br) "(Optional):"))
+            (:td (:input :type "text" :name "name" :value name :size "40")))
+           (:tr
+            (:td)
+            (:td (:input :type "checkbox"
+                         :name "cacheprivkey"
+                         :checked cache-privkey-p)
+                 "Cache encrypted private key on server"))
+           (:tr
+            (:td (:b "Key size:"))
+            (:td
+             (:select :name "keysize"
+                      (mapc #'keysize-option '(512 1024 2048 3072 4096)))
+             (:input :type "submit" :name "newacct" :value "Create account")
+             (:input :type "submit" :name "showkey" :value "Show key")
+             (:input :type "submit" :name "login" :value "Login")))
+           (:tr
+            (:td)
+            (:td
+             "<p>To generate a new private key, leave the area below blank, enter a
 passphrase, the passphrase again to verify, a bank coupon, an optional
 account name, a key size, and click the \"Create account\" button. To
 use an existing private key, paste the private key below, enter its
@@ -361,11 +364,11 @@ enter its passphrase, and click the \"Show key\" button. Warning: if you
 forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
 <p>If you lose your private key, which is stored on the computer running this client, nobody can recover that either. To protect against that, you can choose to cache your encrypted private key on the server, with the checkbox above. If you wish to create a new account in this client, using a previously-cached private key, enter your \"Passphrase\", enter the URL of the bank (e.g \"http://trubanc.com/\") as the \"Coupon\", and press the \"Create account\" button."))
-          (:tr
-           (:td)
-           (:td (:textarea :name "privkey" :cols "65" :rows "44"
-                           :style "font-family: Monospace;"
-                           (esc key))))))))))
+           (:tr
+            (:td)
+            (:td (:textarea :name "privkey" :cols "65" :rows "44"
+                            :style "font-family: Monospace;"
+                            (esc key))))))))))
 
 (defun settitle (cw subtitle)
   (setf (cw-title cw) (stringify subtitle "~a - Trubanc Client")))
@@ -1011,6 +1014,14 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
         (draw-history cw)
         (draw-balance cw))))
 
+(defun do-toggledebug (cw)
+  (let ((new-debug (blankp (get-cookie "debug"))))
+    (if new-debug
+        (set-cookie "debug" "debug")
+        (delete-cookie "debug"))
+    (enable-debug-stream new-debug)
+    (draw-balance cw)))
+
 (defun init-bank (cw &optional report-error-p)
   (let* ((client (cw-client cw))
          (bankid (user-preference client "bankid"))
@@ -1174,14 +1185,12 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
         (setq
          bankcode
          (whots (s)
-           (:form
-            :method "post" :action "./" :autocomplete "off"
-            (:input :type "hidden" :name "cmd" :value "bank")
-            (:select
-             :name "bank"
-             (:option :value "" "Choose a bank...")
-             (str bankopts))
-            (:input :type "submit" :name "selectbank" :value "Change Bank"))))))
+           (form (s "bank")
+             (:select
+              :name "bank"
+              (:option :value "" "Choose a bank...")
+              (str bankopts))
+             (:input :type "submit" :name "selectbank" :value "Change Bank"))))))
 
     (when bankid
       ;; Print inbox, if there is one
@@ -1341,26 +1350,24 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
              (setq
               inboxcode
               (whots (s)
-                (:form
-                 :method "post" :action "./" :autocomplete "off"
-                 (:input :type "hidden" :name "cmd" :value "processinbox")
-                 (:input :type "hidden" :name "spendcnt" :value spendcnt)
-                 (:input :type "hidden" :name "nonspendcnt" :value nonspendcnt)
-                 (:table
-                  :class "prettytable"
-                  (:caption (:b "Inbox"))
-                  (:tr
-                   (:th "Request")
-                   (:th "From")
-                   (:th :colspan "2" "Amount")
-                   (:th "Note")
-                   (:th "Action")
-                   (:th "Reply")
-                   (str acctheader)
-                   (:th "Time"))
-                  (str inboxcode))
-                 (:input :type "submit" :name "submit"
-                         :value "Process Inbox")))))
+                (form (s "processinbox")
+                  (:input :type "hidden" :name "spendcnt" :value spendcnt)
+                  (:input :type "hidden" :name "nonspendcnt" :value nonspendcnt)
+                  (:table
+                   :class "prettytable"
+                   (:caption (:b "Inbox"))
+                   (:tr
+                    (:th "Request")
+                    (:th "From")
+                    (:th :colspan "2" "Amount")
+                    (:th "Note")
+                    (:th "Action")
+                    (:th "Reply")
+                    (str acctheader)
+                    (:th "Time"))
+                   (str inboxcode))
+                  (:input :type "submit" :name "submit"
+                          :value "Process Inbox")))))
 
       ;; Prepare outbox display
       (let ((cancelcount 0))
@@ -1427,9 +1434,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
           (when (> cancelcount 0)
             (setq outboxcode
                   (whots (s)
-                    (:form
-                     :method "post" :action "./" :autocomplete "off"
-                     (:input :type "hidden" :name "cmd" :value "canceloutbox")
+                    (form (s "canceloutbox")
                      (:input :type "hidden" :name "cancelcount" :value cancelcount)
                      (str outboxcode)))))))
 
@@ -1514,13 +1519,11 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                            (:sup "-" (str scale))))
                        (:br))))))
              (who (bal-stream)
-               (:a :href "./?cmd=sync" "Resync with bank")
+               (:a :href "./?cmd=history" "Show history")
+               " (" (str enabled) ")"
                (:br)
                (:a :href "./?cmd=rawbalance"
                    "Show raw balance")
-               (:br)
-               (:a :href "./?cmd=history" "Show history")
-               " (" (str enabled) ")"
                (:br))))))
 
       (when assetlist-stream
@@ -1574,31 +1577,29 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
             (when storagefees
               (setq storagefeecode
                     (whots (s)
-                      (:form
-                       :method "post" :action "./" :autocomplete "off"
-                       (:input :type "hidden" :name "cmd" :value "storagefees")
-                       (:table
-                        :class "prettytable"
-                        (:tr
-                         (:th :colspan 3 (str "Storage Fees")))
-                        (dolist (storagefee storagefees)
-                          (let* ((formattedamount
-                                  (balance-formatted-amount storagefee))
-                                 (assetname (balance-assetname storagefee))
-                                 (time (balance-time storagefee))
-                                 (date (datestr time)))
-                            (who (s)
-                              (:tr
-                               (:td :align "right"
-                                    :style "border-right-width: 0;"
-                                    (str formattedamount))
-                               (:td
-                                :style
-                                "margin-right: 5px; border-left-width: 0;"
-                                (str assetname))
-                               (:td (str date)))))))
-                       (:input :type "submit" :name "accept"
-                               :value "Move to Inbox"))))))
+                      (form (s "storagefees")
+                        (:table
+                         :class "prettytable"
+                         (:tr
+                          (:th :colspan 3 (str "Storage Fees")))
+                         (dolist (storagefee storagefees)
+                           (let* ((formattedamount
+                                   (balance-formatted-amount storagefee))
+                                  (assetname (balance-assetname storagefee))
+                                  (time (balance-time storagefee))
+                                  (date (datestr time)))
+                             (who (s)
+                               (:tr
+                                (:td :align "right"
+                                     :style "border-right-width: 0;"
+                                     (str formattedamount))
+                                (:td
+                                 :style
+                                 "margin-right: 5px; border-left-width: 0;"
+                                 (str assetname))
+                                (:td (str date)))))))
+                        (:input :type "submit" :name "accept"
+                                :value "Move to Inbox"))))))
 
           (flet ((write-amt (s)
                    (who (s)
@@ -1654,19 +1655,17 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
             (setq
              spendcode
              (whots (s)
-               (:form
-                :method "post" :action "./" :autocomplete "off"
-                (:input :type "hidden" :name "cmd" :value "spend")
-                (:table
-                 (:tr
-                  (:td
-                   :valign "top"
-                   (str assetlist)
-                   (str balcode))
-                  (unless iphone (write-amt s)))
-                 (when iphone
-                   (who (s)
-                     (:tr (write-amt s)))))))))
+               (form (s "spend")
+                 (:table
+                  (:tr
+                   (:td
+                    :valign "top"
+                    (str assetlist)
+                    (str balcode))
+                   (unless iphone (write-amt s)))
+                  (when iphone
+                    (who (s)
+                      (:tr (write-amt s)))))))))
 
           (let* ((historytext (if (initialize-client-history client)
                                   "Disable" "Enable"))
@@ -1674,20 +1673,26 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
             (setq instructions
                   (whots (s)
                     (:p
-                     (:a :href "./?cmd=togglehistory"
-                         (str historytext) " history")
-                     (:br)
-                     (:a :href (if (debug-stream-p)
-                                   "./?debug"
-                                   "./?debug=true")
-                         (str (if (debug-stream-p)
-                                  "Disable debugging"
-                                  "Enable debugging")))
-                     (:br)
-                     (:a :href "./?cmd=toggleinstructions"
-                         (str (if hideinstructions
-                                  "Show Instructions"
-                                  "Hide Instructions"))))
+                     (form (s "togglehistory"
+                           :style "margin: 0px;") ; prevent whitespace below button
+                       (:input :type "submit" :name "togglehistory"
+                               :value (stringify historytext "~a history")))
+                     (form (s "sync"
+                            :style "margin: 0px;") ; prevent whitespace below button
+                       (:input :type "submit" :name "resync"
+                               :value "Resync with bank"))
+                     (form (s "toggledebug"
+                            :style "margin: 0px;") ; prevent whitespace below button
+                       (:input :type "submit" :name "toggledebug"
+                               :value (if (debug-stream-p)
+                                          "Disable debugging"
+                                          "Enable debugging")))
+                     (form (s "toggleinstructions"
+                            :style "margin: 0px;") ; prevent whitespace below button
+                       (:input :type "submit" :name "toggleinstructions"
+                               :value (if hideinstructions
+                                          "Show Instructions"
+                                          "Hide Instructions"))))
                     (unless hideinstructions
                       (who (s)
                         (:p
@@ -1858,29 +1863,27 @@ list with that nickname, or change the nickname of the selected
     (who (stream)
       (:span :style "color: red;" (str err))
       (:br)
-      (:form
-       :method "post" :action "./" :autocomplete "off"
-       (:input :type "hidden" :name "cmd" :value "bank")
-       (:table
-        (:tr
-         (:td (:b "Bank URL"
-                  (:br)
-                  "or Coupon:"))
-         (:td
-          (:input :type "text" :name "bankurl" :size "64"
-                                               :value bankurl)))
-        (:tr
-         (:td (:b "Account Name"
-                  (:br)
-                  "(optional):"))
-         (:td
-          (:input :type "text" :name "name" :size "40"
-                                            :value name)))
-        (:tr
-         (:td)
-         (:td
-          (:input :type "submit" :name "newbank" :value "Add Bank")
-          (:input :type "submit" :name "cancel" :value "Cancel"))))))
+      (form (stream "bank")
+        (:table
+         (:tr
+          (:td (:b "Bank URL"
+                   (:br)
+                   "or Coupon:"))
+          (:td
+           (:input :type "text" :name "bankurl" :size "64"
+                                                :value bankurl)))
+         (:tr
+          (:td (:b "Account Name"
+                   (:br)
+                   "(optional):"))
+          (:td
+           (:input :type "text" :name "name" :size "40"
+                                             :value name)))
+         (:tr
+          (:td)
+          (:td
+           (:input :type "submit" :name "newbank" :value "Add Bank")
+           (:input :type "submit" :name "cancel" :value "Cancel"))))))
 
     (when banks
       (who (stream)
@@ -1900,23 +1903,20 @@ list with that nickname, or change the nickname of the selected
                        (cached-p (privkey-cached-p client bid)))
                    (when (blankp name)
                      (setq name "unnamed"))
-                   (who (stream)
-                     (:form
-                      :method "post" :action "./" :autocomplete "off"
-                      :style "margin: 0px;" ; prevent whitespace below button
-                      (:input :type "hidden" :name "cmd" :value "bank")
-                      (:input :type "hidden" :name "bank" :value bid)
-                      (:tr
-                       (:td (esc name))
-                       (:td (:a :href url (str url)))
-                       (:td (esc bid))
-                       (:td
-                        (:input :type "submit" :name "selectbank"
-                                :value "Choose"))
-                       (:td :style "text-align: center;"                        
-                        (:input :type "submit"
-                                :name (if cached-p "uncacheprivkey" "cacheprivkey")
-                                :value (if cached-p "Uncache" "Cache")))))))))))))))
+                   (form (stream "bank"
+                          :style "margin: 0px;") ; prevent whitespace below button
+                     (:input :type "hidden" :name "bank" :value bid)
+                     (:tr
+                      (:td (esc name))
+                      (:td (:a :href url (str url)))
+                      (:td (esc bid))
+                      (:td
+                       (:input :type "submit" :name "selectbank"
+                                              :value "Choose"))
+                      (:td :style "text-align: center;"                        
+                       (:input :type "submit"
+                               :name (if cached-p "uncacheprivkey" "cacheprivkey")
+                               :value (if cached-p "Uncache" "Cache"))))))))))))))
 
 (defun draw-contacts (cw &optional id nickname notes)
   (let* ((client (cw-client cw))
@@ -1930,69 +1930,68 @@ list with that nickname, or change the nickname of the selected
     (who (stream)
       (:span :style "color: red;" (str (cw-error cw)))
       (:br)
-      (:form
-       :method "post" :action "./" :autocomplete "off"
-       (:input :type "hidden" :name "cmd" :value "contact")
-       (:table
-        (:tr
-         (:td :align "right" (:b "ID:"))
-         (:td
-          (:input :type "text" :name "id" :size "40" :value (esc id))))
-        (:tr
-         (:td (:b "Nickname" (:br) "(Optional):"))
-         (:td
-          (:input :type "text" :name "nickname" :size "30" :value (esc nickname))))
-        (:tr
-         (:td (:b "Notes" (:br) "(Optional):"))
-         (:td
-          (:textarea :name "notes" :cols "30" :rows "5" (esc notes))))
-        (:tr
-         (:td)
-         (:td
-          (:input :type "submit" :name "addcontact" :value "Add/Change Contact")
-          (:input :type "submit" :name "synccontacts" :value "Sync with Server")
-          (:input :type "submit" :name "cancel" :value "Cancel"))))
+      (form (stream "contact")
+        (:table
+         (:tr
+          (:td :align "right" (:b "ID:"))
+          (:td
+           (:input :type "text" :name "id" :size "40" :value (esc id))))
+         (:tr
+          (:td (:b "Nickname" (:br) "(Optional):"))
+          (:td
+           (:input :type "text" :name "nickname" :size "30" :value (esc nickname))))
+         (:tr
+          (:td (:b "Notes" (:br) "(Optional):"))
+          (:td
+           (:textarea :name "notes" :cols "30" :rows "5" (esc notes))))
+         (:tr
+          (:td)
+          (:td
+           (:input :type "submit" :name "addcontact" :value "Add/Change Contact")
+           (:input :type "submit" :name "synccontacts" :value "Sync with Server")
+           (:input :type "submit" :name "cancel" :value "Cancel"))))
 
-       (when contacts
-         (who (stream)
-           (:br)
-           (:input :type "hidden" :name "cmd" :value "contact")
-           (:input :type "hidden" :name "chkcnt" :value (length contacts))
-           (:table
-            :class "prettytable"
-            (:tr
-             (:th "Nickname")
-             (:th "Name")
-             (:th "Display")
-             (:th "ID")
-             (:th "Notes")
-             (:th "x"))
-            (let ((idx 0))
-              (dolist (contact contacts)
-                (let* ((id (hsc (contact-id contact)))
-                       (name (trim (hsc (contact-name contact))))
-                       (nickname (hsc (contact-nickname contact)))
-                       (display (namestr nickname name id))
-                       (note  (hsc (contact-note contact))))
-                  (when (blankp name) (setq name "&nbsp;"))
-                  (when (blankp nickname) (setq nickname "&nbsp;"))
-                  (setq note
-                        (if (blankp note)
-                            "&nbsp;"
-                            (str-replace $nl $brn note)))
-                  (who (stream)
-                    (:tr
-                     (:td (str nickname))
-                     (:td (str name))
-                     (:td (str display))
-                     (:td (str id))
-                     (:td (str note))
-                     (:td
-                      (:input :type "hidden" :name (stringify idx "id~d")
-                                             :value id)
-                      (:input :type "checkbox" :name (stringify idx "chk~d")))))
-                  (incf idx)))))
-           (:input :type "submit" :name "deletecontacts" :value "Delete checked")))))))
+        (when contacts
+          (who (stream)
+            (:br)
+            (:input :type "hidden" :name "cmd" :value "contact")
+            (:input :type "hidden" :name "chkcnt" :value (length contacts))
+            (:table
+             :class "prettytable"
+             (:tr
+              (:th "Nickname")
+              (:th "Name")
+              (:th "Display")
+              (:th "ID")
+              (:th "Notes")
+              (:th "x"))
+             (let ((idx 0))
+               (dolist (contact contacts)
+                 (let* ((id (hsc (contact-id contact)))
+                        (name (trim (hsc (contact-name contact))))
+                        (nickname (hsc (contact-nickname contact)))
+                        (display (namestr nickname name id))
+                        (note  (hsc (contact-note contact))))
+                   (when (blankp name) (setq name "&nbsp;"))
+                   (when (blankp nickname) (setq nickname "&nbsp;"))
+                   (setq note
+                         (if (blankp note)
+                             "&nbsp;"
+                             (str-replace $nl $brn note)))
+                   (who (stream)
+                     (:tr
+                      (:td (str nickname))
+                      (:td (str name))
+                      (:td (str display))
+                      (:td (str id))
+                      (:td (str note))
+                      (:td
+                       (:input :type "hidden" :name (stringify idx "id~d")
+                                              :value id)
+                       (:input :type "checkbox" :name (stringify idx "chk~d")))))
+                   (incf idx)))))
+            (:input :type "submit" :name "deletecontacts"
+                    :value "Delete checked")))))))
 
 (defun draw-assets(cw &optional scale precision assetname storage)
   (let* ((client (cw-client cw))
@@ -2010,80 +2009,75 @@ list with that nickname, or change the nickname of the selected
     (who (stream)
       (:span :style "color: red;" (str (cw-error cw)))
       (:br)
-      (:form
-       :method "post" :action "./" :autocomplete "off"
-       (:input :type "hidden" :name "cmd" :value "asset")
-       (:table
-        (:tr
-         (:td (:b "Scale:"))
-         (:td (:input :type "text" :name "scale" :size "3" :value scale)))
-        (:tr
-         (:td (:b "Precision:"))
-         (:td (:input :type "text" :name "precision" :size "3" :value precision)))
-        (:tr
-         (:td (:b "Asset name:"))
-         (:td (:input :type "text" :name "assetname" :size "30" :value assetname)))
-        (:tr
-         (:td (:b "Storage fee (%/year):"))
-         (:td (:input :type "text" :name "storage" :size "5" :value storage)))
-        (:tr
-         (:td)
-         (:td (:input :type "submit" :name "newasset" :value "Add Asset")
-              (:input :type "submit" :name "cancel" :value "Cancel"))))))
+      (form (stream "asset")
+        (:table
+         (:tr
+          (:td (:b "Scale:"))
+          (:td (:input :type "text" :name "scale" :size "3" :value scale)))
+         (:tr
+          (:td (:b "Precision:"))
+          (:td (:input :type "text" :name "precision" :size "3" :value precision)))
+         (:tr
+          (:td (:b "Asset name:"))
+          (:td (:input :type "text" :name "assetname" :size "30" :value assetname)))
+         (:tr
+          (:td (:b "Storage fee (%/year):"))
+          (:td (:input :type "text" :name "storage" :size "5" :value storage)))
+         (:tr
+          (:td)
+          (:td (:input :type "submit" :name "newasset" :value "Add Asset")
+               (:input :type "submit" :name "cancel" :value "Cancel"))))))
 
   (when assets
-    (who (stream)
-      (:form
-       :method "post" :action "./" :autocomplete "off"
-       (:table
-        :class "prettytable"
-        (:tr
-         (:th "Asset name")
-         (:th "Scale")
-         (:th "Precision")
-         (:th "Storage Fee" (:br) "(%/year)")
-         (:th "Owner")
-         (:th "Asset ID"))
-        (dolist (asset assets)
-          (let* ((ownerid (asset-id asset))
-                 (namestr (id-namestr cw ownerid))
-                 (assetid (asset-assetid asset))
-                 (scale (asset-scale asset))
-                 (precision (asset-precision asset))
-                 (assetname (asset-name asset))
-                 (percent (asset-percent asset)))
-            (setq percent
-                  (if (equal ownerid (id client))
-                      (whots (s)
-                        (:input :type "hidden"
-                                :name (stringify incnt "assetid~d")
-                                :value (hsc assetid))
-                        (:input :type "hidden"
-                                :name (stringify incnt "opercent~d")
-                                :value (hsc percent))
-                        (:input :type "text"
-                                :name (stringify incnt "percent~d")
-                                :value (hsc percent)
-                                :size "10"
-                                :style "text-align: right;"))
-                      (hsc percent)))
-            (incf incnt)
-            (when (blankp percent) (setq percent "&nbsp;"))
-            (who (stream)
-              (:tr
-               (:td (esc assetname))
-               (:td :align "right" (esc scale))
-               (:td :align "right" (esc precision))
-               (:td :align "right" (str percent))
-               (:td (str namestr))
-               (:td (esc assetid)))))))
-       (when (> incnt 0)
-         (who (stream)
-           (:input :type "hidden" :name "percentcnt" :value incnt)
-           (:input :type "hidden" :name "cmd" :value "asset")
-           (:br)
-           (:input :type "submit" :name "updatepercent"
-                   :value "Update Storage Fees"))))))))
+    (form (stream "asset")
+      (:table
+       :class "prettytable"
+       (:tr
+        (:th "Asset name")
+        (:th "Scale")
+        (:th "Precision")
+        (:th "Storage Fee" (:br) "(%/year)")
+        (:th "Owner")
+        (:th "Asset ID"))
+       (dolist (asset assets)
+         (let* ((ownerid (asset-id asset))
+                (namestr (id-namestr cw ownerid))
+                (assetid (asset-assetid asset))
+                (scale (asset-scale asset))
+                (precision (asset-precision asset))
+                (assetname (asset-name asset))
+                (percent (asset-percent asset)))
+           (setq percent
+                 (if (equal ownerid (id client))
+                     (whots (s)
+                       (:input :type "hidden"
+                               :name (stringify incnt "assetid~d")
+                               :value (hsc assetid))
+                       (:input :type "hidden"
+                               :name (stringify incnt "opercent~d")
+                               :value (hsc percent))
+                       (:input :type "text"
+                               :name (stringify incnt "percent~d")
+                               :value (hsc percent)
+                               :size "10"
+                               :style "text-align: right;"))
+                     (hsc percent)))
+           (incf incnt)
+           (when (blankp percent) (setq percent "&nbsp;"))
+           (who (stream)
+             (:tr
+              (:td (esc assetname))
+              (:td :align "right" (esc scale))
+              (:td :align "right" (esc precision))
+              (:td :align "right" (str percent))
+              (:td (str namestr))
+              (:td (esc assetid)))))))
+      (when (> incnt 0)
+        (who (stream)
+          (:input :type "hidden" :name "percentcnt" :value incnt)
+          (:br)
+          (:input :type "submit" :name "updatepercent"
+                  :value "Update Storage Fees")))))))
 
 (defun draw-admin (cw &optional bankname bankurl)
   (let ((s (cw-html-output cw))
@@ -2101,80 +2095,78 @@ list with that nickname, or change the nickname of the selected
     (who (s)
       (:span :style "color: red;" (str (cw-error cw)))
       (:br)
-      (:form
-       :method "post" :action "./" :autocomplete "off"
-       (:input :type "hidden" :name "cmd" :value "admin")
-       (str (if port
-                (stringify port "Client web server is running on port ~d.")
-                "Web server shut down. Say goodnight, Dick."))
-       (when port
-         (who (s)
-           (:br)
-           (:input :type "submit" :name "killclient"
-                   :value "Shut down web server")
-           (:br)(:br)
-           (str (cond (server "Server is running.")
-                      (disable-p "Server database exists but server not running.")
-                      (t "Server database not yet created. Enter info below.")))
-           (when (and disable-p (not server))
-             (who (s)
-               (:br)
-               (str "To start it, log out, and log back in as the bank.")))
-           (when server
-             (who (s)
-               (:br
-                (:input :type "submit" :name "killserver"
-                        :value "Stop Server"))))
-           (when (or server (not disable-p))
-             (who (s)
-               (:br)
-               (:table
-                (:tr
-                 (:td (:b "Bank Name:"))
-                 (:td (:input :type "text"
-                              :name "bankname"
-                              :value bankname
-                              :disabled disable-p
-                              :size 30)))
-                (:tr
-                 (:td (:b "Bank URL:"))
-                 (:td (:input :type "text"
-                              :name "bankurl"
-                              :value bankurl
-                              :disabled disable-p
-                              :size 30)))
-                (unless disable-p
-                  (who (s)
-                    (:tr
-                     (:td (:b "Bank Passphrase:"))
-                     (:td (:input :type "password"
-                                  :name "passphrase"
-                                  :value ""
-                                  :size 50)))
-                    (:tr
-                     (:td (:b "Verification:"))
-                     (:td (:input :type "password"
-                                  :name "verification"
-                                  :value ""
-                                  :size 50)))
-                    (:tr
-                     (:td (:b "Admin Passphrase:"))
-                     (:td (:input :type "password"
-                                  :name "adminpass"
-                                  :value ""
-                                  :size 50)))
-                    (:tr
-                     (:td (:b "Verification:"))
-                     (:td (:input :type "password"
-                                  :name "adminverify"
-                                  :value ""
-                                  :size 50)))
-                    (:tr
-                     (:td)
-                     (:td (:input :type "submit" :name "create"
-                                  :value "Start Server")
-                          (:input :type "submit" :name "cancel"
-                                  :value "Cancel"))))))))))))))
+      (form (s "admin")
+        (str (if port
+                 (stringify port "Client web server is running on port ~d.")
+                 "Web server shut down. Say goodnight, Dick."))
+        (when port
+          (who (s)
+            (:br)
+            (:input :type "submit" :name "killclient"
+                    :value "Shut down web server")
+            (:br)(:br)
+            (str (cond (server "Server is running.")
+                       (disable-p "Server database exists but server not running.")
+                       (t "Server database not yet created. Enter info below.")))
+            (when (and disable-p (not server))
+              (who (s)
+                (:br)
+                (str "To start it, log out, and log back in as the bank.")))
+            (when server
+              (who (s)
+                (:br
+                 (:input :type "submit" :name "killserver"
+                         :value "Stop Server"))))
+            (when (or server (not disable-p))
+              (who (s)
+                (:br)
+                (:table
+                 (:tr
+                  (:td (:b "Bank Name:"))
+                  (:td (:input :type "text"
+                               :name "bankname"
+                               :value bankname
+                               :disabled disable-p
+                               :size 30)))
+                 (:tr
+                  (:td (:b "Bank URL:"))
+                  (:td (:input :type "text"
+                               :name "bankurl"
+                               :value bankurl
+                               :disabled disable-p
+                               :size 30)))
+                 (unless disable-p
+                   (who (s)
+                     (:tr
+                      (:td (:b "Bank Passphrase:"))
+                      (:td (:input :type "password"
+                                   :name "passphrase"
+                                   :value ""
+                                   :size 50)))
+                     (:tr
+                      (:td (:b "Verification:"))
+                      (:td (:input :type "password"
+                                   :name "verification"
+                                   :value ""
+                                   :size 50)))
+                     (:tr
+                      (:td (:b "Admin Passphrase:"))
+                      (:td (:input :type "password"
+                                   :name "adminpass"
+                                   :value ""
+                                   :size 50)))
+                     (:tr
+                      (:td (:b "Verification:"))
+                      (:td (:input :type "password"
+                                   :name "adminverify"
+                                   :value ""
+                                   :size 50)))
+                     (:tr
+                      (:td)
+                      (:td (:input :type "submit" :name "create"
+                                   :value "Start Server")
+                           (:input :type "submit" :name "cancel"
+                                   :value "Cancel"))))))))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

@@ -260,9 +260,11 @@
                    :value "Delete Checked & Older")))
         (scroller s start count cnt)
       (cond ((hideinstructions cw)
-             (who (s)
-               (:a :href "./?cmd=toggleinstructions&page=history"
-                   "Show Instructions")))
+             (form (s "toggleinstructions"
+                      :style "margin: 0px;") ; prevent whitespace below button
+               (:input :type "hidden" :name "page" :value "history")
+               (:input :type "submit" :name "toggleinstructions"
+                       :value "Show Instructions")))
             (t
              (who (s)
                (:table
@@ -280,10 +282,12 @@
                 (:tr (:td "=accept")
                      (:td "You acknowledged your acceptance of a coupon you spent to yourself")))
                (:br)
-               (:a :href "./?cmd=toggleinstructions&page=history"
-                   "Hide Instructions"))))
+               (form (s "toggleinstructions"
+                        :style "margin: 0px;") ; prevent whitespace below button
+                 (:input :type "hidden" :name "page" :value "history")
+                 (:input :type "submit" :name "toggleinstructions"
+                         :value "Hide Instructions")))))
       (who (s) (:br))))))
-
 
 (defun scroller (s start count cnt)
   (let ((count2 (if (<= count 0) cnt count)))
