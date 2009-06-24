@@ -36,6 +36,9 @@
   onload
   fraction-asset
   refresh-version
+  postcnt
+  postsalt
+  postmsg
   )
 
 (defun client-db-dir ()
@@ -71,7 +74,7 @@
   (apply #'make-equal-hash
          '(nil draw-login
            "logout" do-logout
-           "login" (do-login)
+           "login" do-login
            "contact" (do-contact)
            "bank" (do-bank)
            "asset" (do-asset)
@@ -110,6 +113,38 @@
                     (:pre (esc (backtrace-string))))))))))
       (web-server-really-internal client))))
 
+(defconstant $POSTCNT "postcnt")
+
+(defun postcnt (cw)
+  (or (parse-integer
+       (or (ignore-errors (user-preference (cw-client cw) $POSTCNT))
+           "0")
+       :junk-allowed t)
+      "0"))
+
+(defun (setf postcnt) (cnt cw)
+  (check-type cnt integer)
+  (ignore-errors
+    (setf (user-preference (cw-client cw) $POSTCNT)
+          (stringify cnt)))
+  cnt)
+
+;; Values for forms, so that another site can't
+(defun form-compute-verify-values (&optional (sessionid (get-cookie "session")))
+  (when sessionid
+    (let* ((salt (newsessionid))
+           (msg (sha1 (xorcrypt sessionid salt))))
+      (values salt msg))))
+
+(defun form-verify-values-p (salt msg &optional (sessionid (get-cookie "session")))
+  (equal msg (sha1 (xorcrypt sessionid salt))))
+
+(defun init-post-salt-and-msg (cw &optional (sessionid (get-cookie "session")))
+  (multiple-value-bind (salt msg)
+      (form-compute-verify-values sessionid)
+    (setf (cw-postsalt cw) salt
+          (cw-postmsg cw) msg)))
+
 (defun web-server-really-internal (client)
   (let* ((iphone (search "iPhone" (hunchentoot:user-agent)))
          (title "Trubanc Client")
@@ -117,10 +152,13 @@
          (cw (make-cw :client client :iphone iphone :title title :session session))
          (cmd (parm "cmd")))
     
+    (init-post-salt-and-msg cw)
+
     (unless (blankp session)
       (handler-case
           (progn
             (login-with-sessionid client session)
+            (setf (cw-postcnt cw) (postcnt cw))
             (when (null cmd) (setq cmd "balance")))
         (error ()
           (delete-cookie "session")
@@ -153,16 +191,26 @@
             (setf (cw-html-output cw) s)
             (let ((f (gethash cmd *command-map*)))
               (when (consp f)
-                (setq f
-                      (and (equal (post-parm "cmd") cmd) (car f))))
+                (bind-parameters (postcnt postsalt postmsg)
+                  (cond ((not (and (form-verify-values-p postsalt postmsg)
+                                   (eql (1- (cw-postcnt cw))
+                                        (ignore-errors (parse-integer postcnt)))))
+                         (setf f nil
+                               (cw-error cw) "Hacking attempt or multiple logins!"))
+                        (t (setq f
+                                 (and (equal (post-parm "cmd") cmd)
+                                      (car f)))))))
               (cond (f (funcall f cw))
                     (session (draw-balance cw))
                     (t (draw-login cw))))))
 
     ;; Use title, body, onload, and debugstr to fill the page template.
-    (with-output-to-string (s)
-      (setf (cw-html-output cw) s)
-      (write-template cw))))
+    (prog1
+        (with-output-to-string (s)
+          (setf (cw-html-output cw) s)
+          (write-template cw))
+      (when (cw-postcnt cw)
+        (setf (postcnt cw) (1+ (cw-postcnt cw)))))))
 
 ;; Should support a template.lhtml file that users can easily change.
 (defun write-template (cw)
@@ -269,6 +317,9 @@
         :method "post" :action "./" :autocomplete "off"
         ,@form-params
         ,@(and cmd `((:input :type "hidden" :name "cmd" :value ,cmd)))
+        (:input :type "hidden" :name "postcnt" :value (cw-postcnt cw))
+        (:input :type "hidden" :name "postsalt" :value (cw-postsalt cw))
+        (:input :type "hidden" :name "postmsg" :value (cw-postmsg cw))
         ,@body))))
 
 (defun draw-login (cw &optional key)
@@ -540,6 +591,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
         (handler-case
             (let ((session (login-new-session client passphrase)))
               (set-cookie "session" session)
+              (init-post-salt-and-msg cw session)
+              (setf (cw-postcnt cw) (postcnt cw))
               (when (maybe-start-server-web client passphrase)
                 (setf (cw-error cw) "Server started!"))
               (cond ((equal (get-cookie "test") "test") (delete-cookie "test"))

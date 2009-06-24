@@ -324,6 +324,8 @@
    #:login
    #:login-with-sessionid
    #:login-new-session
+   #:newsessionid
+   #:xorcrypt
    #:logout
    #:the
    #:user-pubkey

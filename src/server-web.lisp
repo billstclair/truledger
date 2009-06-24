@@ -114,7 +114,9 @@
 (defun enable-debug-stream (&optional (enable t))
   (when (eq *debug-stream* t)
     (error "Not inside with-debug-stream"))
-  (setq *debug-stream* (and enable (make-string-output-stream))))
+  (when (xor enable *debug-stream*)
+    (setq *debug-stream* (and enable (make-string-output-stream))))
+  enable)
 
 (defun debug-stream-enabled-p ()
   (and *debug-stream* (not (eq *debug-stream* t))))
