@@ -129,19 +129,23 @@
           (stringify cnt)))
   cnt)
 
+(defun mix-verify-values (postcnt sessionid salt)
+  (sha1 (xorcrypt (stringify postcnt) (xorcrypt sessionid salt))))
+
 ;; Values for forms, so that another site can't
-(defun form-compute-verify-values (&optional (sessionid (get-cookie "session")))
+(defun form-compute-verify-values (postcnt &optional (sessionid (get-cookie "session")))
   (when sessionid
     (let* ((salt (newsessionid))
-           (msg (sha1 (xorcrypt sessionid salt))))
+           (msg (mix-verify-values postcnt sessionid salt)))
       (values salt msg))))
 
-(defun form-verify-values-p (salt msg &optional (sessionid (get-cookie "session")))
-  (equal msg (sha1 (xorcrypt sessionid salt))))
+(defun form-verify-values-p (postcnt salt msg &optional (sessionid (get-cookie "session")))
+  (equal msg (mix-verify-values postcnt sessionid salt)))
 
 (defun init-post-salt-and-msg (cw &optional (sessionid (get-cookie "session")))
+  (setf (cw-postcnt cw) (postcnt cw))
   (multiple-value-bind (salt msg)
-      (form-compute-verify-values sessionid)
+      (form-compute-verify-values (cw-postcnt cw) sessionid)
     (setf (cw-postsalt cw) salt
           (cw-postmsg cw) msg)))
 
@@ -152,13 +156,11 @@
          (cw (make-cw :client client :iphone iphone :title title :session session))
          (cmd (parm "cmd")))
     
-    (init-post-salt-and-msg cw)
-
     (unless (blankp session)
       (handler-case
           (progn
             (login-with-sessionid client session)
-            (setf (cw-postcnt cw) (postcnt cw))
+            (init-post-salt-and-msg cw session)
             (when (null cmd) (setq cmd "balance")))
         (error ()
           (delete-cookie "session")
@@ -192,7 +194,7 @@
             (let ((f (gethash cmd *command-map*)))
               (when (consp f)
                 (bind-parameters (postcnt postsalt postmsg)
-                  (cond ((not (and (form-verify-values-p postsalt postmsg)
+                  (cond ((not (and (form-verify-values-p postcnt postsalt postmsg)
                                    (eql (1- (cw-postcnt cw))
                                         (ignore-errors (parse-integer postcnt)))))
                          (setf f nil
@@ -592,7 +594,6 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
             (let ((session (login-new-session client passphrase)))
               (set-cookie "session" session)
               (init-post-salt-and-msg cw session)
-              (setf (cw-postcnt cw) (postcnt cw))
               (when (maybe-start-server-web client passphrase)
                 (setf (cw-error cw) "Server started!"))
               (cond ((equal (get-cookie "test") "test") (delete-cookie "test"))

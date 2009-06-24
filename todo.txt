@@ -1,11 +1,3 @@
-Besides ensuring that a client web command is a post, you have to
-ensure that it came from the localhost, not some other web site. Why
-isn't this a problem with the web in general?
-
-One way to do this is to have a hidden parameter in all posts except
-login, the hash of the session value. Unless that matches, reject,
-with error message about attempted cracking.
-
 Backup mechanism. Write to log files, which are sent out in chunks to
 a backup server, which loads the transactions into its
 database. Should be able to disable transactions on the backup serer,
