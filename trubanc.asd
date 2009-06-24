@@ -24,6 +24,7 @@
      (:file "loomrandom")
      (:file "timestamp")
      (:file "server")
+     (:file "backup")
      (:file "client")
      (:file "server-web")
      (:file "toplevel")
