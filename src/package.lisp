@@ -258,6 +258,7 @@
    #:xor
    #:xor-salt
    #:xor-strings
+   #:browse-url
 
    ;; client.lisp & server.lisp
    #:id

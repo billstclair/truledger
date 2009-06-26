@@ -294,6 +294,8 @@
       (dotimes (i s-tail-len)
         (write-char (aref s-tail (+ s-tail-offset i)) s)))))
 
+(defun browse-url (url)
+  (run-program "open" (list url)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

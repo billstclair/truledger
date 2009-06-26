@@ -77,19 +77,21 @@ certfile is the path to an SSL certificate file."
         (error "Key or cert file missing")))
     (when (eql 0 nonsslport) (setq nonsslport nil))
     (handler-case
-        (progn (trubanc-web-server
-                nil
-                :port port
-                :ssl-privatekey-file keyfile
-                :ssl-certificate-file certfile
-                :forwarding-port nonsslport)
-               (format t "Client web server started on port ~a.~%"
-                       (or nonsslport port))
-               (format t "Web address: http://localhost:~a/~%"
-                       (or nonsslport port))
-               (when (server-db-exists-p)
-                 (format t "REMEMBER TO LOG IN AS THE BANK TO START THE SERVER!!~%"))
-               (finish-output))
+        (let ((url (format nil "http://localhost:~a/"
+                           (or nonsslport port))))
+          (trubanc-web-server
+           nil
+           :port port
+           :ssl-privatekey-file keyfile
+           :ssl-certificate-file certfile
+           :forwarding-port nonsslport)
+          (format t "Client web server started on port ~a.~%"
+                  (or nonsslport port))
+          (format t "Web address: ~a~%" url)
+          (when (server-db-exists-p)
+            (format t "REMEMBER TO LOG IN AS THE BANK TO START THE SERVER!!~%"))
+          (finish-output)
+          (browse-url url))
       (error (c)
         (format t "Error starting server on port ~d: ~a~%" port c)
         (finish-output)

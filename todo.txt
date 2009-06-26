@@ -23,6 +23,9 @@ Use Pound or Apache mod_proxy to put server on port 80. Alternatively,
 start the process as root, start Hunchentoot, and use SETUID and
 SETGID to change to a non-root user.
 
+Change passphrase for private key.
+Change server URL, on both server and client.
+
 SERVER CONFIG
 =============
 New client accounts:
