@@ -1,0 +1,6 @@
+#!/bin/bash
+# Load Trubanc and save-application
+rm src/*.*fsl                   # Force recompile
+ccl -e '(load "trubanc-loader.lisp")' \
+    -e '(when (find-package :trubanc) (in-package :trubanc))' \
+    -e "(trubanc:save-trubanc-application)"

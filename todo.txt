@@ -1,7 +1,21 @@
+Automatically open the user's web browser when the client starts.
+
+Hide the command shell in Windows.
+
+Use a different port than 8080 as default. Maybe 8782 (TRUB on a phone
+dialpad).
+
 Backup mechanism. Write to log files, which are sent out in chunks to
 a backup server, which loads the transactions into its
 database. Should be able to disable transactions on the backup serer,
 so nobody can do stuff there until enabled.
+
+Negative spends handled as invoices. Costs two tokens, but no change
+to balance. The other guy accepts an invoice as a spend mentioning the
+invoice number. Credits the tokens when the invoicer accepts the
+spend. Invoicee gets those two tokens if invoicer rejects the
+spend. So paying an invoice can't ever cost you tokens. But rejecting
+one earns you tokens.
 
 Show the database location on the client screen, unless disabled in server config.
 

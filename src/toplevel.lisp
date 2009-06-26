@@ -23,8 +23,8 @@
 (defun usage-error (app)
   (error
 "Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport]
-port defaults to 8080, unless keyfile & certfile are included, then 8443.
-If port defaults to 8443, then nonsslport defaults to 0,
+port defaults to 8782, unless keyfile & certfile are included, then 8783.
+If port defaults to 8783, then nonsslport defaults to 8782,
 otherwise the application doesn't listen on a non-ssl port.
 keyfile is the path to an SSL private key file.
 certfile is the path to an SSL certificate file."
@@ -51,6 +51,9 @@ certfile is the path to an SSL certificate file."
                (t (usage-error app))))
     (values (nreverse res) app)))
 
+(defparameter *default-port-string* "8782")
+(defparameter *default-ssl-port-string* "8783")
+
 (defun toplevel-function-internal ()
   (run-startup-functions)
   (let (port keyfile certfile nonsslport)
@@ -58,11 +61,14 @@ certfile is the path to an SSL certificate file."
       (handler-case
           (setq keyfile (cdr (assoc :key args))
                 certfile (cdr (assoc :cert args))
-                port (parse-integer (or (cdr (assoc :port args))
-                                        (if keyfile "8443" "8080")))
+                port (parse-integer
+                      (or (cdr (assoc :port args))
+                          (if keyfile
+                              *default-ssl-port-string*
+                              *default-port-string*)))
                 nonsslport (parse-integer
                             (or (cdr (assoc :nonsslport args))
-                                (if (assoc :port args) "0" "8080"))))
+                                (if (assoc :port args) "0" *default-port-string*))))
         (error () (usage-error app))))
     (when (xor keyfile certfile)
       (error "Both or neither required of --key & --cert"))

@@ -677,8 +677,8 @@ p.version {
                              (merge-pathnames "index.html" file)
                              file))))))))))
 
-(defparameter *default-server-port* 8080)
-(defparameter *default-server-ssl-port* 8443)
+(defparameter *default-server-port* 8782) ; "TRUB" on a phone dialpad
+(defparameter *default-server-ssl-port* 8783) ; add one for SSL port
 
 #|| Creating a self-signed certificate
 openssl genrsa -out key.pem
