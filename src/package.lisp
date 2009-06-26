@@ -294,6 +294,7 @@
    #:bind-parameters
 
    ;; toplevel.lisp
+   #:write-application-name
    #:save-trubanc-application))
 
 (cl:defpackage :trubanc-server

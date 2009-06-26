@@ -122,6 +122,10 @@ certfile is the path to an SSL certificate file."
      #+win64-target "wx86cl64.exe")
    "app"))
 
+(defun write-application-name (file &optional (name (application-name)))
+  (with-open-file (s file :direction :output :if-exists :supersede)
+    (write-string name s)))
+
 (defun application-name ()
   (stringify (target-suffix) "trubanc-~a"))
 

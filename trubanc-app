@@ -3,4 +3,8 @@
 rm src/*.*fsl                   # Force recompile
 ccl -e '(load "trubanc-loader.lisp")' \
     -e '(when (find-package :trubanc) (in-package :trubanc))' \
-    -e "(trubanc:save-trubanc-application)"
+    -e '(write-application-name "appname.txt")' \
+    -e '(trubanc:save-trubanc-application)'
+APPNAME=`cat appname.txt`
+tar -czf $APPNAME.tar.gz $APPNAME
+echo $APPNAME packaged as $APPNAME.tar.gz
