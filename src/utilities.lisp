@@ -301,6 +301,8 @@
   (run-program
    "/windows/system32/rundll32"
    (list "url.dll,FileProtocolHandler" (format nil "\"~a\"" url)))
+  #+linux
+  (run-program "firefox" (list url))    ; support only Firefox for now
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
