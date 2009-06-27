@@ -295,7 +295,13 @@
         (write-char (aref s-tail (+ s-tail-offset i)) s)))))
 
 (defun browse-url (url)
-  (run-program "open" (list url)))
+  #+darwin
+  (run-program "open" (list url))
+  #+windows
+  (run-program
+   "/windows/system32/rundll32"
+   (list "url.dll,FileProtocolHandler" (format nil "\"~a\"" url)))
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

@@ -87,7 +87,7 @@
            "dohistory" (do-history)
            "togglehistory" (do-togglehistory)
            "toggleinstructions" (do-toggleinstructions)
-           "toggledebug" (do-toggledebug)
+           "toggledebug" do-toggledebug
 
            "register" draw-register
            "balance" draw-balance
