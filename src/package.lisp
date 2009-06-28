@@ -296,7 +296,10 @@
 
    ;; toplevel.lisp
    #:write-application-name
-   #:save-trubanc-application))
+   #:save-trubanc-application
+   #:set-interactive-abort-process
+   #:invoking-debugger-hook-on-interrupt
+   #:backtrace-string))
 
 (cl:defpackage :trubanc-server
   (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)

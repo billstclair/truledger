@@ -13,7 +13,11 @@
                :type db)
    (lock :initarg :lock
          :initform (make-lock "backup-lock")
-         :accessor backup-db-lock)))
+         :accessor backup-db-lock)
+   (write-index :initform 0
+                :accessor write-index)
+   (read-index :initform 0
+               :accessor read-index)))
 
 (defmethod print-object ((db backup-db) stream)
   (print-unreadable-object (db stream :type t)

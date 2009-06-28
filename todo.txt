@@ -1,10 +1,3 @@
-Automatically open the user's web browser when the client starts.
-
-Hide the command shell in Windows.
-
-Use a different port than 8080 as default. Maybe 8782 (TRUB on a phone
-dialpad).
-
 Backup mechanism. Write to log files, which are sent out in chunks to
 a backup server, which loads the transactions into its
 database. Should be able to disable transactions on the backup serer,
@@ -25,6 +18,14 @@ SETGID to change to a non-root user.
 
 Change passphrase for private key.
 Change server URL, on both server and client.
+
+Hide the command shell in Windows.
+http://www.geeksandphreaks.com/index.php/2008/03/05/hide-command-prompt-windows/
+1. Create a vbscript file called start.vbs with the following code:
+CreateObject("Wscript.Shell").Run """" & WScript.Arguments(0) & """", 0, False
+2. To run your file type: start.vbs <name of file>.bat in a command window.
+
+http://www.microsoft.com/technet/scriptcenter/resources/qanda/may06/hey0519.mspx
 
 SERVER CONFIG
 =============

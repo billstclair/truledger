@@ -33,6 +33,14 @@
 (defclass trubanc-application (ccl::application)
   ())
 
+(defun set-interactive-abort-process (&optional (process ccl:*current-process*))
+  (check-type process (or ccl:process null))
+  (setq ccl::*interactive-abort-process* process))
+
+(defmacro invoking-debugger-hook-on-interrupt (&body body)
+  `(let ((ccl::*invoke-debugger-hook-on-interrupt* t))
+     ,@body))
+
 (defun save-application (filename &rest rest &key
                          toplevel-function
                          init-file

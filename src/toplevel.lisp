@@ -8,11 +8,22 @@
 (in-package :trubanc-client-web)
 
 (defun toplevel-function ()
-  (handler-case (toplevel-function-internal)
-    (error (c)
-      (format t "~a~%" c)
-      (finish-output)
-      (quit))))
+  (set-interactive-abort-process)
+  (invoking-debugger-hook-on-interrupt
+    (let ((*debugger-hook* (lambda (condition hook)
+                             ;; Here on ctrl-c, SIGINT.
+                             ;; Really should do a controlled shut-down
+                             ;; of the web server, with a second hook
+                             ;; to quit right away on a second ctlr-c
+                             (declare (ignore condition hook))
+                             (terpri)
+                             (finish-output)
+                             (quit))))
+      (handler-case (toplevel-function-internal)
+        (error (c)
+          (format t "~&~a~%~a~%" c (backtrace-string))
+          (finish-output)
+          (quit -1))))))
 
 (defparameter *allowed-parameters*
   '((("-p" "--port") :port . t)
