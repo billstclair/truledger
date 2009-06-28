@@ -175,6 +175,8 @@
    #:db-contents
    #:db-subdir
    #:append-db-keys
+   #:%append-db-keys
+   #:with-fsdb-filename
 
    ;; parser.lisp
    #:parser
