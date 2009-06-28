@@ -32,6 +32,9 @@
 (defconstant $INBOX "inbox")
 (defconstant $COUPON "coupon")
 (defconstant $DATA "data")
+(defconstant $BACKUP "backup")
+(defconstant $READINDEX "readindex")
+(defconstant $WRITEINDEX "writeindex")
 
 ;; request names
 (defconstant $ID "id")

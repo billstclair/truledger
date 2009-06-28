@@ -56,6 +56,9 @@
    #:$ANONYMOUS
    #:$KEY
    #:$DATA
+   #:$BACKUP
+   #:$READINDEX
+   #:$WRITEINDEX
    #:$SIZE
    #:$ATREGISTER
    #:$ATOUTBOXHASH
