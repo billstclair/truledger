@@ -125,6 +125,7 @@
                         (,$ATCOUPONENVELOPE . (,$MSG))
                         (,$ATWRITEDATA . (,$ID ,$TIME ,$ANONYMOUS ,$KEY))
                         (,$ATREADDATA . (,$ID ,$TIME ,$DATA))
+                        (,$ATBACKUP . (,$REQ))
                         ))
             (hash (make-hash-table :test 'equal)))
         (loop

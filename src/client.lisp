@@ -2333,6 +2333,18 @@
                   (db-get db (userbalancehashkey client)) bankbalhashmsg)
             data))))))
 
+(defmethod backup ((client client) req key data)
+  (require-current-bank client "In writedata(): Bank not set")
+  (let* ((msg (sendmsg client $BACKUP req key data))
+         (args (unpack-bankmsg client msg $ATBACKUP))
+         (id (getarg $CUSTOMER args))
+         (msgreq (getarg $REQ args)))
+    (unless (equal id (bankid client))
+      (error "Return from backup request not from bank."))
+    (unless (equal req msgreq)
+      (error "Mistmatch in req from backup request, sb: ~s, was: ~s"
+             req msgreq))))
+
 ;;;
 ;;; End of API methods
 ;;;

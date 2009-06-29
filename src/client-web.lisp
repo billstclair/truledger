@@ -107,7 +107,7 @@
             (return-from web-server-internal
               (whots (s)
                 "Error: " (str c)
-                (when (debug-stream-enabled-p)
+                (when (debug-stream-p)
                   (who (s)
                     (:br)
                     (:pre (esc (backtrace-string))))))))))

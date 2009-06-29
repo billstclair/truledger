@@ -81,6 +81,7 @@
 (defconstant $ATCOUPONENVELOPE "@couponenvelope")
 (defconstant $ATWRITEDATA "@writedata")
 (defconstant $ATREADDATA "@readdata")
+(defconstant $ATBACKUP "@backup")
 
 ;; request parameter names
 (defconstant $CUSTOMER "customer")

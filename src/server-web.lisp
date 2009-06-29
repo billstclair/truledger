@@ -118,16 +118,13 @@
     (setq *debug-stream* (and enable (make-string-output-stream))))
   enable)
 
-(defun debug-stream-enabled-p ()
+(defun debug-stream-p ()
   (and *debug-stream* (not (eq *debug-stream* t))))
 
 (defun debugmsg (format-string &rest format-args)
   (declare (dynamic-extent format-args))
   (when (and *debug-stream* (stringp format-string))
     (apply #'format *debug-stream* format-string format-args)))
-
-(defun debug-stream-p ()
-  (not (null *debug-stream*)))
 
 (defun do-trubanc-web-server ()
   (let* ((acceptor hunchentoot:*acceptor*)

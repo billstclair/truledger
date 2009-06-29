@@ -806,6 +806,17 @@ Read Data
   data itself.
 
 
+Backup
+------
+  Customer sends:
+
+(<id>,backup,<req#>,<key>,<value>)
+
+  Bank checks that <id> is the bankid, then stores <value> at <key> in
+  the database. Bank returns:
+
+(<bankid>,@backup,<req#>)
+
 
 Setting the Automatic Vend Acct
 -------------------------------

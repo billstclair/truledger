@@ -60,7 +60,11 @@
    (always-verify-sigs-p :type boolean
                          :initarg :always-verify-sigs-p
                          :initform t
-                         :accessor always-verify-sigs-p)))
+                         :accessor always-verify-sigs-p)
+   (backup-mode-p :type boolean
+                  :initarg :backup-mode-p
+                  :initform nil
+                  :accessor backup-mode-p)))
 
 (defmethod initialize-instance :after ((server server) &key db passphrase)
   (let ((pubkeydb (db-subdir db $PUBKEY)))
@@ -2075,6 +2079,18 @@
                           data
                           (stringify (length data)))))
         (bankmsg server $ATREADDATA id time res-data)))))
+
+(define-message-handler do-backup $BACKUP (server args reqs)
+  (declare (ignore reqs))
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args))
+        (req (getarg $REQ args))
+        (key (getarg $KEY args))
+        (data (getarg $DATA args)))
+    (unless (equal id (bankid server))
+      (error "Backup command only allowed for bankid"))
+    (setf (db-get db key) data)
+    (bankmsg server $ATBACKUP req)))
       
 ;;;
 ;;; End request processing
@@ -2104,7 +2120,8 @@
                       ,$GETBALANCE
                       ,$GETVERSION
                       ,$WRITEDATA
-                      ,$READDATA))
+                      ,$READDATA
+                      ,$BACKUP))
              (commands (make-hash-table :test #'equal)))
       (loop
          for name in names
@@ -2112,6 +2129,12 @@
          do
            (setf (gethash name commands) pattern))
       (setq *server-commands* commands))))
+
+(defparameter *backup-mode-commands*
+  `(,$BANKID ,$BACKUP))
+
+(defparameter *backup-mode-only-commands*
+  `(,$BACKUP))
 
 (defun shorten (string maxlen)
   (if (> (length string) maxlen)
@@ -2138,6 +2161,12 @@
     (declare (special *break-in-sldb*))
     (unless pattern
       (error "Unknown request: ~s" request))
+    (cond ((backup-mode-p server)
+           (unless (member request *backup-mode-commands* :test #'equal)
+             (error "Request not valid in backup mode: ~s" request)))
+          (t
+           (when (member request *backup-mode-only-commands* :test #'equal)
+             (error "Request only valid in backup mode: ~s" request))))
     (setq pattern (append `(,$CUSTOMER ,$REQUEST) pattern))
     (let* ((args (or (match-args (car reqs) pattern)
                      (error "Can't match message")))

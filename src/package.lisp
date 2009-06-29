@@ -80,6 +80,7 @@
    #:$ATCOUPONENVELOPE
    #:$ATWRITEDATA
    #:$ATREADDATA
+   #:$ATBACKUP
    #:$CUSTOMER
    #:$REQUEST
    #:$NAME
@@ -312,11 +313,11 @@
    #:process
    #:make-server
    #:privkey
-   #:make-server
    #:bankurl
    #:bankname
    #:privkey
-   #:db))
+   #:db
+   #:backup-mode-p))
 
 (cl:defpackage :trubanc-client
   (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)
