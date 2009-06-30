@@ -116,6 +116,21 @@
               (db-get (wrapped-db db) $BACKUP $READINDEX) (stringify (read-index db))
               (last-read-key db) nil)))))
 
+(defun make-backup-client (server remote-url)
+  (let* ((client (trubanc-client:make-client (client-db-dir)))
+         (bankid (bankid server))
+         (remote-bankid
+          (ignore-errors (trubanc-client:bankid-for-url client remote-url))))
+    (unless (equal bankid remote-bankid)
+      (error "Remote bank not for same bankid as local bank"))
+    (setf (id client) bankid
+          (bankid client) bankid
+          (privkey client) (privkey server)
+          (server client) (trubanc-client:make-server-proxy client remote-url))
+    ;; Ensure remote server is in backup mode
+    (trubanc-client:backup client "test" "" "")
+    client))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair

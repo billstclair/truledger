@@ -236,6 +236,7 @@
    #:whots
    #:data-contents
    #:data-cost
+   #:client-db-dir
    #:fraction-digits
    #:storage-fee
    #:coupon-number-p
@@ -349,6 +350,7 @@
    #:url-p
    #:parse-coupon
    #:verify-coupon
+   #:bankid-for-url
    #:verify-bank
    #:addbank
    #:setbank
@@ -455,7 +457,9 @@
    #:getversion
    #:user-preference
    #:userreq
-   #:trimmsg))
+   #:trimmsg
+   #:make-server-proxy
+   #:backup))
 
 (cl:defpackage :trubanc-client-web
   (:use :cl :cffi :cl-base64 :cl-who :trubanc :trubanc-tokens :trubanc-client)

@@ -247,13 +247,40 @@
         (coupon-number (nth-value 1 (parse-coupon coupon))))
     (verify-bank client url bankid)
     (let* ((msg (strcat "(0," $BANKID ",0," coupon-number "):0"))
-           (server (make-instance 'serverproxy :url url :client client))
+           (server (make-server-proxy client url))
            (msg (process server msg))
            (reqs (parse parser msg)))
       (match-bankreq client (car reqs) $REGISTER bankid)
       (unless (eql 2 (length reqs))
         (error "verifycoupon: expected 2 messages from bank"))
       (match-bankreq client (cadr reqs) $COUPONNUMBERHASH bankid))))
+
+;; Returns three values:
+;;   1) bankid
+;;   2) bank pubkey
+;;   3) bank name
+(defmethod bankid-for-url ((client client) url &optional bankid)
+  (let* ((parser (parser client))
+         (msg (strcat "(0," $BANKID ",0):0"));
+         (server (make-server-proxy client url))
+         (msg (process server msg))
+         (save-bankid (prog1 (bankid client)
+                        (setf (bankid client) bankid)))
+         (args (unwind-protect (match-message parser msg)
+                 (setf (bankid client) save-bankid)))
+         (request (getarg $REQUEST args))
+         (bankid (getarg $CUSTOMER args))
+         (pubkey (getarg $PUBKEY args))
+         (name (getarg $NAME args)))
+    (when (equal $FAILED request)
+      (error "Failed to register at bank: ~s"
+             (or (getarg $ERRMSG args) msg)))
+    (unless (and (equal $REGISTER request)
+                 (equal bankid (getarg $BANKID args)))
+      (error "Bank's register message malformed"))
+    (unless (equal (pubkey-id pubkey) bankid)
+      (error "verifybank: Bank's id doesn't match its public key"))
+    (values bankid pubkey name)))
 
 (defmethod verify-bank ((client client) url &optional id)
   "Verify that a bank matches its URL.
@@ -271,30 +298,11 @@
              (error "verifybank: id <> bankid"))
            (unless id (setq id bankid)))
           (t
-           (let* ((parser (parser client))
-                  (msg (strcat "(0," $BANKID ",0):0"));
-                  (server (make-instance 'serverproxy :url url :client client))
-                  (msg (process server msg))
-                  (save-bankid (prog1 (bankid client)
-                                 (setf (bankid client) bankid)))
-                  (args (unwind-protect (match-message parser msg)
-                          (setf (bankid client) save-bankid)))
-                  (request (getarg $REQUEST args))
-                  (bankid (getarg $CUSTOMER args))
-                  (pubkey (getarg $PUBKEY args))
-                  (name (getarg $NAME args)))
-             (when (equal $FAILED request)
-               (error "Failed to register at bank: ~s"
-                      (or (getarg $ERRMSG args) msg)))
-             (unless (and (equal $REGISTER request)
-                          (equal bankid (getarg $BANKID args)))
-               (error "Bank's register message malformed"))
+           (multiple-value-bind (bankid pubkey name) (bankid-for-url client url)
              (if (not id)
                  (setq id bankid)
                  (unless (equal bankid id)
                    (error "Bankid different than expected")))
-             (unless (equal (pubkey-id pubkey) bankid)
-               (error "verifybank: Bank's id doesn't match its public key"))
              (unless (bankprop client $URL bankid)
                ;; Initialize the bank in the database
                (setf (db-get db $BANK $BANKID urlhash) bankid
@@ -345,8 +353,7 @@
                     (progn
                       (unless url
                         (error "URL not stored for verified bank: ~s" bankid))
-                      (setf (server client)
-                            (make-instance 'serverproxy :url url :client client))
+                      (setf (server client) (make-server-proxy client url))
                       (register client name coupon bankid)
                       (setq ok t))
                  (unless ok
@@ -364,7 +371,7 @@
     (unless (userbankprop client $REQ bankid)
       (error "User not registered at bank"))
     (setf (bankid client) bankid
-          (server client) (make-instance 'serverproxy :url url :client client))
+          (server client) (make-server-proxy client url))
 
     (when check-p
       (let* ((msg (sendmsg client $BANKID (pubkey client)))
@@ -412,7 +419,7 @@
           (t 
            (let ((url (or (bankprop client $URL)
                           (error "In register: Unknown bankid"))))
-             (setq server (make-instance 'serverproxy :url url :client client)))))
+             (setq server (make-server-proxy client url)))))
 
     (require-current-bank client "In register(): Bank not set")
 
@@ -2257,7 +2264,7 @@
                  (apply #'custmsg client
                         $READDATA bankid (getreq client) key size-arg)))
          (server (if (and anonymous-p bankurl)
-                     (make-instance 'serverproxy :url bankurl :client client)
+                     (make-server-proxy client bankurl)
                      (server client)))
          (save-bankid (prog1 (bankid client)
                         (setf (bankid client) bankid)))
@@ -2636,7 +2643,7 @@
       value)))
 
 (defmethod get-pubkey-from-server ((client client) id)
-  "Send a t->ID command to the server, if there is one.
+  "Send an $ID command to the server, if there is one.
    Parse out the pubkey, cache it in the database, and return it.
    Return nil if there is no server or it doesn't know the id."
   (let* ((db (db client))
@@ -2972,6 +2979,9 @@
 ;;;
 ;;; Connection to the server
 ;;;
+
+(defmethod make-server-proxy ((client client) url)
+  (make-instance 'serverproxy :url url :client client))
 
 (defclass serverproxy ()
   ((url :type string

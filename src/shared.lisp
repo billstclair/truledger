@@ -284,6 +284,10 @@
       0
       (1+ (ceiling (if (integerp data) data (length data)) 4096))))
 
+;; The directory for the client database
+(defun client-db-dir ()
+  "trubanc-dbs/clientdb")
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

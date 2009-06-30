@@ -2089,7 +2089,8 @@
         (data (getarg $DATA args)))
     (unless (equal id (bankid server))
       (error "Backup command only allowed for bankid"))
-    (setf (db-get db key) data)
+    (unless (blankp key)                ;Enables client test for backup mode
+      (setf (db-get db key) data))
     (bankmsg server $ATBACKUP req)))
       
 ;;;

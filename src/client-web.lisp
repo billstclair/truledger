@@ -41,9 +41,6 @@
   postmsg
   )
 
-(defun client-db-dir ()
-  "trubanc-dbs/clientdb")
-
 ;; Called from do-trubanc-client in server-web.lisp
 ;; Returns a string with the contents of the client web page.
 (defun web-server ()
