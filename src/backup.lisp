@@ -134,6 +134,9 @@
     (trubanc-client:backup client "test" "" "")
     client))
 
+;; This needs to handle a file disappearing.
+;; Or maybe we should just always do the whole thing, then
+;; mark that it's been done so we don't do it again.
 (defun backup-existing-db (db)
   (check-type db backup-db)
   (let ((wrapped-db (wrapped-db db)))
@@ -149,19 +152,62 @@
                                          (string-lessp file (car walk-index)))
                               (setq starting-up-p
                                     (walk key (cdr walk-index) starting-up-p))))
-                           (starting-up-p
-                            (when (equal file (car walk-index))
-                              (setq starting-up-p nil)))
-                           (t (with-db-lock (wrapped-db key)
+                           (t
+                            (when starting-up-p
+                              (unless (and walk-index
+                                          (string-lessp file (car walk-index)))
+                                (setq starting-up-p nil)))
+                            (unless (or starting-up-p (equal file (car walk-index)))
+                              (with-db-lock (wrapped-db key)
                                 (with-lock-grabbed ((write-lock db))
                                   (backup-write db (db-get wrapped-db key) key)
                                   ;;(format t "key: ~a~%" key)
                                   (setf (db-get wrapped-db $BACKUP $WALKINDEX)
-                                        key))))))))
+                                        key)))))))))
                starting-up-p))
       (let ((walk-index (explode #\/ (or (db-get db $BACKUP $WALKINDEX) ""))))
         (walk nil walk-index (not (null walk-index)))))))
 
+(defvar *backup-process* nil)
+(defvar *stop-backup-process* nil)
+
+(defun start-backup-process (server remote-url)
+  (when *backup-process* (error "Backup process already running"))
+  (setq *stop-backup-process* nil)
+  (let ((client (make-backup-client server remote-url))
+        (db (make-backup-db (db server))))
+    (setf (db server) db)
+    (setq *backup-process*
+          (process-run-function
+           "Trubanc Backup"
+           (lambda ()
+             (unwind-protect
+                  (progn
+                    (backup-existing-db db)
+                    (loop
+                       ;; Should probably do this with a lock, or a semaphore.
+                       (process-wait
+                        "Backup"
+                        (lambda () (or *stop-backup-process* (can-read-p db))))
+                       ;; Exit when stop-backup-process asks nicely
+                       (when *stop-backup-process*
+                         (setq *backup-process* nil)
+                         (return))
+                       ;; Should really gang a bunch of key/data pairs in one message
+                       ;; to the remote server.
+                       (multiple-value-bind (key data idx) (backup-read db)
+                         (when key
+                           (trubanc-client:backup client (stringify idx) key data)
+                           (save-readindex db)))))
+               (setf (db server) (wrapped-db db)
+                     *backup-process* nil)))))))
+
+(defun stop-backup-process ()
+  (when *backup-process*
+    (setq *stop-backup-process* t)
+    (process-wait "Backup termination" (lambda () (null *backup-process*)))
+    (setq *stop-backup-process* nil)))
+                                                        
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair
