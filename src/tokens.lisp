@@ -35,6 +35,7 @@
 (defconstant $BACKUP "backup")
 (defconstant $READINDEX "readindex")
 (defconstant $WRITEINDEX "writeindex")
+(defconstant $WALKINDEX "walkindex")
 
 ;; request names
 (defconstant $ID "id")

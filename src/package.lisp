@@ -59,6 +59,7 @@
    #:$BACKUP
    #:$READINDEX
    #:$WRITEINDEX
+   #:$WALKINDEX
    #:$SIZE
    #:$ATREGISTER
    #:$ATOUTBOXHASH
@@ -175,6 +176,7 @@
    #:db-unlock
    #:db-contents
    #:db-subdir
+   #:db-dir-p
    #:append-db-keys
    #:%append-db-keys
    #:with-fsdb-filename

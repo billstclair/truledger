@@ -46,6 +46,11 @@
   (:method ((db db) key)
     (declare (ignore key))
     (unimplemented-db-method 'db-subdir)))
+
+(defgeneric db-dir-p (db &rest keys)
+  (:method ((db db) &rest keys)
+    (declare (ignore keys))
+    (unimplemented-db-method 'db-dir-p)))
   
 ;;;
 ;;; Implement the db protocol using the file system
@@ -76,9 +81,11 @@
       key))
 
 (defmethod db-filename ((db fsdb) key)
-  (let ((key (normalize-key key)))
-    (values (strcat (fsdb-dir db) "/" key)
-            key)))
+  (if (blankp key)
+      (values (fsdb-dir db) "")
+      (let ((key (normalize-key key)))
+        (values (strcat (fsdb-dir db) "/" key)
+                key))))
 
 (defmacro with-fsdb-filename ((db filename key) &body body)
   (let ((thunk (gensym)))
@@ -162,6 +169,13 @@
 
 (defmethod db-subdir ((db fsdb) key)
   (make-instance 'fsdb :dir (strcat (fsdb-dir db) "/" key)))
+
+(defmethod db-dir-p ((db fsdb) &rest keys)
+  (declare (dynamic-extent keys))
+  (let ((key (if keys (%append-db-keys (car keys) (cdr keys)) "")))
+    (with-fsdb-filename (db filename key)
+      (let ((path (probe-file filename)))
+        (and path (cl-fad:directory-pathname-p path))))))
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

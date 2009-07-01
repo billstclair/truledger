@@ -9,8 +9,8 @@
 
 (defun make-backup-db (db)
   (let ((res (make-instance 'backup-db :wrapped-db db))
-        (readindex (parse-integer (db-get db $BACKUP $READINDEX)))
-        (writeindex (parse-integer (db-get db $BACKUP $WRITEINDEX))))
+        (readindex (parse-integer (or (db-get db $BACKUP $READINDEX) "0")))
+        (writeindex (parse-integer (or (db-get db $BACKUP $WRITEINDEX) "0"))))
     (when readindex (setf (read-index res) readindex))
     (when writeindex (setf (write-index res) writeindex))
     res))    
@@ -69,6 +69,10 @@
                  :read-lock (read-lock db)
                  :write-lock (write-lock db)))
 
+(defmethod db-dir-p ((db backup-db) &rest keys)
+  (declare (dynamic-extent keys))
+  (apply #'db-dir-p (wrapped-db db) keys))
+
 (defconstant $BACKUP-DELIMITER #.(format nil "///~%"))
 
 ;; Here's where we write the data to the log.
@@ -119,8 +123,7 @@
 (defun make-backup-client (server remote-url)
   (let* ((client (trubanc-client:make-client (client-db-dir)))
          (bankid (bankid server))
-         (remote-bankid
-          (ignore-errors (trubanc-client:bankid-for-url client remote-url))))
+         (remote-bankid (trubanc-client:bankid-for-url client remote-url)))
     (unless (equal bankid remote-bankid)
       (error "Remote bank not for same bankid as local bank"))
     (setf (id client) bankid
@@ -130,6 +133,34 @@
     ;; Ensure remote server is in backup mode
     (trubanc-client:backup client "test" "" "")
     client))
+
+(defun backup-existing-db (db)
+  (check-type db backup-db)
+  (let ((wrapped-db (wrapped-db db)))
+    (labels ((walk (dir walk-index starting-up-p)
+               ;;(format t "(walk ~s ~s ~s)~%" dir walk-index starting-up-p)
+               (let ((contents (if dir
+                                   (db-contents wrapped-db dir)
+                                   (db-contents wrapped-db))))
+                 (dolist (file contents)
+                   (let ((key (if dir (append-db-keys dir file) file)))
+                     (cond ((db-dir-p wrapped-db key)
+                            (unless (and walk-index
+                                         (string-lessp file (car walk-index)))
+                              (setq starting-up-p
+                                    (walk key (cdr walk-index) starting-up-p))))
+                           (starting-up-p
+                            (when (equal file (car walk-index))
+                              (setq starting-up-p nil)))
+                           (t (with-db-lock (wrapped-db key)
+                                (with-lock-grabbed ((write-lock db))
+                                  (backup-write db (db-get wrapped-db key) key)
+                                  ;;(format t "key: ~a~%" key)
+                                  (setf (db-get wrapped-db $BACKUP $WALKINDEX)
+                                        key))))))))
+               starting-up-p))
+      (let ((walk-index (explode #\/ (or (db-get db $BACKUP $WALKINDEX) ""))))
+        (walk nil walk-index (not (null walk-index)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
