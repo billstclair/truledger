@@ -19,10 +19,10 @@
   ((wrapped-db :initarg :wrapped-db
                :accessor wrapped-db
                :type db)
-   (read-lock :initform (make-lock "backup-read-lock")
-              :accessor read-lock)
    (write-lock :initform (make-lock "backup-write-lock")
-              :accessor write-lock)
+              :reader write-lock)
+   (latch :initform (make-latch)
+          :reader backup-db-latch)
    (write-index :initform 0
                 :accessor write-index)
    (read-index :initform 0
@@ -66,7 +66,6 @@
 (defmethod db-subdir ((db backup-db) key)
   (make-instance 'backup-db
                  :wrapped-db (db-subdir (wrapped-db db) key)
-                 :read-lock (read-lock db)
                  :write-lock (write-lock db)))
 
 (defmethod db-dir-p ((db backup-db) &rest keys)
@@ -84,41 +83,40 @@
                   key
                   $BACKUP-DELIMITER
                   (or value "")))
-    (setf (db-get (wrapped-db db) $BACKUP $WRITEINDEX) index)))
+    (setf (db-get (wrapped-db db) $BACKUP $WRITEINDEX) index)
+    (signal-latch (backup-db-latch db))))
 
 ;; Returns three values: key, value, and index
 ;; Null return means the read-index has caught up with the write-index.
 (defmethod backup-read ((db backup-db))
-  (with-lock-grabbed ((read-lock db))
-    (save-readindex db)
-    (let ((index (1+ (read-index db))))
-      (loop
-         while (<= index (write-index db))
-         do
-           (let* ((idx (stringify index))
-                  (key (append-db-keys $BACKUP idx))
-                  (str (db-get (wrapped-db db) key)))
-             (cond (str
-                    (let ((pos (search $BACKUP-DELIMITER str)))
-                      (assert pos nil "No delimiter found in backup string: ~s" str)
-                      (setf (last-read-key db) key
-                            (read-index db) index)
-                      (return
-                        (values (subseq str 0 pos)
-                                (subseq str (+ pos (length $BACKUP-DELIMITER)))
-                                idx))))
-                   (t (incf index))))))))
+  (save-readindex db)
+  (let ((index (1+ (read-index db))))
+    (loop
+       while (<= index (write-index db))
+       do
+       (let* ((idx (stringify index))
+              (key (append-db-keys $BACKUP idx))
+              (str (db-get (wrapped-db db) key)))
+         (cond (str
+                (let ((pos (search $BACKUP-DELIMITER str)))
+                  (assert pos nil "No delimiter found in backup string: ~s" str)
+                  (setf (last-read-key db) key
+                        (read-index db) index)
+                  (return
+                    (values (subseq str 0 pos)
+                            (subseq str (+ pos (length $BACKUP-DELIMITER)))
+                            idx))))
+               (t (incf index)))))))
 
 (defmethod can-read-p ((db backup-db))
   (<= (1+ (read-index db)) (write-index db)))
 
 (defmethod save-readindex ((db backup-db))
-  (with-lock-grabbed ((read-lock db))
-    (let ((key (last-read-key db)))
-      (when key
-        (setf (db-get (wrapped-db db) key) nil
-              (db-get (wrapped-db db) $BACKUP $READINDEX) (stringify (read-index db))
-              (last-read-key db) nil)))))
+  (let ((key (last-read-key db)))
+    (when key
+      (setf (db-get (wrapped-db db) key) nil
+            (db-get (wrapped-db db) $BACKUP $READINDEX) (stringify (read-index db))
+            (last-read-key db) nil))))
 
 (defun make-backup-client (server remote-url)
   (let* ((client (trubanc-client:make-client (client-db-dir)))
@@ -134,9 +132,6 @@
     (trubanc-client:backup client "test" "" "")
     client))
 
-;; This needs to handle a file disappearing.
-;; Or maybe we should just always do the whole thing, then
-;; mark that it's been done so we don't do it again.
 (defun backup-existing-db (db)
   (check-type db backup-db)
   (let ((wrapped-db (wrapped-db db)))
@@ -169,6 +164,7 @@
         (walk nil walk-index (not (null walk-index)))))))
 
 (defvar *backup-process* nil)
+(defvar *backup-process-db* nil)
 (defvar *stop-backup-process* nil)
 
 (defun start-backup-process (server remote-url)
@@ -177,7 +173,8 @@
   (let ((client (make-backup-client server remote-url))
         (db (make-backup-db (db server))))
     (setf (db server) db)
-    (setq *backup-process*
+    (setq *backup-process-db* db
+          *backup-process*
           (process-run-function
            "Trubanc Backup"
            (lambda ()
@@ -185,28 +182,30 @@
                   (progn
                     (backup-existing-db db)
                     (loop
-                       ;; Should probably do this with a lock, or a semaphore.
-                       (process-wait
-                        "Backup"
-                        (lambda () (or *stop-backup-process* (can-read-p db))))
-                       ;; Exit when stop-backup-process asks nicely
-                       (when *stop-backup-process*
-                         (setq *backup-process* nil)
-                         (return))
-                       ;; Should really gang a bunch of key/data pairs in one message
-                       ;; to the remote server.
-                       (multiple-value-bind (key data idx) (backup-read db)
-                         (when key
-                           (trubanc-client:backup client (stringify idx) key data)
-                           (save-readindex db)))))
-               (setf (db server) (wrapped-db db)
-                     *backup-process* nil)))))))
+                       named outer
+                       do
+                         (wait-on-latch (backup-db-latch db))
+                         (loop
+                            (when *stop-backup-process*
+                              (setq *backup-process* nil)
+                              (return-from outer))
+                            ;; Should really gang a bunch of key/data pairs
+                            ;; in one message to the remote server.
+                            (multiple-value-bind (key data idx) (backup-read db)
+                              (unless key (return))
+                              (trubanc-client:backup
+                               client (stringify idx) key data)
+                              (save-readindex db)))))
+                    (setf (db server) (wrapped-db db)
+                          *backup-process* nil)))))))
 
 (defun stop-backup-process ()
   (when *backup-process*
     (setq *stop-backup-process* t)
+    (signal-latch (backup-db-latch *backup-process-db*))
     (process-wait "Backup termination" (lambda () (null *backup-process*)))
-    (setq *stop-backup-process* nil)))
+    (setq *stop-backup-process* nil
+          *backup-process-db* nil)))
                                                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

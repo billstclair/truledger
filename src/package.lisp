@@ -165,6 +165,12 @@
    #:make-lock
    #:release-file-lock
    #:with-file-locked
+   #:make-semaphore
+   #:signal-semaphore
+   #:wait-on-semaphore
+   #:make-latch
+   #:signal-latch
+   #:wait-on-latch
 
    ;; fsdb.lisp
    #:db
