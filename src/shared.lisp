@@ -92,7 +92,7 @@
                         (,$VERSION . (,$VERSION ,$TIME))
                         (,$WRITEDATA . (,$BANKID ,$TIME ,$ANONYMOUS ,$KEY ,$DATA))
                         (,$READDATA . (,$BANKID ,$REQ ,$KEY (,$SIZE)))
-                        (,$BACKUP . (,$REQ ,$KEY ,$DATA))
+                        (,$BACKUP . (,$REQ :rest))
 
                         ;; Bank signed messages
                         (,$FAILED . (,$MSG ,$ERRMSG))

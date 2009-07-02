@@ -283,12 +283,23 @@
              (t
               (setq name key
                     optional t)))
-       (let ((val (gethash i parse)))
-         (unless val (setq val (gethash name parse)))
-         (when (and (not optional) (not val)) (return nil))
-         (when val
-           (setf (gethash name res) val
-                 (gethash i res) val)))
+       (cond ((eq name :rest)
+              (loop
+                 for j from i
+                 for val = (gethash j parse)
+                 while val
+                 collect val into rest
+                 do
+                   (setf (gethash j res) val)
+                 finally
+                   (setf (gethash :rest res) rest))
+              (decf i))
+             (t (let ((val (gethash i parse)))
+                  (unless val (setq val (gethash name parse)))
+                  (when (and (not optional) (not val)) (return nil))
+                  (when val
+                    (setf (gethash name res) val
+                          (gethash i res) val)))))
      finally
        (maphash (lambda (key value)
                   (declare (ignore value))

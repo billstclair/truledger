@@ -810,9 +810,9 @@ Backup
 ------
   Customer sends:
 
-(<id>,backup,<req#>,<key>,<value>)
+(<id>,backup,<req#>,<key1>,<value1>,<key2>,<value2>,...)
 
-  Bank checks that <id> is the bankid, then stores <value> at <key> in
+  Bank checks that <id> is the bankid, then stores <valuei> at <keyi> in
   the database. Bank returns:
 
 (<bankid>,@backup,<req#>)

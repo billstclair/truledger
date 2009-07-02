@@ -2085,12 +2085,17 @@
   (let ((db (db server))
         (id (getarg $CUSTOMER args))
         (req (getarg $REQ args))
-        (key (getarg $KEY args))
-        (data (getarg $DATA args)))
+        (keys&values (getarg :rest args)))
     (unless (equal id (bankid server))
       (error "Backup command only allowed for bankid"))
-    (unless (blankp key)                ;Enables client test for backup mode
-      (setf (db-get db key) data))
+    (unless (evenp (length keys&values))
+      (error "Odd length key&value list"))
+    (loop
+       for tail on keys&values by #'cddr
+       for key = (car tail)
+       for value = (cadr tail)
+       do
+         (setf (db-get db key) value))
     (bankmsg server $ATBACKUP req)))
       
 ;;;

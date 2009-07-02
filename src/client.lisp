@@ -2340,9 +2340,14 @@
                   (db-get db (userbalancehashkey client)) bankbalhashmsg)
             data))))))
 
-(defmethod backup ((client client) req key data)
+(defmethod backup ((client client) req &rest keys&values)
+  (backup* client req keys&values))
+
+(defmethod backup* ((client client) req keys&values)
   (require-current-bank client "In writedata(): Bank not set")
-  (let* ((msg (sendmsg client $BACKUP req key data))
+  (unless (evenp (length keys&values))
+    (error "odd length keys&values list"))
+  (let* ((msg (apply #'sendmsg client $BACKUP req keys&values))
          (args (unpack-bankmsg client msg $ATBACKUP))
          (id (getarg $CUSTOMER args))
          (msgreq (getarg $REQ args)))
