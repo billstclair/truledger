@@ -89,7 +89,6 @@
 ;; Returns three values: key, value, and index
 ;; Null return means the read-index has caught up with the write-index.
 (defmethod backup-read ((db backup-db))
-  (save-readindex db)
   (let ((index (1+ (read-index db))))
     (loop
        while (<= index (write-index db))
@@ -163,49 +162,99 @@
       (let ((walk-index (explode #\/ (or (db-get db $BACKUP $WALKINDEX) ""))))
         (walk nil walk-index (not (null walk-index)))))))
 
-(defvar *backup-process* nil)
-(defvar *backup-process-db* nil)
-(defvar *stop-backup-process* nil)
+(defvar *backup-processes* (make-hash-table :test 'eq))
+(defvar *backup-process-dbs* (make-hash-table :test 'eq))
+(defvar *stop-backup-process-flags* (make-hash-table :test 'eq))
+
+(defun backup-process (server)
+  (gethash server *backup-processes*))
+
+(defun (setf backup-process) (process server)
+  (setf (gethash server *backup-processes*) process))
+
+(defun backup-process-db (server)
+  (gethash server *backup-process-dbs*))
+
+(defun (setf backup-process-db) (db server)
+  (setf (gethash server *backup-process-dbs*) db))
+
+(defun stop-backup-process-flag (server)
+  (gethash server *stop-backup-process-flags*))
+
+(defun (setf stop-backup-process-flag) (boolean server)
+  (setf (gethash server *stop-backup-process-flags*) boolean))
+
+(defparameter *max-backup-data-size* (* 32 1024))
+(defparameter *backup-retry-count* 5)
+(defparameter *backup-retry-sleep-seconds* 1)
+
+(defun do-backup-process (db client server)
+  (unwind-protect
+       (progn
+         (backup-existing-db db)
+         (loop
+            named outer
+            do
+              (wait-on-latch (backup-db-latch db))
+              (loop
+                 (when (stop-backup-process-flag server)
+                   (return-from outer))
+                 (handler-case
+                     (when (do-backup-process-body db client)
+                       (return))
+                   (error () (return-from outer))))))
+    (setf (db server) (wrapped-db db)
+          (backup-process server) nil
+          (backup-process-db server) nil)))
+
+(defun do-backup-process-body (db client)
+  (let ((keys&values nil)
+        (last-idx nil)
+        (data-size 0)
+        (done nil))
+    (loop
+       (multiple-value-bind (key value idx) (backup-read db)
+         (unless key
+           (setq done t)
+           (return))
+         (push key keys&values)
+         (push value keys&values)
+         (setq last-idx idx)
+         (incf data-size (+ (length key) (length value)))
+         (when (>= data-size *max-backup-data-size*)
+           (return))))
+    (when keys&values
+      (setq keys&values (nreverse keys&values))
+      (dotimes (i *backup-retry-count* (error "Server send retries failed"))
+        (handler-case
+            (progn
+              (trubanc-client:backup*
+               client (stringify last-idx) keys&values)
+              (save-readindex db)
+              (return))
+          (error ()
+            (sleep *backup-retry-sleep-seconds*)))))
+    done))
 
 (defun start-backup-process (server remote-url)
-  (when *backup-process* (error "Backup process already running"))
-  (setq *stop-backup-process* nil)
+  (when (backup-process server) (error "Backup process already running"))
+  (setf (stop-backup-process-flag server) nil)
   (let ((client (make-backup-client server remote-url))
         (db (make-backup-db (db server))))
     (setf (db server) db)
-    (setq *backup-process-db* db
-          *backup-process*
-          (process-run-function
-           "Trubanc Backup"
-           (lambda ()
-             (unwind-protect
-                  (progn
-                    (backup-existing-db db)
-                    (loop
-                       named outer
-                       do
-                         (wait-on-latch (backup-db-latch db))
-                         (loop
-                            (when *stop-backup-process*
-                              (setq *backup-process* nil)
-                              (return-from outer))
-                            ;; Should really gang a bunch of key/data pairs
-                            ;; in one message to the remote server.
-                            (multiple-value-bind (key data idx) (backup-read db)
-                              (unless key (return))
-                              (trubanc-client:backup
-                               client (stringify idx) key data)
-                              (save-readindex db)))))
-                    (setf (db server) (wrapped-db db)
-                          *backup-process* nil)))))))
+    (setf (backup-process-db server) db
+          (backup-process server) (process-run-function
+                                   "Trubanc Backup"
+                                   #'do-backup-process
+                                   db client server))))
 
-(defun stop-backup-process ()
-  (when *backup-process*
-    (setq *stop-backup-process* t)
-    (signal-latch (backup-db-latch *backup-process-db*))
-    (process-wait "Backup termination" (lambda () (null *backup-process*)))
-    (setq *stop-backup-process* nil
-          *backup-process-db* nil)))
+(defun stop-backup-process (server)
+  (when (backup-process server)
+    (setf (stop-backup-process-flag server) t)
+    (signal-latch (backup-db-latch (backup-process-db server)))
+    (process-wait "Backup termination" (lambda () (null (backup-process server))))
+    (setf (stop-backup-process-flag server) nil
+          (backup-process-db server) nil)))
                                                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

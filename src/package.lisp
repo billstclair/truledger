@@ -467,7 +467,8 @@
    #:userreq
    #:trimmsg
    #:make-server-proxy
-   #:backup))
+   #:backup
+   #:backup*))
 
 (cl:defpackage :trubanc-client-web
   (:use :cl :cffi :cl-base64 :cl-who :trubanc :trubanc-tokens :trubanc-client)
