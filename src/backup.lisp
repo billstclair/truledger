@@ -129,8 +129,8 @@
           (privkey client) (privkey server)
           (server client) (trubanc-client:make-server-proxy client remote-url))
     ;; Ensure remote server is in backup mode
-    (let ((req (bcadd (trubanc-client:getreq client) 1)))
-      (trubanc-client:backup client req))
+    (trubanc-client:getreq client t)
+    (trubanc-client:backup client)
     client))
 
 (defun backup-existing-db (db)
@@ -225,7 +225,8 @@
   (let ((keys&values nil)
         (data-size 0)
         (done nil)
-        (bankreq-key (append-db-keys $ACCOUNT (id client) $REQ)))
+        (bankreq-key (append-db-keys $ACCOUNT (id client) $REQ))
+        (initreq-p nil))
     (loop
        (multiple-value-bind (key value) (backup-read db)
          (unless key
@@ -241,11 +242,14 @@
       (setq keys&values (nreverse keys&values))
       (dotimes (i *backup-retry-count* (error "Server send retries failed"))
         (handler-case
-            (let ((req (trubanc-client:getreq client)))
-              (trubanc-client:backup* client req keys&values)
+            (progn
+              (when initreq-p
+                (setq initreq-p nil)
+                (trubanc-client:getreq client t))
+              (trubanc-client:backup* client keys&values)
               (return))
           (error (c)
-            (trubanc-client:getreq client t)
+            (setq initreq-p t)
             (save-readindex db)
             (format t "~&~a~%" c)
             (sleep *backup-retry-sleep-seconds*)))))
