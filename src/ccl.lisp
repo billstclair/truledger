@@ -120,27 +120,6 @@
   (ccl:wait-on-semaphore semaphore))
 
 ;;;
-;;; Latches - there's probably a standard name for this
-;;; Multiple processes can signal a latch.
-;;; Only one process waits for it.
-;;;
-
-(defstruct latch
-  (lock (make-lock "latch"))
-  (semaphore (make-semaphore))
-  value)
-
-(defun signal-latch (latch)
-  (with-lock-grabbed ((latch-lock latch))
-    (unless (latch-value latch)
-      (setf (latch-value latch) t)
-      (signal-semaphore (latch-semaphore latch)))))
-
-(defun wait-on-latch (latch)
-  (wait-on-semaphore (latch-semaphore latch))
-  (setf (latch-value latch) nil))
-
-;;;
 ;;; Processes
 ;;;
 

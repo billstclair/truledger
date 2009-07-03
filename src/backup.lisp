@@ -89,6 +89,7 @@
 ;; Returns three values: key, value, and index
 ;; Null return means the read-index has caught up with the write-index.
 (defmethod backup-read ((db backup-db))
+  (save-readindex db)
   (let ((index (1+ (read-index db))))
     (loop
        while (<= index (write-index db))
@@ -128,7 +129,8 @@
           (privkey client) (privkey server)
           (server client) (trubanc-client:make-server-proxy client remote-url))
     ;; Ensure remote server is in backup mode
-    (trubanc-client:backup client "test" "" "")
+    (let ((req (bcadd (trubanc-client:getreq client) 1)))
+      (trubanc-client:backup client req))
     client))
 
 (defun backup-existing-db (db)
@@ -142,8 +144,10 @@
                  (dolist (file contents)
                    (let ((key (if dir (append-db-keys dir file) file)))
                      (cond ((db-dir-p wrapped-db key)
-                            (unless (and walk-index
-                                         (string-lessp file (car walk-index)))
+                            (unless (or (and (blankp dir)
+                                             (equal file $BACKUP))
+                                        (and walk-index
+                                             (string-lessp file (car walk-index))))
                               (setq starting-up-p
                                     (walk key (cdr walk-index) starting-up-p))))
                            (t
@@ -189,12 +193,18 @@
 (defparameter *backup-retry-sleep-seconds* 1)
 
 (defun do-backup-process (db client server)
+  (check-type db backup-db)
+  (check-type client trubanc-client:client)
+  (check-type server server)
   (unwind-protect
        (progn
+         ;; Maybe we should spawn a separate process to do this.
          (backup-existing-db db)
+         (signal-latch (backup-db-latch db))
          (loop
             named outer
             do
+              (save-readindex db)
               (wait-on-latch (backup-db-latch db))
               (loop
                  (when (stop-backup-process-flag server)
@@ -202,37 +212,42 @@
                  (handler-case
                      (when (do-backup-process-body db client)
                        (return))
-                   (error () (return-from outer))))))
+                   (error ()
+                     ;; Rebackup the whole database.
+                     (setf (db-get (wrapped-db db) $BACKUP $WALKINDEX) nil)
+                     (return-from outer))))))
+    (save-readindex db)
     (setf (db server) (wrapped-db db)
           (backup-process server) nil
           (backup-process-db server) nil)))
 
 (defun do-backup-process-body (db client)
   (let ((keys&values nil)
-        (last-idx nil)
         (data-size 0)
-        (done nil))
+        (done nil)
+        (bankreq-key (append-db-keys $ACCOUNT (id client) $REQ)))
     (loop
-       (multiple-value-bind (key value idx) (backup-read db)
+       (multiple-value-bind (key value) (backup-read db)
          (unless key
            (setq done t)
            (return))
-         (push key keys&values)
-         (push value keys&values)
-         (setq last-idx idx)
-         (incf data-size (+ (length key) (length value)))
-         (when (>= data-size *max-backup-data-size*)
-           (return))))
+         (unless (equal key bankreq-key)
+           (push key keys&values)
+           (push value keys&values)
+           (incf data-size (+ (length key) (length value)))
+           (when (>= data-size *max-backup-data-size*)
+             (return)))))
     (when keys&values
       (setq keys&values (nreverse keys&values))
       (dotimes (i *backup-retry-count* (error "Server send retries failed"))
         (handler-case
-            (progn
-              (trubanc-client:backup*
-               client (stringify last-idx) keys&values)
-              (save-readindex db)
+            (let ((req (trubanc-client:getreq client)))
+              (trubanc-client:backup* client req keys&values)
               (return))
-          (error ()
+          (error (c)
+            (trubanc-client:getreq client t)
+            (save-readindex db)
+            (format t "~&~a~%" c)
             (sleep *backup-retry-sleep-seconds*)))))
     done))
 

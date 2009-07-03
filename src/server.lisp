@@ -2090,6 +2090,7 @@
       (error "Backup command only allowed for bankid"))
     (unless (evenp (length keys&values))
       (error "Odd length key&value list"))
+    (checkreq server args)
     (loop
        for tail on keys&values by #'cddr
        for key = (car tail)
@@ -2137,7 +2138,7 @@
       (setq *server-commands* commands))))
 
 (defparameter *backup-mode-commands*
-  `(,$BANKID ,$BACKUP))
+  `(,$BANKID ,$BACKUP ,$GETREQ))
 
 (defparameter *backup-mode-only-commands*
   `(,$BACKUP))

@@ -2302,7 +2302,7 @@
              (bal (balance-amount (or (getbalance client $MAIN tokenid)
                                       (error "Insufficient tokens"))))
              (newbal (bcsub bal net-cost)))
-        (unless (>= (bccomp newbal 0) 0)
+        (unless (or (< (bccomp bal 0) 0) (>= (bccomp newbal 0) 0))
           (error "Insufficient balance, need ~a tokens" net-cost))
         (let* ((time (gettime client))
                (bankid (bankid client))
@@ -2662,10 +2662,15 @@
       (db-put db pubkeykey pubkey)
       pubkey)))
 
-(defmethod getreq ((client client))
+(defmethod getreq ((client client) &optional reinit-p)
   "Get a new request"
   (let ((db (db client))
         (key (userreqkey client)))
+    (when reinit-p
+      (let* ((msg (sendmsg client $GETREQ (bankid client)))
+             (args (unpack-bankmsg client msg $REQ))
+             (req (getarg $REQ args)))
+        (setf (db-get db key) req)))
     (with-db-lock (db key)
       (setf (db-get db key) (bcadd (db-get db key) 1)))))
 

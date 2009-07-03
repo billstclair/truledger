@@ -3,6 +3,11 @@ a backup server, which loads the transactions into its
 database. Should be able to disable transactions on the backup serer,
 so nobody can do stuff there until enabled.
 
+Need to wrap the pubkeydb, too, or make it somehow use the db, wrapped
+or not. Check whether it ever writes to this db. It may not.
+
+======================================================================
+
 Negative spends handled as invoices. Costs two tokens, but no change
 to balance. The other guy accepts an invoice as a spend mentioning the
 invoice number. Credits the tokens when the invoicer accepts the

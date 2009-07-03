@@ -168,9 +168,6 @@
    #:make-semaphore
    #:signal-semaphore
    #:wait-on-semaphore
-   #:make-latch
-   #:signal-latch
-   #:wait-on-latch
 
    ;; fsdb.lisp
    #:db
@@ -223,7 +220,7 @@
    #:unix-to-universal-time
    #:universal-to-unix-time
 
-   ;; utilities.lisp
+   ;; utilities.lisp, shared.lisp
    #:file-get-contents
    #:file-put-contents
    #:hex
@@ -245,6 +242,9 @@
    #:data-contents
    #:data-cost
    #:client-db-dir
+   #:make-latch
+   #:signal-latch
+   #:wait-on-latch
    #:fraction-digits
    #:storage-fee
    #:coupon-number-p
@@ -331,6 +331,7 @@
 (cl:defpackage :trubanc-client
   (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)
   (:export
+   #:client
    #:make-client
    #:syncedreq-p
    #:showprocess-p

@@ -25,6 +25,9 @@
 (defvar *port-forwarding-hash*
   (make-hash-table :test 'eql))
 
+(defvar *port-pathname-defaults*
+  (make-hash-table :test 'eql))
+
 (defun port-server (port)
   (gethash port *ports-to-servers*))
 
@@ -61,6 +64,15 @@
       (setf (gethash port *ports-to-www-dirs*) www-dir)
       (remhash port *ports-to-www-dirs*))
   www-dir)
+
+(defun port-pathname-defaults (port)
+  (gethash port *port-pathname-defaults*))
+
+(defun (setf port-pathname-defaults) (defaults port)
+  (if defaults
+      (setf (gethash port *port-pathname-defaults*) (pathname defaults))
+      (remhash port *port-pathname-defaults*))
+  defaults)
 
 (defun port-forwarded-to (port)
   (cdr (gethash port *port-forwarding-hash*)))
@@ -129,7 +141,9 @@
 (defun do-trubanc-web-server ()
   (let* ((acceptor hunchentoot:*acceptor*)
          (port (hunchentoot:acceptor-port acceptor))
-         (server (port-server port)))
+         (server (port-server port))
+         (*default-pathname-defaults* (or (port-pathname-defaults port)
+                                          *default-pathname-defaults*)))
     (bind-parameters (msg debug debugmsgs)
       (setf (hunchentoot:content-type*) "text/html")
       (cond ((and msg server)
@@ -157,7 +171,10 @@
 (defvar *last-uri* nil)
 
 (defun do-trubanc-web-client ()
-  (trubanc-client-web:web-server))
+  (let* ((port (hunchentoot:acceptor-port hunchentoot:*acceptor*))
+         (*default-pathname-defaults* (or (port-pathname-defaults port)
+                                          *default-pathname-defaults*)))
+    (trubanc-client-web:web-server)))
   
 (defvar *web-script-handlers*
   (make-hash-table :test 'equal))
@@ -685,6 +702,7 @@ openssl x509 -in cert.pem -text -noout
 ||#
 
 (defun trubanc-web-server (server &key
+                           (pathname-defaults nil)
                            (www-dir "www")
                            ssl-certificate-file
                            ssl-privatekey-file
@@ -718,7 +736,8 @@ openssl x509 -in cert.pem -text -noout
                                :ssl-privatekey-file ssl-privatekey-file)
                               (make-instance 'hunchentoot:acceptor :port port))))
             (setf (port-server port) server
-                  (port-www-dir port) www-dir)
+                  (port-www-dir port) www-dir
+                  (port-pathname-defaults port) pathname-defaults)
             (setf (get-web-script-handler port "/")
                   'do-trubanc-web-server
                   (get-web-script-handler port "/client")
