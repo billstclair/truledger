@@ -93,11 +93,13 @@
 (defmethod get-acct-last ((server server) id)
   (db-get (db server) (acct-last-key id)))
 
-(defun acct-req-key (id)
-  (append-db-keys (account-dir id) $REQ))
+(defun acct-req-key (id &optional server)
+  (if (and server (backup-mode-p server))
+      (append-db-keys (account-dir id) $BACKUP $REQ)
+      (append-db-keys (account-dir id) $REQ)))
 
 (defmethod get-acct-req ((server server) id)
-  (db-get (db server) (acct-req-key id)))
+  (db-get (db server) (acct-req-key id server)))
 
 (defun acct-time-key (id)
   (append-db-keys (account-dir id) $TIME))
@@ -472,9 +474,9 @@
   (let* ((db (db server))
          (id (getarg $CUSTOMER args))
          (req (getarg $REQ args))
-         (reqkey (acct-req-key id)))
+         (reqkey (acct-req-key id server)))
     (with-db-lock (db reqkey)
-      (let ((oldreq (db-get db reqkey)))
+      (let ((oldreq (or (db-get db reqkey) "0")))
         (when (<= (bccomp req oldreq) 0)
           (error "New req (~s) <= old req (~s)" req oldreq))
         (db-put db reqkey req)))))
@@ -715,7 +717,7 @@
   "Process a getreq message"
   (declare (ignore reqs))
   (let ((id (getarg $CUSTOMER args)))
-    (bankmsg server $REQ id (db-get (db server) (acct-req-key id)))))
+    (bankmsg server $REQ id (or (db-get (db server) (acct-req-key id server)) "0"))))
 
 (define-message-handler do-gettime $GETTIME (server args reqs)
   "Process a time request."
