@@ -326,7 +326,10 @@
    #:bankname
    #:privkey
    #:db
-   #:backup-mode-p))
+   #:backup-mode-p
+   #:start-backup-process
+   #:stop-backup-process
+   #:backup-process-url))
 
 (cl:defpackage :trubanc-client
   (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)

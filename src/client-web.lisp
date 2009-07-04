@@ -502,7 +502,13 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                         (gethash 0 (car bankid-reqs)))))
       (when (and bankid (equal bankid (id client)))
         (handler-case
-            (let* ((server (make-server (server-db-dir) passphrase)))
+            (let* ((server (make-server (server-db-dir) passphrase))
+                   (backup-url (backup-url-preference client))
+                   (backup-enabled-p
+                    (and backup-url
+                         (not (blankp (backup-enabled-preference client))))))
+              (when backup-enabled-p
+                (trubanc-server:start-backup-process server backup-url))
               (setf (port-server (get-current-port)) server))
           (error (c)
             (error "While starting server: ~a" c)))))))
@@ -746,6 +752,18 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                (draw-assets cw)))
             (t (draw-balance cw))))))
 
+(defun backup-url-preference (client)
+  (user-preference client "backupurl"))
+
+(defun (setf backup-url-preference) (value client)
+  (setf (user-preference client "backupurl") value))
+
+(defun backup-enabled-preference (client)
+  (user-preference client "backupenabled"))
+
+(defun (setf backup-enabled-preference) (value client)
+  (setf (user-preference client "backupenabled") value))
+
 (defun do-admin (cw)
   (bind-parameters (passphrase verification adminpass adminverify)
     (unwind-protect
@@ -758,7 +776,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
 (defun do-admin-internal 
     (cw passphrase verification adminpass adminverify)
-  (bind-parameters (bankname bankurl killclient killserver)
+  (bind-parameters (bankname bankurl backup-url killclient killserver togglebackup)
     (let ((client (cw-client cw))
           (server (get-running-server))
           (err nil))
@@ -767,7 +785,11 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
              (do-logout cw t)
              (stop-web-server (get-current-port)))
             (killserver
-             (setf (port-server (get-current-port)) nil))
+             (setf (port-server (get-current-port)) nil)
+             (when server
+               (trubanc-server:stop-backup-process server nil)))
+            (togglebackup
+             (setq err (toggle-backup cw server backup-url)))
             (server
              (setq err "Server already running"))
             ((blankp bankname)
@@ -793,7 +815,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                                               :bankurl bankurl)
                                (error (c)
                                  (setq err (stringify
-                                            c "Error initializing bank: ~a"))))))
+                                            c "Error initializing bank: ~a"))
+                                 nil))))
                  (when server
                    ;; Enable server web hosting
                    (setf (port-server (acceptor-port hunchentoot:*acceptor*))
@@ -868,6 +891,26 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
       (setf (cw-error cw) err)
       (draw-admin cw bankname bankurl))))
+
+(defun toggle-backup (cw server backup-url)
+  (handler-case
+      (progn
+        (unless server
+          (error "Can't toggle backup when server isn't enabled"))
+        (let ((backup-p (trubanc-server:backup-process-url server))
+              (client (cw-client cw)))
+          (cond (backup-p
+                 (setf (backup-enabled-preference client) nil)
+                 (trubanc-server:stop-backup-process server)
+                 "Backup process stopped.")
+                ((not (url-p backup-url))
+                 (error "Not a URL: ~a" backup-url))
+                (t
+                 (setf (backup-url-preference client) backup-url
+                       (backup-enabled-preference client) "enabled")
+                 (trubanc-server:start-backup-process server backup-url)
+                 "Backup proces started."))))
+    (error (c) (stringify c))))    
 
 (defun do-sync (cw)
   (let ((client (cw-client cw))
@@ -2133,6 +2176,7 @@ list with that nickname, or change the nickname of the selected
 (defun draw-admin (cw &optional bankname bankurl)
   (let ((s (cw-html-output cw))
         (disable-p (server-db-exists-p))
+        (client (cw-client cw))
         (server (get-running-server))
         (port (get-current-port)))
     (setf (cw-onload cw) "document.forms[0].bankname.focus()")
@@ -2146,78 +2190,99 @@ list with that nickname, or change the nickname of the selected
     (who (s)
       (:span :style "color: red;" (str (cw-error cw)))
       (:br)
-      (form (s "admin")
-        (str (if port
-                 (stringify port "Client web server is running on port ~d.")
-                 "Web server shut down. Say goodnight, Dick."))
-        (when port
-          (who (s)
-            (:br)
-            (:input :type "submit" :name "killclient"
-                    :value "Shut down web server")
-            (:br)(:br)
-            (str (cond (server "Server is running.")
-                       (disable-p "Server database exists but server not running.")
-                       (t "Server database not yet created. Enter info below.")))
-            (when (and disable-p (not server))
-              (who (s)
-                (:br)
-                (str "To start it, log out, and log back in as the bank.")))
-            (when server
-              (who (s)
-                (:br
-                 (:input :type "submit" :name "killserver"
-                         :value "Stop Server"))))
-            (when (or server (not disable-p))
-              (who (s)
-                (:br)
-                (:table
-                 (:tr
-                  (:td (:b "Bank Name:"))
-                  (:td (:input :type "text"
-                               :name "bankname"
-                               :value bankname
-                               :disabled disable-p
-                               :size 30)))
-                 (:tr
-                  (:td (:b "Bank URL:"))
-                  (:td (:input :type "text"
-                               :name "bankurl"
-                               :value bankurl
-                               :disabled disable-p
-                               :size 30)))
-                 (unless disable-p
-                   (who (s)
-                     (:tr
-                      (:td (:b "Bank Passphrase:"))
-                      (:td (:input :type "password"
-                                   :name "passphrase"
-                                   :value ""
-                                   :size 50)))
-                     (:tr
-                      (:td (:b "Verification:"))
-                      (:td (:input :type "password"
-                                   :name "verification"
-                                   :value ""
-                                   :size 50)))
-                     (:tr
-                      (:td (:b "Admin Passphrase:"))
-                      (:td (:input :type "password"
-                                   :name "adminpass"
-                                   :value ""
-                                   :size 50)))
-                     (:tr
-                      (:td (:b "Verification:"))
-                      (:td (:input :type "password"
-                                   :name "adminverify"
-                                   :value ""
-                                   :size 50)))
-                     (:tr
-                      (:td)
-                      (:td (:input :type "submit" :name "create"
-                                   :value "Start Server")
-                           (:input :type "submit" :name "cancel"
-                                   :value "Cancel"))))))))))))))
+      (str (unless port
+             "Web server shut down. Say goodnight, Dick."))
+      (when port
+        (form (s "admin")
+          (str (stringify port "Client web server is running on port ~d."))
+          (:br)
+          (:input :type "submit" :name "killclient"
+                  :value "Shut down web server")
+          (:br)(:br)
+          (str (cond (server "Server is running.")
+                     (disable-p "Server database exists but server not running.")
+                     (t "Server database not yet created. Enter info below.")))
+          (when (and disable-p (not server))
+            (who (s)
+              (:br)
+              (str "To start it, log out, and log back in as the bank.")))
+          (when server
+            (who (s)
+              (:br)
+              (:input :type "submit" :name "killserver"
+                      :value "Stop Server")
+              (:br))))
+        (when server
+          (let* ((backup-p (trubanc-server:backup-process-url server))
+                 (backup-url (or backup-p
+                                 (backup-url-preference client)
+                                 "")))
+            (form (s "admin")
+              "Backup "
+              (str (if backup-p
+                       "is running."
+                       (if (backup-enabled-preference client)
+                           "has crashed."
+                           "is disabled.")))
+              (:br)
+              "Backup server URL: "
+              (:input :type "text"
+                      :name "backup-url"
+                      :value backup-url
+                      :disabled (not (null backup-p)))
+              (:br)
+              (:input :type "submit" :name "togglebackup"
+                      :value (if backup-p "Stop Backup" "Start Backup"))))))
+      (when (or server (not disable-p))
+        (form (s "admin")
+          (:br)
+          (:table
+           (:tr
+            (:td (:b "Bank Name:"))
+            (:td (:input :type "text"
+                         :name "bankname"
+                         :value bankname
+                         :disabled disable-p
+                         :size 30)))
+           (:tr
+            (:td (:b "Bank URL:"))
+            (:td (:input :type "text"
+                         :name "bankurl"
+                         :value bankurl
+                         :disabled disable-p
+                         :size 30)))
+           (unless disable-p
+             (who (s)
+               (:tr
+                (:td (:b "Bank Passphrase:"))
+                (:td (:input :type "password"
+                             :name "passphrase"
+                             :value ""
+                             :size 50)))
+               (:tr
+                (:td (:b "Verification:"))
+                (:td (:input :type "password"
+                      :name "verification"
+                      :value ""
+                      :size 50)))
+               (:tr
+                (:td (:b "Admin Passphrase:"))
+                (:td (:input :type "password"
+                      :name "adminpass"
+                      :value ""
+                      :size 50)))
+               (:tr
+                (:td (:b "Verification:"))
+                (:td (:input :type "password"
+                      :name "adminverify"
+                      :value ""
+                      :size 50)))
+               (:tr
+                (:td)
+                (:td (:input :type "submit" :name "create"
+                                            :value "Start Server")
+                     (:input :type "submit" :name "cancel"
+                                            :value "Cancel")))))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

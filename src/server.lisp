@@ -2098,6 +2098,7 @@
        for key = (car tail)
        for value = (cadr tail)
        do
+         ;;(format t "~&~s => ~s~%" key value)
          (setf (db-get db key) value))
     (bankmsg server $ATBACKUP req)))
       
