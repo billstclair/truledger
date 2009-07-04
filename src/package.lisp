@@ -329,7 +329,8 @@
    #:backup-mode-p
    #:start-backup-process
    #:stop-backup-process
-   #:backup-process-url))
+   #:backup-process-url
+   #:wrapped-db))
 
 (cl:defpackage :trubanc-client
   (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)

@@ -38,6 +38,12 @@
   (unless (typep wrapped-db 'db)
     (error "wrapped-db must be specified")))
 
+(defmethod wrapped-db ((db db))
+  db)
+
+(defmethod wrapped-db ((server server))
+  (wrapped-db (db server)))
+
 (defmethod db-get ((db backup-db) key &rest more-keys)
   (declare (dynamic-extent more-keys))
   (apply #'db-get (wrapped-db db) key more-keys))

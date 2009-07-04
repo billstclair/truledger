@@ -503,12 +503,15 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
       (when (and bankid (equal bankid (id client)))
         (handler-case
             (let* ((server (make-server (server-db-dir) passphrase))
-                   (backup-url (backup-url-preference client))
+                   (backup-url (backup-url-preference server))
                    (backup-enabled-p
                     (and backup-url
-                         (not (blankp (backup-enabled-preference client))))))
-              (when backup-enabled-p
-                (trubanc-server:start-backup-process server backup-url))
+                         (not (blankp (backup-enabled-preference server)))))
+                   (backup-mode-p (not (blankp (backup-mode-preference server)))))
+              (cond (backup-enabled-p
+                     (trubanc-server:start-backup-process server backup-url))
+                    (backup-mode-p
+                     (setf (trubanc-server:backup-mode-p server) t)))
               (setf (port-server (get-current-port)) server))
           (error (c)
             (error "While starting server: ~a" c)))))))
@@ -752,17 +755,30 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                (draw-assets cw)))
             (t (draw-balance cw))))))
 
-(defun backup-url-preference (client)
-  (user-preference client "backupurl"))
+(defun backup-preference (server name)
+  (db-get (db server) $BACKUP $PREFERENCE name))
 
-(defun (setf backup-url-preference) (value client)
-  (setf (user-preference client "backupurl") value))
+(defun (setf backup-preference) (value server name)
+  (setf (db-get (trubanc-server:wrapped-db server) $BACKUP $PREFERENCE name)
+        value))
 
-(defun backup-enabled-preference (client)
-  (user-preference client "backupenabled"))
+(defun backup-url-preference (server)
+  (backup-preference server "backupurl"))
 
-(defun (setf backup-enabled-preference) (value client)
-  (setf (user-preference client "backupenabled") value))
+(defun (setf backup-url-preference) (value server)
+  (setf (backup-preference server "backupurl") value))
+
+(defun backup-enabled-preference (server)
+  (backup-preference server "backupenabled"))
+
+(defun (setf backup-enabled-preference) (value server)
+  (setf (backup-preference server "backupenabled") value))
+
+(defun backup-mode-preference (server)
+  (backup-preference server "backupmode"))
+
+(defun (setf backup-mode-preference) (value server)
+  (setf (backup-preference server "backupmode") value))
 
 (defun do-admin (cw)
   (bind-parameters (passphrase verification adminpass adminverify)
@@ -776,7 +792,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
 (defun do-admin-internal 
     (cw passphrase verification adminpass adminverify)
-  (bind-parameters (bankname bankurl backup-url killclient killserver togglebackup)
+  (bind-parameters (bankname bankurl backup-url killclient killserver
+                             togglebackup togglebackupmode)
     (let ((client (cw-client cw))
           (server (get-running-server))
           (err nil))
@@ -790,6 +807,13 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                (trubanc-server:stop-backup-process server nil)))
             (togglebackup
              (setq err (toggle-backup cw server backup-url)))
+            (togglebackupmode
+             (cond ((null server) (setq err "Server not running."))
+                   ((backup-mode-preference server)
+                    (setf (backup-mode-preference server) nil
+                          (trubanc-server:backup-mode-p server) nil))
+                   (t (setf (backup-mode-preference server) "backup"
+                            (trubanc-server:backup-mode-p server) t))))
             (server
              (setq err "Server already running"))
             ((blankp bankname)
@@ -893,21 +917,21 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
       (draw-admin cw bankname bankurl))))
 
 (defun toggle-backup (cw server backup-url)
+  (declare (ignore cw))
   (handler-case
       (progn
         (unless server
           (error "Can't toggle backup when server isn't enabled"))
-        (let ((backup-p (trubanc-server:backup-process-url server))
-              (client (cw-client cw)))
+        (let ((backup-p (trubanc-server:backup-process-url server)))
           (cond (backup-p
-                 (setf (backup-enabled-preference client) nil)
+                 (setf (backup-enabled-preference server) nil)
                  (trubanc-server:stop-backup-process server)
                  "Backup process stopped.")
                 ((not (url-p backup-url))
                  (error "Not a URL: ~a" backup-url))
                 (t
-                 (setf (backup-url-preference client) backup-url
-                       (backup-enabled-preference client) "enabled")
+                 (setf (backup-url-preference server) backup-url
+                       (backup-enabled-preference server) "enabled")
                  (trubanc-server:start-backup-process server backup-url)
                  "Backup proces started."))))
     (error (c) (stringify c))))    
@@ -2176,7 +2200,6 @@ list with that nickname, or change the nickname of the selected
 (defun draw-admin (cw &optional bankname bankurl)
   (let ((s (cw-html-output cw))
         (disable-p (server-db-exists-p))
-        (client (cw-client cw))
         (server (get-running-server))
         (port (get-current-port)))
     (setf (cw-onload cw) "document.forms[0].bankname.focus()")
@@ -2192,6 +2215,7 @@ list with that nickname, or change the nickname of the selected
       (:br)
       (str (unless port
              "Web server shut down. Say goodnight, Dick."))
+
       (when port
         (form (s "admin")
           (str (stringify port "Client web server is running on port ~d."))
@@ -2215,24 +2239,37 @@ list with that nickname, or change the nickname of the selected
         (when server
           (let* ((backup-p (trubanc-server:backup-process-url server))
                  (backup-url (or backup-p
-                                 (backup-url-preference client)
-                                 "")))
-            (form (s "admin")
-              "Backup "
-              (str (if backup-p
-                       "is running."
-                       (if (backup-enabled-preference client)
-                           "has crashed."
-                           "is disabled.")))
-              (:br)
-              "Backup server URL: "
-              (:input :type "text"
-                      :name "backup-url"
-                      :value backup-url
-                      :disabled (not (null backup-p)))
-              (:br)
-              (:input :type "submit" :name "togglebackup"
-                      :value (if backup-p "Stop Backup" "Start Backup"))))))
+                                 (backup-url-preference server)
+                                 ""))
+                 (backup-mode-p (trubanc-server:backup-mode-p server)))
+            (cond (backup-mode-p
+                   (form (s "admin")
+                     "Backup mode enabled"
+                     (:br)
+                     (:input :type "submit" :name "togglebackupmode"
+                             :value "Disable Backup Mode")))
+                  (t
+                   (form (s "admin")
+                     "Backup "
+                     (str (if backup-p
+                              "is running."
+                              (if (backup-enabled-preference server)
+                                  "has crashed."
+                                  "is disabled.")))
+                     (:br)
+                     "Backup server URL: "
+                     (:input :type "text"
+                             :name "backup-url"
+                             :value backup-url
+                             :disabled (not (null backup-p)))
+                     (:br)
+                     (:input :type "submit" :name "togglebackup"
+                             :value (if backup-p "Stop Backup" "Start Backup"))
+                     (unless backup-p
+                       (who (s)
+                         (:input :type "submit" :name "togglebackupmode"
+                                 :value "Enable backup mode")))))))))
+
       (when (or server (not disable-p))
         (form (s "admin")
           (:br)

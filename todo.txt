@@ -6,6 +6,8 @@ so nobody can do stuff there until enabled.
 Need to wrap the pubkeydb, too, or make it somehow use the db, wrapped
 or not. Check whether it ever writes to this db. It may not.
 
+Need to have a UI for enabling/disabling backup mode.
+
 ======================================================================
 
 Negative spends handled as invoices. Costs two tokens, but no change
