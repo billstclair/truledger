@@ -177,7 +177,7 @@
                         (not (equal cmd "admins"))
                         (not (equal cmd "admin")))
                (setq cmd "banks"))))
-          ((and (not (equal cmd "login")) (not (equal cmd "register")))
+          ((not (member cmd '("login" "register" "toggledebug") :test #'equal))
            (setq cmd nil)))
 
     (when (and (or (equal cmd "admins")
@@ -507,12 +507,19 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                    (backup-enabled-p
                     (and backup-url
                          (not (blankp (backup-enabled-preference server)))))
-                   (backup-mode-p (not (blankp (backup-mode-preference server)))))
+                   (backup-mode-p (not (blankp (backup-mode-preference server))))
+                   (errmsg nil))
               (cond (backup-enabled-p
-                     (trubanc-server:start-backup-process server backup-url))
+                     (handler-case
+                         (trubanc-server:start-backup-process server backup-url)
+                       (error (c)
+                         (setq errmsg
+                               (format nil "Could not start backup process: ~a" c)))))
                     (backup-mode-p
                      (setf (trubanc-server:backup-mode-p server) t)))
-              (setf (port-server (get-current-port)) server))
+              (setf (port-server (get-current-port)) server)
+              (when errmsg
+                (error errmsg)))
           (error (c)
             (error "While starting server: ~a" c)))))))
 
@@ -600,8 +607,11 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
             (let ((session (login-new-session client passphrase)))
               (set-cookie "session" session)
               (init-post-salt-and-msg cw session)
-              (when (maybe-start-server-web client passphrase)
-                (setf (cw-error cw) "Server started!"))
+              (handler-case
+                  (when (maybe-start-server-web client passphrase)
+                    (setf (cw-error cw) "Server started!"))
+                (error (c)
+                  (setf (cw-error cw) (stringify c))))
               (cond ((equal (get-cookie "test") "test") (delete-cookie "test"))
                     (t (setf
                         (cw-error cw)
@@ -1133,12 +1143,15 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
         (draw-balance cw))))
 
 (defun do-toggledebug (cw)
-  (let ((new-debug (blankp (get-cookie "debug"))))
+  (let ((new-debug (blankp (get-cookie "debug")))
+        (client (cw-client cw)))
     (if new-debug
         (set-cookie "debug" "debug")
         (delete-cookie "debug"))
     (enable-debug-stream new-debug)
-    (draw-balance cw)))
+    (cond ((bankid client) (draw-balance cw))
+          ((id client) (draw-banks cw))
+          (t (draw-login cw)))))
 
 (defun init-bank (cw &optional report-error-p)
   (let* ((client (cw-client cw))

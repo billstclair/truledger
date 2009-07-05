@@ -30,6 +30,7 @@
    (timestamp :type timestamp
               :initform (make-instance 'timestamp)
               :accessor timestamp)
+   ;; It's important for backup that nobody writes to pubkeydb
    (pubkeydb :type db
              :accessor pubkeydb)
    (bankname :type (or string null)

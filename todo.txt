@@ -1,12 +1,12 @@
-Backup mechanism. Write to log files, which are sent out in chunks to
-a backup server, which loads the transactions into its
-database. Should be able to disable transactions on the backup serer,
-so nobody can do stuff there until enabled.
+Test client and server initialization from no database.
 
-Need to wrap the pubkeydb, too, or make it somehow use the db, wrapped
-or not. Check whether it ever writes to this db. It may not.
+Documentation:
 
-Need to have a UI for enabling/disabling backup mode.
+  Update Client user doc.
+  Installation docs
+    Client installation
+    Server installation
+      Backup server installation
 
 ======================================================================
 

@@ -13,6 +13,7 @@
 (defconstant $PARSER-MSGKEY "%msg%")
 
 (defclass parser ()
+  ;; It's important for backup that the parser never writes to the keydb
   ((keydb :initarg :keydb
           :type (or db null)
           :accessor parser-keydb

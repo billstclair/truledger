@@ -21,7 +21,9 @@
                              (quit))))
       (handler-case (toplevel-function-internal)
         (error (c)
-          (format t "~&~a~%~a~%" c (backtrace-string))
+          (if (typep c 'usage-error)
+              (format t "~&~a~%" c)
+              (format t "~&~a~%~a~%" c (backtrace-string)))
           (finish-output)
           (quit -1))))))
 
@@ -29,17 +31,23 @@
   '((("-p" "--port") :port . t)
     ("--key" :key . t)
     ("--cert" :cert . t)
-    ("--nonsslport" :nonsslport . t)))
+    ("--nonsslport" :nonsslport . t)
+    ("--slimeport" :slimeport . t)))
+
+(define-condition usage-error (simple-error)
+  ())
 
 (defun usage-error (app)
-  (error
-"Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport]
+  (error 'usage-error
+         :format-control
+         "Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--slimeport slimeport]
 port defaults to 8782, unless keyfile & certfile are included, then 8783.
 If port defaults to 8783, then nonsslport defaults to 8782,
 otherwise the application doesn't listen on a non-ssl port.
 keyfile is the path to an SSL private key file.
-certfile is the path to an SSL certificate file."
-         app))
+certfile is the path to an SSL certificate file.
+slimeport is a port on which to listen for a connection from the SLIME IDE."
+         :format-arguments (list app)))
 
 (defun parse-args (&optional (args (command-line-arguments)))
   (let ((app (pop args))
@@ -67,7 +75,7 @@ certfile is the path to an SSL certificate file."
 
 (defun toplevel-function-internal ()
   (run-startup-functions)
-  (let (port keyfile certfile nonsslport)
+  (let (port keyfile certfile nonsslport slimeport)
     (multiple-value-bind (args app) (parse-args)
       (handler-case
           (setq keyfile (cdr (assoc :key args))
@@ -79,7 +87,9 @@ certfile is the path to an SSL certificate file."
                               *default-port-string*)))
                 nonsslport (parse-integer
                             (or (cdr (assoc :nonsslport args))
-                                (if (assoc :port args) "0" *default-port-string*))))
+                                (if (assoc :port args) "0" *default-port-string*)))
+                slimeport (let ((str (cdr (assoc :slimeport args))))
+                            (and str (parse-integer str))))
         (error () (usage-error app))))
     (when (xor keyfile certfile)
       (error "Both or neither required of --key & --cert"))
@@ -87,6 +97,10 @@ certfile is the path to an SSL certificate file."
       (unless (and (probe-file keyfile) (probe-file certfile))
         (error "Key or cert file missing")))
     (when (eql 0 nonsslport) (setq nonsslport nil))
+    (when slimeport
+      (push (cons '*package* (find-package :trubanc))
+            swank:*default-worker-thread-bindings*)
+      (swank:create-server :port slimeport :dont-close t))
     (handler-case
         (let ((url (format nil "http://localhost:~a/"
                            (or nonsslport port))))
