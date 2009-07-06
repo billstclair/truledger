@@ -1,5 +1,3 @@
-Test client and server initialization from no database.
-
 Documentation:
 
   Update Client user doc.

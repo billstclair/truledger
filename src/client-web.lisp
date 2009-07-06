@@ -268,7 +268,7 @@
             (who (s)
               (:p
                :class "version"
-               (when (write-version s "Build: " *last-commit* *save-application-time*)
+               (when (write-version s "Client: " *last-commit* *save-application-time*)
                  (who (s) (:br)))
                (when (bankid (cw-client cw))
                  (unless (equal *last-commit* version)
