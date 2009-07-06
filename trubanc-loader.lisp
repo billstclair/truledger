@@ -42,6 +42,10 @@
                        (symbol-value sym)))))
     (funcall (find-symbol "CREATE-SERVER" :swank) :port port :dont-close t)))
 
+(when (member (ccl:getenv "LOADSWANK") '("YES" "yes" "true" "TRUE")
+              :test #'equal)
+  (pushnew :loadswank *features*))
+
 (loadsys :trubanc)
 
 ;; This is not in the :trubanc package def, so that people

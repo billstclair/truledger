@@ -32,6 +32,7 @@
     ("--key" :key . t)
     ("--cert" :cert . t)
     ("--nonsslport" :nonsslport . t)
+    #+loadswank
     ("--slimeport" :slimeport . t)))
 
 (define-condition usage-error (simple-error)
@@ -40,14 +41,15 @@
 (defun usage-error (app)
   (error 'usage-error
          :format-control
-         "Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--slimeport slimeport]
+         "Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport]~a
 port defaults to 8782, unless keyfile & certfile are included, then 8783.
 If port defaults to 8783, then nonsslport defaults to 8782,
 otherwise the application doesn't listen on a non-ssl port.
 keyfile is the path to an SSL private key file.
 certfile is the path to an SSL certificate file.
 slimeport is a port on which to listen for a connection from the SLIME IDE."
-         :format-arguments (list app)))
+         :format-arguments
+         (list app (or #-loadswank "" " [--slimeport slimeport]"))))
 
 (defun parse-args (&optional (args (command-line-arguments)))
   (let ((app (pop args))
@@ -97,10 +99,12 @@ slimeport is a port on which to listen for a connection from the SLIME IDE."
       (unless (and (probe-file keyfile) (probe-file certfile))
         (error "Key or cert file missing")))
     (when (eql 0 nonsslport) (setq nonsslport nil))
+    #+loadswank
     (when slimeport
       (push (cons '*package* (find-package :trubanc))
             swank:*default-worker-thread-bindings*)
       (swank:create-server :port slimeport :dont-close t))
+    slimeport                           ;no warning
     (handler-case
         (let ((url (format nil "http://localhost:~a/"
                            (or nonsslport port))))

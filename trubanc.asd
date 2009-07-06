@@ -6,7 +6,8 @@
   :author "Bill St. Clair <bill@billstclair.com>"
   :version "0.1"
   :license "Apache"
-  :depends-on (cffi cl-base64 cl-who hunchentoot drakma cybertiggyr-time swank)
+  :depends-on (cffi cl-base64 cl-who hunchentoot drakma cybertiggyr-time
+                    #+loadswank swank)
   :components
   ((:module src
     :serial t
