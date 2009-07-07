@@ -8,6 +8,9 @@ Documentation:
 
 ======================================================================
 
+Contacts screen should say if you've changed anything since you last
+synced with server. Maybe a check-box for "Auto-sync".
+
 Negative spends handled as invoices. Costs two tokens, but no change
 to balance. The other guy accepts an invoice as a spend mentioning the
 invoice number. Credits the tokens when the invoicer accepts the

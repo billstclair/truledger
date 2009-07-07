@@ -1,9 +1,21 @@
+body, p, ol, td {
+  font-family: verdana, arial, helvetica, sans-serif;
+  font-size:   12px;
+  line-height: 15px;
+}
+
+#wrapper {
+  width: 875px;
+  overflow: auto;
+}
+
 #summary {
    border: 1px solid;
    margin: 10px;
    margin-top: 2px;
    padding: 5px;
    background-color: #dddddd;
+   width: 850px;
 }
 
 #summary li {
@@ -13,4 +25,27 @@
 .summary-header {
   margin: 15px;
   font-weight: bold;
+}
+
+#concept {
+  border: 1px solid;
+  margin: 10px;
+  margin-top: 2px;
+  padding: 5px;
+  background-color: #ffccff;
+  width: 850px;
+}
+
+.concept-header {
+  margin: 5px;
+  font-weight: bold;
+}
+
+#code {
+  border: 1px solid;
+  margin: 10px;
+  margin-top: 2px;
+  padding: 5px;
+  background-color: #99ccff;
+  width: 850px;
 }
