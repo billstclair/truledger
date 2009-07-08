@@ -787,15 +787,21 @@
     (unless (is-numeric-p amount)
       (error "Not a number: ~s" amount))
 
-    ;; Make sure there are no inbox entries older than the highest
-    ;; timestamp last read from the inbox
+    ;; Make sure there are no bank debit inbox entries older
+    ;; than the highest timestamp last read from the inbox
     (let ((inbox (scan-inbox server id))
           (last (get-acct-last server id)))
       (dolist (inmsg inbox)
-        (let ((inmsg-args (unpack-bankmsg server inmsg)))
-          (when (or (< (bccomp last 0) 0)
-                    (<= (bccomp (getarg $TIME inmsg-args) last) 0))
-            (error "Please process your inbox before doing a spend")))))
+        (let* ((inmsg-args (unpack-bankmsg server inmsg))
+               (spendreq (getarg $MSG inmsg-args)))
+          (when (and (or (< (bccomp last 0) 0)
+                         (<= (bccomp (getarg $TIME inmsg-args) last) 0))
+                     (let ((spendargs (match-pattern (parser server) spendreq)))
+                       (and (equal bankid (getarg $CUSTOMER spendargs))
+                            (equal $SPEND (getarg $REQUEST spendargs))
+                            (< (bccomp (getarg $AMOUNT spendargs) 0) 0))))
+            (error
+             "Please process bank debits in your account before doing a spend.")))))
 
     (let* ((tokens (if (and (not (equal id id2))
                             (not (equal id bankid)))

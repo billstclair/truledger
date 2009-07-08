@@ -30,6 +30,7 @@
 (defconstant $OUTBOX "outbox")
 (defconstant $OUTBOXHASH "outboxhash")
 (defconstant $INBOX "inbox")
+(defconstant $INBOXIGNORED "inboxignored")
 (defconstant $COUPON "coupon")
 (defconstant $DATA "data")
 (defconstant $BACKUP "backup")

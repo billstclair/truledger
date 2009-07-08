@@ -1785,6 +1785,16 @@
     (when times
       (setf (db-get db (usertimekey client)) (apply #'implode "," times)))))
 
+(defmethod getinboxignored ((client client))
+  "Return a list of the timestamps that were ignored in the last processinbox"
+  (explode #\, (db-get (db client) (userinboxignoredkey client))))
+
+(defmethod (setf getinboxignored) (list (client client))
+  "Return a list of the timestamps that were ignored in the last processinbox"
+  (setf (db-get (db client) (userinboxignoredkey client))
+        (apply #'implode #\, list))
+  list)
+
 (defstruct process-inbox
   time                                  ;timestamp in the inbox
   request                               ;$SPENDACCEPT, SPENDREJECT, or nil
@@ -2548,6 +2558,9 @@
 
 (defmethod userinboxkey ((client client))
   (userbankkey client $INBOX))
+
+(defmethod userinboxignoredkey ((client client))
+  (userbankkey client $INBOXIGNORED))
 
 (defmethod contactkey ((client client) &optional otherid prop)
   (let ((key (append-db-keys $ACCOUNT (id client) $CONTACT)))

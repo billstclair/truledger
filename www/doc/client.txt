@@ -67,6 +67,7 @@ trubanc-dbs/clientdb/
             <time6#>=(<bankid>,inbox,<time6#>,(<id3>,spend|reject,<bankid>,<time3#>,<id>,note:<note32>))
             <time7#>=(<bankid>,inbox,<time7#>,(<id4>,spend,<bankid>,<time4#>,<id>,<assetid4>,<amount4>,note:<note4>)).
                      (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time4#>,<tokenid>,<amount4fee>))
+          inboxignored=<time#1>,<time#2>,...,<time#N>
           transaction/
             (<bankid>,@spend,(<id>,spend,<time#>,<id2>,<bankid>,<assetid>,<amount>,note:<note>,acct:<acct>))...
               or

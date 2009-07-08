@@ -30,6 +30,7 @@
    #:$OUTBOX
    #:$OUTBOXHASH
    #:$INBOX
+   #:$INBOXIGNORED
    #:$COUPON
    #:$ID
    #:$REGISTER
@@ -447,6 +448,7 @@
    #:process-inbox-request
    #:process-inbox-note
    #:process-inbox-acct
+   #:getinboxignored
    #:processinbox
    #:storagefees
    #:assetinfo

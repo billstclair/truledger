@@ -1062,7 +1062,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 (defun do-processinbox (cw)
   (bind-parameters (spendcnt nonspendcnt)
     (let ((client (cw-client cw))
-          (directions nil))
+          (directions nil)
+          (ignored-times nil))
 
       (dotimes (i (if (blankp spendcnt) 0 (parse-integer spendcnt)))
         (let ((time (parm "spendtime~d" i))
@@ -1071,27 +1072,30 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
               (acct (parm "acct~d" i))
               (nickname (parm "spendnick~d" i))
               (spendid (parm "spendid~d" i)))
-          (when (or (equal spend "accept") (equal spend "reject"))
-            (push (make-process-inbox
-                   :time time
-                   :request (if (equal spend "accept")
-                                $SPENDACCEPT
-                                $SPENDREJECT)
-                   :note (unless (blankp note) note)
-                   :acct (unless (blankp acct) acct))
-                  directions))
+          (cond ((or (equal spend "accept") (equal spend "reject"))
+                 (push (make-process-inbox
+                        :time time
+                        :request (if (equal spend "accept")
+                                     $SPENDACCEPT
+                                     $SPENDREJECT)
+                        :note (unless (blankp note) note)
+                        :acct (unless (blankp acct) acct))
+                       directions))
+                (t (push time ignored-times)))
           (unless (or (blankp nickname) (blankp spendid))
             (ignore-errors (addcontact client spendid nickname)))))
-      
+
       (dotimes (i (if (blankp nonspendcnt) 0 (parse-integer nonspendcnt)))
         (let ((time (parm "nonspendtime~d" i))
               (process (parm "nonspend~d" i))
               (nickname (parm "nonspendnick~d" i))
               (spendid (parm "nonspendid~d" i)))
-          (unless (blankp process)
-            (push (make-process-inbox :time time) directions))
+          (cond ((blankp process) (push time ignored-times))
+                (t (push (make-process-inbox :time time) directions)))
           (unless (or (blankp nickname) (blankp spendid))
             (addcontact client spendid nickname))))
+
+      (setf (getinboxignored client) ignored-times)
 
       (when directions
         (setq directions (nreverse directions))
@@ -1276,6 +1280,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
          (bankcode "")
          inboxcode
          seloptions
+         selignoreoptions
          assetlist
          assetlist-stream
          (assetidx 0)
@@ -1284,6 +1289,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
          (contacts (storing-error (err "Error getting contacts: ~a")
                      (getcontacts client)))
          inbox
+         inboxignored
          outbox
          accts
          balance
@@ -1328,6 +1334,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
       (setq inbox (storing-error (err "Error getting inbox: ~a")
                     (getinbox client))
+            inboxignored (getinboxignored client)
             outbox (storing-error (err "Error getting outbox: ~a")
                      (getoutbox client))
             accts (storing-error (err "Error getting accts: ~a")
@@ -1352,7 +1359,12 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                  (whots (s)
                    (:option :value "accept" "Accept")
                    (:option :value "reject" "Reject")
-                   (:option :value "ignore" "Ignore")))
+                   (:option :value "ignore" "Ignore"))
+                 selignoreoptions
+                 (whots (s)
+                   (:option :value "accept" "Accept")
+                   (:option :value "reject" "Reject")
+                   (:option :value "ignore" :selected t "Ignore")))
 
            (setq assets (storing-error (err "Error getting assets: ~a")
                           (getassets client)))
@@ -1395,7 +1407,11 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                                           :value time)))
                                (selcode
                                 (whots (s)
-                                  (:select :name selname (str seloptions))))
+                                  (:select :name selname
+                                           (str (if (member time inboxignored
+                                                            :test #'equal)
+                                                    selignoreoptions
+                                                    seloptions)))))
                                (acctcode
                                 (if (not acctoptions)
                                     ""
@@ -1453,7 +1469,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                      (whots (s)
                        (:input :type "checkbox"
                                :name selname
-                               :checked t)
+                               :checked (not (member time inboxignored
+                                                     :test #'equal)))
                        "Remove"))
                     (date (datestr time))
                     (acctcode (if acctoptions
