@@ -1,10 +1,8 @@
 Documentation:
 
-  Update Client user doc.
-  Installation docs
-    Client installation
-    Server installation
-      Backup server installation
+  Review Client user doc.
+  Server installation docs
+    Backup server installation
 
 ======================================================================
 

@@ -321,6 +321,13 @@
         (:input :type "hidden" :name "postmsg" :value (cw-postmsg cw))
         ,@body))))
 
+(defun draw-error (cw s &optional (err (cw-error cw)))
+  (who (s)
+    (:span :style "color: red;"
+           (if err
+               (who (s) (esc err))
+               (who (s) (str "&nbsp;"))))))
+
 (defun draw-login (cw &optional key)
   (let ((page (parm "page")))
     (when (equal page "register")
@@ -343,8 +350,7 @@
               :type "submit" :name "login" :value "Login")))
        (:tr
         (:td)
-        (:td :style "color: red"
-             (str (or (cw-error cw) "&nbsp;")))))
+        (:td (draw-error cw s))))
       (:a :href "./?cmd=register"
           "Register a new account"))))
 
@@ -376,8 +382,7 @@
                  (:input :type "hidden" :name "page" :value "register")))
            (:tr
             (:td)
-            (:td :style "color: red"
-                 (str (or (cw-error cw) "&nbsp;"))))
+            (:td (draw-error cw s)))
            (:tr
             (:td (:b "Verification:"))
             (:td (:input :type "password" :name "passphrase2" :size "50")))
@@ -944,7 +949,9 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                        (backup-enabled-preference server) "enabled")
                  (trubanc-server:start-backup-process server backup-url)
                  "Backup proces started."))))
-    (error (c) (stringify c))))    
+    (error (c)
+      (setf (backup-enabled-preference server) nil)
+      (stringify c))))
 
 (defun do-sync (cw)
   (let ((client (cw-client cw))
@@ -1870,8 +1877,7 @@ list with that nickname, or change the nickname of the selected
         (when err
           (setq err
                 (whots (s)
-                  (:span :style "color: red"
-                         (str err)))))
+                  (draw-error cw s err))))
         (setf (cw-onload cw)
               "document.getElementById(\"spendamount\").focus()")
         (who (s (cw-html-output cw))
@@ -2009,7 +2015,7 @@ list with that nickname, or change the nickname of the selected
     (setmenu cw "banks")
 
     (who (stream)
-      (:span :style "color: red;" (str err))
+      (draw-error cw stream err)
       (:br)
       (form (stream "bank")
         (:table
@@ -2076,7 +2082,7 @@ list with that nickname, or change the nickname of the selected
     (setmenu cw "contacts")
 
     (who (stream)
-      (:span :style "color: red;" (str (cw-error cw)))
+      (draw-error cw stream)
       (:br)
       (form (stream "contact")
         (:table
@@ -2155,7 +2161,7 @@ list with that nickname, or change the nickname of the selected
     (setmenu cw "assets")
 
     (who (stream)
-      (:span :style "color: red;" (str (cw-error cw)))
+      (draw-error cw stream)
       (:br)
       (form (stream "asset")
         (:table
@@ -2241,7 +2247,7 @@ list with that nickname, or change the nickname of the selected
             bankurl (bankurl server)))
 
     (who (s)
-      (:span :style "color: red;" (str (cw-error cw)))
+      (draw-error cw s)
       (:br)
       (str (unless port
              "Web server shut down. Say goodnight, Dick."))
