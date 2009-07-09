@@ -1,0 +1,59 @@
+<html>
+<head>
+<link rel="stylesheet" type="text/css" href="css/docstyle.css">
+<title>Trubanc Server Setup & Maintenance</title>
+</head>
+<body>
+
+<div id="wrapper">
+<h1>Trubanc Server Setup & Maintenance</h1>
+
+
+<span class="summary-header">Note</span>
+<p id="summary">
+If you just want to learn the Trubanc server by doing, follow the
+directions in the gray boxes titled "Summary".
+</p>
+<hr />
+
+<h2>Contents</h2>
+<a href="#install">Installation<br />
+
+<hr />
+
+<h2><a name="install"></a>Installation</h2>
+
+<p>Follow the <a href="client.html#install">Client installation instructions</a>. The Trubanc binaries contain both client and server code.</p>
+
+<p>Choose a directory in which the databases will be installed. When you run the executable, it will create a "trubanc-dbs" sub-directory of the current directory, and, inside that, "clientdb" and "serverdb" sub-directories.</p>
+
+<p>The Trubanc application has a number of command line arguments, none of which are in the client documentation. Here's the help output (on a Mac):</p>
+
+<p id="code"><code>
+$ ./trubanc-dx86cl64 -h<br/>
+Usage is: ./trubanc-dx86cl64 [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid]<br/>
+port defaults to 8782, unless keyfile & certfile are included, then 8783.<br/>
+If port defaults to 8783, then nonsslport defaults to 8782,<br/>
+otherwise the application doesn't listen on a non-ssl port.<br/>
+keyfile is the path to an SSL private key file.<br/>
+certfile is the path to an SSL certificate file.<br/>
+uid & gid are the user id and group id to change to after listening on the port.<br/>
+slimeport is a port on which to listen for a connection from the SLIME IDE.
+</code></p>
+
+<p>Since you'll want the server to keep running after you've logged off of the server machine, you'll need to either start it in the startup scripts, or use <code>nohup</code> or <code>screen</code>.
+
+<p id="code"><code>
+$ cd ~/trubanc<br/>
+$ screen -S trubanc<br/>
+$ sudo ./trubanc-dx86cl64 -p 443 --key key.pem --cert cert.pem --nonsslport 80 --uid $UID --gid $UID<br/>
+Client web server started on port 80
+Web address: http://localhost/
+REMEMBER TO LOG IN AS THE BANK TO START THE SERVER!!
+
+</p>
+
+<p>Copyright &copy; 2009 Bill St. Clair, All Rights Reserved</p>
+</div>
+</body>
+</html>

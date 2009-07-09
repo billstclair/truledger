@@ -18,9 +18,7 @@ one earns you tokens.
 
 Show the database location on the client screen, unless disabled in server config.
 
-Use Pound or Apache mod_proxy to put server on port 80. Alternatively,
-start the process as root, start Hunchentoot, and use SETUID and
-SETGID to change to a non-root user.
+Use Pound or Apache mod_proxy to put server on port 80.
 
 Change passphrase for private key.
 Change server URL, on both server and client.

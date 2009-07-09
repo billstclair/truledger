@@ -824,7 +824,7 @@ openssl x509 -in cert.pem -text -noout
 (defun redirect-to-ssl (to-port)
   (hunchentoot:redirect
    (hunchentoot:request-uri*)
-   :port to-port
+   :port (unless (eql to-port 443) to-port)
    :protocol :https
    :code hunchentoot:+http-moved-permanently+))
               

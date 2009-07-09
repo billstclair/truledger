@@ -49,10 +49,14 @@ If port defaults to 8783, then nonsslport defaults to 8782,
 otherwise the application doesn't listen on a non-ssl port.
 keyfile is the path to an SSL private key file.
 certfile is the path to an SSL certificate file.
-uid & gid are the user id and group id to change to after listening on the port.
-slimeport is a port on which to listen for a connection from the SLIME IDE."
+uid & gid are the user id and group id to change to after listening on the port.~a
+"
          :format-arguments
-         (list app (or #-loadswank "" " [--slimeport slimeport]"))))
+         (list app
+               #-loadswank ""
+               #+loadswank " [--slimeport slimeport]"
+               #-loadswank ""
+               #+loadswank (format nil "~%slimeport is a port on which to listen for a connection from the SLIME IDE."))))
 
 (defun parse-args (&optional (args (command-line-arguments)))
   (let ((app (pop args))
@@ -113,8 +117,9 @@ slimeport is a port on which to listen for a connection from the SLIME IDE."
       (swank:create-server :port slimeport :dont-close t))
     slimeport                           ;no warning
     (handler-case
-        (let ((url (format nil "http://localhost:~a/"
-                           (or nonsslport port))))
+        (let* ((dispport (or nonsslport port))
+               (url (format nil "http://localhost~@[:~a~]/"
+                            (unless (eql dispport 80) dispport))))
           (trubanc-web-server
            nil
            :port port
