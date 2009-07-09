@@ -32,6 +32,8 @@
     ("--key" :key . t)
     ("--cert" :cert . t)
     ("--nonsslport" :nonsslport . t)
+    ("--uid" :uid . t)
+    ("--gid" :gid . t)
     #+loadswank
     ("--slimeport" :slimeport . t)))
 
@@ -41,12 +43,13 @@
 (defun usage-error (app)
   (error 'usage-error
          :format-control
-         "Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport]~a
+         "Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid]~a
 port defaults to 8782, unless keyfile & certfile are included, then 8783.
 If port defaults to 8783, then nonsslport defaults to 8782,
 otherwise the application doesn't listen on a non-ssl port.
 keyfile is the path to an SSL private key file.
 certfile is the path to an SSL certificate file.
+uid & gid are the user id and group id to change to after listening on the port.
 slimeport is a port on which to listen for a connection from the SLIME IDE."
          :format-arguments
          (list app (or #-loadswank "" " [--slimeport slimeport]"))))
@@ -77,7 +80,7 @@ slimeport is a port on which to listen for a connection from the SLIME IDE."
 
 (defun toplevel-function-internal ()
   (run-startup-functions)
-  (let (port keyfile certfile nonsslport slimeport)
+  (let (port keyfile certfile nonsslport uid gid slimeport)
     (multiple-value-bind (args app) (parse-args)
       (handler-case
           (setq keyfile (cdr (assoc :key args))
@@ -90,6 +93,8 @@ slimeport is a port on which to listen for a connection from the SLIME IDE."
                 nonsslport (parse-integer
                             (or (cdr (assoc :nonsslport args))
                                 (if (assoc :port args) "0" *default-port-string*)))
+                uid (cdr (assoc :uid args))
+                gid (cdr (assoc :gid args))
                 slimeport (let ((str (cdr (assoc :slimeport args))))
                             (and str (parse-integer str))))
         (error () (usage-error app))))
@@ -99,6 +104,8 @@ slimeport is a port on which to listen for a connection from the SLIME IDE."
       (unless (and (probe-file keyfile) (probe-file certfile))
         (error "Key or cert file missing")))
     (when (eql 0 nonsslport) (setq nonsslport nil))
+    (when uid (setq uid (parse-integer uid)))
+    (when gid (setq gid (parse-integer gid)))
     #+loadswank
     (when slimeport
       (push (cons '*package* (find-package :trubanc))
@@ -113,7 +120,9 @@ slimeport is a port on which to listen for a connection from the SLIME IDE."
            :port port
            :ssl-privatekey-file keyfile
            :ssl-certificate-file certfile
-           :forwarding-port nonsslport)
+           :forwarding-port nonsslport
+           :uid uid
+           :gid gid)
           (format t "Client web server started on port ~a.~%"
                   (or nonsslport port))
           (format t "Web address: ~a~%" url)

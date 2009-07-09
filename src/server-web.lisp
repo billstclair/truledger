@@ -704,6 +704,43 @@ openssl x509 -req -in req.pem -signkey key.pem -out cert.pem
 openssl x509 -in cert.pem -text -noout
 ||#
 
+#-windows
+(progn
+
+(defcfun ("getuid" getuid) :int)
+(defcfun ("getgid" getgid) :int)
+
+(defcfun ("setuid" %setuid) :int
+  (uid :int))
+
+(defun setuid (uid)
+  (unless (eql 0 (%setuid uid))
+    (error "Can't set uid to ~s" uid))
+  uid)
+  
+(defcfun ("setgid" %setgid) :int
+  (uid :int))
+
+(defun setgid (gid)
+  (unless (eql 0 (%setgid gid))
+    (error "Can't set gid to ~s" gid))
+  gid)
+  
+) ; #-windows
+
+#+windows
+(progn
+
+(defun setuid (uid)
+  (declare (ignore uid))
+  (error "Can't set uid on Windows"))
+
+(defun setgid (gid)
+  (declare (ignore gid))
+  (error "Can't set gid on Windows"))
+
+) ; #+windows
+
 (defun trubanc-web-server (server &key
                            (pathname-defaults nil)
                            (www-dir "www")
@@ -712,7 +749,9 @@ openssl x509 -in cert.pem -text -noout
                            (port (if ssl-privatekey-file
                                      *default-server-ssl-port*
                                      *default-server-port*))
-                           forwarding-port)
+                           forwarding-port
+                           uid
+                           gid)
   "Start the client, and, if SERVER is non-NIL, server web servers.
    Use 'dbs/clientdb/' and 'dbs/serverdb/' as the database directories,
    relative to the default directory."
@@ -763,7 +802,14 @@ openssl x509 -in cert.pem -text -noout
               (get-web-script-handler forwarding-port "/client/")
               (lambda () (maybe-redirect-to-ssl port))
               (port-acceptor forwarding-port) acceptor)
-        (hunchentoot:start acceptor)))))
+        (hunchentoot:start acceptor)))
+    
+    (handler-bind
+        ((error (lambda (c)
+                  (declare (ignore c))
+                  (stop-web-server port))))
+      (when gid (setgid gid))
+      (when uid (setuid uid)))))
 
 (defun maybe-redirect-to-ssl (to-port)
   (let ((script (hunchentoot:script-name*)))
