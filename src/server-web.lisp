@@ -158,7 +158,8 @@
                                     "msg: <pre>~a</pre>~%response: <pre>~a</pre>~%"
                                     msg res))
                       (unless (blankp debugstr)
-                        (setq res (format nil "~a<pre>~a</pre>" res debugstr))))
+                        (setq res (format nil "~a<pre>~a</pre>" res debugstr)))
+                     res)
                      ((blankp debugstr) res)
                      (t (format nil "<<~a>>~%~a" debugstr res)))))
             ((not server)
@@ -689,7 +690,9 @@ p.version {
                         (hunchentoot:handle-static-file
                          (if (cl-fad:directory-pathname-p file)
                              (merge-pathnames "index.html" file)
-                             file))))))))))
+                             file)
+                         (and (equal "lisp" (pathname-type file))
+                              "text/plain"))))))))))
 
 (defparameter *default-server-port* 8782) ; "TRUB" on a phone dialpad
 (defparameter *default-server-ssl-port* 8783) ; add one for SSL port
