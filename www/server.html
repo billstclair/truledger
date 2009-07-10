@@ -1,6 +1,7 @@
 <html>
 <head>
 <link rel="stylesheet" type="text/css" href="css/docstyle.css">
+<link rel="stylesheet" type="text/css" href="css/tables.css">
 <title>Trubanc Server Setup & Maintenance</title>
 </head>
 <body>
@@ -8,6 +9,7 @@
 <div id="wrapper">
 <h1>Trubanc Server Setup & Maintenance</h1>
 
+<p>This page tells you how to start up and initialize a Trubanc server. It is only useful for people who want to run a Trubanc. If you just want to access somebody else's Trubanc server, you'll likely find the <a href="client.html">client documenation</a> to be more useful.</p>
 
 <span class="summary-header">Note</span>
 <p id="summary">
@@ -27,31 +29,46 @@ directions in the gray boxes titled "Summary".
 
 <p>Choose a directory in which the databases will be installed. When you run the executable, it will create a "trubanc-dbs" sub-directory of the current directory, and, inside that, "clientdb" and "serverdb" sub-directories.</p>
 
-<p>The Trubanc application has a number of command line arguments, none of which are in the client documentation. Here's the help output (on a Mac):</p>
+<p>The Trubanc application has a number of command line arguments, none of which are in the client documentation. Here's the help output (in 32-bit Linux):</p>
 
 <p id="code"><code>
-$ ./trubanc-dx86cl64 -h<br/>
-Usage is: ./trubanc-dx86cl64 [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid]<br/>
+$ ./trubanc-lx86cl -h<br/>
+Usage is: ./trubanc-lx86cl [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid]<br/>
 port defaults to 8782, unless keyfile & certfile are included, then 8783.<br/>
 If port defaults to 8783, then nonsslport defaults to 8782,<br/>
 otherwise the application doesn't listen on a non-ssl port.<br/>
 keyfile is the path to an SSL private key file.<br/>
 certfile is the path to an SSL certificate file.<br/>
 uid & gid are the user id and group id to change to after listening on the port.<br/>
-slimeport is a port on which to listen for a connection from the SLIME IDE.
 </code></p>
 
-<p>Since you'll want the server to keep running after you've logged off of the server machine, you'll need to either start it in the startup scripts, or use <code>nohup</code> or <code>screen</code>.
+<p>
+<table class="prettytable">
+<caption>Command line parameters</caption>
+<tr><th>Param</th><th>Description</th></tr>
+<tr><td><i>port</i></td><td>The port to listen on.</td></tr>
+<tr><td><i>keyfile</i></td><td>Path, absolute or relative to working directory, of SSL private key file.</td></tr>
+<tr><td><i>certfile</i></td><td>Path, absolute or relative to working directory, of SSL certificate file.</td></tr>
+<tr><td><i>nonsslport</i></td><td>If <i>keyfile</i> and <i>certfile</i> are specified, port will be listened on for an SSL connection. If you also want to listen for non-SSL connections, <i>nonsslport</i> says which port to listen on for that. Attempts to access the client or server active pages on <i>nonsslport</i>, will redirect to the SSL <i>port</i>, using HTTPS. Static web pages (see below) will remain unencrypted.</td></tr>
+<tr><td><i>uid</i> / <i>gid</i></td><td>Ports less than 1024 (e.g. the HTTP default, 80, and the HTTPS default, 443) are privileged. You need to run the Trubanc application as root in order to use them. If you do that, and specify <i>uid</i> and <i>gid</i>, the app will change its group id and user id to these after starting to listen on <i>port</i> (and <i>nonsslport</i>). This allows you to use a privileged port, but not run as root.</td></tr>
+</table></p>
 
-<p id="code"><code>
+<p>Since you'll want the server to keep running after you've logged off of the server machine, you'll need to either start it in the startup scripts, or use <code>nohup</code> or <code>screen</code>.</p>
+
+<p>Starting the Trubanc application enables the its web server to listen on the port(s) you specified, and the client web server will be fully functional, but the server needs to be initialized before it can run. To do that, go to the "Register a new account" screen, and create an account, with a blank "Coupon", for the bank administrator.</p>
+
+<span class="summary-header">Summary - Server Startup</span>
+<ul id="summary">
+<li>Start the server:<br/>
+<code>
 $ cd ~/trubanc<br/>
 $ screen -S trubanc<br/>
-$ sudo ./trubanc-dx86cl64 -p 443 --key key.pem --cert cert.pem --nonsslport 80 --uid $UID --gid $UID<br/>
-Client web server started on port 80
-Web address: http://localhost/
-REMEMBER TO LOG IN AS THE BANK TO START THE SERVER!!
-
-</p>
+$ sudo ./trubanc-lx86cl -p 443 --key key.pem --cert cert.pem --nonsslport 80 --uid `id -u` --gid `id -g`<br/>
+Client web server started on port 80<br/>
+Web address: http://localhost/<br/>
+</code></li>
+<li>"Register a new account" for the bank administrator.
+</ul>
 
 <p>Copyright &copy; 2009 Bill St. Clair, All Rights Reserved</p>
 </div>
