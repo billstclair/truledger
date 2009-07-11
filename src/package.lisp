@@ -135,6 +135,10 @@
    #:command-line-arguments
    #:backtrace-string
 
+   ;; sendmail.lisp
+   #:email-mx-hosts
+   #:send-email
+
    ;; openssl-cffi.lisp
    #:decode-rsa-private-key
    #:encode-rsa-private-key

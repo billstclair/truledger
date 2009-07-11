@@ -7,8 +7,8 @@
 
 (in-package :trubanc-server)
 
-(defun make-backup-db (db)
-  (let ((res (make-instance 'backup-db :wrapped-db db))
+(defun make-backup-db (db &optional url email)
+  (let ((res (make-instance 'backup-db :wrapped-db db :url url :email email))
         (readindex (parse-integer (or (db-get db $BACKUP $READINDEX) "0")))
         (writeindex (parse-integer (or (db-get db $BACKUP $WRITEINDEX) "0"))))
     (when readindex (setf (read-index res) readindex))
@@ -28,7 +28,15 @@
    (read-index :initform 0
                :accessor read-index)
    (last-read-key :initform nil
-                  :accessor last-read-key)))
+                  :accessor last-read-key)
+   (url :initarg :url
+        :initform nil
+        :accessor backup-db-url)
+   (email :initarg :email
+          :initform nil
+          :accessor backup-db-email)
+   (stop-flag :initform nil
+              :accessor backup-db-stop-flag)))
 
 (defmethod print-object ((db backup-db) stream)
   (print-unreadable-object (db stream :type t)
@@ -174,8 +182,6 @@
 
 (defvar *backup-processes* (make-hash-table :test 'eq))
 (defvar *backup-process-dbs* (make-hash-table :test 'eq))
-(defvar *backup-process-urls* (make-hash-table :test 'eq))
-(defvar *stop-backup-process-flags* (make-hash-table :test 'eq))
 
 (defun backup-process (server)
   (gethash server *backup-processes*))
@@ -196,22 +202,14 @@
   db)
 
 (defun backup-process-url (server)
-  (gethash server *backup-process-urls*))
+  (let ((db (backup-process-db server)))
+    (and db (backup-db-url db))))
 
 (defun (setf backup-process-url) (url server)
-  (if url
-      (setf (gethash server *backup-process-urls*) url)
-      (remhash server *backup-process-urls*))
-  url)
-
-(defun stop-backup-process-flag (server)
-  (gethash server *stop-backup-process-flags*))
-
-(defun (setf stop-backup-process-flag) (boolean server)
-  (if boolean
-      (setf (gethash server *stop-backup-process-flags*) boolean)
-      (remhash server *stop-backup-process-flags*))
-  boolean)
+  (let ((db (backup-process-db server)))
+    (unless db
+      (error "Can't set set URL for non-existent backup db"))
+    (setf (backup-db-url db) url)))
 
 (defparameter *max-backup-data-size* (* 32 1024))
 (defparameter *backup-retry-count* 5)
@@ -232,7 +230,7 @@
               (save-readindex db)
               (wait-on-latch (backup-db-latch db))
               (loop
-                 (when (stop-backup-process-flag server)
+                 (when (backup-db-stop-flag db)
                    (return-from outer))
                  (handler-case
                      (when (do-backup-process-body db client)
@@ -244,8 +242,7 @@
     (save-readindex db)
     (setf (db server) (wrapped-db db)
           (backup-process server) nil
-          (backup-process-db server) nil
-          (backup-process-url server) nil)))
+          (backup-process-db server) nil)))
 
 (defun do-backup-process-body (db client)
   (let ((keys&values nil)
@@ -281,14 +278,12 @@
             (sleep *backup-retry-sleep-seconds*)))))
     done))
 
-(defun start-backup-process (server remote-url)
+(defun start-backup-process (server remote-url &optional notify-email)
   (when (backup-process server) (error "Backup process already running"))
-  (setf (stop-backup-process-flag server) nil)
   (let ((client (make-backup-client server remote-url))
-        (db (make-backup-db (db server))))
+        (db (make-backup-db (db server) remote-url notify-email)))
     (setf (db server) db
           (backup-process-db server) db
-          (backup-process-url server) remote-url
           (backup-process server) (process-run-function
                                    "Trubanc Backup"
                                    #'do-backup-process
@@ -296,11 +291,12 @@
 
 (defun stop-backup-process (server &optional (rebackup t))
   (when (backup-process server)
-    (setf (stop-backup-process-flag server) t)
-    (signal-latch (backup-db-latch (backup-process-db server)))
-    (process-wait "Backup termination" (lambda () (null (backup-process server))))
-    (setf (stop-backup-process-flag server) nil
-          (backup-process-db server) nil)
+    (let ((db (backup-process-db server)))
+      (setf (backup-db-stop-flag server) t)
+      (signal-latch (backup-db-latch db))
+      (process-wait "Backup termination" (lambda () (null (backup-process server))))
+      (setf (backup-db-stop-flag db) nil
+            (backup-process-db server) nil))
     (when rebackup
       (setf (db-get (db server) $BACKUP $WALKINDEX) nil))))
                                                         

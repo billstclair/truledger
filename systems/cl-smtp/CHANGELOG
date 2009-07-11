@@ -1,0 +1,69 @@
+Version 20071018.1
+2007.10.18
+Reverted the non allegro base64 functionality in attachment.lisp,
+now it is used cl-base64 again. Thanks Attila Lendvai for the bug report.
+Change attachments.lisp, cl-smtp.asd, CHANGELOG
+
+Version 20070904.1
+2007-09-04
+Remove implementation dependent sockets code by adding usocket dependency.
+Change cl-smtp.asd cl-smtp.lisp README INSTALL
+ (remove acl.lisp clisp.lisp cmucl.lisp sbcl.lisp lispworks.lisp openmcl.lisp)
+
+Version 20060404.1
+2006-04-04
+"ADD" support for attachment, thanks Brian Sorg for the implementation
+Added attachments.lisp
+Change cl-smtp.asd cl-smtp.lisp README
+
+Version 20051220.1
+2005-12-20
+"ADD" win32 support for clisp
+"REMOVE" :cl-smtp-authentication
+"CHANGE" always use CL-BASE64 package 
+Change cl-smtp.asd, cl-smtp.lisp, clisp.lisp, README, CHANGELOG
+
+Version 20051211.1
+2005-12-11
+"ADD" :cl-smtp-authentication for reader macro, that you can use cl-smtp with and
+without authentication support
+Change cl-smtp.asd, cl-smtp.lisp, README, CHANGELOG
+
+Version 20051210.1
+2005-12-10
+"ADD" key authentication for smtp authentication: '(:plain "username" "password")
+or '(:login "username" "password")
+add dependency to CL-BASE64 except allegro
+Change cl-smtp.asd, cl-smtp.lisp, CHANGELOG
+
+Version 20050729.1
+2005-07-29
+"CHANGE" license from LGPL to LLGPL
+"ADD" key display-name for optional display name of the from email adress
+(RFC 2822 3.4. Address Specification)
+Added LLGPL-LICENSE
+Change all files
+
+Version 20050127.1
+2005-01-27
+"FIXED" add correct multiline replies in read-from-smtp (RFC 822 APPENDIX E)
+"ADD" key extra-headers to send-email, send-smtp
+thanks Dave Bakkash to inform me about the wrong implemantation 
+of read-from-smtp and the tip with the extra-headers
+Change cl-smtp.asd, cl-smtp.lisp, README, CHANGELOG
+
+Version 20050119.1
+2005-01-19
+Add portability file "lispworks.lisp" to work with Lispworks,
+thanks Sean Ross for this file
+Added lispworks.lisp
+Change cl-smtp.asd, README, INSTALL, CHANGELOG
+
+Version 20050104.1
+2005-01-04
+"Fixed" month "Sep" missed in get-email-date-string
+Added this CHANGELOG
+
+Version 20040812.1
+2004-08-12
+Initial release
