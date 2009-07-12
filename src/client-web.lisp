@@ -509,6 +509,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
         (handler-case
             (let* ((server (make-server (server-db-dir) passphrase))
                    (backup-url (backup-url-preference server))
+                   (notification-email (notification-email-preference server))
                    (backup-enabled-p
                     (and backup-url
                          (not (blankp (backup-enabled-preference server)))))
@@ -516,7 +517,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                    (errmsg nil))
               (cond (backup-enabled-p
                      (handler-case
-                         (trubanc-server:start-backup-process server backup-url)
+                         (trubanc-server:start-backup-process
+                          server backup-url notification-email)
                        (error (c)
                          (setq errmsg
                                (format nil "Could not start backup process: ~a" c)))))
@@ -783,6 +785,12 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 (defun (setf backup-url-preference) (value server)
   (setf (backup-preference server "backupurl") value))
 
+(defun notification-email-preference (server)
+  (backup-preference server "notificationemail"))
+
+(defun (setf notification-email-preference) (value server)
+  (setf (backup-preference server "notificationemail") value))
+
 (defun backup-enabled-preference (server)
   (backup-preference server "backupenabled"))
 
@@ -807,7 +815,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
 (defun do-admin-internal 
     (cw passphrase verification adminpass adminverify)
-  (bind-parameters (bankname bankurl backup-url killclient killserver
+  (bind-parameters (bankname bankurl backup-url notification-email
+                             killclient killserver
                              togglebackup togglebackupmode)
     (let ((client (cw-client cw))
           (server (get-running-server))
@@ -821,7 +830,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
              (when server
                (trubanc-server:stop-backup-process server nil)))
             (togglebackup
-             (setq err (toggle-backup cw server backup-url)))
+             (setq err (toggle-backup cw server backup-url notification-email)))
             (togglebackupmode
              (cond ((null server) (setq err "Server not running."))
                    ((backup-mode-preference server)
@@ -931,7 +940,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
       (setf (cw-error cw) err)
       (draw-admin cw bankname bankurl))))
 
-(defun toggle-backup (cw server backup-url)
+(defun toggle-backup (cw server backup-url &optional notification-email)
   (declare (ignore cw))
   (handler-case
       (progn
@@ -946,8 +955,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                  (error "Not a URL: ~a" backup-url))
                 (t
                  (setf (backup-url-preference server) backup-url
+                       (notification-email-preference server) notification-email
                        (backup-enabled-preference server) "enabled")
-                 (trubanc-server:start-backup-process server backup-url)
+                 (trubanc-server:start-backup-process
+                  server backup-url notification-email)
                  "Backup proces started."))))
     (error (c)
       (setf (backup-enabled-preference server) nil)
@@ -2277,6 +2288,9 @@ list with that nickname, or change the nickname of the selected
                  (backup-url (or backup-p
                                  (backup-url-preference server)
                                  ""))
+                 (notification-email
+                  (or (trubanc-server:backup-notification-email server)
+                      (notification-email-preference server)))
                  (backup-mode-p (trubanc-server:backup-mode-p server)))
             (cond (backup-mode-p
                    (form (s "admin")
@@ -2293,12 +2307,21 @@ list with that nickname, or change the nickname of the selected
                                   "has crashed."
                                   "is disabled.")))
                      (:br)
-                     "Backup server URL: "
-                     (:input :type "text"
-                             :name "backup-url"
-                             :value backup-url
-                             :disabled (not (null backup-p)))
-                     (:br)
+                     (:table
+                      (:tr
+                       (:td (:b "Backup Server URL:"))
+                       (:td (:input :type "text"
+                                    :size "30"
+                                    :name "backup-url"
+                                    :value backup-url
+                                    :disabled (not (null backup-p)))))
+                      (:tr
+                       (:td (:b "Notification Email:"))
+                       (:td (:input :type "text"
+                                    :size "30"
+                                    :name "notification-email"
+                                    :value notification-email
+                                    :disabled (not (null backup-p))))))
                      (:input :type "submit" :name "togglebackup"
                              :value (if backup-p "Stop Backup" "Start Backup"))
                      (unless backup-p

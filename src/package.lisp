@@ -139,6 +139,10 @@
    #:email-mx-hosts
    #:send-email
 
+   ;; timer.lisp
+   #:timer
+   #:cancel-timer
+
    ;; openssl-cffi.lisp
    #:decode-rsa-private-key
    #:encode-rsa-private-key
@@ -335,6 +339,7 @@
    #:start-backup-process
    #:stop-backup-process
    #:backup-process-url
+   #:backup-notification-email
    #:wrapped-db))
 
 (cl:defpackage :trubanc-client
