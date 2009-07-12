@@ -338,6 +338,7 @@
    #:backup-mode-p
    #:start-backup-process
    #:stop-backup-process
+   #:backup-failing-p
    #:backup-process-url
    #:backup-notification-email
    #:wrapped-db))

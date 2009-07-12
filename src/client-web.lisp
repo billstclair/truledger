@@ -2302,7 +2302,9 @@ list with that nickname, or change the nickname of the selected
                    (form (s "admin")
                      "Backup "
                      (str (if backup-p
-                              "is running."
+                              (if (trubanc-server:backup-failing-p server)
+                                  "is failing to backup."
+                                  "is running.")
                               (if (backup-enabled-preference server)
                                   "has crashed."
                                   "is disabled.")))

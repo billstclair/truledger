@@ -39,8 +39,10 @@
               :accessor backup-db-stop-flag)
    (failing-thunk :initform nil
                   :accessor backup-db-failing-thunk)
-   (failing-minute-delays :initform nil
-                          :accessor backup-db-failing-minute-delays)))
+   (send-email-on-failure :initform t
+                          :accessor backup-db-send-email-on-failure)
+   (sent-failure-email :initform nil
+                       :accessor backup-db-sent-failure-email)))
 
 (defmethod print-object ((db backup-db) stream)
   (print-unreadable-object (db stream :type t)
@@ -107,7 +109,6 @@
 ;; Returns three values: key, value, and index
 ;; Null return means the read-index has caught up with the write-index.
 (defmethod backup-read ((db backup-db))
-  (save-readindex db)
   (let ((index (1+ (read-index db))))
     (loop
        while (<= index (write-index db))
@@ -225,28 +226,28 @@
       (error "Can't set notification email for non-existent backup db"))
     (setf (backup-db-email db) email)))
 
+(defun backup-failing-p (server)
+  (let ((db (backup-process-db server)))
+    (and db (backup-db-failing-thunk db))))
+
 (defparameter *max-backup-data-size* (* 32 1024))
 (defparameter *backup-retry-count* 5)
 (defparameter *backup-retry-sleep-seconds* 10)
-(defparameter *backup-failing-minute-delays* '(5 10 15))
+(defparameter *backup-failure-email-period-minutes* 10)
 
 ;; Here after *backup-retry-count* tries delayed by *backup-retry-sleep-seconds*
 (defun backup-failed (db)
-  (let ((send-email nil))
-    (with-lock-grabbed ((write-lock db))
-      (unless (backup-db-failing-minute-delays db)
-        (setq send-email t)
-        (setf (backup-db-failing-minute-delays db) *backup-failing-minute-delays*))
-      (let ((delay (pop (backup-db-failing-minute-delays db))))
-        (timer (setf (backup-db-failing-thunk db)
-                     (lambda () (backup-timer db)))
-               :delay (* delay 60))))
-    (unless (blankp send-email)
-      (let ((to (backup-db-email db)))
-        (when to
-          (let ((msg (format nil "Backup is failing to: ~a" (backup-db-url db))))
-            (send-email
-             (backup-db-from db) to "Backup failing notification" msg)))))))
+  (let ((send-email (backup-db-send-email-on-failure db)))
+    (setf (backup-db-send-email-on-failure db) nil)
+    (timer (setf (backup-db-failing-thunk db)
+                 (lambda () (backup-timer-fired db)))
+           :delay (* *backup-failure-email-period-minutes* 60))
+    (when send-email
+      (when (send-backup-db-email
+             db
+             "Trubanc backup failing notification"
+             "Trubanc backup is failing from ~a to ~a")
+        (setf (backup-db-sent-failure-email db) t)))))
 
 (defun backup-db-from (db)
   (let ((url (db-get db $BANKURL)))
@@ -264,8 +265,9 @@
           (t host))))
 
 ;; Here when the timer goes off. Try again.
-(defun backup-timer (db)
-  (setf (backup-db-failing-thunk db) nil)
+(defun backup-timer-fired (db)
+  (setf (backup-db-failing-thunk db) nil
+        (backup-db-send-email-on-failure db) t)
   (signal-latch (backup-db-latch db)))  
 
 (defun do-backup-process (db client server)
@@ -280,13 +282,10 @@
          (loop
             named outer
             do
-              (save-readindex db)
               (wait-on-latch (backup-db-latch db))
               (loop
                  (when (backup-db-stop-flag db)
                    (return-from outer))
-                 (when (backup-db-failing-thunk db)
-                   (return))
                  (handler-case
                      (when (do-backup-process-body db client)
                        (return))
@@ -294,7 +293,6 @@
                      ;; Rebackup the whole database.
                      (setf (db-get (wrapped-db db) $BACKUP $WALKINDEX) nil)
                      (return-from outer))))))
-    (save-readindex db)
     (cancel-timer (backup-db-failing-thunk db))
     (setf (db server) (wrapped-db db)
           (backup-process server) nil
@@ -305,7 +303,9 @@
         (data-size 0)
         (done nil)
         (bankreq-key (append-db-keys $ACCOUNT (id client) $REQ))
-        (initreq-p nil))
+        (initreq-p nil)
+        (read-index (read-index db))
+        (thunk (lambda ())))
     (loop
        (multiple-value-bind (key value) (backup-read db)
          (unless key
@@ -319,18 +319,34 @@
              (return)))))
     (when keys&values
       (setq keys&values (nreverse keys&values))
-      (dotimes (i *backup-retry-count* (backup-failed db))
+      (dotimes (i (if (backup-db-failing-thunk db) 2 *backup-retry-count*)
+                (progn
+                  (setf (read-index db) read-index)
+                  (when (backup-db-send-email-on-failure db)
+                    (backup-failed db))
+                  (setq done t)))
         (handler-case
             (progn
               (when initreq-p
                 (setq initreq-p nil)
                 (trubanc-client:getreq client t))
               (trubanc-client:backup* client keys&values)
+              (cancel-timer (backup-db-failing-thunk db))
+              (setf (backup-db-failing-thunk db) nil
+                    (backup-db-send-email-on-failure db) t)
+              (save-readindex db)
+              (when (backup-db-sent-failure-email db)
+                (setf (backup-db-sent-failure-email db) nil)
+                (send-backup-db-email
+                 db
+                 "Trubanc backup working again"
+                 "Trubanc backup is working again from ~a to ~a"))
               (return))
           (error (c)
             (setq initreq-p t)
-            (save-readindex db)
-            (format t "~&~a~%" c)
+            (format t "~&do-backup-process-body: ~a~%" c)
+            (unless (backup-db-failing-thunk db)
+              (setf (backup-db-failing-thunk db) thunk))
             (sleep *backup-retry-sleep-seconds*)))))
     done))
 
@@ -345,10 +361,23 @@
                                    #'do-backup-process
                                    db client server))
     (unless (blankp notify-email)
-      (send-email (backup-db-from db) notify-email "Backup started"
-                  (format nil "Backup started from ~a to ~a"
-                          (db-get db $BANKURL)
-                          (backup-db-url db))))))
+      (send-backup-db-email
+       db
+       "Trubanc backup started"
+       "Trubanc backup started from ~a to ~a"))))
+
+(defun send-backup-db-email (db subject message-format)
+  (let ((to (backup-db-email db)))
+    (unless (blankp to)
+      (process-run-function "Backup started email"
+                            #'send-email
+                            (backup-db-from db)
+                            to
+                            subject
+                            (format nil message-format
+                                    (db-get db $BANKURL)
+                                    (backup-db-url db)))
+      t)))
 
 (defun stop-backup-process (server &optional (rebackup t))
   (when (backup-process server)
