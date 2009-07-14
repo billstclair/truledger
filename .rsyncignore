@@ -1,7 +1,8 @@
 _darcs
-*.dx64fsl
+*.*fsl
 *.tar.gz
 *.exe.zip
+*.exe
 .DS_Store
 trubanc-dbs
 trubanc-dx86cl64
