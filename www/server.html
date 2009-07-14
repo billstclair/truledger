@@ -97,10 +97,36 @@ Web address: http://localhost/</code></p>
 
 <h2><a name="backup"></a>Backing Up the Bank Database</h2>
 
-<span class="summary-header">Summary - Backup</span>
-<ul id="summary">
-</ul>
+<p>Since you'll be storing claims to valuable assets in your Trubanc database, you'll probably want to back it up regularly. You can do this by using any file backup mechanism on the "trubanc-dbs" directory, or you can set up a backup server, and let Trubanc back itself up, as changes are made. This section tells you how to do the latter.</p>
 
+<p>First, copy the "trubanc-dbs" directory to the backup machine. Then start the Trubanc application on that machine, and log in to the client with the bank's passphrase. Go to the "Admin" page. Enable backup mode by pressing the "Enable backup mode" button (see screenshot above). You'll see this:</p>
+
+<img src="screenshots/backup-mode-enabled.png" alt="Backup Mode Enabled" border="1"/>
+
+<p>Now, on your main server, log in as the bank, go to the "Admin" page, enter the URL for the backup server as the "Backup Server URL", fill in the "Notification Email" if you want to be notified of problems with the backup, and press the "Start Backup" button. You'll get an error if it can't reach the backup server. Otherwise, you'll see:</p>
+
+<img src="screenshots/backup-running.png" alt="Backup Running" border="1"/>
+
+<p>If you specified a notification email address, you'll get an email when you start the backup server, every ten minutes while it's having a problem backing up, and when it stops having a problem.</p>
+
+<p>If you press the "Stop Backup" button, the entire database will be backed up the next time you enable backup. If, on the other hand, you press the "Shut down web server" button, to stop the server for maintenance or Trubanc application upgrade, it will start backing up automatically the next time you start the server, from wherever it left off when you stopped it.</p>
+
+<p><span class="summary-header">Summary - Backup</span>
+<ul id="summary">
+<li>Copy the "trubanc-dbs" directory to the backup server.</li>
+<li>Start Trubanc on the backup server in the directory containing the "trubanc-dbs" directory.</li>
+<li>Log in as the bank.</li>
+<li>Go to the "Admin" page.</li>
+<li>Press the "Enable backup mode" button.</li>
+<li>Log in as the bank on the regular Trubanc server.</li>
+<li>Go to the "Admin" page.</li>
+<li>Fill in the "Backup Server URL", and, if desired, the "Notification Email".</li>
+<li>Press the "Start Backup" button.
+</ul></p>
+
+<hr/>
+
+<p>Live long and prosper!</p>
 
 <p>Copyright &copy; 2009 Bill St. Clair, All Rights Reserved</p>
 </div>
