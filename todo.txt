@@ -20,16 +20,6 @@ Show the database location on the client screen, unless disabled in server confi
 
 Use Pound or Apache mod_proxy to put server on port 80.
 
-Backup shouldn't give up.
-5 tries at one second intervals.
-Wait a minute and try again.
-Don't give up. You're gonna need the doubled disk space anyway to start over.
-Shutting down the backup should clear the backup directory.
-
-Backup problem notification. If it doesn't clear up in five minutes, or some number of DB writes, send email to a designated address.
-
-======================================================================
-
 Change passphrase for private key.
 Change server URL, on both server and client.
 
