@@ -152,7 +152,28 @@ uid & gid are the user id and group id to change to after listening on the port.
 		  (close s))))
       (when str
         ;; str = "commit <number>"
-        (second (explode #\ (trim str)))))))
+        (let ((commit (second (explode #\space (trim str)))))
+          (multiple-value-bind (tag-commit tag) (last-tag)
+            (if (equal commit tag-commit)
+                tag
+                commit)))))))
+
+(defun last-tag ()
+  (ignore-errors
+    (let* ((s #-windows (run-program "git" '("show-ref" "--tags") :output :stream)
+              #+windows (progn (run-program "git-tags.bat" nil)
+                               (open "git.tags")))
+           (str (unwind-protect (read-line s)
+                  (close s))))
+      (when str
+        (let* ((tokens (explode #\space (trim str)))
+               (commit (car tokens))
+               (tag-str (cadr tokens)))
+          (when (stringp tag-str)
+            (let* ((needle "refs/tags/")
+                   (pos (search needle tag-str)))
+              (when tag-str
+                (values commit (subseq tag-str (+ pos (length needle))))))))))))
 
 (defun target-suffix ()
   (or
