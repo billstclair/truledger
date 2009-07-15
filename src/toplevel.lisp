@@ -152,28 +152,34 @@ uid & gid are the user id and group id to change to after listening on the port.
 		  (close s))))
       (when str
         ;; str = "commit <number>"
-        (let ((commit (second (explode #\space (trim str)))))
-          (multiple-value-bind (tag-commit tag) (last-tag)
-            (if (equal commit tag-commit)
-                tag
-                commit)))))))
+        (let ((commit (second (explode #\space (trim str))))
+              (tags (get-git-tags)))
+          (or (cdr (assoc commit tags :test #'equal))
+              commit))))))
 
-(defun last-tag ()
+(defun get-git-tags ()
   (ignore-errors
-    (let* ((s #-windows (run-program "git" '("show-ref" "--tags") :output :stream)
+    (let* ((s #-windows (run-program "git" '("show-ref" "--tags" "-d") :output :stream)
               #+windows (progn (run-program "git-tags.bat" nil)
-                               (open "git.tags")))
-           (str (unwind-protect (read-line s)
-                  (close s))))
-      (when str
-        (let* ((tokens (explode #\space (trim str)))
-               (commit (car tokens))
-               (tag-str (cadr tokens)))
-          (when (stringp tag-str)
-            (let* ((needle "refs/tags/")
-                   (pos (search needle tag-str)))
-              (when tag-str
-                (values commit (subseq tag-str (+ pos (length needle))))))))))))
+                               (open "git.tags"))))
+      (unwind-protect
+           (read-git-tags s)
+        (close s)))))
+
+(defun read-git-tags (s)
+  (loop
+     with needle = "refs/tags/"
+     with needle-len = (length needle)
+     for line = (read-line s nil nil)
+     while line
+     for tokens = (explode #\space (trim line))
+     for commit = (car tokens)
+     for tag-str = (cadr tokens)
+     for deref-pos = (- (length tag-str) 3)
+     when (and (> deref-pos 0)
+               (eql deref-pos (search "^{}" tag-str :start2 deref-pos))
+               (eql 0 (search needle tag-str)))
+     collect (cons commit (subseq tag-str needle-len deref-pos))))
 
 (defun target-suffix ()
   (or

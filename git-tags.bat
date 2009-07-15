@@ -1,1 +1,1 @@
-git show-ref --tags >git.tags
+git show-ref --tags -d >git.tags
