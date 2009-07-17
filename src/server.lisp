@@ -289,7 +289,8 @@
 
 
 (defmethod unpack-bankmsg ((server server) msg &optional type subtype idx)
-  "Reverse the bankmsg() function, optionally picking one field to return."
+  "Reverse the bankmsg() function, optionally picking one field to return.
+   IDX can be that field, or :no-error, to not error if SUBTYPE is wrong."
   (let* ((bankid (bankid server))
          (parser (parser server))
          (reqs (parse parser msg))
@@ -310,10 +311,11 @@
                (error "No wrapped message"))
              (setq args (match-pattern parser req))
              (when (and subtype
+                        (not (eq idx :no-error))
                         (not (eq subtype t))
                         (not (equal (getarg $REQUEST args) subtype)))
                (error "Wrapped message wasn't of type: ~s" subtype))
-             (cond (idx
+             (cond ((and idx (not (eq idx :no-error)))
                     (or (getarg idx args)
                         (error "No arg with idx: ~s" idx)))
                    (t (setf (getarg $UNPACK-REQS-KEY args) reqs) ; save parse results
@@ -1111,7 +1113,8 @@
                        (error "Time not found in inbox: ~s" time))
                 (let* ((item (db-get db key intime))
                        (item2 nil)
-                       (args (and item (unpack-bankmsg server item $INBOX $SPEND))))
+                       (args (and item (unpack-bankmsg
+                                        server item $INBOX $SPEND :no-error))))
                   (when (and args (equal (getarg $TIME args) time))
                     ;; Calculate the fee, if there is one
                     (let* ((reqs (getarg $UNPACK-REQS-KEY args))
