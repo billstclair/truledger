@@ -1,8 +1,77 @@
-Documentation:
+Permissions
 
-  Review Client user doc.
-  Server installation docs
-    Backup server installation
+(<id>,grant,<bankid>,<toid>,<req#>,<permission>,grant=grant)
+
+  This command grants <permission> to <toid>. It is signed by the bank:
+
+(<bankid>,@grant,(<id>,grant,<bankid>,<toid>,<req#>,<permission>,grant=grant))
+
+  and stored at:
+
+account/<id>/permissions/<permission>
+
+  Even though it requires a file to store, granting permissions is free.
+
+  if "grant" is included after <permission> in the message, then <id>
+  is allowed to grant the permission to others. Otherwise, <id> can
+  only use the permission.
+
+  The bank has grant permission for all permissions. If the bank grants
+  itself a permission, then other accounts need that permission to do
+  what it controls. If the bank does NOT have a permission, then everybody
+  is allowed to do what it controls, without permission.
+
+Useful permissions:
+
+  mint-tokens
+    allows minting of usage token coupons and spending of usage tokens
+    to new accounts. If the bank requires this permission, then only
+    it or its proxies can give new acccounts. Allows the bank to
+    enforce know-your-customer type rules.
+
+  make-assets
+    allows the creation of new assets. If the bank requires this permission,
+    then only it or its proxies can create new asset types.
+
+-------
+
+(<id>,deny,<bankid>,<toid>,<req#>,<permission>)
+  Remove the grant record stored at account/<id>/permissions/<permission>
+  The bank can remove any grant record. Other users can only remove
+  grant records that they created, or transitively granted permission
+  to create.
+ 
+  Acknowledged with:
+
+(<bankid>,@deny,(<id>,deny,<bankid>,<toid>,<req#>,<permission>))
+
+-------
+
+(<id>,permissions,<bankid>,<req#>,<permission>)
+
+  Searches all accounts for grants of <permission> that were
+  transitively granted by <id>. Returns a list of signed permissions:
+
+(<bankid>,@grant,(<id>,grant,<bankid>,<toid>,<req#>,<permission>,grant=grant)).
+(<bankid>,@grant,(<id2>,grant,<bankid>,<toid2>,<req#2>,<permission>,grant=grant)).
+...
+(<bankid>,@grant,(<idN>,grant,<bankid>,<toidN>,<req#N>,<permission>,grant=grant)).
+
+  Maybe this will need to be optimized by storing the list of
+  bank-signed grant messages at account/<id>/grants/<permission>.
+  Then that can be recusively descended. But it shouldn't take long,
+  with even thousands of accounts, to scan them all, remembering
+  enough to do the transitivity. Most banks won't give grant
+  permission to many accounts.
+
+======================================================================
+"Trubanc in Plain English" needs update
+
+Two-phase commit.
+
+"Resync with bank" button should notice discrepancies, and do
+correction protocol with bank. Should bank automatically accept,
+or just post to be approved by asset issuer? Probably the latter.
 
 ======================================================================
 
@@ -19,6 +88,15 @@ one earns you tokens.
 Show the database location on the client screen, unless disabled in server config.
 
 Use Pound or Apache mod_proxy to put server on port 80.
+
+When the current commit is a tag, need to link at the bottom of the
+client web site screen to tree/<tag>, not commit/<commit>
+
+=============
+
+Contacts don't scale. <Select> shouldn't be used beyond about 20 contacts.
+Enter nickname instead.
+Sort contacts list. Show only 30 per page. Search.
 
 Change passphrase for private key.
 Change server URL, on both server and client.

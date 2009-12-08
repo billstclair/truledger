@@ -311,9 +311,10 @@
                (error "No wrapped message"))
              (setq args (match-pattern parser req))
              (when (and subtype
-                        (not (eq idx :no-error))
                         (not (eq subtype t))
                         (not (equal (getarg $REQUEST args) subtype)))
+               (when (eq idx :no-error)
+                 (return-from unpack-bankmsg nil))
                (error "Wrapped message wasn't of type: ~s" subtype))
              (cond ((and idx (not (eq idx :no-error)))
                     (or (getarg idx args)
