@@ -1,1 +1,1 @@
-/Users/billstclair/trubanc/todo.txt
+../todo.txt
