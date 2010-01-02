@@ -37,7 +37,7 @@
   #+scl '(swank-source-path-parser swank-source-file-cache swank-scl)
   #+sbcl '(swank-source-path-parser swank-source-file-cache
            swank-sbcl swank-gray)
-  #+openmcl '(metering swank-openmcl swank-gray)
+  #+clozure '(metering swank-ccl swank-gray)
   #+lispworks '(swank-lispworks swank-gray)
   #+allegro '(swank-allegro swank-gray)
   #+clisp '(xref metering swank-clisp swank-gray)
@@ -46,7 +46,7 @@
   #+ecl '(swank-source-path-parser swank-source-file-cache swank-ecl swank-gray))
 
 (defparameter *implementation-features*
-  '(:allegro :lispworks :sbcl :openmcl :cmu :clisp :ccl :corman :cormanlisp
+  '(:allegro :lispworks :sbcl :clozure :cmu :clisp :ccl :corman :cormanlisp
     :armedbear :gcl :ecl :scl))
 
 (defparameter *os-features*
@@ -58,15 +58,17 @@
     :sparc64 :sparc :hppa64 :hppa))
 
 (defun lisp-version-string ()
-  #+(or openmcl cmu)       (substitute-if #\_ (lambda (x) (find x " /"))
-                             (lisp-implementation-version))
+  #+(or clozure cmu) (substitute-if #\_ (lambda (x) (find x " /"))
+                                    (lisp-implementation-version))
   #+(or cormanlisp scl sbcl ecl)       (lisp-implementation-version)
   #+lispworks (lisp-implementation-version)
-  #+allegro   (format nil
-                      "~A~A~A"
+  #+allegro   (format nil "~A~A~A~A"
                       excl::*common-lisp-version-number*
                       (if (eq 'h 'H) "A" "M")     ; ANSI vs MoDeRn
-                      (if (member :64bit *features*) "-64bit" ""))
+                      (if (member :64bit *features*) "-64bit" "")
+                      (excl:ics-target-case
+                       (:-ics "")
+                       (:+ics "-ics")))
   #+clisp     (let ((s (lisp-implementation-version)))
                 (subseq s 0 (position #\space s)))
   #+armedbear (lisp-implementation-version))

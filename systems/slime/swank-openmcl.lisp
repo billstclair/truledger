@@ -52,6 +52,11 @@
 
 (in-package :swank-backend)
 
+(eval-when (:compile-toplevel :execute :load-toplevel)
+  (assert (and (= ccl::*openmcl-major-version* 1)
+               (>= ccl::*openmcl-minor-version* 3))
+          () "This file needs CCL version 1.3 or newer"))
+
 (import-from :ccl *gray-stream-symbols* :swank-backend)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -187,9 +192,6 @@
   (car (rassoc-if (lambda (x) (member coding-system x :test #'equal))
                   *external-format-to-coding-system*)))
 
-(defimplementation emacs-connected ()
-  (setq ccl::*interactive-abort-process* ccl::*current-process*))
-
 ;;; Unix signals
 
 (defimplementation call-without-interrupts (fn)
@@ -204,7 +206,10 @@
 ;;; Arglist
 
 (defimplementation arglist (fname)
-  (arglist% fname))
+  (multiple-value-bind (arglist binding) (arglist% fname)
+    (if binding
+        arglist
+        :not-available)))
 
 (defmethod arglist% ((f symbol))
   (ccl:arglist f))
@@ -228,7 +233,8 @@
   (signal (make-condition
            'compiler-condition
            :original-condition condition
-           :message (format nil "~A" condition)
+           :message (compiler-warning-short-message condition)
+           :source-context nil
            :severity (compiler-warning-severity condition)
            :location (source-note-to-source-location 
                       (ccl::compiler-warning-source-note condition)
@@ -237,6 +243,26 @@
 (defgeneric compiler-warning-severity (condition))
 (defmethod compiler-warning-severity ((c ccl::compiler-warning)) :warning)
 (defmethod compiler-warning-severity ((c ccl::style-warning)) :style-warning)
+
+(defgeneric compiler-warning-short-message (condition))
+
+;; Pretty much the same as ccl::report-compiler-warning but
+;; without the source position and function name stuff.
+(defmethod compiler-warning-short-message ((c ccl::compiler-warning))
+  (with-accessors ((type ccl::compiler-warning-warning-type) 
+                   (args ccl::compiler-warning-args) 
+                   (nrefs ccl::compiler-warning-nrefs)) c
+    (with-output-to-string (stream)
+      (let ((format-string (cdr (assoc type ccl::*compiler-warning-formats*))))
+        (typecase format-string
+          (string (apply #'format stream format-string 
+                         (ccl::adjust-compiler-warning-args type args)))
+          (null (format stream "~A: ~S" type args))
+          (t (funcall format-string c stream)))
+        (let ((nrefs (cond ((numberp nrefs) nrefs)
+                           ((consp nrefs) (length nrefs)))))
+          (when (and nrefs (/= nrefs 1))
+            (format stream " (~D references)" nrefs)))))))
 
 (defimplementation call-with-compilation-hooks (function)
   (handler-bind ((ccl::compiler-warning 'handle-compiler-warning))
@@ -389,7 +415,9 @@
 
 (defimplementation install-debugger-globally (function)
   (setq *debugger-hook* function)
-  (setq *break-in-sldb* t))
+  (setq *break-in-sldb* t)
+  ;;(setq ccl::*interactive-abort-process* ccl::*current-process*)
+  )
 
 (defun backtrace-context ()
   nil)
@@ -492,7 +520,7 @@
               (push (list name value) result)))))
       (reverse result))))
 
-(defimplementation frame-source-location-for-emacs (index)
+(defimplementation frame-source-location (index)
   (with-frame (p context lfun pc) index
     (declare (ignore p context))
     (if pc
@@ -517,6 +545,13 @@
     (ccl::apply-in-frame p lfun 
                          (ccl::frame-supplied-args p lfun pc nil context))))
 
+(defimplementation disassemble-frame (the-frame-number)
+  (with-frame (p context lfun pc) the-frame-number
+    (format t "LFUN: ~a~%PC: ~a  FP: #x~x  CONTEXT: ~a~%" lfun pc p context)
+    (disassemble lfun)))
+
+;; BREAK 
+
 (ccl::advise ccl::cbreak-loop
              (if *break-in-sldb* 
                  (apply #'break-in-sldb ccl::arglist)
@@ -537,10 +572,6 @@
                          :format-arguments (list msg)))
         (t condition)))
 
-(defimplementation disassemble-frame (the-frame-number)
-  (with-frame (p context lfun pc) the-frame-number
-    (declare (ignore p context pc))
-    (disassemble lfun)))
 
 ;; CCL commit r11373 | gz | 2008-11-16 16:35:28 +0100 (Sun, 16 Nov 2008)
 ;; contains some interesting details:
@@ -596,7 +627,7 @@
    (or (ccl:find-source-note-at-pc function pc)
        (ccl:function-source-note function))
    (lambda ()
-     (format nil "No source note at PC: ~A:#x~x" function pc))))
+     (format nil "No source note at PC: ~a[~d]" function pc))))
 
 (defun source-note-to-source-location (note if-nil-thunk)
   (labels ((filename-to-buffer (filename)
@@ -739,19 +770,25 @@
 	(string (gethash typecode *value2tag*))
 	(string (nth typecode '(tag-fixnum tag-list tag-misc tag-imm))))))
 
+(defun comment-type-p (type)
+  (or (eq type :comment)
+      (and (consp type) (eq (car type) :comment))))
+
 (defmethod emacs-inspect ((o t))
-  (let* ((i (inspector::make-inspector o))
-	 (count (inspector::compute-line-count i))
-	 (lines 
-          (loop
-             for l below count
-             for (value label) = (multiple-value-list 
-                                  (inspector::line-n i l))
-             collect (format nil "~(~a~)" (or label l))
-             collect " = "
-             collect `(:value ,value)
-             collect '(:newline))))
-    lines))
+  (let* ((inspector::*inspector-disassembly* t)
+         (i (inspector::make-inspector o))
+	 (count (inspector::compute-line-count i)))
+    (loop for l from 0 below count append 
+          (multiple-value-bind (value label type) (inspector::line-n i l)
+            (etypecase type
+              ((member nil :normal) 
+               `(,(or label "") (:value ,value) (:newline)))
+              ((member :colon) 
+               (label-value-line label value))
+              ((member :static) 
+               (list (princ-to-string label) " " `(:value ,value) '(:newline)))
+              ((satisfies comment-type-p)
+               (list (princ-to-string label) '(:newline))))))))
 
 (defmethod emacs-inspect :around ((o t))
   (if (or (uvector-inspector-p o)
@@ -774,47 +811,14 @@
 
 (defmethod emacs-inspect ((uv uvector-inspector))
   (with-slots (object) uv
-    (loop for index below (ccl::uvsize object)
-          collect (format nil "~D: " index)
-          collect `(:value ,(ccl::uvref object index))
-          collect `(:newline))))
-
-(defun closure-closed-over-values (closure)
-  (let ((howmany (nth-value 8 (ccl::function-args (ccl::closure-function closure)))))
-    (loop for n below howmany
-	 collect
-	 (let* ((value (ccl::nth-immediate closure (+ 1 (- howmany n))))
-		(map (car (ccl::function-symbol-map (ccl::closure-function closure))))
-		(label (or (and map (svref map n)) n))
-		(cellp (ccl::closed-over-value-p value)))
-	   (list label (if cellp (ccl::closed-over-value value) value))))))
-
-(defmethod emacs-inspect ((c ccl::compiled-lexical-closure))
-  (list*
-   (format nil "A closure: ~a~%" c)
-   `(,@(if (arglist c)
-	   (list "Its argument list is: " 
-		 (funcall (intern "INSPECTOR-PRINC" 'swank) (arglist c))) 
-           ;; FIXME inspector-princ should load earlier
-	   (list "A function of no arguments"))
-     (:newline)
-     ,@(when (documentation c t)
-	 `("Documentation:" (:newline) ,(documentation c t) (:newline)))
-     ,(format nil "Closed over ~a values"  (length (closure-closed-over-values c)))
-     (:newline)
-     ,@(loop for (name value) in (closure-closed-over-values c)
-	    for count from 1
-	  append
-	  (label-value-line* ((format nil "~2,' d) ~a" count (string name)) value))))))
-
-
-
+    (loop for i below (ccl::uvsize object) append 
+          (label-value-line (princ-to-string i) (ccl::uvref object i)))))
 
 ;;; Multiprocessing
 
-(defvar *known-processes* '()         ; FIXME: leakage. -luke
-  "Alist (ID . PROCESS MAILBOX) list of processes that we have handed
-out IDs for.")
+(defvar *known-processes* 
+  (make-hash-table :size 20 :weak :key :test #'eq)
+  "A map from threads to mailboxes.")
 
 (defvar *known-processes-lock* (ccl:make-lock "*known-processes-lock*"))
 
@@ -841,6 +845,9 @@ out IDs for.")
 
 (defimplementation thread-status (thread)
   (format nil "~A" (ccl:process-whostate thread)))
+
+(defimplementation thread-attributes (thread)
+   (list :priority (ccl::process-priority thread)))
 
 (defimplementation make-lock (&key name)
   (ccl:make-lock name))
@@ -875,17 +882,8 @@ out IDs for.")
   
 (defun mailbox (thread)
   (ccl:with-lock-grabbed (*known-processes-lock*)
-    (let ((probe (rassoc thread *known-processes* :key #'car)))
-      (cond (probe (second (cdr probe)))
-            (t (let ((mailbox (make-mailbox)))
-                 (setq *known-processes*
-                       (acons (ccl::process-serial-number thread) 
-                              (list thread mailbox)
-                              (remove-if  
-                               (lambda (entry)
-                                 (ccl::process-exhausted-p (cadr entry)))
-                               *known-processes*)))
-                 mailbox))))))
+    (or (gethash thread *known-processes*)
+        (setf (gethash thread *known-processes*) (make-mailbox)))))
 
 (defimplementation send (thread message)
   (assert message)
