@@ -48,6 +48,11 @@
 
 (loadsys :trubanc)
 
+(let ((port (ignore-errors (parse-integer (ccl:getenv "TRUBANC_PORT")))))
+  (when port
+    (trubanc:trubanc-web-server nil :port port)))
+
+
 ;; This is not in the :trubanc package def, so that people
 ;; who incorporate that system, instead of loading it from here,
 ;; won't need this file.
@@ -55,7 +60,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.
