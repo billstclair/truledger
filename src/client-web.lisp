@@ -959,7 +959,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                        (backup-enabled-preference server) "enabled")
                  (trubanc-server:start-backup-process
                   server backup-url notification-email)
-                 "Backup proces started."))))
+                 "Backup process started."))))
     (error (c)
       (setf (backup-enabled-preference server) nil)
       (stringify c))))

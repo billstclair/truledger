@@ -2824,7 +2824,7 @@
                      (msgargs (getarg $MSG args))
                      (customer (and msgargs (getarg $CUSTOMER msgargs))))
                 (when (and msgargs (not (equal customer id)))
-                  (error "Bank wrapped somebody else's (%a) message: ~s"
+                  (error "Bank wrapped somebody else's (~a) message: ~s"
                          customer msg))
                 (cond ((equal request $ATGETOUTBOX))
                       ((equal request $ATSPEND)
