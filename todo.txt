@@ -1,5 +1,43 @@
+Read about Ricardian contracts:
+
+SOX executive summary:
+http://www.systemics.com/docs/sox/execsummary.html
+
+Financial crypto in 7 layers, describing Ricardo and SOX:
+http://iang.org/papers/fc7.html
+
+SOX overview with pretty graphics:
+http://www.systemics.com/docs/sox/overview.html
+
+Ricardo Executive Summary:
+http://www.systemics.com/docs/ricardo/execsummary.html
+
+Trading software built on top of Ricardo:
+http://www.systemics.com/docs/ricardo/trading/a_day_in_the_life.html
+
+Good articles on Ricardian Contracts, used to issue currencies:
+http://linas.org/mirrors/www.webfunds.org/2001.04.16/guide/ricardian.html
+http://iang.org/papers/ricardian_contract.html
+
+You can actually download the source code for the client software, WebFunds:
+http://www.gnucash.org/mirrors/mirrors/www.webfunds.org/2001.04.16/
+
+----------------------------------------------------------------------
+
+Read about Chaum without patents:
+
+Lucre implements Chaumian e-cash without patents:
+http://anoncvs.aldigital.co.uk/lucre/  (Java, C++)
+
+LUCRATIVE -- Client/Server that calls Lucre.
+http://sourceforge.net/projects/lucrative/  (Java)
+
+----------------------------------------------------------------------
+
 Something is causing an arithmetic with NIL error. Print a backtrace
 before exiting to help find it.
+
+----------------------------------------------------------------------
 
 Permissions
 
