@@ -17,6 +17,7 @@
      (:file "sendmail")
      (:file "utilities")
      (:file "timer")
+     #+openssl-cffi
      (:file "openssl-cffi")
      (:file "file-locks")
      (:file "fsdb")

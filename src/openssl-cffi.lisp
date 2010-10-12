@@ -5,7 +5,12 @@
 ;;; Interface to the cryptographic functions in the OpenSSL library
 ;;;
 
-(in-package :trubanc)
+(cl:defpackage :trubanc-openssl
+  (:use :cl :cffi :cl-base64 :trubanc)
+  (:export
+   ))
+
+(in-package :trubanc-openssl)
 
 (defvar *openssl-process* nil)
 

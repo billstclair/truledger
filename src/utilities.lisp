@@ -295,7 +295,7 @@
         (write-char (aref s-tail (+ s-tail-offset i)) s)))))
 
 (defun browse-url (url)
-  (declare (ignoreable url))
+  (declare (ignorable url))
   #+darwin
   (run-program "open" (list url))
   #+windows

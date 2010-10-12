@@ -134,6 +134,7 @@
    #:save-application
    #:command-line-arguments
    #:backtrace-string
+   #:current-process
 
    ;; sendmail.lisp
    #:email-mx-hosts
@@ -149,6 +150,7 @@
    #:decode-rsa-public-key
    #:encode-rsa-public-key
    #:rsa-generate-key
+   #:public-key-id
    #:rsa-free
    #:sha1
    #:sign
@@ -237,6 +239,7 @@
    #:bin2hex
    #:hex2bin
    #:copy-memory-to-lisp
+   #:copy-lisp-to-memory
    #:base64-encode
    #:base64-decode
    #:strcat
@@ -283,6 +286,7 @@
    #:xor-salt
    #:xor-strings
    #:browse-url
+   #:add-startup-function
 
    ;; client.lisp & server.lisp
    #:id

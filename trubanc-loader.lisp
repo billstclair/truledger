@@ -46,6 +46,9 @@
               :test #'equal)
   (pushnew :loadswank *features*))
 
+;; Remove this to switch to the new all-lisp crypto code
+(pushnew :openssl-cffi *features*)
+
 (loadsys :trubanc)
 
 (let ((port (ignore-errors (parse-integer (ccl:getenv "TRUBANC_PORT")))))
