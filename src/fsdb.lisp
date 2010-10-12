@@ -177,9 +177,114 @@
       (let ((path (probe-file filename)))
         (and path (cl-fad:directory-pathname-p path))))))
     
+;;;
+;;; A wrapper for a db that saves writes until commit
+;;;
+
+(defclass db-wrapper (db)
+  ((db :initarg :db
+       :accessor db-wrapper-db)
+   (dirs :initform (list nil :dir)
+         :accessor db-wrapper-dirs)))
+
+(defmethod print-object ((db db-wrapper) stream)
+  (print-unreadable-object (db stream :type t)
+    (format stream "~s" (db-wrapper-db db))))
+
+(defun make-db-wrapper (db)
+  (make-instance 'db-wrapper :db db))
+
+;; This doesn't protect against treating a file system directory
+;; as a file or vice-versa. If you do it, you'll get an error
+;; from commit-db-wrapper
+(defun get-db-wrapper-cell (db key more-keys &key create-p dir-cell-p)
+  (assert (not (and create-p dir-cell-p)))
+  ;; Eliminate trailing slashes
+  (let* ((keystr (%append-db-keys key more-keys))
+         (keys (split-sequence:split-sequence
+                #\/ keystr :remove-empty-subseqs t)))
+    (setf key (car keys)
+          more-keys (cdr keys)))
+  (let ((all-keys (cons key more-keys))
+        (split-keys nil))
+    (declare (dynamic-extent all-keys))
+    (dolist (key all-keys)
+      (let ((keys (split-sequence:split-sequence #\/ key)))
+        (dolist (key keys) (push key split-keys))))
+    (let ((file (pop split-keys))
+          (dirs (nreverse split-keys))
+          (parent (db-wrapper-dirs db)))
+      (dolist (dir dirs)
+        (let  ((cell (assoc dir (cddr parent) :test #'equal)))
+          (cond (cell
+                 (if create-p
+                     (assert (eq (cadr cell) :dir))
+                     (return-from get-db-wrapper-cell nil)))
+                (create-p
+                 (setf cell (list dir :dir))
+                 (push cell (cddr parent)))
+                (t (return-from get-db-wrapper-cell nil)))
+          (setf parent cell)))
+      (let ((cell (assoc file (cddr parent) :test #'equal)))
+        (cond (cell
+               (if dir-cell-p
+                   (when (eq (cadr cell) :file)
+                     (assert (not create-p))
+                     (return-from get-db-wrapper-cell nil))
+                   (assert (eq (cadr cell) :file))))
+              (create-p
+               (setf cell (list file :file))
+               (push cell (cddr parent))))
+        (cdr cell)))))
+
+(defmethod db-get ((db db-wrapper) key &rest more-keys)
+  (declare (dynamic-extent more-keys))
+  (let ((cell (get-db-wrapper-cell db key more-keys)))
+    (or (and cell (cdr cell))
+        (apply #'db-get (db-wrapper-db db) key more-keys))))
+
+(defmethod (setf db-get) (value (db db-wrapper) key &rest more-keys)
+  (declare (dynamic-extent more-keys))
+  (let ((cell (get-db-wrapper-cell db key more-keys :create-p t)))
+    (setf (cdr cell) value)))
+      
+(defmethod db-contents ((db db-wrapper) &rest keys)
+  (declare (dynamic-extent keys))
+  (let ((cell (get-db-wrapper-cell db (car keys) (cdr keys) :dir-cell-p t))
+        (res (apply #'db-contents (db-wrapper-db db) keys)))
+    (if cell
+      (let ((cell-res (mapcar #'car (cdr cell))))
+        (sort (union cell-res res :test #'equal) #'string<))
+      res)))
+
+(defmethod rollback-db-wrapper (db)
+  (check-type db db-wrapper)
+  (setf (db-wrapper-dirs db) (list nil :dir))
+  nil)
+
+(defmethod commit-db-wrapper (db)
+  (check-type db db-wrapper)
+  (let ((wrapped-db (db-wrapper-db db))
+        (cnt 0))
+    (labels ((do-dir-cell (dir-cell path)
+               (dolist (cell dir-cell)
+                 (let ((type (cadr cell)))
+                   (ecase type
+                     (:dir
+                      (do-dir-cell (cddr cell) (cons (car cell) path)))
+                     (:file
+                      (let* ((path (reverse (cons (car cell) path)))
+                             (key (%append-db-keys (car path) (cdr path))))
+                        (db-put wrapped-db key (cddr cell))
+                        (incf cnt))))))))
+      (do-dir-cell (cddr (db-wrapper-dirs db)) nil))
+    (rollback-db-wrapper db)
+    cnt))
+    
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

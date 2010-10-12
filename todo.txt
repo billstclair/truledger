@@ -1,3 +1,47 @@
+Periodic task to assess storage fees for inactive balances.
+
+----------------------------------------------------------------------
+
+Audit server balances.
+
+1) Audit all: can be requested by the bank (or whomever it gives permission)
+2) Audit asset type: can be requested by asset issuer (or whomever he
+   gives permission?)
+
+----------------------------------------------------------------------
+
+Automatic interbank transfers.
+
+Deposit a coupon from one server in another one.
+
+Issuer must issue the asset on both servers, and must have declared to
+the server on which the coupon is drawn that the other server is
+allowed to receive transfers.
+
+Ends up as a must-accept invoice on one server and a receipt on the other.
+
+Transaction fees? To banks AND issuer?
+
+How to help the issuer keep track of where the assets he's storing are held?
+
+----------------------------------------------------------------------
+
+Non-refundable transaction fees.
+Fixed, asset type(s) specified.
+Percent of amount transferred, in asset transferred.
+
+Always paid by spender?
+
+----------------------------------------------------------------------
+
+High-level Database API and layered database. Ease committing
+transactions and computing hashes. Also make it a lot easier to add
+new features.
+
+Two-phase commit.
+
+----------------------------------------------------------------------
+
 Read about Ricardian contracts:
 
 SOX executive summary:
@@ -70,6 +114,9 @@ Useful permissions:
     it or its proxies can give new acccounts. Allows the bank to
     enforce know-your-customer type rules.
 
+  mint-coupons
+    Sometimes you want to also forbid the minting of non-token coupons.
+
   make-assets
     allows the creation of new assets. If the bank requires this permission,
     then only it or its proxies can create new asset types.
@@ -106,6 +153,7 @@ Useful permissions:
   permission to many accounts.
 
 ======================================================================
+
 "Trubanc in Plain English" needs update
 
 Two-phase commit.
@@ -128,7 +176,7 @@ one earns you tokens.
 
 Show the database location on the client screen, unless disabled in server config.
 
-Use Pound or Apache mod_proxy to put server on port 80.
+Use Pound or yxorp or Apache mod_proxy to put server on port 80.
 
 When the current commit is a tag, need to link at the bottom of the
 client web site screen to tree/<tag>, not commit/<commit>
