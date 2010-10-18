@@ -185,7 +185,9 @@
   ((db :initarg :db
        :accessor db-wrapper-db)
    (dirs :initform (list nil :dir)
-         :accessor db-wrapper-dirs)))
+         :accessor db-wrapper-dirs)
+   (locks :initform nil
+          :accessor db-wrapper-locks)))
 
 (defmethod print-object ((db db-wrapper) stream)
   (print-unreadable-object (db stream :type t)
@@ -203,23 +205,17 @@
   (let* ((keystr (%append-db-keys key more-keys))
          (keys (split-sequence:split-sequence
                 #\/ keystr :remove-empty-subseqs t)))
-    (setf key (car keys)
-          more-keys (cdr keys)))
-  (let ((all-keys (cons key more-keys))
-        (split-keys nil))
-    (declare (dynamic-extent all-keys))
-    (dolist (key all-keys)
-      (let ((keys (split-sequence:split-sequence #\/ key)))
-        (dolist (key keys) (push key split-keys))))
-    (let ((file (pop split-keys))
-          (dirs (nreverse split-keys))
+    (setf keys (nreverse keys))
+    (let ((file (pop keys))
+          (dirs (nreverse keys))
           (parent (db-wrapper-dirs db)))
+      (when (null file)
+        (return-from get-db-wrapper-cell (cdr parent)))
       (dolist (dir dirs)
         (let  ((cell (assoc dir (cddr parent) :test #'equal)))
           (cond (cell
-                 (if create-p
-                     (assert (eq (cadr cell) :dir))
-                     (return-from get-db-wrapper-cell nil)))
+                 (when create-p
+                   (assert (eq (cadr cell) :dir))))
                 (create-p
                  (setf cell (list dir :dir))
                  (push cell (cddr parent)))
@@ -239,30 +235,47 @@
 
 (defmethod db-get ((db db-wrapper) key &rest more-keys)
   (declare (dynamic-extent more-keys))
-  (let ((cell (get-db-wrapper-cell db key more-keys)))
-    (or (and cell (cdr cell))
+  (multiple-value-bind (val val-p)
+      (apply #'db-wrapper-get db key more-keys)
+    (if val-p
+        val
         (apply #'db-get (db-wrapper-db db) key more-keys))))
+
+(defun db-wrapper-get (db key &rest more-keys)
+  "Returns two values, the value and whether it was found in the db-wrapper"
+  (declare (dynamic-extent more-keys))
+  (check-type db db-wrapper)
+  (let ((cell (get-db-wrapper-cell db key more-keys)))
+    (and cell (values (cdr cell) t))))
 
 (defmethod (setf db-get) (value (db db-wrapper) key &rest more-keys)
   (declare (dynamic-extent more-keys))
+  (when (equal value "")
+    (setf value nil))
   (let ((cell (get-db-wrapper-cell db key more-keys :create-p t)))
     (setf (cdr cell) value)))
       
 (defmethod db-contents ((db db-wrapper) &rest keys)
   (declare (dynamic-extent keys))
-  (let ((cell (get-db-wrapper-cell db (car keys) (cdr keys) :dir-cell-p t))
+  (let ((cell-res (apply #'db-wrapper-contents db keys))
         (res (apply #'db-contents (db-wrapper-db db) keys)))
-    (if cell
-      (let ((cell-res (mapcar #'car (cdr cell))))
-        (sort (union cell-res res :test #'equal) #'string<))
-      res)))
+    (if cell-res
+        (sort (union cell-res res :test #'equal) #'string<)
+        res)))
 
-(defmethod rollback-db-wrapper (db)
+(defun db-wrapper-contents (db &rest keys)
+  (declare (dynamic-extent keys))
+  (let ((cell (get-db-wrapper-cell db (car keys) (cdr keys) :dir-cell-p t)))
+    (when cell
+      (mapcar #'car (cdr cell)))))
+
+(defun rollback-db-wrapper (db)
   (check-type db db-wrapper)
   (setf (db-wrapper-dirs db) (list nil :dir))
   nil)
 
-(defmethod commit-db-wrapper (db)
+;; This sure conses a lot. May need to fix that at some point.
+(defun commit-db-wrapper (db)
   (check-type db db-wrapper)
   (let ((wrapped-db (db-wrapper-db db))
         (cnt 0))
@@ -279,8 +292,43 @@
                         (incf cnt))))))))
       (do-dir-cell (cddr (db-wrapper-dirs db)) nil))
     (rollback-db-wrapper db)
+    (let ((locks (db-wrapper-locks db))
+          (wrapped-db (db-wrapper-db db)))
+      (setf (db-wrapper-locks db) nil)
+      (dolist (key.lock locks)
+        (ignore-errors
+          (db-unlock wrapped-db (cdr key.lock)))))
     cnt))
     
+;; db-wrapper locking. All locks held until commit
+(defmethod db-lock ((db db-wrapper) key)
+  (unless (assoc key (db-wrapper-locks db) :test #'equal)
+    (let ((lock (db-lock (db-wrapper-db db) key)))
+      (push (cons key lock) (db-wrapper-locks db))
+      lock)))
+
+(defmethod db-unlock ((db db-wrapper) lock)
+  (declare (ignore lock)))
+
+(defmacro with-db-wrapper ((db) &body body)
+  (let ((db-var db)
+        (db db)
+        (thunk (gensym "THUNK")))
+    (when (listp db-var)
+      (setf db-var (car db)
+            db (cadr db)))
+    (check-type db-var symbol)
+    `(flet ((,thunk (,db-var) ,@body))
+       (declare (dynamic-extent #',thunk))
+       (call-with-db-wrapper #',thunk ,db))))
+
+(defun call-with-db-wrapper (thunk db)
+  (let ((db (make-db-wrapper db)))
+    (multiple-value-prog1
+        (funcall thunk db)
+    ;; Non-local exit causes commit to be skipped.
+      (commit-db-wrapper db))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

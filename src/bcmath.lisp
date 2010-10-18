@@ -108,6 +108,9 @@
           ((eql diff 0) 0)
           (t 1))))
 
+(defun bc= (x y)
+  (eql 0 (bccomp x y)))
+
 (defun bcpow (num exponent)
   "(expt NUM EXPONENT), but only supports integer EXPONENT >= 0"
   (let ((res (bcshift-precision num))

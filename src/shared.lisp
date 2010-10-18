@@ -165,28 +165,29 @@
              (hash (sha1 str)))
         (values hash (length items))))))
 
-(defmethod balancehash ((db db) unpacker balancekey acctbals)
+(defmethod balancehash ((db db) unpacker balancekey &optional acctbals)
   "Compute the balance hash as two values: hash & count.
    UNPACKER is a function of one argument, a string, representing
    a bank-signed message. It returns the unpackaged bank message
    BALANCEKEY is the key to the user balance directory.
-   $acctbals is an alist of alists: ((acct . (assetid . msg)) ...)"
+   ACCTBALS is null or a hash table of hash tables: acct => (assetid => msg)"
   (let* ((hash nil)
          (hashcnt 0)
          (accts (db-contents db balancekey))
          (needsort nil))
-    (loop
-       for acct being the hash-keys of acctbals
-       do
-         (unless (member acct accts :test 'equal)
-           (push acct accts)
-           (setq needsort t)))
+    (when acctbals
+      (loop
+         for acct being the hash-keys of acctbals
+         do
+           (unless (member acct accts :test 'equal)
+             (push acct accts)
+             (setq needsort t))))
     (when needsort (setq accts (sort accts 'string-lessp)))
     (loop
        for acct in accts
        for newitems = nil
        for removed-names = nil
-       for newacct = (gethash acct acctbals)
+       for newacct = (and acctbals (gethash acct acctbals))
        do
          (when newacct
            (loop

@@ -194,6 +194,14 @@
    #:append-db-keys
    #:%append-db-keys
    #:with-fsdb-filename
+   #:db-wrapper
+   #:make-db-wrapper
+   #:db-wrapper-db
+   #:db-wrapper-get
+   #:db-wrapper-contents
+   #:commit-db-wrapper
+   #:rollback-db-wrapper
+   #:with-db-wrapper
 
    ;; parser.lisp
    #:parser
@@ -212,6 +220,7 @@
 
    ;; bcmath.lisp
    #:bccomp
+   #:bc=
    #:bcsub
    #:bcadd
    #:bcpow
