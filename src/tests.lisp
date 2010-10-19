@@ -157,23 +157,19 @@
           (accept-inbox ts)
           (return time))))))
 
-(defmethod getbal ((ts test-state) asset)
+(defmethod getbal ((ts test-state) asset &optional (acct $MAIN))
   (let* ((client (client ts))
-         (bals (cdar (getbalance client $MAIN)))
-         (bal (find asset bals
-                    :test #'equal
-                    :key #'balance-assetid)))
+         (bal (getbalance client acct asset)))
     (and bal (balance-amount bal))))
 
 (defmethod give-tokens ((ts test-state) user amount)
   (let* ((client (client ts))
-         (fee-asset (fee-assetid (getfees client)))
-         (id (login-user ts user)))
+         (id (login-user ts user))
+         (fee-asset (fee-assetid (getfees client))))
     (login-bank ts)
     (spend client id fee-asset amount)
     (login-user ts user)
     (accept-inbox ts)))
-
 
 (defmethod spend-tokens-test ((ts test-state))
   (let* ((john (prog1 (login-user ts "john") (accept-inbox ts)))
@@ -387,6 +383,30 @@
                            (getbalance client $MAIN assetid)))
           (john-frac (getfraction client assetid)))
       (values bill-bal bill-fee john-bal john-frac))))
+
+(defmethod transfer-test ((ts test-state))
+  (give-tokens ts "bill" "3")
+  (let* ((bill (login-user ts "bill"))
+         (client (client ts))
+         (fee (getfees client))
+         (tokenid (fee-assetid fee))
+         (assetid (bill-goldgrams-assetid ts))
+         (tokenbal (getbal ts tokenid))
+         (balance (getbalance ts t))
+         (acct (loop for i from 0
+                  for acct = (format nil "a~d" i)
+                  do
+                    (unless (assoc acct balance :test #'equal)
+                      (return acct)))))
+    (spend client bill tokenid "1" (list nil acct))
+    (spend client bill assetid "1" (list nil acct))
+    (let* ((newbal (getbal ts tokenid))
+           (diff (bcsub tokenbal (getbal ts tokenid)))
+           (sb (bcadd 1 2)))          ;1 spent, 2 new file fees
+      (unless (bc= diff sb)
+        (error "Diff sb: ~a, was: ~a, tokenbal: ~a, newbal: ~a"
+               sb diff tokenbal newbal)))
+    acct))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

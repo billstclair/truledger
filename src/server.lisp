@@ -740,11 +740,18 @@
                  (oldmsg (db-get wrapped-db key))
                  (newmsg (db-get db key))
                  (new-amount (unwrap-balance newmsg acct asset)))
+            (when (and newmsg (not oldmsg))
+              ;; New balance file. Must charge a token
+              (let ((cell (assoc tokenid diffs :test #'equal)))
+                (unless cell
+                  (setf cell (cons tokenid "0"))
+                  (push cell diffs))
+                (setf (cdr cell) (bcadd "1" (cdr cell)))))
             (unless (equal oldmsg newmsg)
               (setf balance-changed-p t))
             (multiple-value-bind (old-amount old-time)
                 (and oldmsg (unwrap-balance oldmsg acct asset))
-              (when (< (bccomp old-amount 0) 0)
+              (when (and old-amount (< (bccomp old-amount 0) 0))
                 (unless (<= (bccomp new-amount 0) 0)
                   (error "Old balance negative, but new positive, for acct: ~s, asset: ~s"
                          acct asset)))
@@ -752,8 +759,9 @@
                 (when (member asset negative-assets :test #'equal)
                   (error "Multiple negative balances for asset: ~s" asset))
                 (push asset negative-assets))
-              (do-storage-charges asset old-amount old-time)
-              (let ((diff (bcsub old-amount new-amount))
+              (when old-amount
+                (do-storage-charges asset old-amount old-time))
+              (let ((diff (bcsub (or old-amount 0) new-amount))
                     (cell (assoc asset accum :test #'equal)))
                 (if cell
                     (setf (cdr cell) (bcadd diff (cdr cell)))
