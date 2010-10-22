@@ -1212,8 +1212,7 @@
    ACCT can also be a list: (FROMACCT TOACCT), for a transfer.
    In that case TOID should be the logged in ID.
    Fees are always taken from $MAIN."
-  (let ((db (db client))
-        (parser (parser client)))
+  (let ((db (db client)))
     (require-current-bank client "In spend(): Bank not set")
     (init-bank-accts client)
     (handler-bind
@@ -1221,17 +1220,16 @@
          (error (lambda (c)
                   (declare (ignore c))
                   (forceinit client))))
-      (with-verify-sigs-p (parser nil)
-        (with-db-lock (db (userreqkey client))
-          (handler-bind
-              ((validation-error #'signal)
-               (error (lambda (c)
-                        (declare (ignore c))
-                        (if (reload-asset-p client assetid)
-                            (return-from spend
-                              (spend-internal
-                               client toid assetid formattedamount acct note))))))
-            (spend-internal client toid assetid formattedamount acct note)))))))
+      (with-db-lock (db (userreqkey client))
+        (handler-bind
+            ((validation-error #'signal)
+             (error (lambda (c)
+                      (declare (ignore c))
+                      (if (reload-asset-p client assetid)
+                          (return-from spend
+                            (spend-internal
+                             client toid assetid formattedamount acct note))))))
+          (spend-internal client toid assetid formattedamount acct note))))))
 
 (defmethod spend-internal ((client client) toid assetid formattedamount acct note)
   (let ((db (db client))
@@ -1515,16 +1513,14 @@
 
 (defmethod spendreject ((client client) time &optional note)
   (let ((db (db client))
-        (parser (parser client))
         (need-init-p t))
     (require-current-bank client "In spendreject(): Bank not set")
     (init-bank-accts client)
 
     (unwind-protect
-         (with-verify-sigs-p (parser nil)
-           (with-db-lock (db (userreqkey client))
-             (prog1 (spendreject-internal client time note)
-               (setq need-init-p nil))))
+         (with-db-lock (db (userreqkey client))
+           (prog1 (spendreject-internal client time note)
+             (setq need-init-p nil)))
       (when need-init-p
         (forceinit client)))))
 
@@ -1805,16 +1801,14 @@
   "Process the inbox contents.
    DIRECTIONS is a list of PROCESS-INBOX instances."
   (let ((db (db client))
-        (parser (parser client))
         (need-init-p t))
     (require-current-bank client "In processinbox(): Bank not set")
     (init-bank-accts client)
 
     (unwind-protect
-         (with-verify-sigs-p (parser nil)
-           (with-db-lock (db (userreqkey client))
-             (prog1 (processinbox-internal client directions nil)
-               (setq need-init-p nil))))
+         (with-db-lock (db (userreqkey client))
+           (prog1 (processinbox-internal client directions nil)
+             (setq need-init-p nil)))
       (when need-init-p (forceinit client)))))
 
 (defmethod processinbox-internal ((client client) directions recursive)

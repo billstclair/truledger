@@ -970,19 +970,18 @@
 
 (define-message-handler do-spend $SPEND (server args reqs)
   "Process a spend message."
-  (with-verify-sigs-p ((parser server) nil)
-    (let ((db (db server))
-          (id (getarg $CUSTOMER args))
-          res assetid issuer storagefee digits)
-      (with-db-lock (db (acct-time-key id))
-        (multiple-value-setq (res assetid issuer storagefee digits)
-          (do-spend-internal server args reqs)))
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args))
+        res assetid issuer storagefee digits)
+    (with-db-lock (db (acct-time-key id))
+      (multiple-value-setq (res assetid issuer storagefee digits)
+        (do-spend-internal server args reqs)))
 
-      ;; This is outside the customer lock to avoid deadlock with the issuer account.
-      (when (and issuer storagefee digits)
-        (post-storage-fee server assetid issuer storagefee digits))
+    ;; This is outside the customer lock to avoid deadlock with the issuer account.
+    (when (and issuer storagefee digits)
+      (post-storage-fee server assetid issuer storagefee digits))
 
-      res)))
+    res))
 
 ;; New implementation, using db-wrapper
 ;; Need to deal with negative spend, moving issuer to different acct or
@@ -1208,59 +1207,58 @@
         (parser (parser server))
         (id (getarg $CUSTOMER args))
         (msg (get-parsemsg (car reqs))))
-    (with-verify-sigs-p (parser nil)
-      (with-db-lock (db (acct-time-key id))
-        (let* ((bankid (bankid server))
-               (time (getarg $TIME args))
-               (key (outbox-key id))
-               (item (db-get db key time)))
-          (unless item
-            (error "No outbox entry for time: ~s" time))
-          (let ((args (unpack-bankmsg server item $ATSPEND $SPEND)))
-            (unless (equal time (getarg $TIME args))
-              (error "Time mismatch in outbox item"))
-            (when (equal (getarg $ID args) $COUPON)
-              (error "Coupons must be redeemed, not cancelled"))
-            (let* ((recipient (getarg $ID args))
-                   (key (inbox-key recipient))
-                   (inbox (db-contents db key))
-                   (feeamt nil)
-                   (feeasset nil))
-              (dolist (intime inbox
-                       (error "Time not found in inbox: ~s" time))
-                (let* ((item (db-get db key intime))
-                       (item2 nil)
-                       (args (and item (unpack-bankmsg
-                                        server item $INBOX $SPEND :no-error))))
-                  (when (and args (equal (getarg $TIME args) time))
-                    ;; Calculate the fee, if there is one
-                    (let* ((reqs (getarg $UNPACK-REQS-KEY args))
-                           (req (second reqs)))
-                      (when req
-                        (let ((args (match-pattern parser req)))
-                          (unless (equal (getarg $CUSTOMER args) bankid)
-                            (error "Fee message not from bank"))
-                          (when (equal (getarg $REQUEST args) $ATTRANFEE)
-                            (setq req (getarg $MSG args)
-                                  args (match-pattern parser req))
-                            (unless (equal (getarg $REQUEST args) $TRANFEE)
-                              (error "Fee wrapper doesn't wrap fee message"))
-                            (setq feeasset (getarg $ASSET args)
-                                  feeamt (getarg $AMOUNT args))))))
-                    ;; Found the inbox item corresponding to the outbox item.
-                    ;; Make sure it's still there.
-                    (with-db-lock (db (append-db-keys key intime))
-                      (setf item2 (db-get db key intime)
-                            (db-get db key intime) nil))
-                    (unless item2
-                      (error "Recipient inbox item removed during spend-reject processing"))
-                    (when feeamt
-                      (add-to-bank-balance server feeasset feeamt))
-                    (let* ((newtime (gettime server))
-                           (item (bankmsg server $INBOX newtime msg))
-                           (key (inbox-key id)))
-                      (setf (db-get db key newtime) item)
-                      (return-from do-spendreject item))))))))))))
+    (with-db-lock (db (acct-time-key id))
+      (let* ((bankid (bankid server))
+             (time (getarg $TIME args))
+             (key (outbox-key id))
+             (item (db-get db key time)))
+        (unless item
+          (error "No outbox entry for time: ~s" time))
+        (let ((args (unpack-bankmsg server item $ATSPEND $SPEND)))
+          (unless (equal time (getarg $TIME args))
+            (error "Time mismatch in outbox item"))
+          (when (equal (getarg $ID args) $COUPON)
+            (error "Coupons must be redeemed, not cancelled"))
+          (let* ((recipient (getarg $ID args))
+                 (key (inbox-key recipient))
+                 (inbox (db-contents db key))
+                 (feeamt nil)
+                 (feeasset nil))
+            (dolist (intime inbox
+                     (error "Time not found in inbox: ~s" time))
+              (let* ((item (db-get db key intime))
+                     (item2 nil)
+                     (args (and item (unpack-bankmsg
+                                      server item $INBOX $SPEND :no-error))))
+                (when (and args (equal (getarg $TIME args) time))
+                  ;; Calculate the fee, if there is one
+                  (let* ((reqs (getarg $UNPACK-REQS-KEY args))
+                         (req (second reqs)))
+                    (when req
+                      (let ((args (match-pattern parser req)))
+                        (unless (equal (getarg $CUSTOMER args) bankid)
+                          (error "Fee message not from bank"))
+                        (when (equal (getarg $REQUEST args) $ATTRANFEE)
+                          (setq req (getarg $MSG args)
+                                args (match-pattern parser req))
+                          (unless (equal (getarg $REQUEST args) $TRANFEE)
+                            (error "Fee wrapper doesn't wrap fee message"))
+                          (setq feeasset (getarg $ASSET args)
+                                feeamt (getarg $AMOUNT args))))))
+                  ;; Found the inbox item corresponding to the outbox item.
+                  ;; Make sure it's still there.
+                  (with-db-lock (db (append-db-keys key intime))
+                    (setf item2 (db-get db key intime)
+                          (db-get db key intime) nil))
+                  (unless item2
+                    (error "Recipient inbox item removed during spend-reject processing"))
+                  (when feeamt
+                    (add-to-bank-balance server feeasset feeamt))
+                  (let* ((newtime (gettime server))
+                         (item (bankmsg server $INBOX newtime msg))
+                         (key (inbox-key id)))
+                    (setf (db-get db key newtime) item)
+                    (return-from do-spendreject item)))))))))))
 
 (define-message-handler do-couponenvelope $COUPONENVELOPE (server args reqs)
   "Redeem coupon by moving it from coupon/<coupon> to the customer inbox.
@@ -1375,14 +1373,12 @@
 
 (define-message-handler do-processinbox $PROCESSINBOX (server args reqs)
   (let ((db (db server))
-        (parser (parser server))
         (id (getarg $CUSTOMER args))
         res charges)
 
-    (with-verify-sigs-p (parser nil)
-      (with-db-lock (db (acct-time-key id))
-        (multiple-value-setq (res charges)
-          (do-processinbox-internal server args reqs))))
+    (with-db-lock (db (acct-time-key id))
+      (multiple-value-setq (res charges)
+        (do-processinbox-internal server args reqs)))
       
     (loop
        for assetid being the hash-key using (hash-value assetinfo) of charges
