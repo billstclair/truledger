@@ -147,14 +147,15 @@
         (items nil))
     (dolist (name contents)
       (unless (member name removed-names :test 'equal)
-        (let* ((msg (db-get db (append-db-keys key name)))
-               (args (funcall unpacker msg))
-               (req (gethash $MSG args)))
-          (unless req
-            (error "Directory msg is not a bank-wrapped message"))
-          (unless (setq msg (get-parsemsg req))
-            (error "get-parsemsg didn't find anything"))
-          (push msg items))))
+        (let ((msg (db-get db (append-db-keys key name))))
+          (when msg                     ;can be nil from validate-db-update
+            (let* ((args (funcall unpacker msg))
+                   (req (gethash $MSG args)))
+              (unless req
+                (error "Directory msg is not a bank-wrapped message"))
+              (unless (setq msg (get-parsemsg req))
+                (error "get-parsemsg didn't find anything"))
+              (push msg items))))))
     (when newitem
       (if (stringp newitem)
           (push newitem items)

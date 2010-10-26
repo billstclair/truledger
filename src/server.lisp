@@ -626,7 +626,8 @@
                   (wbp (digits)
                     (bcadd (storage-info-fee asset-info) fee)))))))))
 
-(defmethod validate-db-update ((server server) db id time diffs)
+(defmethod validate-db-update ((server server) db id time diffs
+                               &optional tobecharged)
   "SERVER is the current server instance.
    DB is a db-wrapper around (DB SERVER).
    ID is the ID of the current user.
@@ -634,6 +635,8 @@
    DIFFS is an alist mapping assetids to numeric strings, encoding
      the differences between the committed balances and those in
      the wrapper: committed - wrapper = spend amounts
+   TOBECHARGED is a list of (asset amount time) lists for which to
+     compute storage charges.
    Calculate the difference between the balances before and after
    application of the db-wrapper values, including storage charges.
    Signal an error if the differences are different than those
@@ -766,6 +769,9 @@
                 (if cell
                     (setf (cdr cell) (bcadd diff (cdr cell)))
                     (push (cons asset diff) accum)))))))
+      ;; Add in caller's storage charges
+      (dolist (asset-amt-time tobecharged)
+        (apply #'do-storage-charges asset-amt-time))
       ;; Subtract diffs from accum
       (loop for (asset . amount) in diffs
            for cell = (assoc asset accum :test #'equal)
@@ -809,6 +815,8 @@
               (unwrap-hash msg $ATOUTBOXHASH $OUTBOXHASH)
             (multiple-value-bind (hash cnt)
                 (dirhash db (outbox-key id) (unpacker server))
+              (when (null hash) (setf hash ""))
+              (when (null cnt) (setf cnt 0))
               (unless (and (equal hash newhash) (bc= cnt newcnt))
                 (error "Outbox hash mismatch"))))))
       ;; Check balance hash
@@ -975,7 +983,8 @@
         res assetid issuer storagefee digits)
     (with-db-lock (db (acct-time-key id))
       (multiple-value-setq (res assetid issuer storagefee digits)
-        (do-spend-internal server args reqs)))
+        (with-db-wrapper (db (db server))
+          (do-spend-internal server db args reqs))))
 
     ;; This is outside the customer lock to avoid deadlock with the issuer account.
     (when (and issuer storagefee digits)
@@ -986,7 +995,7 @@
 ;; New implementation, using db-wrapper
 ;; Need to deal with negative spend, moving issuer to different acct or
 ;; different ID.
-(defmethod do-spend-internal ((server server) args reqs)
+(defmethod do-spend-internal ((server server) db args reqs)
   "Do the work for a spend.
    Returns five values:
     res: The result message to be returned to the client
@@ -1018,163 +1027,162 @@
     (unless (is-numeric-p amount)
       (error "Not a number: ~s" amount))
 
-    (with-db-wrapper ((db (db server)))
-      ;; Make sure there are no bank debit inbox entries older
-      ;; than the highest timestamp last read from the inbox
-      (let ((inbox (scan-inbox server id))
-            (last (get-acct-last server id)))
-        (dolist (inmsg inbox)
-          (let* ((inmsg-args (unpack-bankmsg server inmsg))
-                 (spendreq (getarg $MSG inmsg-args)))
-            (when (and (or (< (bccomp last 0) 0)
-                           (<= (bccomp (getarg $TIME inmsg-args) last) 0))
-                       (let ((spendargs (match-pattern (parser server) spendreq)))
-                         (and (equal bankid (getarg $CUSTOMER spendargs))
-                              (equal $SPEND (getarg $REQUEST spendargs))
-                              (< (bccomp (getarg $AMOUNT spendargs) 0) 0))))
-              (error
-               "Please process bank debits in your account before doing a spend.")))))
+    ;; Make sure there are no bank debit inbox entries older
+    ;; than the highest timestamp last read from the inbox
+    (let ((inbox (scan-inbox server id))
+          (last (get-acct-last server id)))
+      (dolist (inmsg inbox)
+        (let* ((inmsg-args (unpack-bankmsg server inmsg))
+               (spendreq (getarg $MSG inmsg-args)))
+          (when (and (or (< (bccomp last 0) 0)
+                         (<= (bccomp (getarg $TIME inmsg-args) last) 0))
+                     (let ((spendargs (match-pattern (parser server) spendreq)))
+                       (and (equal bankid (getarg $CUSTOMER spendargs))
+                            (equal $SPEND (getarg $REQUEST spendargs))
+                            (< (bccomp (getarg $AMOUNT spendargs) 0) 0))))
+            (error
+             "Please process bank debits in your account before doing a spend.")))))
 
-      (let* ((tokens (if (and (not (equal id id2))
-                              (not (equal id bankid)))
-                         (tranfee server)
-                         "0"))
-             (tokenid (tokenid server))
-             (outbox-item (bankmsg server $ATSPEND spendmsg))
-             (res outbox-item)
-             (feemsg nil)
-             (storagemsg nil)
-             (storageamt nil)
-             (fracmsg nil)
-             (outboxhash-msg nil)
-             (balancehash-msg nil))
+    (let* ((tokens (if (and (not (equal id id2))
+                            (not (equal id bankid)))
+                       (tranfee server)
+                       "0"))
+           (tokenid (tokenid server))
+           (outbox-item (bankmsg server $ATSPEND spendmsg))
+           (res outbox-item)
+           (feemsg nil)
+           (storagemsg nil)
+           (storageamt nil)
+           (fracmsg nil)
+           (outboxhash-msg nil)
+           (balancehash-msg nil))
 
-        (when (equal id2 $COUPON)
-          ;; If it's a coupon request, generate the coupon
-          (let* ((coupon-number (random-id))
-                 (bankurl (bankurl server))
-                 (coupon
-                  (if note
-                      (bankmsg server $COUPON bankurl coupon-number
-                               assetid amount note)
-                      (bankmsg server $COUPON bankurl coupon-number
-                               assetid amount)))
-                 (coupon-number-hash (sha1 coupon-number)))
-            (setf (db-get db $COUPON coupon-number-hash) outbox-item)
-            (setq coupon
-                  (bankmsg server $COUPONENVELOPE id
-                           (pubkey-encrypt
-                            coupon (db-get (pubkeydb server) id))))
-            (dotcat res "." coupon)
-            (dotcat outbox-item "." coupon)))
+      (when (equal id2 $COUPON)
+        ;; If it's a coupon request, generate the coupon
+        (let* ((coupon-number (random-id))
+               (bankurl (bankurl server))
+               (coupon
+                (if note
+                    (bankmsg server $COUPON bankurl coupon-number
+                             assetid amount note)
+                    (bankmsg server $COUPON bankurl coupon-number
+                             assetid amount)))
+               (coupon-number-hash (sha1 coupon-number)))
+          (setf (db-get db $COUPON coupon-number-hash) outbox-item)
+          (setq coupon
+                (bankmsg server $COUPONENVELOPE id
+                         (pubkey-encrypt
+                          coupon (db-get (pubkeydb server) id))))
+          (dotcat res "." coupon)
+          (dotcat outbox-item "." coupon)))
 
-        (loop
-           for req in (cdr reqs)
-           for reqargs = (match-pattern parser req)
-           for reqid = (getarg $CUSTOMER reqargs)
-           for request = (getarg $REQUEST reqargs)
-           for reqtime = (getarg $TIME reqargs)
-           for reqmsg = (get-parsemsg req)
-           do
-             (unless (equal reqtime time) (error "Timestamp mismatch"))
-             (unless (equal reqid id) (error "ID mismatch"))
-             
-             (cond ((equal request $TRANFEE)
-                    (when feemsg (error "~s appeared multiple times" $TRANFEE))
-                    (let ((tranasset (getarg $ASSET reqargs))
-                          (tranamt (getarg $AMOUNT reqargs)))
-                      (unless (and (equal tranasset tokenid)
-                                   (equal tranamt tokens))
-                        (error "Mismatched tranfee asset or amount")))
-                    (setq feemsg (bankmsg server $ATTRANFEE reqmsg))
-                    (dotcat outbox-item "." feemsg)
-                    (dotcat res "." feemsg))                   
-                   ((equal request $STORAGEFEE)
-                    (when storagemsg (error "~s appeared multiple times" $STORAGEFEE))
-                    (unless (equal assetid (getarg $ASSET reqargs))
-                      (error "Storage fee asset id doesn't match spend"))
-                    (setq storageamt (getarg $AMOUNT reqargs)
-                          storagemsg (bankmsg server $ATSTORAGEFEE reqmsg))
-                    (dotcat res "." storagemsg))
-                   ((equal request $FRACTION)
-                    (when fracmsg
-                      (error "~s appeared multiple times" $FRACTION))
-                    (unless (equal assetid (getarg $ASSET reqargs))
-                      (error "Fraction asset id doesn't match spend"))
-                    (setq fracmsg (bankmsg server $ATFRACTION reqmsg))
-                    (let ((key (fraction-balance-key id assetid)))
-                      (db-put db key fracmsg)
-                      (dotcat res "." fracmsg)))
-                   ((equal request $BALANCE)
-                    (let ((balmsg (handle-wrapper-balance-msg
-                                   server db id reqmsg reqargs)))
-                      (dotcat res "." balmsg)))
-                   ((equal request $OUTBOXHASH)
-                    (when outboxhash-msg
-                      (error "~s appeared multiple times" $OUTBOXHASH))
-                    (setf outboxhash-msg (bankmsg server $ATOUTBOXHASH reqmsg))
-                    (db-put db (outbox-hash-key id) outboxhash-msg)
-                    (dotcat res "." outboxhash-msg))
-                   ((equal request $BALANCEHASH)
-                    (when balancehash-msg
-                      (error "~s appeared multiple times" $BALANCEHASH))
-                    (setq balancehash-msg (bankmsg server $ATBALANCEHASH reqmsg))
-                    (db-put db (balance-hash-key id) balancehash-msg)
-                    (dotcat res "." balancehash-msg))
-                   (t
-                    (error "~s not valid for spend. Only ~s, ~s, ~s, ~s, ~s, & ~s"
-                           request
-                           $TRANFEE $STORAGEFEE $FRACTION
-                           $BALANCE $OUTBOXHASH $BALANCEHASH))))
+      (loop
+         for req in (cdr reqs)
+         for reqargs = (match-pattern parser req)
+         for reqid = (getarg $CUSTOMER reqargs)
+         for request = (getarg $REQUEST reqargs)
+         for reqtime = (getarg $TIME reqargs)
+         for reqmsg = (get-parsemsg req)
+         do
+           (unless (equal reqtime time) (error "Timestamp mismatch"))
+           (unless (equal reqid id) (error "ID mismatch"))
+           
+           (cond ((equal request $TRANFEE)
+                  (when feemsg (error "~s appeared multiple times" $TRANFEE))
+                  (let ((tranasset (getarg $ASSET reqargs))
+                        (tranamt (getarg $AMOUNT reqargs)))
+                    (unless (and (equal tranasset tokenid)
+                                 (equal tranamt tokens))
+                      (error "Mismatched tranfee asset or amount")))
+                  (setq feemsg (bankmsg server $ATTRANFEE reqmsg))
+                  (dotcat outbox-item "." feemsg)
+                  (dotcat res "." feemsg))                   
+                 ((equal request $STORAGEFEE)
+                  (when storagemsg (error "~s appeared multiple times" $STORAGEFEE))
+                  (unless (equal assetid (getarg $ASSET reqargs))
+                    (error "Storage fee asset id doesn't match spend"))
+                  (setq storageamt (getarg $AMOUNT reqargs)
+                        storagemsg (bankmsg server $ATSTORAGEFEE reqmsg))
+                  (dotcat res "." storagemsg))
+                 ((equal request $FRACTION)
+                  (when fracmsg
+                    (error "~s appeared multiple times" $FRACTION))
+                  (unless (equal assetid (getarg $ASSET reqargs))
+                    (error "Fraction asset id doesn't match spend"))
+                  (setq fracmsg (bankmsg server $ATFRACTION reqmsg))
+                  (let ((key (fraction-balance-key id assetid)))
+                    (db-put db key fracmsg)
+                    (dotcat res "." fracmsg)))
+                 ((equal request $BALANCE)
+                  (let ((balmsg (handle-wrapper-balance-msg
+                                 server db id reqmsg reqargs)))
+                    (dotcat res "." balmsg)))
+                 ((equal request $OUTBOXHASH)
+                  (when outboxhash-msg
+                    (error "~s appeared multiple times" $OUTBOXHASH))
+                  (setf outboxhash-msg (bankmsg server $ATOUTBOXHASH reqmsg))
+                  (db-put db (outbox-hash-key id) outboxhash-msg)
+                  (dotcat res "." outboxhash-msg))
+                 ((equal request $BALANCEHASH)
+                  (when balancehash-msg
+                    (error "~s appeared multiple times" $BALANCEHASH))
+                  (setq balancehash-msg (bankmsg server $ATBALANCEHASH reqmsg))
+                  (db-put db (balance-hash-key id) balancehash-msg)
+                  (dotcat res "." balancehash-msg))
+                 (t
+                  (error "~s not valid for spend. Only ~s, ~s, ~s, ~s, ~s, & ~s"
+                         request
+                         $TRANFEE $STORAGEFEE $FRACTION
+                         $BALANCE $OUTBOXHASH $BALANCEHASH))))
 
-          ;; tranfee must be included if there's a transaction fee
-          (when (and (not (eql 0 (bccomp tokens 0)))
-                     (not feemsg)
-                     (not (equal id id2)))
-            (error "~s  missing" $TRANFEE))
+      ;; tranfee must be included if there's a transaction fee
+      (when (and (not (eql 0 (bccomp tokens 0)))
+                 (not feemsg)
+                 (not (equal id id2)))
+        (error "~s  missing" $TRANFEE))
 
-          ;; Write outbox and check outboxhash
-          ;; outboxhash must be included, except on self spends
-          (unless (or (equal id id2) (equal id bankid))
-            (unless outboxhash-msg
-                (error "~s missing" $OUTBOXHASH))
-            (setf (db-get db (outbox-key id) time) outbox-item))
+      ;; Write outbox and check outboxhash
+      ;; outboxhash must be included, except on self spends
+      (unless (or (equal id id2) (equal id bankid))
+        (unless outboxhash-msg
+          (error "~s missing" $OUTBOXHASH))
+        (setf (db-get db (outbox-key id) time) outbox-item))
 
-          ;; balancehash must be included, except on bank spends
-          (unless (equal id bankid)
-            (unless balancehash-msg
-              (error "~s missing" $BALANCEHASH)))
+      ;; balancehash must be included, except on bank spends
+      (unless (equal id bankid)
+        (unless balancehash-msg
+          (error "~s missing" $BALANCEHASH)))
 
-          ;; Generate inbox item for recipient, if there is one
-          (unless (or (equal id2 $COUPON) (equal id id2))
-            (let* ((newtime (gettime server))
-                   (inbox-item (bankmsg server $INBOX newtime spendmsg)))
-              (when feemsg
-                (dotcat inbox-item "." feemsg))
-              (setf (db-get db (inbox-key id2) newtime) inbox-item)))
+      ;; Generate inbox item for recipient, if there is one
+      (unless (or (equal id2 $COUPON) (equal id id2))
+        (let* ((newtime (gettime server))
+               (inbox-item (bankmsg server $INBOX newtime spendmsg)))
+          (when feemsg
+            (dotcat inbox-item "." feemsg))
+          (setf (db-get db (inbox-key id2) newtime) inbox-item)))
 
-          ;; Force the user to do another getinbox, if anything appears
-          ;; in his inbox since he last processed it.
-          (db-put db (acct-last-key id) "-1")
+      ;; Force the user to do another getinbox, if anything appears
+      ;; in his inbox since he last processed it.
+      (db-put db (acct-last-key id) "-1")
 
-          (let* ((diffs `((,assetid . ,(if (equal id id2) "0" amount))
-                          (,tokenid . ,tokens)))
-                 ;; Here's where the storage fees are computed and
-                 ;; the balances validated.
-                 (storage-infos (validate-db-update server db id time diffs))
-                 issuer storagefee digits)
-            (when (and storage-infos
-                       (null (cdr storage-infos))
-                       (equal assetid (caar storage-infos)))
-                (let ((info (cdar storage-infos)))
-                  (setf issuer (storage-info-issuer info)
-                        storagefee (storage-info-fee info)
-                        digits (storage-info-digits info))))
-            (unless (bc= (or storagefee 0)
-                         (or storageamt 0))
-              (error "Wrong storage fee: sb: ~a, was: ~a"
-                     storagefee storageamt))
-            (values res assetid issuer storagefee digits))))))
+      (let* ((diffs `((,assetid . ,(if (equal id id2) "0" amount))
+                      (,tokenid . ,tokens)))
+             ;; Here's where the storage fees are computed and
+             ;; the balances validated.
+             (storage-infos (validate-db-update server db id time diffs))
+             issuer storagefee digits)
+        (when (and storage-infos
+                   (null (cdr storage-infos))
+                   (equal assetid (caar storage-infos)))
+          (let ((info (cdar storage-infos)))
+            (setf issuer (storage-info-issuer info)
+                  storagefee (storage-info-fee info)
+                  digits (storage-info-digits info))))
+        (unless (bc= (or storagefee 0)
+                     (or storageamt 0))
+          (error "Wrong storage fee: sb: ~a, was: ~a"
+                 storagefee storageamt))
+        (values res assetid issuer storagefee digits)))))
 
 (defmethod post-storage-fee ((server server) assetid issuer storage-fee digits)
   ;; Credit storage fee to an asset issuer
@@ -1374,14 +1382,15 @@
 (define-message-handler do-processinbox $PROCESSINBOX (server args reqs)
   (let ((db (db server))
         (id (getarg $CUSTOMER args))
-        res charges)
+        res storage-infos)
 
     (with-db-lock (db (acct-time-key id))
-      (multiple-value-setq (res charges)
-        (do-processinbox-internal server args reqs)))
+      (multiple-value-setq (res storage-infos)
+        (with-db-wrapper (db (db server))
+          (do-processinbox-internal server db args reqs))))
       
     (loop
-       for assetid being the hash-key using (hash-value assetinfo) of charges
+       for (assetid . assetinfo) in storage-infos
        for issuer = (storage-info-issuer assetinfo)
        for storage-fee = (storage-info-fee assetinfo)
        for digits = (storage-info-digits assetinfo)
@@ -1396,10 +1405,8 @@
     (error "Time mismatch in ~a, was: ~s, sb: ~s"
            place was sb)))
 
-(defun do-processinbox-internal (server args reqs)
-  (check-type server server)
-  (let* ((db (db server))
-         (bankid (bankid server))
+(defmethod do-processinbox-internal ((server server) db args reqs)
+  (let* ((bankid (bankid server))
          (parser (parser server))
          (id (getarg $CUSTOMER args))
          (time (getarg $TIME args))
@@ -1412,28 +1419,14 @@
          (storagemsgs (make-equal-hash))
          (fracmsgs (make-equal-hash))
          (inbox-key (inbox-key id))
-         (acctbals (make-equal-hash))
-         (bals (make-equal-hash))
-         (tokens 0)
-         (oldneg (make-equal-hash))
-         (newneg (make-equal-hash))
-         (charges (make-equal-hash))
+         (storage-infos nil)
          (tobecharged nil)
          (inboxmsgs nil)
          (res (bankmsg server $ATPROCESSINBOX (get-parsemsg (car reqs))))
          (outboxtimes nil)
          (outboxhashreq nil)
-         (outboxhashmsg nil)
-         (outboxhash nil)
-         (outboxcnt nil)
          (balancehashreq nil)
-         (balancehashmsg nil)
-         (balancehash nil)
-         (balancehashcnt nil)
-         (fracamts (make-equal-hash))
-         (storageamts (make-equal-hash))
-         (storagefees (make-equal-hash))
-         (fractions (make-equal-hash)))
+         (diffs nil))
 
     ;; Burn the transaction, even if balances don't match.
     (deq-time server id time)
@@ -1441,7 +1434,9 @@
     ;; Collect the inbox items being processed
     (dolist (inboxtime inboxtimes)
       (let* ((item (db-get db inbox-key inboxtime))
-             (itemargs (unpack-bankmsg server item $INBOX t))
+             (itemargs (if (null item)
+                           (error "No inbox item for time: ~s" inboxtime)
+                           (unpack-bankmsg server item $INBOX t)))
              (request (getarg $REQUEST itemargs)))
         (unless (or (equal (getarg $ID itemargs) id)
                     (equal (getarg $ID itemargs) $COUPON))
@@ -1477,7 +1472,7 @@
         (when feeargs
           (let ((asset (getarg $ASSET feeargs))
                 (amt (getarg $AMOUNT feeargs)))
-            (setf (gethash asset bals) (bcadd (gethash asset bals 0) amt))))))
+            (push (cons asset (bcsub amt)) diffs)))))
 
     ;; Credit the spend amounts for rejected spends, but do NOT
     ;; refund the transaction fees.
@@ -1489,200 +1484,102 @@
              (amt (getarg $AMOUNT spendargs))
              (spendtime (getarg $TIME spendargs)))
         (push outboxtime outboxtimes)
-        (when (< (bccomp amt 0) 0)
-          (setf (gethash asset oldneg) spendargs))
-        (setf (gethash asset bals) (bcadd (gethash asset bals 0) amt))
-        (push (list amt spendtime asset) tobecharged)))
+        (push (cons asset (bcsub amt)) diffs)
+        (push (list asset amt spendtime) tobecharged)))
 
-    (let ((state (make-balance-state :acctbals acctbals
-                                     :bals bals
-                                     :tokens tokens
-                                     :oldneg oldneg
-                                     :newneg newneg
-                                     :time time
-                                     :charges charges)))
-
-      ;; Go through the rest of the processinbox items, collecting
-      ;; accept and reject instructions and balances.
-      (dolist (req (cdr reqs))
-        (let* ((reqmsg (get-parsemsg req))
-               (args (match-pattern parser req))
-               (request (getarg $REQUEST args))
-               (argstime (getarg $TIME args)))
-          (unless (equal (getarg $CUSTOMER args) id)
-            (error "Item not from same customer as ~s" $PROCESSINBOX))
-          (cond ((or (equal request $SPENDACCEPT)
-                     (equal request $SPENDREJECT))
-                 ;; $SPENDACCEPT => array($BANKID,$TIME,$id,$NOTE=>1),
-                 ;; $SPENDREJECT => array($BANKID,$TIME,$id,$NOTE=>1),
-                 (let* ((otherid (getarg $ID args))
-                        (itemargs (gethash argstime spends)))
-                   (unless itemargs
-                     (error "'~a' not matched in '~a' item, argstime: ~a"
-                            request $PROCESSINBOX argstime))
-                   (cond ((equal request $SPENDACCEPT)
-                          ;; Accepting the payment. Credit it.
-                          (let ((itemasset (getarg $ASSET itemargs))
-                                (itemamt (getarg $AMOUNT itemargs))
-                                (itemtime (getarg $TIME itemargs)))
-                            (when (and (< (bccomp itemamt 0) 0)
-                                       (not (equal (getarg $CUSTOMER itemargs)
-                                                   bankid)))
-                              (setf (gethash itemasset oldneg) itemargs))
-                            (setf (gethash itemasset bals)
-                                  (bcadd (gethash itemasset bals 0) itemamt))
-                            (push (list itemamt itemtime itemasset) tobecharged))
-                          (dotcat res "." (bankmsg server $ATSPENDACCEPT reqmsg)))
-                         (t
-                          ;; Rejecting the payment. Credit the fee.
-                          (let ((feeargs (gethash argstime fees)))
-                            (when feeargs
-                              (let ((feeasset (getarg $ASSET feeargs))
-                                    (feeamt (getarg $AMOUNT feeargs)))
-                                (setf (gethash feeasset bals)
-                                      (bcadd (gethash feeasset bals 0) feeamt)))))
-                          (dotcat res "." (bankmsg server $ATSPENDREJECT reqmsg))))
-                   (let (inboxtime inboxmsg)
-                     (cond ((equal otherid bankid)
-                            (when (and (equal request $SPENDREJECT)
-                                       (< (bccomp (getarg $AMOUNT itemargs) 0) 0))
-                              (error "You may not reject a bank charge"))
-                            (setq inboxtime request
-                                  inboxmsg itemargs))
-                           (t 
-                            (setq inboxtime (gettime server)
-                                  inboxmsg (bankmsg server $INBOX
-                                                    inboxtime reqmsg))))
-                     (push (list otherid inboxtime inboxmsg) inboxmsgs))))
-                ((equal request $STORAGEFEE)
-                 (checktime argstime time "storagefee item")
-                 (let ((storageasset (getarg $ASSET args))
-                       (storageamt (getarg $AMOUNT args)))
-                   (when (gethash storageasset storagemsgs)
-                     (error "Duplicate storage fee for asset: ~s" storageasset))
-                   (setf (gethash storageasset storageamts) storageamt
-                         (gethash storageasset storagemsgs)
-                         (bankmsg server $ATSTORAGEFEE reqmsg))))
-                ((equal request $FRACTION)
-                 (checktime argstime time "fraction item")
-                 (let ((fracasset (getarg $ASSET args))
-                       (fracamt (getarg $AMOUNT args)))
-                   (when (gethash fracasset fracmsgs)
-                     (error "Duplicate fraction balance for asset: ~s" fracasset))
-                   (setf (gethash fracasset fracamts) fracamt
-                         (gethash fracasset fracmsgs)
-                         (bankmsg server $ATFRACTION reqmsg))))
-                ((equal request $OUTBOXHASH)
+    ;; Go through the rest of the processinbox items, collecting
+    ;; accept and reject instructions and balances.
+    (dolist (req (cdr reqs))
+      (let* ((reqmsg (get-parsemsg req))
+             (args (match-pattern parser req))
+             (request (getarg $REQUEST args))
+             (argstime (getarg $TIME args)))
+        (unless (equal (getarg $CUSTOMER args) id)
+          (error "Item not from same customer as ~s" $PROCESSINBOX))
+        (cond ((or (equal request $SPENDACCEPT)
+                   (equal request $SPENDREJECT))
+               ;; $SPENDACCEPT => array($BANKID,$TIME,$id,$NOTE=>1),
+               ;; $SPENDREJECT => array($BANKID,$TIME,$id,$NOTE=>1),
+               (let* ((otherid (getarg $ID args))
+                      (itemargs (gethash argstime spends)))
+                 (unless itemargs
+                   (error "'~a' not matched in '~a' item, argstime: ~a"
+                          request $PROCESSINBOX argstime))
+                 (cond ((equal request $SPENDACCEPT)
+                        ;; Accepting the payment. Credit it.
+                        (let ((itemasset (getarg $ASSET itemargs))
+                              (itemamt (getarg $AMOUNT itemargs))
+                              (itemtime (getarg $TIME itemargs)))
+                          (push (cons itemasset (bcsub itemamt)) diffs)
+                          (push (list itemasset itemamt itemtime) tobecharged))
+                        (dotcat res "." (bankmsg server $ATSPENDACCEPT reqmsg)))
+                       (t
+                        ;; Rejecting the payment. Credit the fee.
+                        (let ((feeargs (gethash argstime fees)))
+                          (when feeargs
+                            (let ((feeasset (getarg $ASSET feeargs))
+                                  (feeamt (getarg $AMOUNT feeargs)))
+                              (push (cons feeasset (bcsub feeamt)) diffs))))
+                        (dotcat res "." (bankmsg server $ATSPENDREJECT reqmsg))))
+                 (let (inboxtime inboxmsg)
+                   (cond ((equal otherid bankid)
+                          (when (and (equal request $SPENDREJECT)
+                                     (< (bccomp (getarg $AMOUNT itemargs) 0) 0))
+                            (error "You may not reject a bank charge"))
+                          (setq inboxtime request
+                                inboxmsg itemargs))
+                         (t 
+                          (setq inboxtime (gettime server)
+                                inboxmsg (bankmsg server $INBOX
+                                                  inboxtime reqmsg))))
+                   (push (list otherid inboxtime inboxmsg) inboxmsgs))))
+              ((equal request $STORAGEFEE)
+               (checktime argstime time "storagefee item")
+               (let ((storageasset (getarg $ASSET args)))
+                 (when (gethash storageasset storagemsgs)
+                   (error "Duplicate storage fee for asset: ~s" storageasset))
+                 (setf (gethash storageasset storagemsgs) reqmsg)
+                 (let ((msg (bankmsg server $ATSTORAGEFEE reqmsg)))
+                   (dotcat res "." msg))))
+              ((equal request $FRACTION)
+               (checktime argstime time "fraction item")
+               (let ((fracasset (getarg $ASSET args)))
+                 (when (gethash fracasset fracmsgs)
+                   (error "Duplicate fraction balance for asset: ~s" fracasset))
+                 (setf (gethash fracasset fracmsgs) reqmsg)
+                 (let ((fracmsg (bankmsg server $ATFRACTION reqmsg)))
+                   (dotcat res "." fracmsg)
+                   (db-put db (fraction-balance-key id fracasset) fracmsg))))
+              ((equal request $OUTBOXHASH)
+               (unless (equal id bankid)
                  (when outboxhashreq
                    (error "~s appeared multiple times" $OUTBOXHASH))
                  (checktime argstime time "outboxhash")
-                 (setq outboxhashreq req
-                       outboxhashmsg (get-parsemsg req)
-                       outboxhash (getarg $HASH args)
-                       outboxcnt (getarg $COUNT args)))
-                ((equal request $BALANCE)
-                 (checktime argstime time "balance item")
-                 (handle-balance-msg server id reqmsg args state))
-                ((equal request $BALANCEHASH)
+                 (setq outboxhashreq req)
+                 (let ((item (bankmsg server $ATOUTBOXHASH (get-parsemsg req))))
+                   (dotcat res "." item)
+                   (db-put db (outbox-hash-key id) item))))
+              ((equal request $BALANCE)
+               (checktime argstime time "balance item")
+               (let ((balmsg (handle-wrapper-balance-msg
+                              server db id reqmsg args)))
+                 (dotcat res "." balmsg)))
+              ((equal request $BALANCEHASH)
+               (unless (equal id bankid)
                  (when balancehashreq
                    (error "~s appeared multiple times" $BALANCEHASH))
                  (checktime argstime time "balancehash")
-                 (setq balancehashreq req
-                       balancehashmsg (get-parsemsg req)
-                       balancehash (getarg $HASH args)
-                       balancehashcnt (getarg $COUNT args)))
-                (t
-                 (error "~s not valid for ~s, only ~s, ~s, ~s, ~s, ~s, ~s, & ~s"
-                        request $PROCESSINBOX
-                        $SPENDACCEPT $SPENDREJECT
-                        $STORAGEFEE $FRACTION $OUTBOXHASH
-                        $BALANCE $BALANCEHASH)))))
-
-      (setq tokens (balance-state-tokens state)))
-
-    ;; Check that we have exactly as many negative balances after the transaction
-    ;; as we had before.
-    (unless (eql (hash-table-count oldneg) (hash-table-count newneg))
-      (error "Negative balance count not conserved"))
-    (loop
-       for asset being the hash-keys of oldneg
-       do
-       (unless (gethash asset newneg)
-         (error "Negative balance assets not conserved")))
-
-    ;; Charge the new balance file tokens
-    (let ((tokenid (tokenid server)))
-      (setf (gethash tokenid bals) (bcsub (gethash tokenid bals 0) tokens)))
-
-    ;; Work the storage fees into the balances
-    (unless (eql 0 (hash-table-count charges))
-      ;; Add storage fees for accepted spends and affirmed rejects
-      (loop
-         for (itemamt itemtime itemasset) in tobecharged
-         for assetinfo = (gethash itemasset charges)
-         when assetinfo
-         do
-         (let ((percent (storage-info-percent assetinfo)))
-           (when percent
-             (let* ((digits (storage-info-digits assetinfo))
-                    (itemfee (storage-fee itemamt itemtime time percent digits))
-                    (storagefee (wbp (digits)
-                                  (bcadd (storage-info-fee assetinfo)
-                                         itemfee))))
-               (setf (storage-info-fee assetinfo) storagefee)))))
-
-      (loop
-         for itemasset being the hash-key using (hash-value assetinfo) of charges
-         for percent = (storage-info-percent assetinfo)
-         when (and percent (not (eql 0 (bccomp percent 0))))
-         do
-           (let* ((digits (storage-info-digits assetinfo))
-                  (storagefee (storage-info-fee assetinfo))
-                  (bal (wbp (digits)
-                         (bcsub (gethash itemasset bals 0) storagefee)))
-                  (fraction (wbp (digits)
-                              (bcadd (gethash itemasset fractions 0)
-                                     (storage-info-fraction assetinfo)))))
-             (multiple-value-setq (bal fraction)
-               (normalize-balance bal fraction digits))
-             (setf (gethash itemasset bals) bal
-                   (storage-info-fraction assetinfo) fraction
-                   (gethash itemasset storagefees) storagefee
-                   (gethash itemasset fractions) fraction))))
-
-    (loop
-       for storageasset being the hash-key using (hash-value storageamt)
-       of storageamts
-       for storagefee = (gethash storageasset storagefees)
-       do
-         (unless (and storagefee (eql 0 (bccomp storageamt storagefee)))
-           (error "Storage fee mismatch, sb: ~s, was: ~s" storageamt storagefee))
-         (remhash storageasset storagefees))
-    (unless (eql 0 (hash-table-count storagefees))
-      (error "Storage fees missing for some assets"))
-
-    (loop
-       for fracasset being the hash-key using (hash-value fracamt) of fracamts
-       for fraction = (gethash fracasset fractions)
-       do
-       (unless (eql 0 (bccomp fracamt fraction))
-         (error "Fraction mismatch, sb: ~s, was: ~s" fracamt fraction))
-       (remhash fracasset fractions))
-    (unless (eql 0 (hash-table-count fractions))
-      (error "Fraction balances missing for some assets"))
-
-    ;; Check that the balances in the spend message, match the current balance,
-    ;; minus amount spent minus fees.
-    (let ((errmsg nil))
-      (loop
-         for balasset being the hash-key using (hash-value balamount) of bals
-         do
-           (unless (eql 0 (bccomp balamount 0))
-             (let ((name (lookup-asset-name server balasset)))
-               (if errmsg (dotcat errmsg ", ") (setq errmsg ""))
-               (dotcat errmsg name ": " balamount))))
-      (when errmsg
-        (error "Balance discrepancies: ~s" errmsg)))
+                 (setq balancehashreq req)
+                 (let ((item (bankmsg server $ATBALANCEHASH
+                                      (get-parsemsg req))))
+                   (dotcat res "." item)
+                   (db-put db (balance-hash-key id) item))))
+              (t
+               (error "~s not valid for ~s, only ~s, ~s, ~s, ~s, ~s, ~s, & ~s"
+                      request $PROCESSINBOX
+                      $SPENDACCEPT $SPENDREJECT
+                      $STORAGEFEE $FRACTION $OUTBOXHASH
+                      $BALANCE $BALANCEHASH)))))
 
     ;; No outbox hash maintained for the bank
     (unless (equal id bankid)
@@ -1692,53 +1589,7 @@
         (error (if outboxhashreq
                    "~s included when not needed"
                    "~s missing")
-               $OUTBOXHASH))
-
-      (when outboxhashreq
-        (multiple-value-bind (hash hashcnt)
-            (outbox-hash server id nil outboxtimes)
-          (unless (and (equal outboxhash hash)
-                       (eql 0 (bccomp outboxcnt hashcnt)))
-            (error "~s mismatch" $OUTBOXHASH))))
-
-      ;; Check balancehash
-      (unless balancehashreq
-        (error "~s missing" $BALANCEHASH))
-
-        (multiple-value-bind (hash hashcnt)
-            (balancehash db (unpacker server) (balance-key id) acctbals)
-          (unless (and (equal balancehash hash)
-                       (eql 0 (bccomp balancehashcnt hashcnt)))
-            (error "~s mismatch" $BALANCEHASH))))
-
-    ;; All's well with the world. Commit this puppy.
-    ;; Update balances.
-    (let ((balancekey (balance-key id)))
-      (loop
-         for acct being the hash-key using (hash-value balances) of acctbals
-         for acctkey = (append-db-keys balancekey acct)
-         do
-           (loop
-              for balasset being the hash-key using (hash-value balance)
-              of balances
-              for balmsg = (bankmsg server $ATBALANCE balance)
-              do
-                (dotcat res "." balmsg)
-                (setf (db-get db acctkey balasset) balmsg))))
-
-    ;; Update accepted and rejected spenders' inboxes
-    (dolist (inboxmsg (reverse inboxmsgs))
-      (destructuring-bind (otherid inboxtime inboxmsg) inboxmsg
-        (cond ((equal otherid bankid)
-               (let ((request inboxtime)
-                     (itemargs inboxmsg))
-                 (when (equal request $SPENDREJECT)
-                   ;; Return the funds to the bank's account
-                   (add-to-bank-balance
-                    server (getarg $ASSET itemargs) (getarg $AMOUNT itemargs)))))
-              (t
-               (let ((inboxkey (inbox-key otherid)))
-                 (setf (db-get db inboxkey inboxtime) inboxmsg))))))
+               $OUTBOXHASH)))
 
     ;; Remove no longer needed inbox and outbox entries.
     ;; Probably should have a bank config parameter to archive these somewhere.
@@ -1751,31 +1602,29 @@
       (dolist (outboxtime outboxtimes)
         (setf (db-get db outboxkey outboxtime) "")))
 
-    (unless (equal id bankid)
-      ;; Update outboxhash
-      (when outboxhashreq
-        (let ((outboxhash-item (bankmsg server $ATOUTBOXHASH outboxhashmsg)))
-          (dotcat res "." outboxhash-item)
-          (db-put db (outbox-hash-key id) outboxhash-item)))
+    ;; Verify balances
+    (setf storage-infos
+          (validate-db-update server db id time diffs tobecharged))
 
-      ;; Update balancehash
-      (let ((balancehash-item (bankmsg server $ATBALANCEHASH balancehashmsg)))
-        (dotcat res "." balancehash-item)
-        (db-put db (balance-hash-key id) balancehash-item)))
+    ;; Update accepted and rejected spenders' inboxes
+    (dolist (inboxmsg (reverse inboxmsgs))
+      (destructuring-bind (otherid inboxtime inboxmsg) inboxmsg
+        (cond ((equal otherid bankid)
+               (let ((request inboxtime)
+                     (itemargs inboxmsg))
+                 (when (equal request $SPENDREJECT)
+                   ;; Return the funds to the bank's account
+                   ;; (should this write into the wrapped-db instead
+                   ;;  of directly to disk? We're just about to commit).
+                   (add-to-bank-balance
+                    server
+                    (getarg $ASSET itemargs)
+                    (getarg $AMOUNT itemargs)))))
+              (t
+               (let ((inboxkey (inbox-key otherid)))
+                 (setf (db-get db inboxkey inboxtime) inboxmsg))))))
 
-    ;; Update fractions, and add fraction and storagefee messages to result
-    (loop
-       for storagemsg being the hash-values of storagemsgs
-       do
-         (dotcat res "." storagemsg))
-    (loop
-       for fracasset being the hash-key using (hash-value fracmsg) of fracmsgs
-       for key = (fraction-balance-key id fracasset)
-       do  
-         (dotcat res "." fracmsg)
-         (db-put db key fracmsg))
-    
-    (values res charges)))
+    (values res storage-infos)))
 
 (defun get-outbox-args (server id spendtime)
   (check-type server server)
@@ -2323,7 +2172,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.
