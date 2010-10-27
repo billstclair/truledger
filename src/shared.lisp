@@ -69,6 +69,7 @@
                         (,$OUTBOXHASH . (,$BANKID ,$TIME ,$COUNT ,$HASH))
                         (,$BALANCEHASH . (,$BANKID ,$TIME ,$COUNT ,$HASH))
                         (,$GETFEES . (,$BANKID ,$REQ (,$OPERATION)))
+                        (,$SETFEES . (,$TIME ,$COUNT))
                         (,$SPEND .
                          (,$BANKID ,$TIME ,$ID ,$ASSET ,$AMOUNT (,$NOTE)))
                         (,$GETASSET . (,$BANKID ,$REQ ,$ASSET))
@@ -99,6 +100,7 @@
                         (,$TOKENID . (,$TOKENID))
                         (,$REGFEE . (,$BANKID ,$TIME ,$ASSET ,$AMOUNT))
                         (,$TRANFEE . (,$BANKID ,$TIME ,$ASSET ,$AMOUNT))
+                        (,$FEE . (,$BANKID ,$TIME ,$OPERATION ,$ASSET ,$AMOUNT))
                         (,$TIME . (,$ID ,$TIME))
                         (,$INBOX . (,$TIME ,$MSG))
                         (,$REQ . (,$ID ,$REQ))
@@ -110,6 +112,7 @@
                         (,$ATBALANCEHASH . (,$MSG))
                         (,$ATGETINBOX . (,$MSG))
                         (,$ATBALANCE . (,$MSG))
+                        (,$ATSETFEES . (,$MSG))
                         (,$ATSPEND . (,$MSG))
                         (,$ATTRANFEE . (,$MSG))
                         (,$ATASSET . (,$MSG))

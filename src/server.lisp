@@ -51,6 +51,10 @@
             :initarg :tranfee
             :initform "2"
             :accessor tranfee)
+   (fees :type list                     ;((operation assetid amount ...) ...)
+         :initarg :fees
+         :initform nil
+         :accessor fees)
    (privkey-size :accessor privkey-size
                  :initarg :privkey-size
                  :initform 3072)
@@ -344,7 +348,8 @@
                 (bankname server) (unpack-bank-name server)
                 (tokenid server) (unpack-bank-param server $TOKENID)
                 (regfee server) (unpack-bank-param server $REGFEE $AMOUNT)
-                (tranfee server) (unpack-bank-param server $TRANFEE $AMOUNT)))
+                (tranfee server) (unpack-bank-param server $TRANFEE $AMOUNT))
+          (load-fees server))
         ;; http://www.rsa.com/rsalabs/node.asp?id=2004 recommends that 3072-bit
         ;; RSA keys are equivalent to 128-bit symmetric keys, and they should be
         ;; secure past 2031.
@@ -387,6 +392,32 @@
                   (bankmsg server $ATBALANCE
                            (bankmsg server $BALANCE
                                     bankid zero tokenid "-1")))))))
+
+(defun load-fees (server)
+  (let ((db (db server))
+        (parser (parser server))
+        (bankid (bankid server))
+        (fee-alist nil))
+    (dolist (operation (db-contents db $FEE))
+      (let* ((msg (db-get db $FEE operation))
+             (reqs (parse parser msg))
+             (cell (list operation)))
+        (push cell fee-alist)
+        (dolist (req reqs)
+          (let* ((args (match-pattern parser req))
+                 (asset (getarg $ASSET args))
+                 (amount (getarg $AMOUNT args)))
+            (unless (and (EQUAL (getarg $CUSTOMER args) bankid)
+                         (equal (getarg $REQUEST args) $FEE)
+                         (equal (getarg $BANKID args) bankid)
+                         (equal (getarg $OPERATION args) operation))
+              (error "Malformed fee message for operation: ~s" operation))
+            (setf (cdr cell)
+                  (cons amount (cons asset (cdr cell))))))))
+    (setf fee-alist (nreverse fee-alist))
+    (dolist (cell fee-alist)
+      (setf (cdr cell) (nreverse (cdr cell))))
+    (setf (fees server) fee-alist)))
 
 (defmethod scan-inbox ((server server) id)
   (loop
@@ -969,12 +1000,105 @@
         (bankmsg server $TIME id time)))))
 
 (define-message-handler do-getfees $GETFEES (server args reqs)
+  "Process a getfees message."
   (declare (ignore reqs))
   (checkreq server args)
   (let* ((db (db server))
          (regfee (db-get db $REGFEE))
-         (tranfee (db-get db $TRANFEE)))
-    (strcat regfee "." tranfee)))
+         (tranfee (db-get db $TRANFEE))
+         (res (strcat regfee "." tranfee)))
+    (dolist (type (db-contents db $FEE))
+      (strcat res "." (db-get db $FEE type)))
+    res))
+
+(define-message-handler do-setfees $SETFEES (server args reqs)
+  "Process a setfees message."
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args)))
+    (unless (equal id (bankid server))
+      (error "Only the bank can set fees"))
+    (with-db-lock (db (acct-time-key id))
+      (do-setfees-internal server args reqs))))
+
+(defun do-setfees-internal (server args reqs)
+  (let ((db (db server))
+        (parser (parser server))
+        (time (getarg $TIME args))
+        (count (getarg $COUNT args))
+        (cnt 0)
+        (bankid (bankid server))
+        (tokenid (tokenid server))
+        (msg-alist (make-equal-hash))
+        (fee-alist (make-equal-hash))
+        (tranmsg nil)
+        (tranfee nil)
+        (regmsg nil)
+        (regfee "0"))
+
+    ;; Burn the transaction
+    (deq-time server bankid time)
+
+    (loop
+       for req in (cdr reqs)
+       for reqargs = (match-pattern parser req)
+       for reqid = (getarg $CUSTOMER reqargs)
+       for request = (getarg $REQUEST reqargs)
+       for reqbank = (getarg $BANKID reqargs)
+       for reqtime = (getarg $TIME reqargs)
+       for reqop = (getarg $OPERATION reqargs)
+       for reqasset = (getarg $ASSET reqargs)
+       for reqamount = (getarg $AMOUNT reqargs)
+       for reqmsg = (get-parsemsg req)
+       do
+         (incf cnt)
+         (unless (and (equal reqid bankid) (equal reqbank bankid))
+           (error "Fee record not from and for bank"))
+         (unless (equal reqtime time) (error "Timestamp mismatch"))
+           (unless (equal reqid bankid) (error "ID mismatch"))
+         (unless (ignore-errors (> (parse-integer reqamount) 0))
+           (error "Fee amount not a positive integer"))
+         (cond ((or (equal request $TRANFEE)
+                    (equal request $REGFEE))
+                (unless (equal reqasset tokenid )
+                  (error "~a asset must be token id" request))
+                (if (equal request $TRANFEE)
+                    (setf tranmsg reqmsg
+                          tranfee reqamount)
+                    (setf regmsg reqmsg
+                          regfee reqamount)))
+               ((equal request $FEE)
+                (when (blankp reqop)
+                  (error "Fee operation may not be blank"))
+                (unless (db-get db $ASSET reqasset)
+                  (error "Asset unknown: ~s" reqasset))
+                (let ((cell (assocequal reqop msg-alist)))
+                  (if cell
+                      (dotcat (cdr cell) "." reqmsg)
+                      (push (cons reqop reqmsg) msg-alist)))
+                (let ((cell (assocequal reqop fee-alist)))
+                  (if cell
+                      (setf (cdr cell)
+                            (cons reqamount (cons reqasset (cdr cell))))
+                      (push (list reqop reqamount reqasset) fee-alist))))
+               (t (error "Unknown fee request: ~s" request))))
+
+    (unless tranmsg
+      (error "~a missing" $TRANFEE))
+    (unless (eql cnt count)
+      (error "Wrong number of fee messages, SB: ~s, was: ~s" count cnt))
+    
+    (dolist (cell fee-alist)
+      (setf (cdr cell) (nreverse (cdr cell))))
+
+    (setf (tranfee server) tranfee
+          (regfee server) regfee
+          (fees server) fee-alist)
+
+    (setf (db-get db $TRANFEE) tranmsg
+          (db-get db $REGFEE) regmsg)
+
+    (dolist (cell msg-alist)
+      (setf (db-get db $FEE (car cell)) (cdr cell)))))                 
 
 (define-message-handler do-spend $SPEND (server args reqs)
   "Process a spend message."

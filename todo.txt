@@ -31,6 +31,7 @@ Fixed, asset type(s) specified.
 Percent of amount transferred, in asset transferred.
 
 Always paid by spender?
+Always paid to bank, or split between bank and asset issuer?
 
 ----------------------------------------------------------------------
 

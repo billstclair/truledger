@@ -39,6 +39,10 @@
    #:$GETREQ
    #:$GETTIME
    #:$GETFEES
+   #:$SETFEES
+   #:$FEESPEND
+   #:$FEETRANSFER
+   #:$FEECREATEASSET
    #:$SPEND
    #:$GETINBOX
    #:$PROCESSINBOX
@@ -68,6 +72,7 @@
    #:$ATSTORAGEFEE
    #:$ATFRACTION
    #:$ATBALANCE
+   #:$ATSETFEES
    #:$ATSPEND
    #:$ATTRANFEE
    #:$ATASSET
@@ -251,6 +256,7 @@
    #:copy-lisp-to-memory
    #:base64-encode
    #:base64-decode
+   #:assocequal
    #:strcat
    #:dotcat
    #:balancehash

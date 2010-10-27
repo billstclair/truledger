@@ -25,9 +25,9 @@ trubanc-dbs/clientdb/
       regfee=(<bankid>,regfee,<time#>,<tokenid>,<amount>)
       tranfee=(<bankid>,tranfee,<bankid>,<time#>,<tokenid>,<amount>)
       fee/
-        spend=(<bankid>,fee|spend,<fee#>,<assetid>,<amount>)[...]
-        selfspend=(<bankid>,fee|spend,<fee#>,<assetid>,<amount>)[...]
-        createasset=(<bankid>,fee|createasset,<fee#>,<assetid>,<amount>)[...]
+        spend=(<bankid>,fee,<time#>,spend,<assetid>,<amount>)[...]
+        transfer=(<bankid>,fee,<time#>,transfer,<assetid>,<amount>)[...]
+        createasset=(<bankid>,fee,<time#>,createasset,<assetid>,<amount>)[...]
       asset/
         <assetid>=(<bankid>,@asset,(<id>,asset,<bankid>,<assetid>,<scale>,<precision>,<assetname>))
   session/

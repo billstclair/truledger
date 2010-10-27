@@ -14,7 +14,7 @@ trubanc-dbs/serverdb/
                       -- But once we have a stand-alone server, it
                       -- will need a passphrase to use
   tokenid=(<bankid>,tokenid,<tokenid>)  -- The assetid of the usage token asset
-  regfee=(<bankid>,regfee,<time#>,<tokenid>,<amount>)
+  regfee=(<bankid>,regfee,<bankid>,<time#>,<tokenid>,<amount>)
                    -- Usage tokens paid for registration
                    -- default: 10 (pubkey/<id> (2),
                                   account/<id>/(time, last, req, outboxhash),
@@ -26,9 +26,9 @@ trubanc-dbs/serverdb/
                    -- Default: 2 (inbox & outbox entry)
   fee/  -- permanent fees, paid for transactions of the given type
         -- Default: none
-    spend=(<bankid>,fee|spend,<fee#>,<assetid>,<amount>)[...]
-    selfspend=(<bankid>,fee|selfspend,<fee#>,<assetid>,<amount>)[...]
-    createasset=(<bankid>,fee|createasset,<fee#>,<assetid>,<amount>)[...]
+    spend=(<bankid>,fee,<bankid>,<time#>,spend,<assetid>,<amount>)[...]
+    transfer=(<bankid>,fee,<bankid>,<time#>,transfer,<assetid>,<amount>)[...]
+    createasset=(<bankid>,fee,<bankid>,<time#>,createasset,<assetid>,<amount>)[...]
   pubkey/  -- for fast lookup. Must verify that <id> = hash(<pubkey>)
     <id>=<pubkey>
   pubkeysig/
@@ -253,20 +253,42 @@ Get fees
 
   Bank compares <req#> to /account/<id>/req. If <req#>
   is greater, bank sets /account/<id>/req to <req#>,
-  increments /time to <time#>, and returns /regfeesig,
-  /tranfeesig, and /feesig/<operation>, or all feesig
+  increments /time to <time#>, and returns /regfee,
+  /tranfee, and /fee/<operation>, for all fee
   items if operation is not included.
 
-(<bankid>regfee,<time#>,0,<amount>).
-  (<bankid>,tranfee,<time2#>,0,<amount>).
-  (<bankid>,fee|<operation>,<time3#>,<assetid>,<amount>).
-  (<bankid>,fee|<operation2>,<time4#>,assetid2>,<amount2>).
+(<bankid>regfee,<bankid>,<time#>,0,<amount>).
+  (<bankid>,tranfee,<bankid>,<time#>,0,<amount>).
+  (<bankid>,fee,<bankid>,<time#>,<operation>,<assetid>,<amount>).
+  (<bankid>,fee,<bankid>,<time#>,<operation2>,assetid2>,<amount2>).
   ...
-  (<bankid>,fee|<operationN>,<timeN#>,<assetidN>,<amountN>)
+  (<bankid>,fee,<bankid>,<time#>,<operationN>,<assetidN>,<amountN>)
 
   Otherwise, bank returns:
 
 (<bankid>,failed,(<id>,getfees,<bankid>,<req#>,<operation>),errcode:<errcode>,reason:<reason>)
+
+
+Set Fees
+--------
+
+  Customer sends:
+
+(<bankid>,setfees,<time#>,<cnt#>).
+(<bankid>,fee,spend,<time#>,<assetid>,<amount>)...
+(<bankid>,fee,transfer,<time#>,<assetid>,<amount>)...
+(<bankid>,fee,createasset,<time#>,<assetid>,<amount>)...
+
+  Bank checks that the <time#> is equal to /account/<id>/time, that
+  <cnt#> is the number of fee records passed, that the <time#> fields
+  all match, and that the <assetid>s all name known assets. It replaces
+  the fees at fee/ with the ones in the message, and returns:
+
+(<bankid>,@setfees,(<bankid>,setfees,<time#>,<cnt#>))
+
+  If there is an error, bank returns:
+
+(<bankid>,failed>,(<bankid>,setfees,<time#>,<cnt#>),errcode:<errcode>,reason:<reason>)
 
 
 Spend
