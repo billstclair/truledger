@@ -1157,6 +1157,9 @@
          (if assetid (car res) (nreverse res))
          msghash)))))
 
+(defstruct (balance+fraction (:include balance))
+  fraction)
+
 (defmethod getstoragefee ((client client) &optional assetid)
   "Get the storagefee balance for a particular assetid, or all assetids,
    Returns a list of BALANCE instances, or a single BALANCE instance, if
@@ -1178,18 +1181,22 @@
                      (time (getarg $TIME args))
                      (assetid (getarg $ASSET args))
                      (amount (getarg $AMOUNT args))
-                     (fraction "0"))
+                     (fraction "0")
+                     (asset (getasset client assetid))
+                     (percent (asset-percent asset)))
                 (multiple-value-setq (amount fraction)
-                  (normalize-balance amount fraction 0))
+                  (normalize-balance amount fraction (fraction-digits percent)))
                 (when (not (eql 0 (bccomp amount 0)))
                   (let* ((asset (getasset client assetid))
                          (formatted-amount (format-asset-value client amount asset))
                          (assetname (asset-name asset)))
-                    (push (make-balance :time time
-                                        :assetid assetid
-                                        :assetname assetname
-                                        :amount amount
-                                        :formatted-amount formatted-amount)
+                    (push (make-balance+fraction
+                           :time time
+                           :assetid assetid
+                           :assetname assetname
+                           :amount amount
+                           :formatted-amount formatted-amount
+                           :fraction fraction)
                           res)))))))
         (if assetid (car res) (sort res #'balance-lessp))))))
 

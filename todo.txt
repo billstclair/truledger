@@ -42,6 +42,17 @@ Two-phase commit.
 
 ----------------------------------------------------------------------
 
+Reducing storage fee percent can reduce the number of digits in the
+fraction. This will cause fractional amounts to be truncated, causing
+the bank to go out of balance by potentially 1 lsb. Can fix this by
+rounding up the fractional balance when the percentage changes, or by
+remembering the maximum fraction-digits value for each asset type.
+
+Add a "digits" field to the asset record. Blank means compute with
+fraction-digits. Non-blank carries forward an old, bigger, value.
+
+----------------------------------------------------------------------
+
 Read about Ricardian contracts:
 
 SOX executive summary:
