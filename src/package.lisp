@@ -284,6 +284,7 @@
    #:recursive-delete-directory
    #:ensure-directory-pathname
    #:simple-makemsg
+   #:as-string
    #:makemsg
    #:implode
    #:explode
@@ -429,10 +430,14 @@
    #:getasset
    #:addasset
    #:fee
+   #:make-fee
    #:fee-type
    #:fee-assetid
+   #:fee-assetname
    #:fee-amount
+   #:fee-formatted-amount
    #:getfees
+   #:setfees
    #:balance
    #:balance-acct
    #:balance-assetid

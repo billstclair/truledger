@@ -997,32 +997,52 @@
 (defstruct fee
   type
   assetid
-  amount)
+  assetname
+  amount
+  formatted-amount)
 
 (defmethod getfees ((client client) &optional reload)
   "Look up the transaction cost.
    Returns three values (FEE instances)
      1) tranfee
      2) regfee
-     3) List of other fees
-   Currently, only the tranfee and regfee are supported by the server,
-   and only a single fee, in usage tokens, is charged for each.
-   So that's all the spend code handles."
+     3) List of other fees"
     (require-current-bank client "In getfees(): Bank not set")
     (let ((msg (unless reload (tranfee client))))
       (unless msg
         (setq msg (getfees-internal client)))
-      (let* ((args (unpack-bankmsg client msg $TRANFEE))
-             (tranfee (make-fee :type $TRANFEE
-                                :assetid (getarg $ASSET args)
-                                :amount (getarg $AMOUNT args)))
-             regfee)
-        (setq msg (regfee client)
-              args (unpack-bankmsg client msg $REGFEE)
-              regfee (make-fee :type $REGFEE
-                               :assetid (getarg $ASSET args)
-                               :amount (getarg $AMOUNT args)))
-        (values tranfee regfee))))
+      (flet ((decode-fee (msg type)
+               (let* ((args (unpack-bankmsg client msg type))
+                      (assetid (getarg $ASSET args))
+                      (asset (getasset client assetid))
+                      (amount (getarg $AMOUNT args)))
+                 (make-fee :type (if (equal type $FEE)
+                                     (getarg $OPERATION args)
+                                     type)
+                           :assetid assetid
+                           :assetname (asset-name asset)
+                           :amount amount
+                           :formatted-amount
+                           (format-asset-value client amount asset)))))
+        (let ((tranfee (decode-fee msg $TRANFEE))
+              (regfee (regfee client)))
+          (when regfee
+            (setf regfee (decode-fee regfee $REGFEE)))
+        (let ((reqs (parse (parser client) (other-fees client)))
+              (others nil))
+          (dolist (req reqs)
+            (let* ((args (match-bankreq client req $FEE))
+                   (assetid (getarg $ASSET args))
+                   (asset (getasset client assetid))
+                   (amount (getarg $AMOUNT args)))
+              (push (make-fee :type (getarg $OPERATION args)
+                              :assetid assetid
+                              :assetname (asset-name asset)
+                              :amount amount
+                              :formatted-amount
+                              (format-asset-value client amount asset))
+                    others)))
+          (values tranfee regfee (nreverse others)))))))
 
 (defmethod getfees-internal ((client client))
   (let ((db (db client))
@@ -1033,17 +1053,112 @@
       (let* ((req (getreq client))
              (msg (sendmsg client $GETFEES bankid req))
              (reqs (parse parser msg t))
-             (feemsg nil))
+             (feemsg nil)
+             (regmsg nil)
+             (fee-alist nil))
         (dolist (req reqs)
           (let* ((args (match-bankreq client req))
                  (request (getarg $REQUEST args)))
             (cond ((equal request $TRANFEE)
-                   (setq feemsg (get-parsemsg req))
-                   (setf (db-get db key) feemsg))
+                   (setq feemsg (get-parsemsg req)))
                   ((equal request $REGFEE)
-                   (setf (db-get db (regfee-key client)) (get-parsemsg req))))))
+                   (setf regmsg  (get-parsemsg req)))
+                  ((equal request $FEE)
+                   (let* ((operation (getarg $OPERATION args))
+                          (cell (assocequal operation fee-alist))
+                          (msg (get-parsemsg req)))
+                     (if cell
+                         (dotcat (cdr cell) "." msg)
+                         (push (cons operation msg) fee-alist)))))))
         (unless feemsg (error "No tranfee from getfees request"))
+        (setf (db-get db key) feemsg
+              (db-get db (regfee-key client)) regmsg)
+        (let* ((key (other-fees-key client))
+               (operations (db-contents db key)))
+          (dolist (cell fee-alist)
+            (let ((operation (car cell)))
+              (setf operations (delete operation operations :test #'equal)
+                    (db-get db key operation) (cdr cell))))
+          (dolist (operation operations)
+            (setf (db-get db key operation) nil)))
         feemsg))))
+
+(defmethod setfees ((client client) &rest fees)
+  "Set the bank transaction fees.
+   FEES is a list of FEE instances.
+   There must be exactly one $TRANFEE and one $REGFEE.
+   The $TRANFEE & $REGFEE instances must use the tokenid as assetid.
+   An assetid of NIL will be interpreted as tokenid.
+   Refetches the fees from the server after setting them, and
+   returns the result of (getfees client t)."
+  (require-current-bank client "In setfees(): Bank not set")
+  (unless (equal (id client) (bankid client))
+    (error "Only the bank can set fees"))
+  (with-db-lock ((db client) (userreqkey client))
+    (setfees-internal client fees)))
+
+(defun setfees-internal (client fees)
+  (let ((time (gettime client))
+        (bankid (bankid client))
+        (tokenid (fee-assetid (getfees client)))
+        (tranmsg nil)
+        (regmsg nil)
+        (others-msg nil)
+        (count 0))
+    (dolist (fee fees)
+      (incf count)
+      (let* ((type (fee-type fee))
+             (tranfeep (equal type $TRANFEE))
+             (regfeep (equal type $REGFEE))
+             (amount (fee-amount fee))
+             (assetid (or (fee-assetid fee) tokenid))
+             (asset (getasset client assetid)))
+        (when (null amount)
+          (let ((formatted-amount (fee-formatted-amount fee)))
+            (when formatted-amount
+              (setf amount
+                    (unformat-asset-value client formatted-amount asset)))))
+        (unless (and amount
+                     (ignore-errors
+                       (>= (parse-integer (as-string amount))
+                           (if (or tranfeep regfeep) 0 1))))
+          (error "Fee amount not a positive integer"))
+        (cond (tranfeep
+               (when tranmsg
+                 (error "Only one ~s allowed" $TRANFEE))
+               (unless (equal assetid tokenid)
+                 (error "~s must be in tokens" $TRANFEE))
+               (let ((msg (custmsg client $TRANFEE bankid time assetid amount)))
+                 (setf tranmsg msg)))
+              (regfeep
+               (when regmsg
+                 (error "Only one ~s allowed" $REGFEE))
+               (unless (equal assetid tokenid)
+                 (error "~s must be in tokens" $REGFEE))
+               (let ((msg (custmsg client $REGFEE bankid time assetid amount)))
+                 (setf regmsg msg)))
+              (t (let ((msg (custmsg client $FEE
+                                     bankid time type assetid amount)))
+                 (if others-msg
+                     (dotcat others-msg "." msg)
+                     (setf others-msg msg)))))))
+    (unless tranmsg
+      (error "~s missing" $TRANFEE))
+    (unless regmsg
+      (error "~s missing" $REGFEE))
+    (let* ((setfees-msg (custmsg client $SETFEES time count))
+           (msg setfees-msg))
+      (dotcat msg "." tranmsg "." regmsg)
+      (when others-msg
+        (dotcat msg "." others-msg))
+      ;; Here's where we send the message to the server
+      (let* ((bankmsg (process (server client) msg))
+             (args (unpack-bankmsg client bankmsg $ATSETFEES bankid)))
+        (unless (equal setfees-msg (trim (get-parsemsg (getarg $MSG args))))
+          (error "Returned message wasn't sent")))
+      ;; All is well, clear the database, and reload
+      (setf (db-get (db client) (tranfeekey client)) nil)
+      (getfees client t))))
 
 (defstruct balance
   acct
@@ -2374,6 +2489,9 @@
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defmethod tokenid ((client client))
+  (fee-assetid (getfees client)))
+
 (defun passphrase-hash (passphrase &optional salt)
   (sha1 (xor-salt (trim passphrase) salt)))
 
@@ -2480,6 +2598,23 @@
 
 (defmethod regfee ((client client))
   (db-get (db client) (regfee-key client)))
+
+(defmethod other-fees-key ((client client))
+  (bankkey client $FEE))
+
+(defmethod other-fees ((client client) &optional operation)
+  (let* ((db (db client))
+         (key (other-fees-key client))
+         (operations (if operation
+                        (list operation)
+                        (db-contents db key)))
+         (res nil))
+    (dolist (operation operations)
+      (let ((fees (db-get db key operation)))
+        (if res
+            (dotcat res "." fees)
+            (setf res fees))))
+    res))
 
 (defmethod userbankkey ((client client) &optional prop (bankid (bankid client)))
   (let ((key (append-db-keys $ACCOUNT (id client) $BANK bankid)))

@@ -83,6 +83,9 @@
 (defmethod getassets ((ts test-state))
   (getassets (client ts)))
 
+(defmethod tokenid ((ts test-state))
+  (tokenid (client ts)))
+
 (defmethod login-bank ((ts test-state))
   (let* ((server (server ts))
          (client (client ts))

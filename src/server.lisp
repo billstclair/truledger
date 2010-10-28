@@ -1008,7 +1008,7 @@
          (tranfee (db-get db $TRANFEE))
          (res (strcat regfee "." tranfee)))
     (dolist (type (db-contents db $FEE))
-      (strcat res "." (db-get db $FEE type)))
+      (dotcat res "." (db-get db $FEE type)))
     res))
 
 (define-message-handler do-setfees $SETFEES (server args reqs)
@@ -1018,7 +1018,8 @@
     (unless (equal id (bankid server))
       (error "Only the bank can set fees"))
     (with-db-lock (db (acct-time-key id))
-      (do-setfees-internal server args reqs))))
+      (do-setfees-internal server args reqs))
+    (bankmsg server $ATSETFEES (get-parsemsg (car reqs)))))
 
 (defun do-setfees-internal (server args reqs)
   (let ((db (db server))
@@ -1028,8 +1029,8 @@
         (cnt 0)
         (bankid (bankid server))
         (tokenid (tokenid server))
-        (msg-alist (make-equal-hash))
-        (fee-alist (make-equal-hash))
+        (msg-alist nil)
+        (fee-alist nil)
         (tranmsg nil)
         (tranfee nil)
         (regmsg nil)
@@ -1055,8 +1056,10 @@
            (error "Fee record not from and for bank"))
          (unless (equal reqtime time) (error "Timestamp mismatch"))
            (unless (equal reqid bankid) (error "ID mismatch"))
-         (unless (ignore-errors (> (parse-integer reqamount) 0))
-           (error "Fee amount not a positive integer"))
+         (let ((amt (ignore-errors (parse-integer reqamount))))
+           (unless (and amt
+                        (>= amt (if (equal request $FEE) 0 1)))
+             (error "Fee amount not a positive integer")))
          (cond ((or (equal request $TRANFEE)
                     (equal request $REGFEE))
                 (unless (equal reqasset tokenid )
@@ -1081,10 +1084,11 @@
                             (cons reqamount (cons reqasset (cdr cell))))
                       (push (list reqop reqamount reqasset) fee-alist))))
                (t (error "Unknown fee request: ~s" request))))
-
     (unless tranmsg
       (error "~a missing" $TRANFEE))
-    (unless (eql cnt count)
+    (unless regmsg
+      (error "~a missing" $REGFEE))
+    (unless (bc= cnt count)
       (error "Wrong number of fee messages, SB: ~s, was: ~s" count cnt))
     
     (dolist (cell fee-alist)
@@ -1097,8 +1101,13 @@
     (setf (db-get db $TRANFEE) tranmsg
           (db-get db $REGFEE) regmsg)
 
-    (dolist (cell msg-alist)
-      (setf (db-get db $FEE (car cell)) (cdr cell)))))                 
+    (let ((operations (db-contents db $FEE)))
+      (dolist (cell msg-alist)
+        (let ((operation (car cell)))
+          (setf (db-get db $FEE operation) (cdr cell))
+          (setf operations (delete operation operations :test #'equal))))
+      (dolist (operation operations)
+        (setf (db-get db $FEE operation) nil)))))
 
 (define-message-handler do-spend $SPEND (server args reqs)
   "Process a spend message."
@@ -2220,6 +2229,7 @@
                       ,$GETREQ
                       ,$GETTIME
                       ,$GETFEES
+                      ,$SETFEES
                       ,$SPEND
                       ,$SPENDREJECT
                       ,$COUPONENVELOPE
