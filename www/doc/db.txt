@@ -28,7 +28,7 @@ trubanc-dbs/serverdb/
         -- Default: none
     spend=(<bankid>,fee,<bankid>,<time#>,spend,<assetid>,<amount>)[...]
     transfer=(<bankid>,fee,<bankid>,<time#>,transfer,<assetid>,<amount>)[...]
-    createasset=(<bankid>,fee,<bankid>,<time#>,createasset,<assetid>,<amount>)[...]
+    asset=(<bankid>,fee,<bankid>,<time#>,asset,<assetid>,<amount>)[...]
   pubkey/  -- for fast lookup. Must verify that <id> = hash(<pubkey>)
     <id>=<pubkey>
   pubkeysig/
@@ -277,7 +277,7 @@ Set Fees
 (<bankid>,setfees,<time#>,<cnt#>).
 (<bankid>,fee,spend,<time#>,<assetid>,<amount>)...
 (<bankid>,fee,transfer,<time#>,<assetid>,<amount>)...
-(<bankid>,fee,createasset,<time#>,<assetid>,<amount>)...
+(<bankid>,fee,asset,<time#>,<assetid>,<amount>)...
 
   Bank checks that the <time#> is equal to /account/<id>/time, that
   <cnt#> is the number of fee records passed, that the <time#> fields
@@ -302,6 +302,7 @@ Spend
 (<id>,spend,<bankid>,<time#>,<id2>,<assetid>,<amount>,note:<note>).
   (<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>).
   (<id>,storagefee,<bankid>,<time#>,<assetid>,<storageamount>).
+  (<id>,fee,<bankid>,<time#>,<operation>,<feeasset>,<feeamount>).
   (<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>).
   (<id>,fraction,<bankid>,<time#>,<assetid>,<fractionamount>).
   (<id>,balance,<bankid>,<time#>,<assetid2>,<amount2>,acct:<acctN>).
@@ -311,14 +312,15 @@ Spend
   (<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>)
 
   Bank checks that the <time#> is equal to /account/<id>/time, that
-  the balances match (after subtracting the spend amount fees), and
+  the balances match (after subtracting the spend amount & fees), and
   that the hashes match what the customer sent. If they match, bank
-  computes the item list below, stores it in the database in the file
-  /account/<id>/outbox, and returns:
+  computes the item list below, stores it in the database in the
+  directory /account/<id>/transaction, and returns:
 
 (<bankid>,@spend,(<id>,spend,<time#>,<id2>,<bankid>,<assetid>,<amount>,note:<note>)).
   (<bankid>,@storagefee,(<id>,storagefee,<bankid>,<time#>,<assetid>,<storageamount>)).
   (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>)).
+  (<bankid>,@fee,(<id>,fee,<bankid>,<time#>,<operation>,<feeasset>,<feeamount>)).
   (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,<assetid>,<amount>,acct:<acct>)).
   (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid>,<amount>)).
   (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,assetid2>,<amount2>,acct:<acct2>)).
@@ -367,7 +369,7 @@ If they don't match, bank returns:
 
 (<bankid>,failed,(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))),errcode:<errcode>,reason:<reason>)
 
-  If the customer disagrees with the banks first response, he can rollback
+  If the customer disagrees with the bank's first response, he can rollback
   the transaction by sending:
 
 (<id>,rollback,<bankid>,<time#>)
@@ -380,7 +382,13 @@ If they don't match, bank returns:
   If the bank charges non-refunable fees for spends, they must be
   included with the customer's spend message, and they will be
   included in the return message, signed with the same timestamp as
-  the customer's spend message.
+  the customer's spend message. <operation> in the "fee" items can be
+  "spend" or "transfer", depending on whether the spend is to another
+  customer or a self-spend that moves between accts. Non-refundable
+  fees are retained by the bank even if the recipient rejects the
+  spend. They provide a steady source of revenue to pay for the bank's
+  operation. They will usually be small, at least for banks that want
+  to attract cusomers.
 
   The refundable fees are stored in the outbox and included in the
   bank response in case they change between the time the spend is
@@ -589,6 +597,7 @@ Create asset
 
 (<id>,asset,<bankid>,<assetid>,<scale>,<precision>,<assetname>).
   (<id>,storage,<bankid>,<assetid>,<time4#>,<percent>).
+  (<id>,fee,<bankid>,<time4#>,asset,<feeassetid>,<feeamount>).
   (<id>,balance,<bankid>,<time4#>,<assetid>,-1,acct:<acct1>).
   (<id>,balance,<bankid>,<time4#>,assetid2>,<amount2>acct:<acct2>).
   ...
@@ -602,16 +611,17 @@ Create asset
 
   If <assetid> is the hash of <id>,<scale>,<precision>,<assetname>,
   /asset/<assetid> does not exist, <time4#> is equal to
-  /account/<id>/time, the customer has properly subtracted the
-  createasset fees from the balances in /account/<id>/balance/<acctN>
-  (including 1 usage token for the /asset/<assetid file and 1 usage
-  token for the balance file for the new asset), and the balancehash
-  matches, then bank adds
+  /account/<id>/time, the customer has properly subtracted fees from
+  the balances in /account/<id>/balance/<acctN> (including 1 usage
+  token for the /asset/<assetid> file, 1 usage token for the balance
+  file for the new asset, and the non-refundable asset creation fee),
+  and the balancehash matches, then bank adds
   <assetid>=(<id>,asset,<assetid>,<scale>,<precision>,<assetname>) to
   /asset/, clears /account/<id>/time, and returns:
 
 (<bankid>,@asset,(<id>,asset,<bankid>,<assetid>,<assetname>)).
   (<bankid>,@storage,(<id>,storage,<bankid>,<time4#>,<assetid>,<percent>)).
+  (<bankid>,@fee,(<id>,fee,<bankid>,asset,<feeassetid>,<feeamount>)).
   (<bankid>,@balance,(<id>,balance,<bankid>,<time4#>,<assetid>,-1,acct:<acct1>)).
   (<bankid>,@balance,(<id>,balance,<bankid>,<time4#>,assetid2>,<amount2>acct:<acct2>)).
   ...

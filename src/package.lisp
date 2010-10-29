@@ -40,9 +40,7 @@
    #:$GETTIME
    #:$GETFEES
    #:$SETFEES
-   #:$FEESPEND
-   #:$FEETRANSFER
-   #:$FEECREATEASSET
+   #:$TRANSFER
    #:$SPEND
    #:$GETINBOX
    #:$PROCESSINBOX
@@ -75,6 +73,7 @@
    #:$ATSETFEES
    #:$ATSPEND
    #:$ATTRANFEE
+   #:$ATFEE
    #:$ATASSET
    #:$ATGETINBOX
    #:$ATPROCESSINBOX
@@ -453,6 +452,8 @@
    #:fraction-assetname
    #:fraction-amount
    #:fraction-scale
+   #:balance+fraction
+   #:balance+fraction-fraction
    #:getfraction
    #:getstoragefee
    #:reinit-balances

@@ -1378,8 +1378,10 @@
         (tranfee nil)
         tranfee-asset
         (tranfee-amt nil)
+        fees
         fee-balance
         (need-fee-balance-p nil))
+    (declare (ignorable fees))          ;temporary
 
     (assert (and (stringp acct) (stringp toacct)))
 
@@ -1453,8 +1455,14 @@
           (validation-error "Asset out of balance on self-spend"))))
 
     (unless (equal id bankid)
-      (setq tranfee (getfees client)
-            tranfee-asset (fee-assetid tranfee))
+      (multiple-value-bind (tf rf fs) (getfees client)
+        (declare (ignore rf))
+        (setq tranfee tf
+              tranfee-asset (fee-assetid tranfee))
+        (let ((operation (if (equal id toid) $TRANSFER $SPEND)))
+          (setf fees (delete-if-not 
+                      (lambda (f) (equal (fee-type f) operation))
+                      fs))))                      
       (setq tranfee-amt
             (if (equal id toid)
                 (if oldtoamount "0" "1")
