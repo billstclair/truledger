@@ -411,6 +411,132 @@
                sb diff tokenbal newbal)))
     acct))
 
+(defmethod spend-fee-test ((ts test-state))
+  (let* ((john (prog1 (login-user ts "john") (accept-inbox ts)))
+         (bill (prog1 (login-user ts "bill") (accept-inbox ts)))
+         (client (client ts))
+         (tokenid (fee-assetid (getfees client)))
+         (fees (list (make-fee :type $TRANFEE :assetid tokenid :amount 1)
+                     (make-fee :type $REGFEE :assetid tokenid :amount 10)))
+         (goldgrams (bill-goldgrams-assetid ts)))
+    (login-bank ts)
+    (apply #'setfees client
+           `(,@fees
+             ,(make-fee :type $SPEND :assetid tokenid :amount 2)
+             ,(make-fee :type $TRANSFER :assetid tokenid :amount 3)))
+    (give-tokens ts "bill" (+ 10 1 2 10 3))
+    (let ((bank-tokens (progn (login-bank ts)
+                              (reinit-balances client)
+                              (balance-amount (getbalance ts $MAIN tokenid))))
+          (tokens (progn (login-user ts "bill")
+                         (balance-amount (getbalance ts $MAIN tokenid))))
+          (backup-p (getbalance ts "backup" tokenid)))
+      (spend client john tokenid "10")
+      (let ((sb (bcsub tokens 10 1 2))
+            (was (balance-amount (getbalance ts $MAIN tokenid)))
+            (bank-sb (bcadd bank-tokens 2))
+            (bank-was (progn
+                        (login-bank ts)
+                        (reinit-balances client)
+                        (prog1 (balance-amount (getbalance ts $MAIN tokenid))
+                          (login-user ts "bill")))))
+        (unless (bc= sb was)
+          (error "Outspend w/token fee mismatch. Old: ~s, SB: ~s, Was: ~s"
+                 tokens sb was))
+        (setf tokens was)
+        (unless (bc= bank-sb bank-was)
+          (error "Outspend w/token fee bank mismatch. Old: ~s, SB: ~s, Was: ~s"
+                 bank-tokens bank-sb bank-was))
+        (setf bank-tokens bank-was))
+      (spend client bill tokenid "10" `(,$MAIN "backup"))
+      (let ((sb (bcsub tokens 10 3 (if backup-p 0 1)))
+            (was (balance-amount (getbalance ts $MAIN tokenid))))
+        (unless (bc= sb was)
+          (error "Transfer w/token fee mismatch. Old: ~s SB: ~s, Was: ~s"
+                 tokens sb was))))
+
+    ;; Test with goldgrams as a fee
+    (login-bank ts)
+    (apply #'setfees client
+           `(,@fees
+             ,(make-fee :type $SPEND :assetid goldgrams
+                        :formatted-amount "0.001")
+             ,(make-fee :type $TRANSFER :assetid goldgrams
+                        :formatted-amount "0.002")))
+    (login-user ts "bill")
+    (let ((gg (balance-formatted-amount (getbalance client $MAIN goldgrams))))
+      (spend client john goldgrams "1.1")
+      (let ((sb (wbp (7) (bcsub gg "1.1")))
+            (was (balance-formatted-amount (getbalance client $MAIN goldgrams))))
+        (unless (bc= sb was)
+          (error "Spend goldgrams issuer mismatch. Old: ~s, sb: ~s, was: ~s"
+                 gg sb was))))
+    (login-user ts "john")
+    (accept-inbox ts)
+    (let ((bankgg (progn
+                    (login-bank ts)
+                    (reinit-balances client)
+                    (let ((bal (getbalance client $MAIN goldgrams)))
+                      (if bal
+                          (balance-formatted-amount bal)
+                          "0"))))
+          (gg (progn
+                (login-user ts "john")
+                (balance-formatted-amount
+                 (getbalance client $MAIN goldgrams)))))
+      (spend client john goldgrams "1" `(,$MAIN "backup"))
+      (let ((banksb (wbp (7) (bcadd bankgg ".002")))
+            (bankwas (progn
+                       (login-bank ts)
+                       (reinit-balances client)
+                       (balance-formatted-amount
+                        (getbalance client $MAIN goldgrams))))
+            (sb (wbp (7) (bcsub gg "1" "0.002")))
+            (was (progn
+                   (login-user ts "john")
+                   (balance-formatted-amount
+                    (getbalance client $MAIN goldgrams)))))
+        (unless (bc= banksb bankwas)
+          (error "Spend goldgrams transfer bank mismatch. Old:~s, sb: ~s, was: ~s"
+                 bankgg banksb bankwas))
+        (setf bankgg bankwas)
+        (unless (bc= sb was)
+          (error "Spend goldgrams transfer mismatch. Old: ~s, sb: ~s, was: ~s"
+                 gg sb was))
+        (setf gg "1"))
+
+      (spend client bill goldgrams "0.9" "backup")
+      (let ((banksb (wbp (7) (bcadd bankgg ".001")))
+            (bankwas (progn
+                       (login-bank ts)
+                       (reinit-balances client)
+                       (balance-formatted-amount
+                        (getbalance client $MAIN goldgrams))))
+            (sb (wbp (7) (bcsub gg "0.9" "0.001")))
+            (was (progn
+                   (login-user ts "john")
+                   (balance-formatted-amount
+                    (getbalance client "backup" goldgrams)))))
+        (unless (bc= banksb bankwas)
+          (error "Spend goldgrams bank mismatch. Old:~s, sb: ~s, was: ~s"
+                 bankgg banksb bankwas))
+        (setf bankgg bankwas)
+        (unless (bc= sb was)
+          (error "Spend goldgrams mismatch. Old: ~s, sb: ~s, was: ~s"
+                 gg sb was))
+        (setf gg was)))
+
+    ;; Test with goldgrams as a fee with storage fees
+    (bill-goldgrams-assetid ts "1")
+    (give-tokens ts john "12")
+    (login-user ts "john")
+    (spend client john goldgrams "0.3" `("backup" ,$MAIN))
+    (sleep 1)
+    (spend client bill goldgrams "0.3")
+    (spend client bill tokenid "10")
+    (getbalance ts t)
+))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009 Bill St. Clair

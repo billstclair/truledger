@@ -115,6 +115,7 @@
                         (,$ATSETFEES . (,$MSG))
                         (,$ATSPEND . (,$MSG))
                         (,$ATTRANFEE . (,$MSG))
+                        (,$ATFEE . (,$MSG))
                         (,$ATASSET . (,$MSG))
                         (,$ATSTORAGE . (,$MSG))
                         (,$ATSTORAGEFEE . (,$MSG))

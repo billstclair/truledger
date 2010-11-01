@@ -1378,9 +1378,15 @@
         (tranfee nil)
         tranfee-asset
         (tranfee-amt nil)
-        fees
         fee-balance
-        (need-fee-balance-p nil))
+        (need-fee-balance-p nil)
+        (operation nil)
+        (fees nil)
+        (fees-amounts nil)      ;alist of (assetid . amount) pairs
+        (fees-balances nil)        ;alist of (assetid . balance) pairs
+        (fees-storagefees nil)     ;alist of (assetid . storagefee) pairs
+        (fees-fractions nil)       ;alist of (assetid . fraction) pairs
+        )
     (declare (ignorable fees))          ;temporary
 
     (assert (and (stringp acct) (stringp toacct)))
@@ -1459,10 +1465,16 @@
         (declare (ignore rf))
         (setq tranfee tf
               tranfee-asset (fee-assetid tranfee))
-        (let ((operation (if (equal id toid) $TRANSFER $SPEND)))
-          (setf fees (delete-if-not 
-                      (lambda (f) (equal (fee-type f) operation))
-                      fs))))                      
+        (setf operation (if (equal id toid) $TRANSFER $SPEND)
+              fees (delete-if
+                    (lambda (f)
+                      (let ((asset (getasset client (fee-assetid f))))
+                        (equal (or (asset-issuer asset)
+                                   (asset-id asset))
+                               id)))
+                    (delete-if-not 
+                     (lambda (f) (equal (fee-type f) operation))
+                     fs))))
       (setq tranfee-amt
             (if (equal id toid)
                 (if oldtoamount "0" "1")
@@ -1470,6 +1482,11 @@
       (cond ((and (equal tranfee-asset assetid)
                   (equal $MAIN acct))
              (setq newamount (bcsub newamount tranfee-amt))
+             (dolist (fee fees)
+               (when (equal assetid (fee-assetid fee))
+                 (let ((feeamt (fee-amount fee)))
+                   (setq newamount (bcsub newamount feeamt))
+                   (push (cons assetid feeamt) fees-amounts))))
              (when (and (>= (bccomp oldamount 0) 0)
                         (< (bccomp newamount 0) 0))
                (validation-error "Insufficient balance for transaction fee")))
@@ -1477,21 +1494,74 @@
                   (equal tranfee-asset assetid)
                   (equal $MAIN toacct))
              (setq newtoamount (bcsub newtoamount tranfee-amt))
+             (dolist (fee fees)
+               (when (equal assetid (fee-assetid fee))
+                 (let ((feeamt (fee-amount fee)))
+                   (setq newtoamount (bcsub newtoamount (fee-amount fee)))
+                   (push (cons assetid feeamt) fees-amounts))))
              (when (eql 0 (bccomp newtoamount oldtoamount))
-               (validation-error "Transferring one token to a new acct is silly"))
+               (validation-error "Transferring transaction fee to a new acct is silly"))
              (when (and (>= (bccomp oldtoamount 0) 0)
                         (< (bccomp newtoamount 0) 0))
                (validation-error
                 "Insufficient destination balance for transaction fee")))
             (t
-             (let ((old-fee-balance (userbalance client $MAIN tranfee-asset)))
-               (unless (eql 0 (bccomp tranfee-amt 0))
-                 (setq fee-balance (bcsub old-fee-balance tranfee-amt)
+             (let ((old-fee-balance (userbalance client $MAIN tranfee-asset))
+                   (feeamt 0))
+               (dolist (fee fees)
+                 (when (equal tranfee-asset (fee-assetid fee))
+                   (let ((amt (fee-amount fee)))
+                     (setf feeamt (bcadd feeamt amt))
+                     (push (cons tranfee-asset amt) fees-amounts))))
+               (unless (and (bc= tranfee-amt 0)
+                            (bc= feeamt 0))
+                 (setq fee-balance (bcsub old-fee-balance tranfee-amt feeamt)
                        need-fee-balance-p t)
                  (when (and (>= (bccomp old-fee-balance 0) 0)
                             (< (bccomp fee-balance 0) 0))
                    (validation-error
-                    "Insufficient tokens for transaction fee")))))))
+                    "Insufficient tokens for transaction fee"))))))
+
+      ;; Compute non-refundable fee amounts for other than the token asset
+      (dolist (fee fees)
+        (let ((feeid (fee-assetid fee))
+              (feeamt (fee-amount fee)))
+          (unless (equal feeid tranfee-asset)
+            (cond ((equal feeid assetid)
+                   (cond ((> (bccomp newamount feeamt) 0)
+                          (setf newamount (bcsub newamount feeamt)))
+                         ((and (equal id toid)
+                               (> (bccomp newtoamount feeamt) 0))
+                          (setf newtoamount (bcsub newtoamount feeamt)))
+                         (t (error "Insufficient balance for nonrefundable fee")))
+                   (push (cons feeid feeamt) fees-amounts))
+                  (t (let (oldbal oldtime
+                           digits percent fraction fractime fracfee
+                           storagefee)
+                       (multiple-value-setq (oldbal oldtime)
+                          (userbalanceandtime client $MAIN feeid))
+                       (unless oldbal
+                         (error
+                          "No balance for non-refundable transaction fee"))
+                       (multiple-value-setq (percent fraction fractime)
+                         (client-storage-info client assetid))
+                       (when percent
+                         (setf digits (fraction-digits percent))
+                         (multiple-value-setq (fracfee fraction)
+                           (storage-fee
+                            fraction fractime time percent digits))
+                         (multiple-value-setq (storagefee oldbal)
+                           (storage-fee
+                            oldbal oldtime time percent digits))
+                         (wbp (digits)
+                           (setq storagefee (bcadd storagefee fracfee)))
+                         (multiple-value-setq (oldbal fraction)
+                           (normalize-balance oldbal fraction digits))
+                         (push (cons feeid feeamt) fees-amounts)
+                         (push (cons feeid oldbal) fees-balances)
+                         (push (cons feeid storagefee) fees-storagefees)
+                         (push (cons feeid fraction) fees-fractions))))))))
+      )
 
     ;; Numbers are computed and validated.
     ;; Create messages for server.
@@ -1499,6 +1569,9 @@
           (feeandbal nil)
           (feebal nil)
           (feemsg nil)
+          (fees-msgs nil)
+          (fees-storagemsgs nil)
+          (fees-fracmsgs nil)          
           balance
           (tobalance nil)
           (outboxhash nil)
@@ -1528,6 +1601,20 @@
                  (not (equal id toid)))
         (setq outboxhash (outboxhashmsg client time spend)))
 
+      ;; Create fees messages
+      (dolist (cell fees-amounts)
+        (push (custmsg client $FEE bankid time operation (car cell) (cdr cell))
+              fees-msgs))
+      (dolist (cell fees-balances)
+        (setf (cdr cell)
+              (custmsg client $BALANCE bankid time (car cell) (cdr cell))))
+      (dolist (cell fees-storagefees)
+        (push (custmsg client $STORAGE bankid time (car cell) (cdr cell))
+              fees-storagemsgs))
+      (dolist (cell fees-fractions)
+        (push (custmsg client $FRACTION bankid time (car cell) (cdr cell))
+              fees-fracmsgs))
+
       ;; Compute balancehash
       (unless (equal id bankid)
         (let* ((acctbals (make-equal-hash)))
@@ -1539,6 +1626,10 @@
           (when tobalance
             (setf (gethash assetid (get-inited-hash toacct acctbals))
                   tobalance))
+          (when fees-balances
+            (let ((hash (get-inited-hash $MAIN acctbals)))
+              (dolist (cell fees-balances)
+                (setf (gethash (car cell) hash) (cdr cell)))))
           (setq balancehash (balancehashmsg client time acctbals))))
 
       ;; Prepare storage fee related message components
@@ -1555,6 +1646,15 @@
       (when outboxhash (dotcat msg "." outboxhash))
       (when balancehash (dotcat msg "." balancehash))
       (when percent (dotcat msg "." storagefeemsg "." fracmsg))
+      (dolist (fee fees-msgs)
+        (dotcat msg "." fee))
+      (when fees-balances
+        (dolist (cell fees-balances)
+          (dotcat msg "." (cdr cell)))
+        (dolist (fee fees-storagemsgs)
+          (dotcat msg "." fee))
+        (dolist (frac fees-fracmsgs)
+          (dotcat msg "." frac)))
 
       (let* ((bankmsg (process server msg)) ; *** Here's the server call ***
              (reqs (parse parser bankmsg t))
@@ -1577,6 +1677,15 @@
         (when percent
           (setf (gethash storagefeemsg msgs) t
                 (gethash fracmsg msgs) t))
+        (dolist (fee fees-msgs)
+          (setf (gethash fee msgs) t))
+        (when fees-balances
+          (dolist (cell fees-balances)
+            (setf (gethash (cdr cell) msgs) t))
+          (dolist (fee fees-storagemsgs)
+            (setf (gethash fee msgs) t))
+          (dolist (frac fees-fractions)
+            (setf (gethash frac msgs) t)))
 
         (dolist (req reqs)
           (let ((onemsg (get-parsemsg req))

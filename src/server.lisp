@@ -840,6 +840,9 @@
              (error "Balance mismatch, asset: ~s, diff: ~s"
                     asset balance)))
       ;; Check for fraction mismatch
+      (setf res (delete-if-not (lambda (info)
+                                 (storage-info-percent (cdr info)))
+                               res))
       (loop for (asset . info) in res
          for key = (fraction-balance-key id asset)
          for msg = (db-get db key)
@@ -1140,7 +1143,7 @@
     (loop
        for (assetid . amount) in feesdiffs
        do
-         (add-to-bank-balance server assetid amount "fees"))
+         (add-to-bank-balance server assetid amount))
 
     ;; This is outside the customer lock to avoid deadlock with the issuer account.
     (loop for (assetid . info) in storage-infos
@@ -1174,6 +1177,14 @@
          (asset (lookup-asset server assetid))
          (operation (if (equal id id2) $TRANSFER $SPEND))
          (fees (and (not (equal id bankid)) (getfees server operation))))
+
+    ;; Remove fees for assets for which the spender is the issuer
+    (setf fees
+          (delete-if
+           #'(lambda (fee)
+               (let ((asset (lookup-asset server (car fee))))
+                 (equal id (getarg $CUSTOMER asset))))
+           fees))
 
     ;; Burn the transaction, even if balances don't match.
     (deq-time server id time)
@@ -1212,7 +1223,6 @@
            (outbox-item (bankmsg server $ATSPEND spendmsg))
            (res outbox-item)
            (feemsg nil)
-           (feesmsg nil)
            (storageamts nil)  ;list of (assetid . amt) for storage fees
            (fracids nil)      ;list of assetid for fractions
            (outboxhash-msg nil)
@@ -1303,9 +1313,7 @@
                       (setf fees (delete cell fees :test #'eq)))
                     (push (cons feeasset feeamount) feesdiffs)
                     (let ((msg (bankmsg server $ATFEE reqmsg)))
-                      (if feesmsg
-                          (dotcat feesmsg "." msg)
-                          (setf feesmsg msg)))))
+                      (dotcat res "." msg))))
                  (t
                   (error "~s not valid for spend. Only ~s, ~s, ~s, ~s, ~s, & ~s"
                          request
