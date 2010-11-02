@@ -2195,14 +2195,15 @@
                     (gethash assetid acctbal) balmsg)
               (dotcat msg "." balmsg)))
 
-      (when outbox-deletions
-        (setf outboxhash (outboxhashmsg client trans nil outbox-deletions)
-              (gethash outboxhash msgs) t)
-        (dotcat msg "." outboxhash))
+      (unless (equal bankid (id client))
+        (when outbox-deletions
+          (setf outboxhash (outboxhashmsg client trans nil outbox-deletions)
+                (gethash outboxhash msgs) t)
+          (dotcat msg "." outboxhash))
 
-      (setf balancehash (balancehashmsg client trans acctbals)
-            (gethash balancehash msgs) t)
-      (dotcat msg "." balancehash)
+        (setf balancehash (balancehashmsg client trans acctbals)
+              (gethash balancehash msgs) t)
+        (dotcat msg "." balancehash))
 
       ;; Add storage and fraction messages
       (loop

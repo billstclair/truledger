@@ -437,7 +437,8 @@
             (bank-sb (bcadd bank-tokens 2))
             (bank-was (progn
                         (login-bank ts)
-                        (reinit-balances client)
+                        (storagefees client)
+                        (accept-inbox ts)
                         (prog1 (balance-amount (getbalance ts $MAIN tokenid))
                           (login-user ts "bill")))))
         (unless (bc= sb was)
@@ -475,7 +476,8 @@
     (accept-inbox ts)
     (let ((bankgg (progn
                     (login-bank ts)
-                    (reinit-balances client)
+                    (storagefees client)
+                    (accept-inbox ts)
                     (let ((bal (getbalance client $MAIN goldgrams)))
                       (if bal
                           (balance-formatted-amount bal)
@@ -488,7 +490,8 @@
       (let ((banksb (wbp (7) (bcadd bankgg ".002")))
             (bankwas (progn
                        (login-bank ts)
-                       (reinit-balances client)
+                       (storagefees client)
+                       (accept-inbox ts)
                        (balance-formatted-amount
                         (getbalance client $MAIN goldgrams))))
             (sb (wbp (7) (bcsub gg "1" "0.002")))
@@ -509,7 +512,8 @@
       (let ((banksb (wbp (7) (bcadd bankgg ".001")))
             (bankwas (progn
                        (login-bank ts)
-                       (reinit-balances client)
+                       (storagefees client)
+                       (accept-inbox ts)
                        (balance-formatted-amount
                         (getbalance client $MAIN goldgrams))))
             (sb (wbp (7) (bcsub gg "0.9" "0.001")))
@@ -530,16 +534,22 @@
     (bill-goldgrams-assetid ts "1")
     (give-tokens ts john "12")
     (login-user ts "john")
-    (spend client john goldgrams "0.3" `("backup" ,$MAIN))
+    (spend client john goldgrams "0.1" `("backup" ,$MAIN))
     (sleep 1)
-    (spend client bill goldgrams "0.3")
+    (spend client bill goldgrams "0.1")
     (spend client bill tokenid "10")
-    (getbalance ts t)
+    (login-bank ts)
+    (storagefees client)
+    (accept-inbox ts)
+    (values
+     (getbalance ts t)
+     (progn (login-user ts "john")
+            (getbalance ts t)))
 ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

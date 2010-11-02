@@ -22,6 +22,15 @@
          (if (null i) number (strcat (subseq number 0 i) (subseq number (1+ i))))
          i))))
 
+(defun max-number-precision (&rest numbers)
+  (declare (dynamic-extent numbers))
+  (let ((max 0))
+    (dolist (number numbers)
+      (let ((precision (number-precision number)))
+        (when (> precision max)
+          (setf max precision))))
+    max))
+
 (defun split-decimal (number)
   "Return two values, the integer and decimal part of a decimal string."
   (let ((pos (position #\. number)))
@@ -124,7 +133,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

@@ -1139,11 +1139,11 @@
         (with-db-wrapper (db (db server))
           (do-spend-internal server db args reqs))))
 
-    ;; Credit the non-refundable fees to the bank
+    ;; Credit the non-refundable fees to the bank as storage fees
     (loop
        for (assetid . amount) in feesdiffs
        do
-         (add-to-bank-balance server assetid amount))
+         (post-storage-fee server assetid (bankid server) amount nil))
 
     ;; This is outside the customer lock to avoid deadlock with the issuer account.
     (loop for (assetid . info) in storage-infos
@@ -1374,7 +1374,9 @@
         (values res feesdiffs storage-infos)))))
 
 (defmethod post-storage-fee ((server server) assetid issuer storage-fee digits)
-  ;; Credit storage fee to an asset issuer
+  "Credit storage fee to an asset issuer.
+   Digits can be null when storage-fee has no fraction and you just want
+   to preserve the digits in the existing sum."
   (let ((db (db server))
         (parser (parser server))
         (bankid (bankid server)))
@@ -1392,6 +1394,8 @@
                            (equal (getarg $BANKID args) bankid)
                            (equal (getarg $ASSET args) assetid))
                 (error "Storage fee message malformed"))
+              (when (null digits)
+                (setf digits (number-precision amount)))
               (setq storage-fee (wbp (digits) (bcadd storage-fee amount))))))
         (let* ((time (gettime server))
                (storage-msg (bankmsg server $STORAGEFEE
@@ -1863,11 +1867,8 @@
             (unless (equal assetid (getarg $ASSET args))
               (error "Asset mismatch, sb: ~s, was: ~s"
                      assetid (getarg $ASSET args)))
-            (multiple-value-bind (percent fraction)
-                (storage-info server id assetid t)
-              (let ((digits (fraction-digits percent)))
-                (multiple-value-setq (amount fraction)
-                  (normalize-balance amount fraction digits)))
+            (multiple-value-bind (amount fraction)
+                (split-decimal amount)
               (when (> (bccomp amount 0) 0)
                 (let* ((time (gettime server))
                        (storagefee (bankmsg server $STORAGEFEE
