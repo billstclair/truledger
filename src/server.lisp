@@ -20,6 +20,9 @@
                    :bankurl bankurl
                    :privkey-size privkey-size)))
 
+(defparameter *tranfee-default* "2")
+(defparameter *regfee-default* "10")
+
 (defclass server ()
   ((db :type db
        :initarg :db
@@ -45,11 +48,11 @@
             :accessor tokenid)
    (regfee :type string
            :initarg :regfee
-           :initform "10"
+           :initform *regfee-default*
            :accessor regfee)
    (tranfee :type string
             :initarg :tranfee
-            :initform "2"
+            :initform *tranfee-default*
             :accessor tranfee)
    (fees :type list                     ;((operation assetid amount ...) ...)
          :initarg :fees
@@ -850,6 +853,8 @@
          for sb = (storage-info-fraction info)
          do
            (unless (equal sb was)
+             (break "Fraction mismatch, asset: ~s, SB: ~s, Was: ~s"
+                    asset sb was)
              (error "Fraction mismatch, asset: ~s, SB: ~s, Was: ~s"
                     asset sb was)))
       ;; Check outbox hash
@@ -1075,7 +1080,7 @@
              (error "Fee amount not a positive integer")))
          (cond ((or (equal request $TRANFEE)
                     (equal request $REGFEE))
-                (unless (equal reqasset tokenid )
+                (unless (equal reqasset tokenid)
                   (error "~a asset must be token id" request))
                 (if (equal request $TRANFEE)
                     (setf tranmsg reqmsg
@@ -1098,9 +1103,11 @@
                       (push (list reqop reqamount reqasset) fee-alist))))
                (t (error "Unknown fee request: ~s" request))))
     (unless tranmsg
-      (error "~a missing" $TRANFEE))
+      (setf tranfee *tranfee-default*
+            tranmsg (bankmsg server $TRANFEE bankid time tokenid tranfee)))
     (unless regmsg
-      (error "~a missing" $REGFEE))
+      (setf regfee *regfee-default*
+            regmsg (bankmsg server $REGFEE bankid time tokenid regfee)))
     (unless (bc= cnt count)
       (error "Wrong number of fee messages, SB: ~s, was: ~s" count cnt))
     
@@ -1276,12 +1283,12 @@
                     (push (cons assetid (getarg $AMOUNT reqargs)) storageamts)
                     (dotcat res "." storagemsg)))
                  ((equal request $FRACTION)
-                  (let ((assetid (getarg $ASSET reqargs))
-                        (fracmsg (bankmsg server $ATFRACTION reqmsg))
-                        (key (fraction-balance-key id assetid)))
-                    (when (member assetid fracids :test #'equal)
+                  (let* ((fracasset (getarg $ASSET reqargs))
+                         (fracmsg (bankmsg server $ATFRACTION reqmsg))
+                         (key (fraction-balance-key id fracasset)))
+                    (when (member fracasset fracids :test #'equal)
                       (error "Duplicate fraction assetid"))
-                    (push assetid fracids)
+                    (push fracasset fracids)
                     (db-put db key fracmsg)
                     (dotcat res "." fracmsg)))
                  ((equal request $BALANCE)
@@ -1361,9 +1368,18 @@
              ;; the balances validated.
              (storage-infos (validate-db-update server db id time diffs)))
         (setf storage-infos
-              (delete nil storage-infos
-                      :key (lambda (id.info)
-                             (storage-info-percent (cdr id.info)))))
+              (delete-if
+               (lambda (info)
+                 (or (null (storage-info-percent info))
+                     (wbp ((storage-info-digits info))
+                       (bc= (storage-info-fee info) 0))))
+               storage-infos
+               :key #'cdr))
+        (setf storageamts
+              (delete-if
+               (lambda (amt) (wbp ((number-precision amt)) (bc= amt 0)))
+               storageamts
+               :key #'cdr))
         (unless (and (eql (length storage-infos) (length storageamts))
                      (loop for (assetid . info) in storage-infos
                         for amt = (cdr (assocequal assetid storageamts))

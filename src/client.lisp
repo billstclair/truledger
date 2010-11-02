@@ -1086,7 +1086,7 @@
 (defmethod setfees ((client client) &rest fees)
   "Set the bank transaction fees.
    FEES is a list of FEE instances.
-   There must be exactly one $TRANFEE and one $REGFEE.
+   If $TRANFEE or $REGFEE is omitted, the server defaults will be used.
    The $TRANFEE & $REGFEE instances must use the tokenid as assetid.
    An assetid of NIL will be interpreted as tokenid.
    Refetches the fees from the server after setting them, and
@@ -1142,13 +1142,12 @@
                  (if others-msg
                      (dotcat others-msg "." msg)
                      (setf others-msg msg)))))))
-    (unless tranmsg
-      (error "~s missing" $TRANFEE))
-    (unless regmsg
-      (error "~s missing" $REGFEE))
     (let* ((setfees-msg (custmsg client $SETFEES time count))
            (msg setfees-msg))
-      (dotcat msg "." tranmsg "." regmsg)
+      (when tranmsg
+        (dotcat msg "." tranmsg))
+      (when regmsg
+        (dotcat msg "." regmsg))
       (when others-msg
         (dotcat msg "." others-msg))
       ;; Here's where we send the message to the server
@@ -1446,10 +1445,9 @@
           (multiple-value-setq (tofee oldtoamount)
             (storage-fee oldtoamount totime time percent digits))
           (wbp (digits)
-            (setq storagefee (bcadd storagefee tofee)
-                  oldtoamount (bcsub oldtoamount tofee))))
+            (setq storagefee (bcadd storagefee tofee))))
         (wbp (digits)
-          (setq newtoamount (bcadd (or oldtoamount 0) amount digits)))
+          (setq newtoamount (bcadd (or oldtoamount 0) amount)))
         (when percent
           (multiple-value-setq (newtoamount fraction)
             (normalize-balance newtoamount fraction digits)))
@@ -1542,25 +1540,32 @@
                           (userbalanceandtime client $MAIN feeid))
                        (unless oldbal
                          (error
-                          "No balance for non-refundable transaction fee"))
-                       (multiple-value-setq (percent fraction fractime)
-                         (client-storage-info client assetid))
-                       (when percent
-                         (setf digits (fraction-digits percent))
-                         (multiple-value-setq (fracfee fraction)
-                           (storage-fee
-                            fraction fractime time percent digits))
-                         (multiple-value-setq (storagefee oldbal)
-                           (storage-fee
-                            oldbal oldtime time percent digits))
-                         (wbp (digits)
-                           (setq storagefee (bcadd storagefee fracfee)))
-                         (multiple-value-setq (oldbal fraction)
-                           (normalize-balance oldbal fraction digits))
-                         (push (cons feeid feeamt) fees-amounts)
-                         (push (cons feeid oldbal) fees-balances)
-                         (push (cons feeid storagefee) fees-storagefees)
-                         (push (cons feeid fraction) fees-fractions))))))))
+                          "No main acct balance for non-refundable transaction fee asset"))
+                       ;; Don't double-charge for storage fee if there
+                       ;; is more than one fee for an asset
+                       ;; (maybe I should ensure that doesn't happen).
+                       (unless (assocequal feeid fees-storagefees)
+                         (multiple-value-setq (percent fraction fractime)
+                           (client-storage-info client feeid))
+                         (when percent
+                           (setf digits (fraction-digits percent))
+                           (multiple-value-setq (fracfee fraction)
+                             (storage-fee
+                              fraction fractime time percent digits))
+                           (multiple-value-setq (storagefee oldbal)
+                             (storage-fee
+                              oldbal oldtime time percent digits))
+                           (wbp (digits)
+                             (setq storagefee (bcadd storagefee fracfee)))
+                           (multiple-value-setq (oldbal fraction)
+                             (normalize-balance oldbal fraction digits))
+                           (push (cons feeid storagefee) fees-storagefees)
+                           (push (cons feeid fraction) fees-fractions)))
+                       (unless (>= (bccomp oldbal feeamt) 0)
+                         (error "Insufficient balance for tranaction fee."))
+                       (setf oldbal (bcsub oldbal feeamt))
+                       (push (cons feeid feeamt) fees-amounts)
+                       (push (cons feeid oldbal) fees-balances)))))))
       )
 
     ;; Numbers are computed and validated.
@@ -1609,7 +1614,7 @@
         (setf (cdr cell)
               (custmsg client $BALANCE bankid time (car cell) (cdr cell))))
       (dolist (cell fees-storagefees)
-        (push (custmsg client $STORAGE bankid time (car cell) (cdr cell))
+        (push (custmsg client $STORAGEFEE bankid time (car cell) (cdr cell))
               fees-storagemsgs))
       (dolist (cell fees-fractions)
         (push (custmsg client $FRACTION bankid time (car cell) (cdr cell))
@@ -1684,7 +1689,7 @@
             (setf (gethash (cdr cell) msgs) t))
           (dolist (fee fees-storagemsgs)
             (setf (gethash fee msgs) t))
-          (dolist (frac fees-fractions)
+          (dolist (frac fees-fracmsgs)
             (setf (gethash frac msgs) t)))
 
         (dolist (req reqs)

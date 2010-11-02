@@ -174,7 +174,12 @@
     (login-user ts user)
     (accept-inbox ts)))
 
+(defun set-standard-fees (ts)
+  (login-bank ts)
+  (setfees (client ts)))
+
 (defmethod spend-tokens-test ((ts test-state))
+  (set-standard-fees ts)
   (let* ((john (prog1 (login-user ts "john") (accept-inbox ts)))
          (bill (login-user ts "bill"))
          (client (client ts))
@@ -232,6 +237,7 @@
             "Balance mismatch after cancel")))
 
 (defmethod bill-goldgrams-assetid ((ts test-state) &optional (percent nil))
+  (set-standard-fees ts)
   (login-user ts "bill")
   (accept-inbox ts)
   (let* ((client (client ts))
@@ -245,6 +251,7 @@
     assetid))
 
 (defmethod spend-goldgrams-test ((ts test-state))
+  (set-standard-fees ts)
   (let* ((john (prog1 (login-user ts "john") (accept-inbox ts)))
          (bill (login-user ts "bill"))
          (client (client ts))
@@ -321,6 +328,7 @@
     ))
 
 (defmethod spend-storage-test ((ts test-state))
+  (set-standard-fees ts)
   (let* ((john (prog1 (login-user ts "john") (accept-inbox ts)))
          (client (client ts))
          (percent "1.0")
@@ -387,7 +395,8 @@
           (john-frac (getfraction client assetid)))
       (values bill-bal bill-fee john-bal john-frac))))
 
-(defmethod transfer-test ((ts test-state))
+(defmethod spend-transfer-test ((ts test-state))
+  (set-standard-fees ts)
   (give-tokens ts "bill" "3")
   (let* ((bill (login-user ts "bill"))
          (client (client ts))
@@ -412,6 +421,7 @@
     acct))
 
 (defmethod spend-fee-test ((ts test-state))
+  (set-standard-fees ts)
   (let* ((john (prog1 (login-user ts "john") (accept-inbox ts)))
          (bill (prog1 (login-user ts "bill") (accept-inbox ts)))
          (client (client ts))
@@ -505,10 +515,11 @@
         (setf bankgg bankwas)
         (unless (bc= sb was)
           (error "Spend goldgrams transfer mismatch. Old: ~s, sb: ~s, was: ~s"
-                 gg sb was))
-        (setf gg "1"))
+                 gg sb was)))
+      (setf gg (balance-formatted-amount
+                (getbalance client "backup" goldgrams)))
 
-      (spend client bill goldgrams "0.9" "backup")
+      (spend client bill goldgrams "0.5" "backup")
       (let ((banksb (wbp (7) (bcadd bankgg ".001")))
             (bankwas (progn
                        (login-bank ts)
@@ -516,7 +527,7 @@
                        (accept-inbox ts)
                        (balance-formatted-amount
                         (getbalance client $MAIN goldgrams))))
-            (sb (wbp (7) (bcsub gg "0.9" "0.001")))
+            (sb (wbp (7) (bcsub gg "0.5" "0.001")))
             (was (progn
                    (login-user ts "john")
                    (balance-formatted-amount
@@ -534,9 +545,10 @@
     (bill-goldgrams-assetid ts "1")
     (give-tokens ts john "12")
     (login-user ts "john")
-    (spend client john goldgrams "0.1" `("backup" ,$MAIN))
-    (sleep 1)
+    (spend client john goldgrams "0.2" `("backup" ,$MAIN))
+    (sleep 0.5)
     (spend client bill goldgrams "0.1")
+    (sleep 0.5)
     (spend client bill tokenid "10")
     (login-bank ts)
     (storagefees client)
@@ -546,6 +558,23 @@
      (progn (login-user ts "john")
             (getbalance ts t)))
 ))
+
+(defun run-all-tests (ts-or-dir &rest rest &key dont-erase passphrase port network-p)
+  (declare (ignore dont-erase passphrase port network-p))
+  (let ((ts ts-or-dir))
+    (unless (typep ts 'test-state)
+      (setf ts (apply #'make-test-state ts-or-dir rest)))
+    (format t "tokens...") (finish-output)
+    (spend-tokens-test ts)
+    (format t " goldgrams...") (finish-output)
+    (spend-goldgrams-test ts)
+    (format t " storage...") (finish-output)
+    (spend-storage-test ts)
+    (format t " transfer...") (finish-output)
+    (spend-transfer-test ts)
+    (format t " fees...") (finish-output)
+    (spend-fee-test ts)
+    ts))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
