@@ -93,6 +93,9 @@
                         (,$VERSION . (,$VERSION ,$TIME))
                         (,$WRITEDATA . (,$BANKID ,$TIME ,$ANONYMOUS ,$KEY ,$DATA))
                         (,$READDATA . (,$BANKID ,$REQ ,$KEY (,$SIZE)))
+                        (,$GRANT . (,$BANKID ,$REQ ,$ID ,$PERMISSION (,$GRANT)))
+                        (,$DENY . (,$BANKID ,$REQ ,$ID ,$PERMISSION))
+                        (,$PERMISSION . (,$BANKID ,$REQ ,$PERMISSION))
                         (,$BACKUP . (,$REQ :rest))
 
                         ;; Bank signed messages
@@ -129,6 +132,9 @@
                         (,$ATCOUPONENVELOPE . (,$MSG))
                         (,$ATWRITEDATA . (,$ID ,$TIME ,$ANONYMOUS ,$KEY))
                         (,$ATREADDATA . (,$ID ,$TIME ,$DATA))
+                        (,$ATGRANT . (,$MSG))
+                        (,$ATDENY . (,$MSG))
+                        (,$ATPERMISSION . (,$MSG))
                         (,$ATBACKUP . (,$REQ))
                         ))
             (hash (make-hash-table :test 'equal)))

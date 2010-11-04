@@ -73,6 +73,8 @@ trubanc-dbs/serverdb/
                  (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time4#>,<tokenid>,<amount4fee>))
       storagefee/  -- accumulators for storage fees. <amount>s have fractions
         <assetid>=(<bankid>,storagefee,<bankid>,<time#>,<assetid>,<amount>)
+      permission/
+        <permission>=(<bankid>,@grant,(<id>,grant,<bankid>,<req#>,<toid>,<permission>,grant=grant))...
       vendacct=(<bankid>,@vendacct,(<id>,vendacct,<bankid>,<time#>,<acct>))
       defvend/
         <vend#>=(<bankid>,@defvend,(<id>,defvend,<bankid>,<time#>,<vend#>,expires=<time#>,note=<note>).
@@ -836,6 +838,88 @@ Read Data
   the hash of the user's passphrase. If <size> is non-blank, The
   <data> returned will be the size of the data, as an integer, not the
   data itself.
+
+
+Grant permission
+----------------
+
+  Customer sends:
+
+(<id>,grant,<bankid>,<req#>,<toid>,<permission>,grant=grant)
+
+  Bank checks that <id> has permission to grant <permission>, if so,
+  bank returns and stores at account/<id>/permissions/<permission>:
+
+(<bankid>,@grant,(<id>,grant,<bankid>,<req#>,<toid>,<permission>,grant=grant))
+
+  Even though it requires a file to store, granting permissions is free.
+
+  if "grant" is included after <permission> in the message, then this
+  is a "transitive grant". <id> is allowed to grant the permission to
+  others. Otherwise, <id> can only use the permission.
+
+  The bank has grant permission for all permissions. If the bank grants
+  itself a permission, then other accounts need that permission to do
+  what it controls. If the bank does NOT have a permission, then everybody
+  is allowed to do what it controls, without permission.
+
+  Useful permissions:
+
+  mint-tokens
+    allows minting of usage token coupons and spending of usage tokens
+    to new accounts. If the bank requires this permission, then only
+    it or its proxies can give new acccounts. Allows the bank to
+    enforce know-your-customer type rules.
+
+  mint-coupons
+    Sometimes you want to also control the minting of non-token coupons.
+
+  make-assets
+    allows the creation of new assets. If the bank requires this permission,
+    then only it or its proxies can create new asset types.
+
+Remove permission
+-----------------
+
+  Customer sends:
+
+(<id>,deny,<bankid>,<req#>,<toid>,<permission>)
+
+  Bank removes the grant record from <id> stored at
+  account/<toid>/permissions/<permission>. The bank can remove any
+  grant record. Other users can only remove grant records that they
+  directly created. If the removed grant record has transitive grant
+  permission, then all transitively granted permissions are also
+  removed.
+
+  Acknowledged with:
+
+(<bankid>,@deny,(<id>,deny,<bankid>,<req#>,<toid>,<permission>))
+
+  If more than one <id> grants a permission to <toid>, then all
+  of them will be stored at account/<toid>/permissions/<permission>,
+  separated by periods. Transively granted permissions will only be
+  removed when the last permission containing the final "grant" is
+  removed.
+
+Get permissions
+---------------
+
+Customer sends:
+
+(<id>,permission,<bankid>,<req#>,permission=<permission>)
+
+  If <permission> is included, searches all accounts for grants of
+  <permission> that were directly granted by <id>. If <permission> is
+  NOT included, returns a list of all permissions granted to <id>.
+
+  Bank returns:
+
+(<bankid>,@permission,(<id>,permission,<bankid>,<req#>,permission=<permission)).
+(<bankid>,@grant,(<id>,grant,<bankid>,<req#>,<toid>,<permission>,grant=grant)).
+(<bankid>,@grant,(<id2>,grant,<bankid>,<req#2>,<toid2>,<permission>,grant=grant)).
+...
+(<bankid>,@grant,(<idN>,grant,<bankid>,<req#N>,<toidN>,<permission>,grant=grant)).
 
 
 Backup

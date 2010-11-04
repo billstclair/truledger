@@ -63,6 +63,9 @@
 (defconstant $VERSION "version")
 (defconstant $WRITEDATA "writedata")
 (defconstant $READDATA "readdata")
+(defconstant $GRANT "grant")
+(defconstant $DENY "deny")
+(defconstant $PERMISSION "permission")
 
 ;; Affirmations
 (defconstant $ATREGISTER "@register")
@@ -87,6 +90,9 @@
 (defconstant $ATCOUPONENVELOPE "@couponenvelope")
 (defconstant $ATWRITEDATA "@writedata")
 (defconstant $ATREADDATA "@readdata")
+(defconstant $ATGRANT "atgrant")
+(defconstant $ATDENY "atdeny")
+(defconstant $ATPERMISSION "atpermission")
 (defconstant $ATBACKUP "@backup")
 
 ;; request parameter names
@@ -133,6 +139,9 @@
 (defconstant $FORMATTEDAMOUNT "formattedamount")
 (defconstant $MSGTIME "msgtime")
 (defconstant $ATREQUEST "@request")
+(defconstant $MINT-TOKENS "mint-tokens")
+(defconstant $MINT-COUPONS "mint-coupons")
+(defconstant $MAKE-ASSETS "make-assets")
 
 ;; Marker in hash tables
 (defconstant $UNPACK-REQS-KEY "unpack-reqs")

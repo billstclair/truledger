@@ -56,6 +56,9 @@
    #:$VERSION
    #:$WRITEDATA
    #:$READDATA
+   #:$GRANT
+   #:$DENY
+   #:$PERMISSION
    #:$ANONYMOUS
    #:$KEY
    #:$DATA
@@ -86,6 +89,9 @@
    #:$ATCOUPONENVELOPE
    #:$ATWRITEDATA
    #:$ATREADDATA
+   #:$ATGRANT
+   #:$ATDENY
+   #:$ATPERMISSION
    #:$ATBACKUP
    #:$CUSTOMER
    #:$REQUEST
@@ -123,6 +129,9 @@
    #:$FORMATTEDAMOUNT
    #:$MSGTIME
    #:$ATREQUEST
+   #:$MINT-TOKENS
+   #:$MINT-COUPONS
+   #:$MAKE-ASSETS
    #:$UNPACK-REQS-KEY))
 
 (cl:defpackage :trubanc

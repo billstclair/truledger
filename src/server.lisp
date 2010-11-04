@@ -205,6 +205,10 @@
 (defun balance-hash-key (id)
   (append-db-keys (account-dir id) $BALANCEHASH))
 
+(defun permission-key (id &optional permission)
+  (apply #'append-db-keys (account-dir id) $PERMISSION
+         (and permission (list permission))))
+
 (defmethod is-asset-p ((server server) assetid)
   "Returns the message defining ASSETID, or NIL, if there isn't one."
   (db-get (db server) $ASSET assetid))
@@ -2268,6 +2272,167 @@
                           (stringify (length data)))))
         (bankmsg server $ATREADDATA id time res-data)))))
 
+
+(defstruct grant
+  id
+  toid
+  permission
+  grant
+  msg)
+
+(defun parse-grants (server id permission)
+  (let* ((msg (db-get (db server) (permission-key id permission)))
+         (parser (parser server))
+         (reqs (and msg (parse parser msg)))
+         (bankid (bankid server))
+         (res nil))
+    (dolist (req reqs)
+      (let* ((args (match-pattern parser req))
+             (toid (getarg $ID args)))
+        (unless (equal toid id)
+          (error "Grant not for proper id. SB: ~s, was: ~s"
+                 id toid))
+        (unless (equal bankid (getarg $BANKID args))
+          (error "Bad bankid in grant, SB: ~s, was: ~s"
+                 bankid (getarg $BANKID args)))
+        (unless (equal permission (getarg $PERMISSION args))
+          (error "Bad permission in grant, SB: ~s, was: ~s"
+                 permission (getarg $PERMISSION args)))
+        (push (make-grant
+               :id (getarg $CUSTOMER args)
+               :toid toid
+               :permission permission
+               :grant (getarg $GRANT args)
+               :msg (get-parsemsg req))
+              res)))
+    (values (nreverse res) msg)))
+
+(defun ensure-grant-permission (server id permission)
+  (unless (or (equal id (bankid server))
+              (let ((grants (parse-grants server id permission)))
+                (find $GRANT grants :test #'equal :key #'grant-grant)))
+    (error "You don't have permission to grant permission: ~s" permission)))
+
+(define-message-handler do-grant $GRANT (server args msgs)
+  ;; (<id>,grant,<bankid>,<req#>,<toid>,<permission>,grant=grant)
+  (declare (ignore msgs))
+  (checkreq server args)
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args))
+        (bankid (getarg $BANKID args))
+        (toid (getarg $ID args))
+        (permission (getarg $PERMISSION args)))
+    (unless (equal bankid (bankid server))
+      (error "Bad bankid in grant request"))
+    (unless (db-get (pubkeydb server) toid)
+      (error "No account for toid: ~s" toid))
+    (ensure-grant-permission server id permission)
+    (with-db-lock (db (acct-time-key toid))
+      (do-grant-internal server args id toid permission))))
+
+(defun do-grant-internal (server args id toid permission)
+  (let* ((db (db server)))
+    (let* ((grants (parse-grants server toid permission))
+           (msg (bankmsg server $ATGRANT (get-parsemsg args)))
+           (res msg))
+      (dolist (grant grants)
+        (unless (equal id (grant-id grant))
+          (dotcat msg "." (grant-msg grant))))
+      (db-put db (permission-key toid permission) msg)
+      res)))
+
+(define-message-handler do-deny $DENY (server args msgs)
+  ;; (<id>,deny,<bankid>,<req#>,<toid>,<permission>)
+  (declare (ignore msgs))
+  (checkreq server args)
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args))
+        (bankid (getarg $BANKID args))
+        (toid (getarg $ID args))
+        (permission (getarg $PERMISSION args)))
+    (unless (equal bankid (bankid server))
+      (error "Bad bankid in deny request"))
+    (with-db-lock (db (acct-time-key toid))
+      (do-deny-internal server args id toid permission))))
+
+(defun do-deny-internal (server args id toid permission)
+  (let* ((grants (parse-grants server toid permission))
+         (grant (find id grants :test #'equal :key #'grant-id)))
+    (when grant
+      (setf grants (delete grant grants :test #'eq))
+      (let ((msg (car grants)))
+        (dolist (grant (cdr grants))
+          (dotcat msg "." (grant-msg grant)))
+        (db-put (db server) (permission-key toid permission) msg))
+      (when (and (equal $GRANT (grant-grant grant))
+                 (not (find $GRANT grants
+                            :test #'equal :key #'grant-grant)))
+        (deny-permission-transitively server toid permission))))
+  (bankmsg server $ATDENY (get-parsemsg args)))
+
+;; This would likely benefit from computing the transitive closure
+;; of the permissions tree in one pass, and then changing permissions
+;; in a second pass. This is slower, but simpler.
+;; Won't matter unless lots of permissions get bandied about.
+;; I'm thinking that servers that use permissions aren't going to
+;; hand them out much, and very rarely transtively.
+(defun deny-permission-transitively (server toid permission)
+  (let* ((db (db server))
+         (granters (list toid))
+         (added-p t)
+         (ids (db-contents db $ACCOUNT)))
+    (loop while added-p
+       do
+         (setf added-p nil)
+         (dolist (id ids)
+           (unless (member id granters :test #'equal)
+             (let ((key (permission-key id permission)))
+               (with-db-lock (db key)
+                 ;; Can we afford the RAM to store the parses?
+                 ;; Might speed things up considerably
+                 (let ((grants (parse-grants server id permission))
+                       (maybe-added-p nil))
+                   (loop for tail on grants
+                      for grant = (car tail)
+                      do
+                        (when (member (grant-id grant) granters :test #'equal)
+                          (when (equal $GRANT (grant-grant grant))
+                            (setf maybe-added-p t))
+                          (if (eq tail grants)
+                              (setf (cdr grants) (cdr tail))
+                              (setf tail (cdr tail)))))
+                   (when maybe-added-p
+                     (let ((msg (grant-msg (car grants))))
+                       (dolist (grant (cdr grants))
+                         (dotcat msg "." (grant-msg grant)))
+                       (db-put db key msg))
+                     (unless (find $GRANT grants :test
+                                   #'equal :key #'grant-grant)
+                       (push id granters)
+                       (setf added-p t)))))))))))
+
+(define-message-handler do-permission $PERMISSION (server args msgs)
+  ;; (<id>,permission,<bankid>,<req#>,permission=<permission>)
+  (declare (ignore msgs))
+  (checkreq server args)
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args))
+        (bankid (getarg $BANKID args))
+        (permission (getarg $PERMISSION args))
+        (msg (bankmsg server $ATPERMISSION (get-parsemsg args))))
+    (unless (equal bankid (bankid server))
+      (error "Bad bankid in permission request"))
+    (cond (permission
+           (ensure-grant-permission server id permission)
+           (dolist (toid (db-contents db $ACCOUNT))
+             (let* ((grants (parse-grants server toid permission))
+                    (grant (find id grants :test #'equal :key #'grant-id)))
+               (dotcat msg "." (grant-msg grant)))))
+          (t (dolist (permission (db-contents db (permission-key id)))
+               (dolist (grant (parse-grants server id permission))
+                 (dotcat msg "." (grant-msg grant))))))
+    msg))
+
 (define-message-handler do-backup $BACKUP (server args reqs)
   (declare (ignore reqs))
   (let ((db (db server))
@@ -2318,6 +2483,9 @@
                       ,$GETVERSION
                       ,$WRITEDATA
                       ,$READDATA
+                      ,$GRANT
+                      ,$DENY
+                      ,$PERMISSION
                       ,$BACKUP))
              (commands (make-hash-table :test #'equal)))
       (loop
