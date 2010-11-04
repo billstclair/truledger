@@ -1043,6 +1043,9 @@
                               :formatted-amount
                               (format-asset-value client amount asset))
                     others)))
+          (dolist (fee others)
+            (let ((assetid (fee-assetid fee)))
+              (getasset client assetid t)))
           (values tranfee regfee (nreverse others)))))))
 
 (defmethod getfees-internal ((client client))
@@ -1337,21 +1340,17 @@
   (let ((db (db client)))
     (require-current-bank client "In spend(): Bank not set")
     (init-bank-accts client)
-    (handler-bind
-        ((validation-error #'signal)
-         (error (lambda (c)
-                  (declare (ignore c))
-                  (forceinit client))))
-      (with-db-lock (db (userreqkey client))
-        (handler-bind
-            ((validation-error #'signal)
-             (error (lambda (c)
-                      (declare (ignore c))
-                      (if (reload-asset-p client assetid)
-                          (return-from spend
-                            (spend-internal
-                             client toid assetid formattedamount acct note))))))
-          (spend-internal client toid assetid formattedamount acct note))))))
+    (with-db-lock (db (userreqkey client))
+      (handler-bind
+          ((validation-error #'signal)
+           (error (lambda (c)
+                    (declare (ignore c))
+                    (reload-asset-p client assetid)
+                    (forceinit client)
+                    (return-from spend
+                      (spend-internal
+                       client toid assetid formattedamount acct note)))))
+        (spend-internal client toid assetid formattedamount acct note)))))
 
 (defmethod spend-internal ((client client) toid assetid formattedamount acct note)
   (let ((db (db client))
@@ -3145,7 +3144,9 @@
 
             (setf (db-get db (userbalancehashkey client)) balancehash
                   (db-get db (useroutboxhashkey client)) outboxhash
-                  (db-get db (userreqkey client)) reqnum)))))))
+                  (db-get db (userreqkey client)) reqnum)))
+        ;; update fees
+        (getfees client t)))))
 
 (defmethod unpacker ((client client))
   #'(lambda (msg) (unpack-bankmsg client msg)))
