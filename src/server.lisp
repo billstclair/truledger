@@ -2027,14 +2027,15 @@
           (when errmsg (error "Balance discrepancies: ~s" errmsg)))
 
         ;; balancehash must be included
-        (unless balancehashreq (error "~s missing" $BALANCEHASH))
+        (unless (equal id bankid)
+          (unless balancehashreq (error "~s missing" $BALANCEHASH))
 
-        (multiple-value-bind (hash hashcnt)
-            (balancehash db (unpacker server) (balance-key id) acctbals)
-          (unless (and (equal balancehash hash)
-                       (eql 0 (bccomp balancehashcnt hashcnt)))
-            (error "~s mismatch, hash: ~s, sb: ~s, count: ~s, sb: ~s"
-                   $BALANCEHASH balancehash hash balancehashcnt hashcnt)))
+          (multiple-value-bind (hash hashcnt)
+              (balancehash db (unpacker server) (balance-key id) acctbals)
+            (unless (and (equal balancehash hash)
+                         (eql 0 (bccomp balancehashcnt hashcnt)))
+              (error "~s mismatch, hash: ~s, sb: ~s, count: ~s, sb: ~s"
+                     $BALANCEHASH balancehash hash balancehashcnt hashcnt))))
   
         ;; All's well with the world. Commit this puppy.
         ;; Add asset
@@ -2062,9 +2063,10 @@
                   (setf (db-get db acctkey balasset) balmsg))))
 
           ;; Update balancehash
-          (let ((balancehash-item (bankmsg server $ATBALANCEHASH balancehashmsg)))
-            (dotcat res "." balancehash-item)
-            (db-put db (balance-hash-key id) balancehash-item))
+          (unless (equal id bankid)
+            (let ((balancehash-item (bankmsg server $ATBALANCEHASH balancehashmsg)))
+              (dotcat res "." balancehash-item)
+              (db-put db (balance-hash-key id) balancehash-item)))
 
           res)))))
 

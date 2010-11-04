@@ -941,8 +941,9 @@
                        (error
                         (if oldasset
                             "You need 1 usage token to update an asset"
-                            "You need 2 usage tokens to create a new asset")))))
-                 (setq bal1 (custmsg client $BALANCE bankid time tokenid bal1))
+                            "You need 2 usage tokens to create a new asset"))))
+                   (setq bal1
+                         (custmsg client $BALANCE bankid time tokenid bal1)))
                  (unless oldasset
                    (setq bal2 (custmsg client $BALANCE bankid time assetid "-1")))
                  (when bal1
@@ -1122,7 +1123,7 @@
                      (ignore-errors
                        (>= (parse-integer (as-string amount))
                            (if (or tranfeep regfeep) 0 1))))
-          (error "Fee amount not a positive integer"))
+          (error "Fee amount not a positive integer: ~s" amount))
         (cond (tranfeep
                (when tranmsg
                  (error "Only one ~s allowed" $TRANFEE))

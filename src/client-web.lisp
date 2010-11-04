@@ -18,6 +18,7 @@
     ("contacts" . "Contacts")
     ("banks" . "Banks")
     ("assets" . "Assets")
+    ("fees" . "Fees")
     ("admins" . "Admin")
     ("logout" . "Logout")))    
 
@@ -75,6 +76,7 @@
            "contact" (do-contact)
            "bank" (do-bank)
            "asset" (do-asset)
+           "fee" (do-fee)
            "admin" (do-admin)
            "spend" (do-spend)
            "sync" (do-sync)
@@ -92,6 +94,7 @@
            "contacts" draw-contacts
            "banks" draw-banks
            "assets" draw-assets
+           "fees" draw-fees
            "admins" draw-admin
            "coupon" draw-coupon
            "history" draw-history)))
@@ -771,6 +774,52 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                (setf (cw-error cw) err)
                (draw-assets cw)))
             (t (draw-balance cw))))))
+
+(defun do-fee (cw)
+  "Add a new fee, or change or delete an existing one"
+  (let ((client (cw-client cw))
+        (err nil)
+        (values nil))
+    (bind-parameters (update add tranfee regfee feecnt)
+      (setf feecnt (parse-integer feecnt))
+      (cond
+        (add
+         (unless (blankp tranfee)
+           (push (cons :tranfee tranfee) values))
+         (unless (blankp regfee)
+           (push (cons :regfee regfee) values))
+         (dotimes (i feecnt)
+           (let ((type (hunchentoot:parameter (format nil "type~d" i)))
+                 (asset (hunchentoot:parameter (format nil "asset~d" i)))
+                 (amt (hunchentoot:parameter (format nil "amt~d" i))))
+             (push (cons (cons type asset) amt) values)))
+         (setf values (nreverse values))
+         (incf feecnt)
+         (push (cons :feecnt feecnt) values))
+        (update
+         (cond
+           ((not (equal (id client) (bankid client)))
+            (setf err "Only the bank may update fees"))
+           (t (let* ((fees nil))
+                (unless (blankp regfee)
+                  (push (make-fee :type $REGFEE :amount regfee) fees))
+                (unless (blankp tranfee)
+                  (push (make-fee :type $TRANFEE :amount tranfee) fees))
+                (dotimes (i feecnt)
+                  (let ((type (hunchentoot:parameter (format nil "type~d" i)))
+                        (asset (hunchentoot:parameter (format nil "asset~d" i)))
+                        (amt (hunchentoot:parameter (format nil "amt~d" i))))
+                    (unless (blankp amt)
+                      (push (make-fee :type type
+                                      :assetid asset
+                                      :formatted-amount amt)
+                            fees))))
+                (handler-case (apply #'setfees client fees)
+                  (error (c)
+                    (setf err (format nil "~a" c))))))))
+             ))
+    (setf (cw-error cw) err)
+    (draw-fees cw values)))
 
 (defun backup-preference (server name)
   (db-get (db server) $BACKUP $PREFERENCE name))
@@ -2243,6 +2292,122 @@ list with that nickname, or change the nickname of the selected
           (:br)
           (:input :type "submit" :name "updatepercent"
                   :value "Update Storage Fees")))))))
+
+(defun render-fee-row (cw feeidx type assetid amt &optional assetname)
+  (let* ((client (cw-client cw))
+         (stream (cw-html-output cw))
+         (bankp (equal (id client) (bankid client)))
+         (feeidx-p (integerp feeidx)))
+    (unless assetname
+      (let ((asset (ignore-errors (getasset client assetid))))
+        (setf assetname
+              (if asset (asset-name asset) "Unknown asset"))))
+    (who (stream)
+      (:tr
+       (:td
+        (if (and bankp feeidx-p)
+            (htm
+             (:select
+              :name (format nil "type~d" feeidx)
+              (:option :value $SPEND :selected (equal type $SPEND)
+                       (str $SPEND))
+              (:option :value $TRANSFER :selected (equal type $TRANSFER)
+                       (str $TRANSFER))))
+            (htm (str type))))
+       (:td :align "right"
+            (if bankp
+                (htm (:input :type "text"
+                             :name (if feeidx-p
+                                       (format nil "amt~d" feeidx)
+                                       feeidx)
+                             :value amt
+                             :size "10"
+                             :style "text-align: right;"))
+                (htm (esc amt))))
+       (:td (if (and bankp feeidx-p)
+                (htm (:select
+                      :name (format nil "asset~d" feeidx)
+                      (dolist (asset (getassets client))
+                        (let ((name (asset-name asset))
+                              (id (asset-assetid asset)))
+                          (htm
+                           (:option :value id :selected (equal assetid id)
+                                    (esc name)))))))
+                (htm (esc assetname))))
+       (:td (esc assetid))))))
+
+(defun draw-fees (cw &optional values)
+  (let* ((client (cw-client cw))
+         (stream (cw-html-output cw))
+         (bankp (equal (id client) (bankid client)))
+         (feeidx 0))
+    (multiple-value-bind (tranfee regfee fees) (getfees client t)
+      (settitle cw "Fees")
+      (setmenu cw "fees")
+      (who (stream)
+        (draw-error cw stream)
+        (:br)
+        (form (stream "fee")
+          (:table
+           :class "prettytable"
+           (:tr
+            (:th "Fee")
+            (:th "Amount")
+            (:th "Asset")
+            (:th "Asset ID"))
+           (render-fee-row
+            cw "tranfee"
+            (whots (s) "Transaction" (:br) "(refundable)")
+            (fee-assetid tranfee)
+            (or (cdr (assoc :tranfee values))
+                (fee-formatted-amount tranfee))
+            (fee-assetname tranfee))
+           (render-fee-row
+            cw "regfee" "Registration"
+            (fee-assetid regfee)
+            (or (cdr (assoc :regfee values))
+                (fee-formatted-amount regfee))
+            (fee-assetname regfee))
+           (dolist (fee fees)
+             (let* ((type (fee-type fee))
+                    (assetid (fee-assetid fee))
+                    (cell (assocequal (cons type assetid) values)))
+               (when cell (setf values (delete cell values :test #'eq)))
+               (render-fee-row
+                cw feeidx type
+                assetid
+                (or (cdr cell) (fee-formatted-amount fee))
+                (fee-assetname fee)))
+             (incf feeidx))
+           (let ((added-fees (remove-if-not #'listp values :key #'car)))
+             (dolist (fee added-fees)
+               (let ((type (caar fee))
+                     (assetid (cdar fee))
+                     (amt (cdr fee)))
+                 (render-fee-row cw feeidx type assetid amt)
+                 (incf feeidx)))
+             (let* ((cnt (+ (length fees) (length added-fees)))
+                    (feecnt (or (cdr (assoc :feecnt values)) 0))
+                    (diff (- feecnt cnt))
+                    (tokenid (tokenid client)))
+               (dotimes (i diff)
+                 (render-fee-row cw feeidx $SPEND tokenid "")
+                 (incf feeidx))
+               (setf feecnt (max feecnt feeidx))
+               (htm
+                (:input :type "hidden" :name "feecnt" :value feecnt)))))
+          (when bankp
+            (htm
+             "To remove a fee, clear its amount."
+             (:br)
+             "The Transaction & Registration fees may not be removed,"
+             " but clearing their amounts will restore them to default values."
+             (:br)
+             (:input :type "submit" :name "update" :value "Update")
+             " "
+             (:input :type "submit" :name "add" :value "Add fee")
+                          " "
+             (:input :type "submit" :name "cancel" :value "Cancel"))))))))
 
 (defun draw-admin (cw &optional bankname bankurl)
   (let ((s (cw-html-output cw))
