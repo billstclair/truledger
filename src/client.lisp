@@ -2589,6 +2589,129 @@
                   (db-get db (userbalancehashkey client)) bankbalhashmsg)
             data))))))
 
+(defstruct permission
+  id
+  toid
+  permission
+  grant-p)
+
+(defmethod get-permissions ((client client) &optional permission reload-p)
+  "Return a list of the permission records for PERMISSION, or all if
+   PERMISSION is nil.
+   If PERMISSION is included, and the bank doesn't require it, return T.
+   If PERMISSION is included, return a second value, true if the
+   user has permission to grant PERMISSION.
+   If RELOAD-p is true, reload all permissions from the server."
+  (require-current-bank client "In get-permissions(): Bank not set")
+  (let* ((db (db client))
+         (id (id client))
+         (bankid (bankid client))
+         (bankp (equal id bankid))
+         (parser (parser client)))
+    (when reload-p
+      (with-db-lock (db (userreqkey client bankid))
+        (handler-case
+            (get-permissions-internal client id)
+          (error ()
+            (get-permissions-internal client id t)))))
+    (flet ((permission-key (permission)
+             (if bankp
+                 (bank-permission-key client permission)
+                 (user-permission-key client permission))))
+      (declare (dynamic-extent #'permission-key))
+      (let* ((msgs (cond (permission
+                          (list (db-get db (permission-key permission))))
+                         (t (loop for permission in
+                                 (db-contents db (bank-permission-key client))
+                               collect
+                                 (db-get db (permission-key permission))))))
+             (grant-p nil)
+             (bank-permissions nil)
+             (permissions nil))
+        (dolist (msg msgs)
+          (let ((reqs (and msg (parse parser msg))))
+            (dolist (req reqs)
+              (let* ((args (match-bankreq client req)))
+                (setf args (getarg $MSG args))
+                (unless (equal $GRANT (getarg $REQUEST args))
+                  (error "Malformed grant record"))
+                (let ((permission (make-permission
+                                   :id (getarg $CUSTOMER args)
+                                   :toid (getarg $ID args)
+                                   :permission (getarg $PERMISSION args)
+                                   :grant-p (equal $GRANT
+                                                   (getarg $grant args)))))
+                  (cond ((equal (permission-toid permission) id)
+                         (push permission permissions)
+                         (when (permission-grant-p permission)
+                           (setf grant-p t)))
+                        ((equal (permission-toid permission) bankid)
+                         (push permission bank-permissions))
+                        (t (error "found permission for bad id"))))))))
+        (if permission
+            (values (or permissions (not bank-permissions))
+                    grant-p)
+            permissions)))))
+
+(defun get-permissions-internal (client id &optional reinit-p)
+  (let* ((db (db client))
+         (bankid (bankid client))
+         (key (if (equal bankid id)
+                  (bank-permission-key client)
+                  (user-permission-key client)))
+         (permissions (db-contents db key))
+         (req (getreq client reinit-p))
+         (msg (custmsg client $PERMISSION bankid req))
+         (bankmsg (process (server client) msg))
+         (parser (parser client))
+         (reqs (parse parser bankmsg))
+         (args (match-bankreq client (car reqs) $ATPERMISSION)))
+    (unless (equal msg (get-parsemsg (getarg $MSG args)))
+      (error "Malformed response from bank for ~s command."
+             $PERMISSION))
+    (dolist (req (cdr reqs))
+      (let* ((args (match-bankreq client req $ATGRANT))
+             (msg (get-parsemsg args)))
+        (setf args (getarg $MSG args))
+        (unless (and (equal $GRANT (getarg $REQUEST args))
+                     (let ((toid (getarg $ID args)))
+                       (or (equal toid id)
+                           (equal toid bankid))))
+          (error "Malformed ~s message from bank." $GRANT))
+        (let ((permission (getarg $PERMISSION args)))
+          (setf permissions (delete permission permissions :test #'equal)
+                (db-get db key permission) msg))))
+    (dolist (permission permissions)
+      (setf (db-get db key permission) nil))))
+      
+(defmethod grant ((client client) toid permission &optional grantp)
+  "Grant PERMISSION to TOID, with transitive grant permission if GRANTP is true."
+  (let* ((db (db client))
+         (id (id client))
+         (bankid (bankid client))
+         (bankp (equal id bankid)))
+    (unless (or (equal id bankid) (not (equal toid bankid)))
+      (error "You may not grant permissions to the bank"))
+    (unless (or bankp
+                (nth-value 1 (get-permissions client permission)))
+      (error "You do not have permission to grant permission: ~s" permission))
+    (when (equal toid bankid)
+      ;; Could error here, but why bother
+      (setf grantp t))
+    (with-db-lock (db (userreqkey client))
+      (grant-internal client toid permission grantp))))
+
+(defun grant-internal (client toid permission grantp)
+  (let* ((time (gettime client))
+         (bankid (bankid client))
+         (msg (apply #'custmsg
+                     client $GRANT bankid time toid permission
+                     (and grantp (list $GRANT))))
+         (bankmsg (process (server client) msg))
+         (args (unpack-bankmsg client bankmsg $ATGRANT)))
+    (unless (equal msg (get-parsemsg (getarg $MSG args)))
+      (error "Malformed return from bank for ~s command" $GRANT))))
+
 (defmethod backup ((client client) &rest keys&values)
   (backup* client keys&values))
 
@@ -2820,6 +2943,18 @@
 
 (defmethod userinboxignoredkey ((client client))
   (userbankkey client $INBOXIGNORED))
+
+(defmethod user-permission-key ((client client) &optional permission)
+  (let ((key (userbankkey client $PERMISSION (bankid client))))
+    (if permission
+      (append-db-keys key permission)
+      key)))
+
+(defmethod bank-permission-key ((client client) &optional permission)
+  (let ((key (bankkey client $PERMISSION (bankid client))))
+    (if permission
+        (append-db-keys key permission)
+        key)))
 
 (defmethod contactkey ((client client) &optional otherid prop)
   (let ((key (append-db-keys $ACCOUNT (id client) $CONTACT)))
@@ -3146,7 +3281,10 @@
                   (db-get db (useroutboxhashkey client)) outboxhash
                   (db-get db (userreqkey client)) reqnum)))
         ;; update fees
-        (getfees client t)))))
+        (getfees client t)
+        ;; update permissions
+        (get-permissions client nil t)
+        nil))))
 
 (defmethod unpacker ((client client))
   #'(lambda (msg) (unpack-bankmsg client msg)))

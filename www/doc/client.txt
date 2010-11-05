@@ -30,6 +30,8 @@ trubanc-dbs/clientdb/
         createasset=(<bankid>,fee,<time#>,createasset,<assetid>,<amount>)[...]
       asset/
         <assetid>=(<bankid>,@asset,(<id>,asset,<bankid>,<assetid>,<scale>,<precision>,<assetname>))
+      permission/
+        <permission>=(<bankid>,@grant,(<bankid>,grant,<bankid>,<time#>,<bankid>,<permission>,grant))
   session/
     <sessionhash>=<encrypted_passphrase>
   account/
@@ -69,7 +71,7 @@ trubanc-dbs/clientdb/
                      (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time4#>,<tokenid>,<amount4fee>))
           inboxignored=<time#1>,<time#2>,...,<time#N>
           permission/
-            <permission>=(<bankid>,@grant,(<id>,grant,<bankid>,<req#>,<toid>,<permission>,grant=grant))...
+            <permission>=(<bankid>,@grant,(<id>,grant,<bankid>,<time#>,<toid>,<permission>,grant=grant))...
           transaction/
             (<bankid>,@spend,(<id>,spend,<time#>,<id2>,<bankid>,<assetid>,<amount>,note:<note>,acct:<acct>))...
               or

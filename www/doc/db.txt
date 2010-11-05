@@ -74,7 +74,7 @@ trubanc-dbs/serverdb/
       storagefee/  -- accumulators for storage fees. <amount>s have fractions
         <assetid>=(<bankid>,storagefee,<bankid>,<time#>,<assetid>,<amount>)
       permission/
-        <permission>=(<bankid>,@grant,(<id>,grant,<bankid>,<req#>,<toid>,<permission>,grant=grant))...
+        <permission>=(<bankid>,@grant,(<id>,grant,<bankid>,<time#>,<toid>,<permission>,grant=grant))...
       vendacct=(<bankid>,@vendacct,(<id>,vendacct,<bankid>,<time#>,<acct>))
       defvend/
         <vend#>=(<bankid>,@defvend,(<id>,defvend,<bankid>,<time#>,<vend#>,expires=<time#>,note=<note>).
@@ -486,7 +486,7 @@ Process Inbox
   (<id>,balancehash,<bankid>,<time12#>,<balancecount>,<balancehash>)
 
   Bank compares <time12#> to /account/<id>/time. If it's the
-  same. Bank processes the requested inbox transactions, and compares
+  same, bank processes the requested inbox transactions, and compares
   the result to the balances and hashes sent by customer. If
   correct, bank computes the response below, stores it in
   /account/<id>/tranaction, and responds with:
@@ -845,9 +845,10 @@ Grant permission
 
   Customer sends:
 
-(<id>,grant,<bankid>,<req#>,<toid>,<permission>,grant=grant)
+(<id>,grant,<bankid>,<time#>,<toid>,<permission>,grant=grant)
 
-  Bank checks that <id> has permission to grant <permission>, if so,
+  Bank compares <time#> to /account/<id>/time. If it's the
+  same, bank checks that <id> has permission to grant <permission>, if so,
   bank returns and stores at account/<id>/permissions/<permission>:
 
 (<bankid>,@grant,(<id>,grant,<bankid>,<req#>,<toid>,<permission>,grant=grant))
@@ -907,19 +908,21 @@ Get permissions
 
 Customer sends:
 
-(<id>,permission,<bankid>,<req#>,permission=<permission>)
+(<id>,permission,<bankid>,<req#>,grant=grant)
 
-  If <permission> is included, searches all accounts for grants of
-  <permission> that were directly granted by <id>. If <permission> is
+  If the final grant arg is included, and is "grant", searches all
+  accounts for permission directly granted by <id>. If "grant" is
   NOT included, returns a list of all permissions granted to <id>.
+  If a permission is required, but NOT granted to <id>, returns the
+  bank's grant record for that permission.
 
   Bank returns:
 
-(<bankid>,@permission,(<id>,permission,<bankid>,<req#>,permission=<permission)).
-(<bankid>,@grant,(<id>,grant,<bankid>,<req#>,<toid>,<permission>,grant=grant)).
-(<bankid>,@grant,(<id2>,grant,<bankid>,<req#2>,<toid2>,<permission>,grant=grant)).
+(<bankid>,@permission,(<id>,permission,<bankid>,<req#>,grant=grant).
+(<bankid>,@grant,(<id>,grant,<bankid>,<time#>,<toid>,<permission>,grant=grant)).
+(<bankid>,@grant,(<id2>,grant,<bankid>,<time#2>,<toid2>,<permission>,grant=grant)).
 ...
-(<bankid>,@grant,(<idN>,grant,<bankid>,<req#N>,<toidN>,<permission>,grant=grant)).
+(<bankid>,@grant,(<idN>,grant,<bankid>,<time#N>,<toidN>,<permission>,grant=grant)).
 
 
 Backup

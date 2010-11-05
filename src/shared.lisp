@@ -93,9 +93,9 @@
                         (,$VERSION . (,$VERSION ,$TIME))
                         (,$WRITEDATA . (,$BANKID ,$TIME ,$ANONYMOUS ,$KEY ,$DATA))
                         (,$READDATA . (,$BANKID ,$REQ ,$KEY (,$SIZE)))
-                        (,$GRANT . (,$BANKID ,$REQ ,$ID ,$PERMISSION (,$GRANT)))
+                        (,$GRANT . (,$BANKID ,$TIME ,$ID ,$PERMISSION (,$GRANT)))
                         (,$DENY . (,$BANKID ,$REQ ,$ID ,$PERMISSION))
-                        (,$PERMISSION . (,$BANKID ,$REQ ,$PERMISSION))
+                        (,$PERMISSION . (,$BANKID ,$REQ (,$GRANT)))
                         (,$BACKUP . (,$REQ :rest))
 
                         ;; Bank signed messages

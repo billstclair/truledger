@@ -516,6 +516,17 @@
    #:getoutbox
    #:redeem
    #:getversion
+   #:readdata
+   #:writedata
+   #:get-permissions
+   #:permission
+   #:permission-id
+   #:permission-toid
+   #:permission-permission
+   #:grant
+   #:deny
+   #:get-granted-permissions
+   #:permission-grant-p
    #:user-preference
    #:userreq
    #:trimmsg

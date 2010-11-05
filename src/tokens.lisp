@@ -90,9 +90,9 @@
 (defconstant $ATCOUPONENVELOPE "@couponenvelope")
 (defconstant $ATWRITEDATA "@writedata")
 (defconstant $ATREADDATA "@readdata")
-(defconstant $ATGRANT "atgrant")
-(defconstant $ATDENY "atdeny")
-(defconstant $ATPERMISSION "atpermission")
+(defconstant $ATGRANT "@grant")
+(defconstant $ATDENY "@deny")
+(defconstant $ATPERMISSION "@permission")
 (defconstant $ATBACKUP "@backup")
 
 ;; request parameter names
