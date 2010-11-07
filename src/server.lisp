@@ -2318,7 +2318,7 @@
     (error "You don't have permission to grant permission: ~s" permission)))
 
 (define-message-handler do-grant $GRANT (server args msgs)
-  ;; (<id>,grant,<bankid>,<req#>,<toid>,<permission>,grant=grant)
+  ;; (<id>,grant,<bankid>,<time#>,<toid>,<permission>,grant=grant)
   (declare (ignore msgs))
   (let ((db (db server))
         (id (getarg $CUSTOMER args))
@@ -2329,7 +2329,7 @@
         (permission (getarg $PERMISSION args)))
 
     ;; Burn the transaction
-    (deq-time server bankid time)
+    (deq-time server id time)
 
     (unless (equal bankid (bankid server))
       (error "Bad bankid in grant request"))

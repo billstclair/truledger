@@ -2593,7 +2593,8 @@
   id
   toid
   permission
-  grant-p)
+  grant-p
+  time)
 
 (defmethod get-permissions ((client client) &optional permission reload-p)
   "Return a list of the permission records for PERMISSION, or all if
@@ -2640,7 +2641,8 @@
                                    :toid (getarg $ID args)
                                    :permission (getarg $PERMISSION args)
                                    :grant-p (equal $GRANT
-                                                   (getarg $grant args)))))
+                                                   (getarg $grant args))
+                                   :time (getarg $TIME args))))
                   (cond ((equal (permission-toid permission) id)
                          (push permission permissions)
                          (when (permission-grant-p permission)
@@ -2683,6 +2685,39 @@
                 (db-get db key permission) msg))))
     (dolist (permission permissions)
       (setf (db-get db key permission) nil))))
+
+(defmethod get-granted-permissions ((client client))
+  (let* ((db (db client)))
+    (with-db-lock (db (userreqkey client))
+      (handler-case
+          (get-granted-permissions-internal client)
+        (error () (get-granted-permissions-internal client t))))))
+
+(defun get-granted-permissions-internal (client &optional reinit-p)
+  (let* ((req (getreq client reinit-p))
+         (id (id client))
+         (bankid (bankid client))
+         (parser (parser client))
+         (msg (custmsg client $PERMISSION bankid req $GRANT))
+         (bankmsg (process (server client) msg))
+         (reqs (parse parser bankmsg))
+         (args (getarg $MSG (match-bankreq client (car reqs) $ATPERMISSION)))
+         (res nil))
+    (unless (equal msg (get-parsemsg args))
+      (error "Malformed return from bank for ~s command" $PERMISSION))
+    (dolist (req (cdr reqs))
+      (setf args (getarg $MSG (match-bankreq client req $ATGRANT)))
+      (unless (and (equal $GRANT (getarg $REQUEST args))
+                   (equal id (getarg $CUSTOMER args)))
+        (error "Malformed ~s message from bank" $GRANT))
+      (push (make-permission
+             :id id
+             :toid (getarg $ID args)
+             :permission (getarg $PERMISSION args)
+             :grant-p (equal $GRANT (getarg $GRANT args))
+             :time (getarg $TIME args))
+            res))
+    (nreverse res)))
       
 (defmethod grant ((client client) toid permission &optional grantp)
   "Grant PERMISSION to TOID, with transitive grant permission if GRANTP is true."
@@ -2693,16 +2728,18 @@
     (unless (or (equal id bankid) (not (equal toid bankid)))
       (error "You may not grant permissions to the bank"))
     (unless (or bankp
-                (nth-value 1 (get-permissions client permission)))
+                (nth-value 1 (get-permissions client permission))
+                (nth-value 1 (get-permissions client permission t)))
       (error "You do not have permission to grant permission: ~s" permission))
     (when (equal toid bankid)
       ;; Could error here, but why bother
       (setf grantp t))
     (with-db-lock (db (userreqkey client))
-      (grant-internal client toid permission grantp))))
+      (handler-case (grant-internal client toid permission grantp)
+        (error () (grant-internal client toid permission grantp t))))))
 
-(defun grant-internal (client toid permission grantp)
-  (let* ((time (gettime client))
+(defun grant-internal (client toid permission grantp &optional forcenew)
+  (let* ((time (gettime client forcenew))
          (bankid (bankid client))
          (msg (apply #'custmsg
                      client $GRANT bankid time toid permission
@@ -2711,6 +2748,31 @@
          (args (unpack-bankmsg client bankmsg $ATGRANT)))
     (unless (equal msg (get-parsemsg (getarg $MSG args)))
       (error "Malformed return from bank for ~s command" $GRANT))))
+
+(defmethod deny ((client client) toid permission)
+  "Deny PERMISSION to TOID."
+  (let* ((db (db client))
+         (id (id client))
+         (bankid (bankid client))
+         (bankp (equal id bankid)))
+    (unless (or (equal id bankid) (not (equal toid bankid)))
+      (error "You may not grant permissions to the bank"))
+    (unless (or bankp
+                (nth-value 1 (get-permissions client permission))
+                (nth-value 1 (get-permissions client permission t)))
+      (error "You do not have permission to deny permission: ~s" permission))
+    (with-db-lock (db (userreqkey client))
+      (handler-case (deny-internal client toid permission)
+        (error () (deny-internal client toid permission t))))))
+
+(defun deny-internal (client toid permission &optional reinit-p)
+  (let* ((req (getreq client reinit-p))
+         (bankid (bankid client))
+         (msg (custmsg client $DENY bankid req toid permission))
+         (bankmsg (process (server client) msg))
+         (args (unpack-bankmsg client bankmsg $ATDENY)))
+    (unless (equal msg (get-parsemsg (getarg $MSG args)))
+      (error "Malformed return from bank for ~s command" $DENY))))
 
 (defmethod backup ((client client) &rest keys&values)
   (backup* client keys&values))
@@ -3281,9 +3343,11 @@
                   (db-get db (useroutboxhashkey client)) outboxhash
                   (db-get db (userreqkey client)) reqnum)))
         ;; update fees
-        (getfees client t)
+        (ignore-errors                  ;server may not implement fees
+          (getfees client t))
         ;; update permissions
-        (get-permissions client nil t)
+        (ignore-errors                  ;server may not implement permissions
+          (get-permissions client nil t))
         nil))))
 
 (defmethod unpacker ((client client))

@@ -519,14 +519,15 @@
    #:readdata
    #:writedata
    #:get-permissions
+   #:get-granted-permissions
    #:permission
    #:permission-id
    #:permission-toid
    #:permission-permission
+   #:permission-grant-p
+   #:permission-time
    #:grant
    #:deny
-   #:get-granted-permissions
-   #:permission-grant-p
    #:user-preference
    #:userreq
    #:trimmsg
