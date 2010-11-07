@@ -2597,7 +2597,7 @@
   time)
 
 (defmethod get-permissions ((client client) &optional permission reload-p)
-  "Return a list of the permission records for PERMISSION, or all if
+  "Return a list of the PERMISSION instances for PERMISSION, or all if
    PERMISSION is nil.
    If PERMISSION is included, and the bank doesn't require it, return T.
    If PERMISSION is included, return a second value, true if the
@@ -2687,6 +2687,7 @@
       (setf (db-get db key permission) nil))))
 
 (defmethod get-granted-permissions ((client client))
+  "Return the permissions you've directly granted as a list of PERMISSIONS."
   (let* ((db (db client)))
     (with-db-lock (db (userreqkey client))
       (handler-case
@@ -3119,7 +3120,7 @@
 
 (defmethod get-pubkey-from-server ((client client) id)
   "Send an $ID command to the server, if there is one.
-   Parse out the pubkey, cache it in the database, and return it.
+ Parse out the pubkey, cache it in the database, and return it.
    Return nil if there is no server or it doesn't know the id."
   (let* ((db (db client))
          (bankid (or (current-bank client)

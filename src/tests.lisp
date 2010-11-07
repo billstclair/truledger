@@ -175,8 +175,14 @@
     (accept-inbox ts)))
 
 (defun set-standard-fees (ts)
-  (login-bank ts)
-  (setfees (client ts)))
+  (let ((client (client ts)))
+    (login-bank ts)
+    (setfees client)
+    (let ((permissions (get-permissions client nil t)))
+      (dolist (permission permissions)
+        (deny client
+              (permission-toid permission)
+              (permission-permission permission))))))
 
 (defmethod spend-tokens-test ((ts test-state))
   (set-standard-fees ts)

@@ -58,6 +58,10 @@
          :initarg :fees
          :initform nil
          :accessor fees)
+   (permissions :type list
+                :initarg :permissions
+                :initform nil
+                :accessor permissions)
    (privkey-size :accessor privkey-size
                  :initarg :privkey-size
                  :initform 3072)
@@ -1183,11 +1187,19 @@
          (time (getarg $TIME args))
          (id2 (getarg $ID args))
          (assetid (getarg $ASSET args))
+         (tokenid (tokenid server))
          (amount (getarg $AMOUNT args))
          (note (getarg $NOTE args))
          (asset (lookup-asset server assetid))
          (operation (if (equal id id2) $TRANSFER $SPEND))
          (fees (and (not (equal id bankid)) (getfees server operation))))
+
+    (cond ((equal id2 $COUPON)
+           (ensure-permission server id $MINT-COUPONS)
+           (when (equal assetid tokenid)
+             (ensure-permission server id $MINT-TOKENS)))
+          ((not (db-get db $PUBKEY id2))
+           (ensure-permission server id $MINT-TOKENS)))
 
     ;; Remove fees for assets for which the spender is the issuer
     (setf fees
@@ -1229,7 +1241,6 @@
                             (not (equal id bankid)))
                        (tranfee server)
                        "0"))
-           (tokenid (tokenid server))
            (feesdiffs nil)
            (outbox-item (bankmsg server $ATSPEND spendmsg))
            (res outbox-item)
@@ -1918,6 +1929,7 @@
         (id (getarg $CUSTOMER args))
         (bankid (bankid server))
         (parser (parser server)))
+    (ensure-permission server id $MAKE-ASSETS)
     (with-db-lock (db (acct-time-key id))
 
       (when (< (length reqs) 2)
@@ -2317,6 +2329,31 @@
                 (find $GRANT grants :test #'equal :key #'grant-grant)))
     (error "You don't have permission to grant permission: ~s" permission)))
 
+(defun permission-required-p (server permission)
+  (let ((db (db server))
+        (cell (assocequal permission (permissions server))))
+    (cond (cell (cdr cell))
+          (t (let ((bankid (bankid server)))
+               (with-db-lock (db (acct-time-key bankid))
+                 (setf cell (assocequal permission (permissions server)))
+                 (cond
+                   (cell (cdr cell))
+                   (t (setf cell (cons permission
+                                       (not
+                                        (null
+                                         (parse-grants
+                                          server bankid permission)))))
+                      (push cell (permissions server))
+                      (cdr cell)))))))))
+
+(defun has-permission-p (server id permission)
+  (or (not (permission-required-p server permission))
+      (not (null (parse-grants server id permission)))))
+
+(defun ensure-permission (server id permission)
+  (or (has-permission-p server id permission)
+      (error "You do not have ~s permission" permission)))
+
 (define-message-handler do-grant $GRANT (server args msgs)
   ;; (<id>,grant,<bankid>,<time#>,<toid>,<permission>,grant=grant)
   (declare (ignore msgs))
@@ -2357,6 +2394,9 @@
                    (setf grantp t))
                  (dotcat msg "." (grant-msg grant)))))
       (db-put db (permission-key toid permission) msg)
+      (when (equal toid (bankid server))
+        ;; Clear cache
+        (setf (permissions server) nil))
       (when (and old-grantp (not grantp))
         (deny-permission-transitively server toid permission))
       res)))
@@ -2385,7 +2425,10 @@
       (let ((msg (car grants)))
         (dolist (grant (cdr grants))
           (dotcat msg "." (grant-msg grant)))
-        (db-put (db server) (permission-key toid permission) msg))
+        (db-put (db server) (permission-key toid permission) msg)
+        (when (equal toid (bankid server))
+          ;; Clear cache
+          (setf (permissions server) nil)))
       (when (and (equal $GRANT (grant-grant grant))
                  (not (find $GRANT grants
                             :test #'equal :key #'grant-grant)))
