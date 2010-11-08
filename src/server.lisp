@@ -1668,8 +1668,10 @@
         (cond ((equal request $SPEND)
                (let* ((itemtime (getarg $TIME itemargs))
                       (itemreqs (getarg $UNPACK-REQS-KEY itemargs))
-                      (itemcnt (length itemreqs))
-                      (feereq (and (> itemcnt 1) (car (last itemreqs)))))
+                      (feereq
+                       (find-if
+                        (lambda (req) (equal $ATTRANFEE (gethash 1 req)))
+                        itemreqs)))
                  (setf (gethash itemtime spends) itemargs)
                  (when feereq
                    (let ((feeargs (match-pattern parser feereq)))
@@ -1861,13 +1863,14 @@
                        (error "Can't find outbox item: ~s" spendtime)))
          (reqs (parse parser spendmsg))
          (spendargs (match-pattern parser (car reqs)))
-         (feeargs (and (> (length reqs) 1)
-                       (match-pattern parser (second reqs)))))
+         (feereq (find-if #'(lambda (req) (equal $ATTRANFEE (gethash 1 req)))
+                          reqs))
+         (feeargs (and feereq
+                       (match-pattern parser feereq))))
     (unless (and (equal (getarg $CUSTOMER spendargs) bankid)
                  (equal (getarg $REQUEST spendargs) $ATSPEND)
                  (or (null feeargs)
-                     (and (equal (getarg $CUSTOMER feeargs) bankid)
-                          (equal (getarg $REQUEST feeargs) $ATTRANFEE))))
+                     (equal (getarg $REQUEST feeargs) $ATTRANFEE)))
       (error "Outbox corrupted"))
 
     (setq spendargs (match-pattern parser (getarg $MSG spendargs)))
@@ -1929,7 +1932,7 @@
         (id (getarg $CUSTOMER args))
         (bankid (bankid server))
         (parser (parser server)))
-    (ensure-permission server id $MAKE-ASSETS)
+    (ensure-permission server id $ADD-ASSET)
     (with-db-lock (db (acct-time-key id))
 
       (when (< (length reqs) 2)
@@ -2323,11 +2326,13 @@
                 res))))
     (values (nreverse res) msg)))
 
-(defun ensure-grant-permission (server id permission)
-  (unless (or (equal id (bankid server))
+(defun ensure-grant-permission (server id toid permission)
+  (unless (or (and (equal id toid)
+                   (equal id (bankid server)))
               (let ((grants (parse-grants server id permission)))
                 (find $GRANT grants :test #'equal :key #'grant-grant)))
-    (error "You don't have permission to grant permission: ~s" permission)))
+    (error "You don't have permission to grant or deny permission: ~s"
+           permission)))
 
 (defun permission-required-p (server permission)
   (let ((db (db server))
@@ -2376,7 +2381,7 @@
       (error "No account for toid: ~s" toid))
     (when (and (equal toid bankid) (not grantp))
       (error "Bank must be given transitive grant permission"))
-    (ensure-grant-permission server id permission)
+    (ensure-grant-permission server id toid permission)
     (with-db-lock (db (acct-time-key toid))
       (do-grant-internal server args id toid permission))))
 
@@ -2414,6 +2419,7 @@
       (error "Bad bankid in deny request"))
     (when (and (not (equal id bankid)) (equal toid bankid))
       (error "You are not allowed to deny permissions to the bank"))
+    (ensure-grant-permission server id toid permission)
     (with-db-lock (db (acct-time-key toid))
       (do-deny-internal server args id toid permission))))
 
@@ -2445,7 +2451,8 @@
   (let* ((db (db server))
          (granters (list toid))
          (added-p t)
-         (ids (db-contents db $ACCOUNT)))
+         (ids (db-contents db $ACCOUNT))
+         (cnt 0))
     (loop while added-p
        do
          (setf added-p nil)
@@ -2456,25 +2463,31 @@
                  ;; Can we afford the RAM to store the parses?
                  ;; Might speed things up considerably
                  (let ((grants (parse-grants server id permission))
-                       (maybe-added-p nil))
+                       (maybe-added-p nil)
+                       (changed-p nil))
                    (loop for tail on grants
                       for grant = (car tail)
                       do
                         (when (member (grant-id grant) granters :test #'equal)
+                          (setf changed-p t)
+                          (incf cnt)
                           (when (equal $GRANT (grant-grant grant))
                             (setf maybe-added-p t))
                           (if (eq tail grants)
-                              (setf (cdr grants) (cdr tail))
+                              (setf grants (cdr tail))
                               (setf tail (cdr tail)))))
-                   (when maybe-added-p
-                     (let ((msg (grant-msg (car grants))))
+                   (when changed-p
+                     (let ((msg (and (car grants)
+                                     (grant-msg (car grants)))))
                        (dolist (grant (cdr grants))
                          (dotcat msg "." (grant-msg grant)))
                        (db-put db key msg))
-                     (unless (find $GRANT grants :test
-                                   #'equal :key #'grant-grant)
+                     (when (and maybe-added-p
+                                (not (find $GRANT grants :test
+                                           #'equal :key #'grant-grant)))
                        (push id granters)
-                       (setf added-p t)))))))))))
+                       (setf added-p t)))))))))
+    cnt))
 
 (define-message-handler do-permission $PERMISSION (server args msgs)
   ;; (<id>,permission,<bankid>,<req#>,grant=grant)

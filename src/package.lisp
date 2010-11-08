@@ -131,7 +131,7 @@
    #:$ATREQUEST
    #:$MINT-TOKENS
    #:$MINT-COUPONS
-   #:$MAKE-ASSETS
+   #:$ADD-ASSET
    #:$UNPACK-REQS-KEY))
 
 (cl:defpackage :trubanc

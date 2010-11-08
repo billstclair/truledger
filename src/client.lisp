@@ -2621,7 +2621,10 @@
                  (user-permission-key client permission))))
       (declare (dynamic-extent #'permission-key))
       (let* ((msgs (cond (permission
-                          (list (db-get db (permission-key permission))))
+                          (list
+                           (or (db-get db (permission-key permission))
+                               (db-get db (bank-permission-key
+                                           client permission)))))
                          (t (loop for permission in
                                  (db-contents db (bank-permission-key client))
                                collect
@@ -2667,22 +2670,33 @@
          (bankmsg (process (server client) msg))
          (parser (parser client))
          (reqs (parse parser bankmsg))
-         (args (match-bankreq client (car reqs) $ATPERMISSION)))
+         (args (match-bankreq client (car reqs) $ATPERMISSION))
+         (newmsgs (make-equal-hash)))
     (unless (equal msg (get-parsemsg (getarg $MSG args)))
       (error "Malformed response from bank for ~s command."
              $PERMISSION))
     (dolist (req (cdr reqs))
       (let* ((args (match-bankreq client req $ATGRANT))
-             (msg (get-parsemsg args)))
-        (setf args (getarg $MSG args))
+             (msg (get-parsemsg args))
+             toid)
+        (setf args (getarg $MSG args)
+              toid (getarg $ID args))
         (unless (and (equal $GRANT (getarg $REQUEST args))
                      (let ((toid (getarg $ID args)))
                        (or (equal toid id)
                            (equal toid bankid))))
           (error "Malformed ~s message from bank." $GRANT))
-        (let ((permission (getarg $PERMISSION args)))
-          (setf permissions (delete permission permissions :test #'equal)
-                (db-get db key permission) msg))))
+        (let* ((permission (getarg $PERMISSION args))
+               (permkey (if (equal toid bankid)
+                            (bank-permission-key client permission)
+                            (user-permission-key client permission)))
+               (newmsg (gethash permkey newmsgs)))
+          (unless (and (equal toid bankid)
+                       (not (equal toid (id client))))
+            (setf permissions (delete permission permissions :test #'equal)))
+          (setf (gethash permkey newmsgs)
+                (if newmsg (strcat newmsg "." msg) msg)))))
+    (maphash (lambda (permkey msg) (db-put db permkey msg)) newmsgs)
     (dolist (permission permissions)
       (setf (db-get db key permission) nil))))
 
@@ -3307,7 +3321,7 @@
                          (error "Got a coupon envelope with no outboxtime"))
                        (let ((msg (or (gethash outboxtime outbox)
                                       (error "No spend message for coupon envelope"))))
-                         (setq msg (append-db-keys  msg (get-parsemsg req)))
+                         (setq msg (strcat msg "." (get-parsemsg req)))
                          (setf (gethash outboxtime outbox) msg
                                outboxtime nil)))
                       (t

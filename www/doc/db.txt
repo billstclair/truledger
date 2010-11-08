@@ -875,7 +875,7 @@ Grant permission
   mint-coupons
     Sometimes you want to also control the minting of non-token coupons.
 
-  make-assets
+  add-asset
     allows the creation of new assets. If the bank requires this permission,
     then only it or its proxies can create new asset types.
 

@@ -141,7 +141,7 @@
 (defconstant $ATREQUEST "@request")
 (defconstant $MINT-TOKENS "mint-tokens")
 (defconstant $MINT-COUPONS "mint-coupons")
-(defconstant $MAKE-ASSETS "make-assets")
+(defconstant $ADD-ASSET "add-asset")
 
 ;; Marker in hash tables
 (defconstant $UNPACK-REQS-KEY "unpack-reqs")
