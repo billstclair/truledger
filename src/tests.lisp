@@ -600,6 +600,7 @@
     (give-tokens ts "john" 12)
     (assert (null (get-permissions client $MINT-TOKENS t)))
     (assert (nth-value 1 (ignore-errors (spend client $COUPON tokenid 10))))
+
     ;; Test multiple grants
     (login-bank ts)
     (grant client mike $MINT-TOKENS t)
@@ -627,6 +628,20 @@
     (multiple-value-bind (permissions grant-p)
         (get-permissions client $MINT-TOKENS t)
       (assert (and (null permissions) (null grant-p))))
+
+    ;; Test circular grants
+    (login-bank ts)
+    (grant client bill $MINT-TOKENS t)
+    (login-user ts "bill")
+    (grant client john $MINT-TOKENS t)
+    (login-user ts "john")
+    (grant client bill $MINT-TOKENS t)
+    (login-bank ts)
+    (deny client bill $MINT-TOKENS)
+    (login-user ts "bill")
+    (assert (not (get-permissions client $MINT-TOKENS t)))
+    (login-user ts "john")
+    (assert (not (get-permissions client $MINT-TOKENS t)))
 
     ;; Test MINT-COUPON permission
     (login-user ts "bill")

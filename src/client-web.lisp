@@ -327,6 +327,16 @@
         (:input :type "hidden" :name "postmsg" :value (cw-postmsg cw))
         ,@body))))
 
+(defmacro storing-error ((err-var format) &body body)
+  `(do-storing-error (lambda (x) (unless ,err-var (setf ,err-var x)))
+     ,format (lambda () ,@body)))
+
+(defun do-storing-error (setter format thunk)
+  (handler-case (funcall thunk)
+    (error (c)
+      (funcall setter (format nil format c))
+      nil)))
+
 (defun draw-error (cw s &optional (err (cw-error cw)))
   (who (s)
     (:span :style "color: red;"
@@ -830,8 +840,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
          (id (id client))
          (bankid (bankid client))
          (bankp (equal id bankid))
-         (err nil)
-         (values nil))
+         (err nil))
     (bind-parameters (permission grantor grantee toid-select toid grant-p
                       show hide add remove grant ungrant)
       (when (blankp grantor) (setf grantor id))
@@ -841,17 +850,21 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
             (add
              (unless (blankp toid-select)
                (setf toid toid-select))
-             (cond ((not (blankp toid))
-                    (grant client toid permission grant-p))
-                   (bankp (grant client bankid permission t))))
+             (storing-error (err "Error granting permission: ~a")
+               (cond ((not (blankp toid))
+                      (grant client toid permission grant-p))
+                     (bankp (grant client bankid permission t)))))
             (remove
-             (deny client grantee permission))
+             (storing-error (err "Error denying permission: ~a")
+               (deny client grantee permission)))
             (grant
-             (grant client grantee permission t))
+             (storing-error (err "Error granting grant permission: ~a")
+               (grant client grantee permission t)))
             (ungrant
-             (grant client grantee permission nil)))
+             (storing-error (err "Error removing grant permission: ~a")
+               (grant client grantee permission nil))))
+      (setf (cw-error cw) err)
       (draw-permissions cw permission grantor))))
-
 
 (defun backup-preference (server name)
   (db-get (db server) $BACKUP $PREFERENCE name))
@@ -1325,15 +1338,6 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
           nil "%d-%b-%y %I:%M:%S%p"
           (unix-to-universal-time unix-time)))))
 
-(defmacro storing-error ((err-var format) &body body)
-  `(do-storing-error (lambda (x) (setf ,err-var x)) ,format (lambda () ,@body)))
-
-(defun do-storing-error (setter format thunk)
-  (handler-case (funcall thunk)
-    (error (c)
-      (funcall setter (format nil format c))
-      nil)))
-
 (defconstant $nl #.(format nil "~%"))
 (defconstant $brn #.(format nil "<br/>~%"))
 
@@ -1794,12 +1798,14 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
       (when assetlist-stream
         (setq assetlist (get-output-stream-string assetlist-stream)))
 
-        (let ((recipopts nil)
-            (found nil)
-            (disablemint nil)
-            (recipientid nil)
-            (acctcode nil)
-            (instructions nil))
+        (let* ((recipopts nil)
+               (found nil)
+               (disablemint nil)
+               (can-mint-token-p (get-permissions client $MINT-TOKENS t))
+               (can-mint-p (get-permissions client $MINT-COUPONS))
+               (recipientid nil)
+               (acctcode nil)
+               (instructions nil))
         (when gotbal
           (setq recipopts
                 (whots (s)
@@ -1808,7 +1814,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                    (str (contact-options-string
                          client contacts recipient
                          (lambda (x) (setf found x)))))))
-          (when (equal (id client) (bankid client))
+          (when (or (equal (id client) (bankid client))
+                    (not (or can-mint-token-p can-mint-p)))
             (setq disablemint t))
 
           (when (and (not found)
@@ -1887,7 +1894,9 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                         (:td
                          (:input :type "text" :name "recipientid" :size "40"
                                                                   :value recipientid)
-                         (:input :type "checkbox" :name "allowunregistered")
+                         (:input :type "checkbox"
+                                 :name "allowunregistered"
+                                 :disabled (not can-mint-token-p))
                          "Allow unregistered"))
                        (:tr
                         (:td (:b "Nickname:"))
@@ -2263,24 +2272,40 @@ list with that nickname, or change the nickname of the selected
     (who (stream)
       (draw-error cw stream)
       (:br)
-      (form (stream "asset")
-        (:table
-         (:tr
-          (:td (:b "Scale:"))
-          (:td (:input :type "text" :name "scale" :size "3" :value scale)))
-         (:tr
-          (:td (:b "Precision:"))
-          (:td (:input :type "text" :name "precision" :size "3" :value precision)))
-         (:tr
-          (:td (:b "Asset name:"))
-          (:td (:input :type "text" :name "assetname" :size "30" :value assetname)))
-         (:tr
-          (:td (:b "Storage fee (%/year):"))
-          (:td (:input :type "text" :name "storage" :size "5" :value storage)))
-         (:tr
-          (:td)
-          (:td (:input :type "submit" :name "newasset" :value "Add Asset")
-               (:input :type "submit" :name "cancel" :value "Cancel"))))))
+      (cond ((not (get-permissions client $ADD-ASSET t))
+             (who (stream)
+               (:p "You do not have permission to create assets.")))
+            (t
+             (form (stream "asset")
+               (:table
+                (:tr
+                 (:td (:b "Scale:"))
+                 (:td (:input
+                       :type "text" :name "scale" :size "3" :value scale)))
+                (:tr
+                 (:td (:b "Precision:"))
+                 (:td (:input
+                       :type "text"
+                       :name "precision"
+                       :size "3"
+                       :value precision)))
+                (:tr
+                 (:td (:b "Asset name:"))
+                 (:td (:input
+                       :type "text"
+                       :name "assetname"
+                       :size "30"
+                       :value assetname)))
+                (:tr
+                 (:td (:b "Storage fee (%/year):"))
+                 (:td (:input
+                       :type "text" :name "storage" :size "5" :value storage)))
+                (:tr
+                 (:td)
+                 (:td (:input
+                       :type "submit" :name "newasset" :value "Add Asset")
+                      (:input
+                       :type "submit" :name "cancel" :value "Cancel"))))))))
 
   (when assets
     (form (stream "asset")
@@ -2455,18 +2480,21 @@ list with that nickname, or change the nickname of the selected
          (id (id client))
          (bankid (bankid client))
          (bankp (equal id bankid))
-         (permissions (get-permissions client nil t))
+         (err (cw-error cw))
+         (permissions (storing-error (err "Error getting permissions: ~a")
+                        (get-permissions client nil t)))
          (last-perm nil))
     (flet ((ensure-permission (permission)
              (unless (member permission permissions
                              :test #'equal
                              :key #'permission-permission)
-               (push (make-permission
-                      :id nil
-                      :toid id
-                      :permission permission
-                      :grant-p bankp)
-                     permissions))))
+               (let ((permission-p (get-permissions client permission)))
+                 (push (make-permission
+                        :id nil
+                        :toid (and (or bankp permission-p) id)
+                        :permission permission
+                        :grant-p bankp)
+                       permissions)))))
       (declare (dynamic-extent #'ensure-permission))
       ;; These really should be returned by the server somehow
       (ensure-permission $MINT-COUPONS)
@@ -2503,10 +2531,13 @@ list with that nickname, or change the nickname of the selected
                (if (equal perm last-perm)
                    (htm "&nbsp;")
                    (htm (esc perm))))
-              (:td (if grantor
-                       (str (id-namestr cw grantor "You"))
-                       (str "Default")))
-              (:td (str (id-namestr cw grantee "You")))
+              (:td (cond (grantor
+                          (str (id-namestr cw grantor "You")))
+                         ((null grantee) (str "&nbsp;"))
+                         (t (str "Default"))))
+              (:td (str (if grantee
+                            (id-namestr cw grantee "You")
+                            "&nbsp;")))
               (:td
                (cond (bankp
                       (if grantor

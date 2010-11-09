@@ -2386,25 +2386,26 @@
       (do-grant-internal server args id toid permission))))
 
 (defun do-grant-internal (server args id toid permission)
-  (let* ((db (db server)))
-    (let* ((grants (parse-grants server toid permission))
-           (old-grantp nil)
-           (grantp (equal $GRANT (getarg $GRANT args)))
-           (msg (bankmsg server $ATGRANT (get-parsemsg args)))
-           (res msg))
-      (dolist (grant grants)
-        (cond ((equal id (grant-id grant))
-               (setf old-grantp (equal $GRANT (grant-grant grant))))
-              (t (when (equal $GRANT (grant-grant grant))
-                   (setf grantp t))
-                 (dotcat msg "." (grant-msg grant)))))
-      (db-put db (permission-key toid permission) msg)
-      (when (equal toid (bankid server))
-        ;; Clear cache
-        (setf (permissions server) nil))
-      (when (and old-grantp (not grantp))
-        (deny-permission-transitively server toid permission))
-      res)))
+  (let* ((db (db server))
+         (bankid (bankid server))
+         (grants (parse-grants server toid permission))
+         (old-grantp nil)
+         (grantp (equal $GRANT (getarg $GRANT args)))
+         (msg (bankmsg server $ATGRANT (get-parsemsg args)))
+         (res msg))
+    (dolist (grant grants)
+      (cond ((equal id (grant-id grant))
+             (setf old-grantp (equal $GRANT (grant-grant grant))))
+            (t (when (equal $GRANT (grant-grant grant))
+                 (setf grantp t))
+               (dotcat msg "." (grant-msg grant)))))
+    (db-put db (permission-key toid permission) msg)
+    (when (equal toid bankid)
+      ;; Clear cache
+      (setf (permissions server) nil))
+    (when (and old-grantp (or (equal id bankid) (not grantp)))
+      (garbage-collect-permission server permission))
+    res))
 
 (define-message-handler do-deny $DENY (server args msgs)
   ;; (<id>,deny,<bankid>,<req#>,<toid>,<permission>)
@@ -2428,7 +2429,7 @@
          (grant (find id grants :test #'equal :key #'grant-id)))
     (when grant
       (setf grants (delete grant grants :test #'eq))
-      (let ((msg (car grants)))
+      (let ((msg (and grants (grant-msg (car grants)))))
         (dolist (grant (cdr grants))
           (dotcat msg "." (grant-msg grant)))
         (db-put (db server) (permission-key toid permission) msg)
@@ -2436,57 +2437,80 @@
           ;; Clear cache
           (setf (permissions server) nil)))
       (when (and (equal $GRANT (grant-grant grant))
-                 (not (find $GRANT grants
-                            :test #'equal :key #'grant-grant)))
-        (deny-permission-transitively server toid permission))))
+                 (or (equal id (bankid server))
+                     (not (find $GRANT grants
+                                :test #'equal :key #'grant-grant))))
+        (garbage-collect-permission server permission))))
   (bankmsg server $ATDENY (get-parsemsg args)))
 
-;; This would likely benefit from computing the transitive closure
-;; of the permissions tree in one pass, and then changing permissions
-;; in a second pass. This is slower, but simpler.
-;; Won't matter unless lots of permissions get bandied about.
-;; I'm thinking that servers that use permissions aren't going to
-;; hand them out much, and very rarely transtively.
-(defun deny-permission-transitively (server toid permission)
+(defstruct grant-info
+  id
+  grants
+  grantees
+  reachable-grants)
+
+(defun garbage-collect-permission (server permission)
   (let* ((db (db server))
-         (granters (list toid))
-         (added-p t)
+         (bankid (bankid server))
+         (info-hash (make-equal-hash))
          (ids (db-contents db $ACCOUNT))
          (cnt 0))
-    (loop while added-p
-       do
-         (setf added-p nil)
-         (dolist (id ids)
-           (unless (member id granters :test #'equal)
-             (let ((key (permission-key id permission)))
-               (with-db-lock (db key)
-                 ;; Can we afford the RAM to store the parses?
-                 ;; Might speed things up considerably
-                 (let ((grants (parse-grants server id permission))
-                       (maybe-added-p nil)
-                       (changed-p nil))
-                   (loop for tail on grants
-                      for grant = (car tail)
-                      do
-                        (when (member (grant-id grant) granters :test #'equal)
-                          (setf changed-p t)
-                          (incf cnt)
-                          (when (equal $GRANT (grant-grant grant))
-                            (setf maybe-added-p t))
-                          (if (eq tail grants)
-                              (setf grants (cdr tail))
-                              (setf tail (cdr tail)))))
-                   (when changed-p
-                     (let ((msg (and (car grants)
-                                     (grant-msg (car grants)))))
-                       (dolist (grant (cdr grants))
-                         (dotcat msg "." (grant-msg grant)))
-                       (db-put db key msg))
-                     (when (and maybe-added-p
-                                (not (find $GRANT grants :test
-                                           #'equal :key #'grant-grant)))
-                       (push id granters)
-                       (setf added-p t)))))))))
+
+    ;; Collect the grants
+    (dolist (id ids)
+      (let ((grants (parse-grants server id permission)))
+        (when grants
+          (setf (gethash id info-hash)
+                (make-grant-info
+                 :id id
+                 :grants grants)))))
+
+    ;; Compute the grantees
+    (maphash (lambda (id info)
+               (dolist (grant (grant-info-grants info))
+                 (let ((grantee-info (gethash (grant-id grant) info-hash)))
+                   (when grantee-info
+                     (push id (grant-info-grantees grantee-info))))))
+             info-hash)
+
+    ;; Compute reachable-grants
+    (let* ((bank-info (gethash bankid info-hash))
+           (grants (and bank-info (grant-info-grants bank-info))))
+      (when bank-info
+        (setf (grant-info-reachable-grants bank-info) grants))
+      (labels ((mark-grantees (id grantees)
+                 (dolist (grantee grantees)
+                   (let ((info (gethash grantee info-hash)))
+                     (when (and
+                            info
+                            (not (find id (grant-info-reachable-grants info)
+                                       :test #'equal
+                                       :key #'grant-id)))
+                       (let ((grant (find id (grant-info-grants info)
+                                          :test #'equal
+                                          :key #'grant-id)))
+                         (when grant
+                           (push grant (grant-info-reachable-grants info))
+                           (mark-grantees
+                            grantee (grant-info-grantees info)))))))))
+        (mark-grantees bankid (grant-info-grantees bank-info))))
+                   
+    ;; Update the database
+    (maphash
+     (lambda (id info)
+       (let ((reachable-grants (grant-info-reachable-grants info)))
+         (unless (eql (length reachable-grants)
+                      (length (grant-info-grants info)))
+           (incf cnt)
+           (let ((msg (and reachable-grants
+                           (grant-msg (car reachable-grants)))))
+             (dolist (grant (cdr reachable-grants))
+               (dotcat msg "." (grant-msg grant)))
+             (db-put (db server)
+                     (permission-key id permission)
+                     msg)))))
+     info-hash)
+
     cnt))
 
 (define-message-handler do-permission $PERMISSION (server args msgs)
