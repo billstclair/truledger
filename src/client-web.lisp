@@ -19,6 +19,7 @@
     ("banks" . "Banks")
     ("assets" . "Assets")
     ("fees" . "Fees")
+    ("permissions" . "Permissions")
     ("admins" . "Admin")
     ("logout" . "Logout")))    
 
@@ -77,6 +78,7 @@
            "bank" (do-bank)
            "asset" (do-asset)
            "fee" (do-fee)
+           "permission" (do-permission)
            "admin" (do-admin)
            "spend" (do-spend)
            "sync" (do-sync)
@@ -95,6 +97,7 @@
            "banks" draw-banks
            "assets" draw-assets
            "fees" draw-fees
+           "permissions" draw-permissions
            "admins" draw-admin
            "coupon" draw-coupon
            "history" draw-history)))
@@ -821,6 +824,35 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
     (setf (cw-error cw) err)
     (draw-fees cw values)))
 
+(defun do-permission (cw)
+  "Add a new fee, or change or delete an existing one"
+  (let* ((client (cw-client cw))
+         (id (id client))
+         (bankid (bankid client))
+         (bankp (equal id bankid))
+         (err nil)
+         (values nil))
+    (bind-parameters (permission grantor grantee toid-select toid grant-p
+                      show hide add remove grant ungrant)
+      (when (blankp grantor) (setf grantor id))
+      (when (blankp grantee) (setf grantee id))
+      (cond (show)
+            (hide (setf permission nil grantor nil))
+            (add
+             (unless (blankp toid-select)
+               (setf toid toid-select))
+             (cond ((not (blankp toid))
+                    (grant client toid permission grant-p))
+                   (bankp (grant client bankid permission t))))
+            (remove
+             (deny client grantee permission))
+            (grant
+             (grant client grantee permission t))
+            (ungrant
+             (grant client grantee permission nil)))
+      (draw-permissions cw permission grantor))))
+
+
 (defun backup-preference (server name)
   (db-get (db server) $BACKUP $PREFERENCE name))
 
@@ -1270,7 +1302,9 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
   "Returns two values: namestring and contact"
   (let ((client (cw-client cw)))
     (cond ((equal fromid "coupon") fromid)
-          ((and you (equal fromid (id client))) you)
+          ((and you (equal fromid (id client)))
+           (format nil "<span title='~a'>~a</span"
+                   fromid you))
           (t (let ((contact (getcontact client fromid)))
                (cond (contact
                       (let ((namestr (contact-namestr contact)))
@@ -1335,6 +1369,22 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                         :size "10"
                         :value nickname)))))
     namestr))
+
+(defun contact-options-string (client contacts &optional recipient found-setter)
+  (whots (s)
+    (:option :value "" "Choose contact...")
+    (dolist (contact contacts)
+      (let ((namestr (contact-namestr contact))
+            (recipid (contact-id contact))
+            (selected nil))
+        (unless (equal recipid (id client))
+          (when (equal recipid recipient)
+            (setq selected t)
+            (when found-setter
+              (funcall found-setter t)))
+          (htm
+           (:option :value recipid :selected selected
+                    (str namestr))))))))
 
 (defun draw-balance (cw &optional
                      spend-amount recipient note toacct tonewacct nickname
@@ -1755,19 +1805,9 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                 (whots (s)
                   (:select
                    :name "recipient"
-                   (:option :value "" "Choose contact...")
-                   (dolist (contact contacts)
-                     (let ((namestr (contact-namestr contact))
-                           (recipid (contact-id contact))
-                           (selected nil))
-                       (unless (equal recipid (id client))
-                         (when (equal recipid recipient)
-                           (setq selected t
-                                 found t))
-                         (who (s)
-                           (:option :value recipid :selected selected
-                                    (str namestr)))))))))
-
+                   (str (contact-options-string
+                         client contacts recipient
+                         (lambda (x) (setf found x)))))))
           (when (equal (id client) (bankid client))
             (setq disablemint t))
 
@@ -2408,6 +2448,132 @@ list with that nickname, or change the nickname of the selected
              (:input :type "submit" :name "add" :value "Add fee")
                           " "
              (:input :type "submit" :name "cancel" :value "Cancel"))))))))
+
+(defun draw-permissions (cw &optional shown-permission shown-grantor toid)
+  (let* ((client (cw-client cw))
+         (stream (cw-html-output cw))
+         (id (id client))
+         (bankid (bankid client))
+         (bankp (equal id bankid))
+         (permissions (get-permissions client nil t))
+         (last-perm nil))
+    (flet ((ensure-permission (permission)
+             (unless (member permission permissions
+                             :test #'equal
+                             :key #'permission-permission)
+               (push (make-permission
+                      :id nil
+                      :toid id
+                      :permission permission
+                      :grant-p bankp)
+                     permissions))))
+      (declare (dynamic-extent #'ensure-permission))
+      ;; These really should be returned by the server somehow
+      (ensure-permission $MINT-COUPONS)
+      (ensure-permission $MINT-TOKENS)
+      (ensure-permission $ADD-ASSET))
+    (setf permissions (stable-sort permissions #'string<
+                                   :key #'permission-permission))
+    (settitle cw "Permissions")
+    (setmenu cw "permissions")
+    (who (stream)
+      (draw-error cw stream)
+      (:br)
+      (:table
+       :class "prettytable"
+       (:tr
+        (:th "Permission")
+        (:th "Grantor")
+        (:th "Grantee")
+        (:th "Action"))
+       (dolist (permission permissions)
+         (let* ((perm (permission-permission permission))
+                (grantor (permission-id permission))
+                (grantee (permission-toid permission))
+                (grant-p (permission-grant-p permission))
+                (shown-p (and (equal perm shown-permission)
+                              (equal grantor shown-grantor)))
+                (show-name (if shown-p "hide" "show"))
+                (show-value (if shown-p "Hide" "Show")))
+           (form (stream "permission")
+             (:input :type "hidden" :name "permission" :value perm)
+             (:input :type "hidden" :name "grantor" :value grantor)
+             (:tr
+              (:td
+               (if (equal perm last-perm)
+                   (htm "&nbsp;")
+                   (htm (esc perm))))
+              (:td (if grantor
+                       (str (id-namestr cw grantor "You"))
+                       (str "Default")))
+              (:td (str (id-namestr cw grantee "You")))
+              (:td
+               (cond (bankp
+                      (if grantor
+                          (htm
+                           (:input
+                            :type "submit" :name show-name :value show-value)
+                           (:input
+                            :type "submit" :name "remove" :value "Remove"))
+                          (htm
+                           (:input
+                            :type "submit" :name "add" :value "Add"))))
+                     (grant-p
+                      (htm
+                       (:input
+                        :type "submit" :name show-name :value show-value)))
+                     (t
+                      (htm (str "&nbsp;")))))))
+           (when shown-p
+             (let* ((grants (delete-if-not
+                             (lambda (p)
+                               (equal (permission-permission p) perm))
+                             (get-granted-permissions client)))
+                    (contacts (getcontacts client)))
+               (dolist (grant grants)
+                 (unless (and bankp (equal (permission-toid grant) bankid))
+                   (form (stream "permission")
+                     (:input :type "hidden" :name "permission" :value perm)
+                     (:input :type "hidden" :name "grantor" :value grantor)
+                     (:input
+                      :type "hidden" :name "grantee"
+                      :value (permission-toid grant))
+                     (:tr
+                      (:td "&nbsp;")
+                      (:td "&nbsp")
+                      (:td (str (id-namestr cw (permission-toid grant) "You")))
+                      (:td
+                       (:input
+                        :type "submit"
+                        :name (if (permission-grant-p grant)
+                                  "ungrant"
+                                  "grant")
+                        :value (if (permission-grant-p grant)
+                                   "No Grant"
+                                   "Grant"))
+                       (:input
+                        :type "submit" :name "remove" :value "Remove"))))))
+               (form (stream "permission")
+                 (:input :type "hidden" :name "permission" :value perm)
+                 (:input :type "hidden" :name "grantor" :value grantor)
+                 (:tr
+                  (:td "&nbsp;")
+                  (:td "&nbsp;")
+                  (:td
+                   (when contacts
+                     (htm
+                      (:select
+                       :name "toid-select"
+                       (str (contact-options-string client contacts)))
+                      (:br)))
+                   (:input :type "text" :name "toid" :value toid))
+                  (:td
+                   (:input
+                    :type "checkbox" :name "grant-p")
+                   "grant "
+                   (:input
+                    :type "submit" :name "add" :value "Add"))))))
+           (setf last-perm perm)))))))
 
 (defun draw-admin (cw &optional bankname bankurl)
   (let ((s (cw-html-output cw))

@@ -521,6 +521,7 @@
    #:get-permissions
    #:get-granted-permissions
    #:permission
+   #:make-permission
    #:permission-id
    #:permission-toid
    #:permission-permission

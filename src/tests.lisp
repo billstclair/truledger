@@ -642,6 +642,10 @@
     (grant client bill $MINT-COUPONS t)
     (login-user ts "bill")
     (assert (nth-value 1 (ignore-errors (spend client $COUPON tokenid 10))))
+    (let* ((pubkey (rsa-generate-key 512))
+           (id (pubkey-id (encode-rsa-public-key pubkey))))
+      (rsa-free pubkey)
+      (assert (nth-value 1 (ignore-errors (spend client id tokenid 10)))))
     (spend client $COUPON goldgrams 1)
     (cancel-outbox ts)
 
