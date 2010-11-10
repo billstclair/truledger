@@ -1893,7 +1893,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                         (:td (:b "Recipient ID:"))
                         (:td
                          (:input :type "text" :name "recipientid" :size "40"
-                                                                  :value recipientid)
+                                 :value recipientid)
+                         (:br)
                          (:input :type "checkbox"
                                  :name "allowunregistered"
                                  :disabled (not can-mint-token-p))
