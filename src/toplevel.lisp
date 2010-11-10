@@ -44,8 +44,8 @@
   (error 'usage-error
          :format-control
          "Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid]~a
-port defaults to 8782, unless keyfile & certfile are included, then 8783.
-If port defaults to 8783, then nonsslport defaults to 8782,
+port defaults to 8785, unless keyfile & certfile are included, then 8786.
+If port defaults to 8786, then nonsslport defaults to 8785,
 otherwise the application doesn't listen on a non-ssl port.
 keyfile is the path to an SSL private key file.
 certfile is the path to an SSL certificate file.
