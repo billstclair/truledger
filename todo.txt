@@ -4,13 +4,13 @@ Periodic task to assess storage fees for inactive balances.
 
 Audit server balances.
 
-1) Audit all: can be requested by the bank (or whomever it gives permission)
+1) Audit all: can be requested by the server (or whomever it gives permission)
 2) Audit asset type: can be requested by asset issuer (or whomever he
    gives permission?)
 
 ----------------------------------------------------------------------
 
-Automatic interbank transfers.
+Automatic interserver transfers.
 
 Deposit a coupon from one server in another one.
 
@@ -18,12 +18,12 @@ Issuer must issue the asset on both servers, and must have declared to
 the server on which the coupon is drawn that the other server is
 allowed to receive transfers.
 
-Bank on which the coupon is deposited must have an account at the bank
+Server on which the coupon is deposited must have an account at the server
 on which the coupon was minted.
 
 Ends up as a must-accept invoice on one server and a receipt on the other.
 
-Transaction fees? To banks AND issuer?
+Transaction fees? To servers AND issuer?
 
 How to help the issuer keep track of where the assets he's storing are held?
 
@@ -34,7 +34,7 @@ Fixed, asset type(s) specified.
 Percent of amount transferred, in asset transferred.
 
 Always paid by spender?
-Always paid to bank, or split between bank and asset issuer?
+Always paid to server, or split between server and asset issuer?
 
 ----------------------------------------------------------------------
 
@@ -48,7 +48,7 @@ Two-phase commit.
 
 Reducing storage fee percent can reduce the number of digits in the
 fraction. This will cause fractional amounts to be truncated, causing
-the bank to go out of balance by potentially 1 lsb. Can fix this by
+the server to go out of balance by potentially 1 lsb. Can fix this by
 rounding up the fractional balance when the percentage changes, or by
 remembering the maximum fraction-digits value for each asset type.
 
@@ -98,12 +98,12 @@ before exiting to help find it.
 
 ----------------------------------------------------------------------
 
-"Trubanc in Plain English" needs update
+"Truledger in Plain English" needs update
 
 Two-phase commit.
 
-"Resync with bank" button should notice discrepancies, and do
-correction protocol with bank. Should bank automatically accept,
+"Resync with server" button should notice discrepancies, and do
+correction protocol with server. Should server automatically accept,
 or just post to be approved by asset issuer? Probably the latter.
 
 ======================================================================
@@ -161,12 +161,12 @@ Asset storage fees:
 Asset nicknames
 
 Distinguish intentional from unintentional server errors. Give
-backtrace only on unintentional messages. TRUBANC-ERROR.
+backtrace only on unintentional messages. TRULEDGER-ERROR.
 
 Sanity check the server URL to make sure that the HTTPS matches that
 for the client.
 
-Default the bank URL on the Admin page, to the current URL.
+Default the server URL on the Admin page, to the current URL.
 
 Sometimes it hangs on shutting down the web server.
 
@@ -175,11 +175,11 @@ This allows central control over membership.
 Add to client "Admin" page.
 If disallowed, the check boxes don't appear on the "Balance" page.
 Protocol for this should be general:
-  (<id>,getprop,<bankid>,<req>,<name>)
-  (<bankid>,prop,<bankid>,<time>,<name>,<value>)
+  (<id>,getprop,<serverid>,<req>,<name>)
+  (<serverid>,prop,<serverid>,<time>,<name>,<value>)
 
-Change bank URL from the client "Admin" page.
-Client login should query bank for URL, and fix stuff if it's wrong.
+Change server URL from the client "Admin" page.
+Client login should query server for URL, and fix stuff if it's wrong.
 
 History has some blank lines. Figure out where they come from. Also
 some bad parses.
@@ -191,9 +191,9 @@ Add a build timestamp to the bottom of the raw balance page.
 Installation docs.
 
 If you add an administrator account from the "Admin" page, an account
-that already has another bank, the tokens are spend to that account,
-but the bank isn't added. Or something like that. I had to add the
-bank. The contacts appeared then, so something is wierd.
+that already has another server, the tokens are spend to that account,
+but the server isn't added. Or something like that. I had to add the
+server. The contacts appeared then, so something is wierd.
 
 Why is getreq called four times a the end of login?
 

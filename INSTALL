@@ -26,7 +26,8 @@ the Truledger client will be started on that port:
   TRULEDGER_PORT=8080 ./truledger 4005
 
 To load the slime distributed with Truledger into your emacs, assuming
-the "trubanc" dir is in your home directory, put the following in ~/.emacs:
+the "truledger" dir is in your home directory, put the following in
+~/.emacs:
 
   (add-to-list 'load-path "~/truledger/systems/slime/")
   (require 'slime)
