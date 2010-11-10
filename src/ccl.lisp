@@ -149,6 +149,31 @@
 (defun ensure-directory-pathname (path)
   (ccl::ensure-directory-pathname path))
 
+;; A utility to change all instances of "bank" to "server" in file
+;; and directory names in an old Trubanc database
+(defun file-name-replace (dir &rest rest &key (from "bank") (to "server") verbose)
+  (let* ((pattern (merge-pathnames "*.*" (ensure-directory-pathname dir)))
+         (files (directory pattern :directories t :all nil))
+         (fromlen (length from)))
+    (dolist (file files)
+      (when (ccl:directory-pathname-p file)
+        (apply #'file-name-replace file rest)
+        (setf file (cl-fad:pathname-as-file file)))
+      (let ((name (pathname-name file)))
+        (let ((pos (search from name :test #'string=)))
+          (when pos
+            (let* ((newname (concatenate
+                             'string
+                             (subseq name 0 pos)
+                             to
+                             (subseq name (+ pos fromlen))))
+                   (newfile (merge-pathnames newname file)))
+              (when verbose
+                (format t "Renaming ~s to ~s~%"
+                        file newfile))
+              (rename-file file newfile))))))))
+              
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009-2010 Bill St. Clair

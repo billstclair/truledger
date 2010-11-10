@@ -255,7 +255,7 @@
    #:unix-to-universal-time
    #:universal-to-unix-time
 
-   ;; utilities.lisp, shared.lisp
+   ;; utilities.lisp, shared.lisp, ccl.lisp
    #:file-get-contents
    #:file-put-contents
    #:hex
@@ -293,6 +293,7 @@
    #:create-directory
    #:recursive-delete-directory
    #:ensure-directory-pathname
+   #:file-name-replace
    #:simple-makemsg
    #:as-string
    #:makemsg
