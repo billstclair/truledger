@@ -1,36 +1,42 @@
-I have only tested Trubanc with CCL version 1.3. Get that from:
+I have tested Truledger with CCL versions 1.3 through 1.5. Get CCL
+from:
 
-  http://trac.clozure.com/openmcl
+  http://ccl.clozure.com/
 
-Or MacPorts has it, for the Macintosh. I've tested 64-bit OSX and
-64-bit FreeBSD. I'll ensure soon that it works on Linux and Windows.
+Or MacPorts has it, for the Macintosh. I've tested 64-bit OSX, 64-bit
+FreeBSD, 32-bit and 64-bit Linux, and 32-bit and 64-bit Windows.
 
 Once "ccl", typed from a shell prompt, starts CCL, you're ready to
 proceed.
 
-Assuming $TBDIR is your trubanc directory, do the following to start a
-lisp, and build and load Trubanc:
+Assuming $TLDIR is your truledger directory, do the following to start a
+lisp, and build and load Truledger:
 
-  cd $TBDIR
-  ./trubanc
+  cd $TLDIR
+  ./truledger
 
 If you add a port, it will load slime and start it listening on that
 port:
 
-  ./trubanc 4005
+  ./truledger 4005
 
-To load the slime distributed with Trubanc into your emacs, assuming
+If you set the TRULEDGER_PORT environment variable, a web server for
+the Truledger client will be started on that port:
+
+  TRULEDGER_PORT=8080 ./truledger 4005
+
+To load the slime distributed with Truledger into your emacs, assuming
 the "trubanc" dir is in your home directory, put the following in ~/.emacs:
 
-  (add-to-list 'load-path "~/trubanc/systems/slime/")
+  (add-to-list 'load-path "~/truledger/systems/slime/")
   (require 'slime)
   (slime-setup '(slime-repl))
 
 Then you can do m-x slime-connect, and direct it to localhost and the
-port you specified when you started trubanc, e.g. 4005.
+port you specified when you started truledger, e.g. 4005.
 
 If you use another version of slime, you can fairly easily modify the
-"trubanc" script to use that one instead of the one in the Trubanc
+"truledger" script to use that one instead of the one in the Truledger
 archive. Or just start your slime with m-x slime, and load
-"trubanc-loader.lisp" from the REPL, or load the trubanc-loader.asd
-system with ASDF.
+"truledger-loader.lisp" from the REPL, or load the
+truledger-loader.asd system with ASDF.

@@ -2,22 +2,22 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; The Trubanc server
+;;; The Truledger server
 ;;;
 
-(in-package :trubanc-server)
+(in-package :truledger-server)
 
 (defun make-server (dir passphrase &key
-                    (bankname "")
-                    (bankurl "")
+                    (servername "")
+                    (serverurl "")
                     (privkey-size 3072))
-  "Create a Trubanc server instance."
+  "Create a Truledger server instance."
   (let ((db (make-fsdb dir)))
     (make-instance 'server
                    :db db
                    :passphrase passphrase
-                   :bankname bankname
-                   :bankurl bankurl
+                   :servername servername
+                   :serverurl serverurl
                    :privkey-size privkey-size)))
 
 (defparameter *tranfee-default* "2")
@@ -36,14 +36,14 @@
    ;; It's important for backup that nobody writes to pubkeydb
    (pubkeydb :type db
              :accessor pubkeydb)
-   (bankname :type (or string null)
-             :initarg :bankname
-             :initform "A Random Trubanc"
-             :accessor bankname)
-   (bankurl :type (or string null)
-            :initarg :bankurl
+   (servername :type (or string null)
+             :initarg :servername
+             :initform "A Random Truledger"
+             :accessor servername)
+   (serverurl :type (or string null)
+            :initarg :serverurl
             :initform nil
-            :accessor bankurl)
+            :accessor serverurl)
    (tokenid :type string
             :accessor tokenid)
    (regfee :type string
@@ -66,9 +66,9 @@
                  :initarg :privkey-size
                  :initform 3072)
    (privkey :accessor privkey)
-   (bankid :type (or string null)
+   (serverid :type (or string null)
            :initform nil
-           :accessor bankid)
+           :accessor serverid)
    (always-verify-sigs-p :type boolean
                          :initarg :always-verify-sigs-p
                          :initform t
@@ -84,7 +84,7 @@
           (parser server) (make-instance
                            'parser
                            :keydb pubkeydb
-                           :bank-getter (lambda () (bankid server))
+                           :server-getter (lambda () (serverid server))
                            :always-verify-sigs-p (always-verify-sigs-p server)))
     (setup-db server passphrase)
     (set-shutdown-msg server)))
@@ -133,7 +133,7 @@
          (msg (db-get (db server) key)))
     (if (not msg)
         "0"
-        (unpack-bankmsg server msg $ATBALANCE $BALANCE $AMOUNT))))
+        (unpack-servermsg server msg $ATBALANCE $BALANCE $AMOUNT))))
 
 (defun outbox-key (id)
   (append-db-keys (account-dir id) $OUTBOX))
@@ -177,7 +177,7 @@
                      (key (fraction-balance-key id assetid))
                      (msg (db-get db key)))
                 (when msg
-                  (setq args (unpack-bankmsg server msg $ATFRACTION $FRACTION)
+                  (setq args (unpack-servermsg server msg $ATFRACTION $FRACTION)
                         fraction (getarg $AMOUNT args)
                         fractime (getarg $TIME args)))
                 (values percent fraction fractime issuer)))))))))
@@ -189,7 +189,7 @@
         res)))
 
 (defmethod unpacker ((server server))
-  #'(lambda (msg) (unpack-bankmsg server msg)))
+  #'(lambda (msg) (unpack-servermsg server msg)))
 
 (defmethod outbox-hash ((server server) id &optional newitem removed-items)
   (let ((db (db server)))
@@ -199,9 +199,9 @@
 
 (defmethod outbox-hash-msg ((server server) id)
   (multiple-value-bind (hash count) (outbox-hash server id)
-    (bankmsg server
+    (servermsg server
              $OUTBOXHASH
-             (bankid server)
+             (serverid server)
              (get-acct-last server id)
              count
              hash)))
@@ -220,7 +220,7 @@
 (defmethod lookup-asset ((server server) assetid)
   (let ((asset (is-asset-p server assetid)))
     (when asset
-      (let ((res (unpack-bankmsg server asset $ATASSET $ASSET)))
+      (let ((res (unpack-servermsg server asset $ATASSET $ASSET)))
         (let* ((reqs (getarg $UNPACK-REQS-KEY res))
                (req1 (and (> (length reqs) 1) (elt reqs 1))))
           (when req1
@@ -273,21 +273,21 @@
   (with-rsa-private-key (key privkey)
     (pubkey-id (encode-rsa-public-key key))))
 
-(defmethod unpack-bank-param ((server server) type &optional (key type))
+(defmethod unpack-server-param ((server server) type &optional (key type))
   "Unpack wrapped initialization parameter."
-  (unpack-bankmsg server (db-get (db server) type) type nil key))
+  (unpack-servermsg server (db-get (db server) type) type nil key))
 
 (defun signmsg (privkey msg)
   (let ((sig (sign msg privkey)))
     (strcat msg #.(format nil ":~%") sig)))
 
-(defmethod banksign ((server server) msg)
-  "Bank sign a message."
+(defmethod serversign ((server server) msg)
+  "Server sign a message."
   (signmsg (privkey server) msg))
 
-(defmethod bankmsg ((server server) &rest req)
-  "Make a bank signed message from the args."
-  (banksign server (apply #'makemsg (parser server) (bankid server) req)))
+(defmethod servermsg ((server server) &rest req)
+  "Make a server signed message from the args."
+  (serversign server (apply #'makemsg (parser server) (serverid server) req)))
 
 (defun shorten-failmsg-msg (msg)
   (if (> (length msg) 1024)
@@ -297,25 +297,25 @@
 (defmethod failmsg ((server server) &rest req)
   (when (stringp (car req))
     (setf (car req) (shorten-failmsg-msg (car req))))
-  (banksign server (apply #'simple-makemsg (bankid server) $FAILED req)))
+  (serversign server (apply #'simple-makemsg (serverid server) $FAILED req)))
 
 
-(defmethod unpack-bankmsg ((server server) msg &optional type subtype idx)
-  "Reverse the bankmsg() function, optionally picking one field to return.
+(defmethod unpack-servermsg ((server server) msg &optional type subtype idx)
+  "Reverse the servermsg() function, optionally picking one field to return.
    IDX can be that field, or :no-error, to not error if SUBTYPE is wrong."
-  (let* ((bankid (bankid server))
+  (let* ((serverid (serverid server))
          (parser (parser server))
          (reqs (parse parser msg))
          (req (elt reqs 0))
          (args (match-pattern parser req)))
-    (when (and bankid (not (equal (getarg $CUSTOMER args) bankid)))
-      (error "Bankmsg not from bank"))
+    (when (and serverid (not (equal (getarg $CUSTOMER args) serverid)))
+      (error "Servermsg not from server"))
     (when (and type (not (equal (getarg $REQUEST args) type)))
-      (error "Bankmsg wasn't of type: ~s" type))
+      (error "Servermsg wasn't of type: ~s" type))
     (cond ((not subtype)
            (cond (idx
                   (or (getarg idx args)
-                      (error "No arg in bankmsg: ~s" idx)))
+                      (error "No arg in servermsg: ~s" idx)))
                  (t (setf (getarg $UNPACK-REQS-KEY args) reqs) ; save parse results
                     args)))
           (t (setq req (getarg $MSG args)) ;this is already parsed
@@ -326,7 +326,7 @@
                         (not (eq subtype t))
                         (not (equal (getarg $REQUEST args) subtype)))
                (when (eq idx :no-error)
-                 (return-from unpack-bankmsg nil))
+                 (return-from unpack-servermsg nil))
                (error "Wrapped message wasn't of type: ~s" subtype))
              (cond ((and idx (not (eq idx :no-error)))
                     (or (getarg idx args)
@@ -334,11 +334,11 @@
                    (t (setf (getarg $UNPACK-REQS-KEY args) reqs) ; save parse results
                       args))))))
 
-(defmethod unpack-bank-name ((server server))
+(defmethod unpack-server-name ((server server))
   (let ((db (db server))
-        (bankid (bankid server)))
-    (unpack-bankmsg
-     server (db-get db $PUBKEYSIG bankid) $ATREGISTER $REGISTER $NAME)))
+        (serverid (serverid server)))
+    (unpack-servermsg
+     server (db-get db $PUBKEYSIG serverid) $ATREGISTER $REGISTER $NAME)))
 
 (defmethod set-shutdown-msg ((server server))
   (let ((db (db server)))
@@ -352,14 +352,14 @@
     (if (db-get db $PRIVKEY)
         (let* ((privkey (decode-rsa-private-key (db-get db $PRIVKEY) passphrase))
                (pubkey (encode-rsa-public-key privkey))
-               (bankid (pubkey-id pubkey)))
+               (serverid (pubkey-id pubkey)))
           (setf (privkey server) privkey
-                (bankid server) bankid
-                (bankurl server) (db-get db $BANKURL)
-                (bankname server) (unpack-bank-name server)
-                (tokenid server) (unpack-bank-param server $TOKENID)
-                (regfee server) (unpack-bank-param server $REGFEE $AMOUNT)
-                (tranfee server) (unpack-bank-param server $TRANFEE $AMOUNT))
+                (serverid server) serverid
+                (serverurl server) (db-get db $SERVERURL)
+                (servername server) (unpack-server-name server)
+                (tokenid server) (unpack-server-param server $TOKENID)
+                (regfee server) (unpack-server-param server $REGFEE $AMOUNT)
+                (tranfee server) (unpack-server-param server $TRANFEE $AMOUNT))
           (load-fees server))
         ;; http://www.rsa.com/rsalabs/node.asp?id=2004 recommends that 3072-bit
         ;; RSA keys are equivalent to 128-bit symmetric keys, and they should be
@@ -367,47 +367,47 @@
         (let* ((privkey (rsa-generate-key (or (privkey-size server) 3072)))
                (privkey-text (encode-rsa-private-key privkey passphrase))
                (pubkey (encode-rsa-public-key privkey))
-               (bankid (pubkey-id pubkey))
-               (bankname (bankname server))
+               (serverid (pubkey-id pubkey))
+               (servername (servername server))
                (ut "Usage Tokens")
-               (token-name (if bankname (strcat bankname " " ut) ut))
+               (token-name (if servername (strcat servername " " ut) ut))
                (zero "0")
-               (tokenid (assetid bankid zero zero token-name)))
+               (tokenid (assetid serverid zero zero token-name)))
           (db-put db $PRIVKEY privkey-text)
           (setf (privkey server) privkey
-                (bankid server) bankid)
+                (serverid server) serverid)
           (db-put db $TIME zero)
-          (db-put db $BANKID (bankmsg server $BANKID bankid))
-          (db-put db $BANKURL (bankurl server))
-          (setf (db-get db $PUBKEY bankid) pubkey)
-          (setf (db-get db $PUBKEYSIG bankid)
-                (bankmsg server $ATREGISTER
-                         (bankmsg server $REGISTER
-                                  bankid
+          (db-put db $SERVERID (servermsg server $SERVERID serverid))
+          (db-put db $SERVERURL (serverurl server))
+          (setf (db-get db $PUBKEY serverid) pubkey)
+          (setf (db-get db $PUBKEYSIG serverid)
+                (servermsg server $ATREGISTER
+                         (servermsg server $REGISTER
+                                  serverid
                                   (strcat #.(format nil "~%") pubkey)
-                                  bankname)))
+                                  servername)))
           (setf (tokenid server) tokenid)
-          (db-put db $TOKENID (bankmsg server $TOKENID tokenid))
+          (db-put db $TOKENID (servermsg server $TOKENID tokenid))
           (setf (db-get db $ASSET tokenid)
-                (bankmsg server $ATASSET
-                         (bankmsg server $ASSET
-                                  bankid tokenid zero zero token-name)))
+                (servermsg server $ATASSET
+                         (servermsg server $ASSET
+                                  serverid tokenid zero zero token-name)))
           (db-put db $REGFEE
-                  (bankmsg server $REGFEE bankid zero tokenid (regfee server)))
+                  (servermsg server $REGFEE serverid zero tokenid (regfee server)))
           (db-put db $TRANFEE
-                  (bankmsg server $TRANFEE bankid zero tokenid (tranfee server)))
-          (db-put db (acct-time-key bankid) zero)
-          (db-put db (acct-last-key bankid) zero)
-          (db-put db (acct-req-key bankid) zero)
-          (db-put db (asset-balance-key bankid tokenid)
-                  (bankmsg server $ATBALANCE
-                           (bankmsg server $BALANCE
-                                    bankid zero tokenid "-1")))))))
+                  (servermsg server $TRANFEE serverid zero tokenid (tranfee server)))
+          (db-put db (acct-time-key serverid) zero)
+          (db-put db (acct-last-key serverid) zero)
+          (db-put db (acct-req-key serverid) zero)
+          (db-put db (asset-balance-key serverid tokenid)
+                  (servermsg server $ATBALANCE
+                           (servermsg server $BALANCE
+                                    serverid zero tokenid "-1")))))))
 
 (defun load-fees (server)
   (let ((db (db server))
         (parser (parser server))
-        (bankid (bankid server))
+        (serverid (serverid server))
         (fee-alist nil))
     (dolist (operation (db-contents db $FEE))
       (let* ((msg (db-get db $FEE operation))
@@ -418,9 +418,9 @@
           (let* ((args (match-pattern parser req))
                  (asset (getarg $ASSET args))
                  (amount (getarg $AMOUNT args)))
-            (unless (and (EQUAL (getarg $CUSTOMER args) bankid)
+            (unless (and (EQUAL (getarg $CUSTOMER args) serverid)
                          (equal (getarg $REQUEST args) $FEE)
-                         (equal (getarg $BANKID args) bankid)
+                         (equal (getarg $SERVERID args) serverid)
                          (equal (getarg $OPERATION args) operation))
               (error "Malformed fee message for operation: ~s" operation))
             (setf (cdr cell)
@@ -442,14 +442,14 @@
 
 (defmethod signed-balance (server time asset amount &optional acct)
   (if acct
-      (bankmsg server $BALANCE (bankid server) time asset amount acct)
-      (bankmsg server $BALANCE (bankid server) time asset amount)))
+      (servermsg server $BALANCE (serverid server) time asset amount acct)
+      (servermsg server $BALANCE (serverid server) time asset amount)))
 
 (defmethod signed-spend ((server server) time id assetid amount &optional note)
-  (let ((bankid (bankid server)))
+  (let ((serverid (serverid server)))
     (if note
-        (bankmsg server $SPEND bankid time id assetid amount note)
-        (bankmsg server $SPEND bankid time id assetid amount))))
+        (servermsg server $SPEND serverid time id assetid amount note)
+        (servermsg server $SPEND serverid time id assetid amount))))
 
 (defmethod enq-time ((server server) id)
   (let* ((db (db server))
@@ -483,42 +483,42 @@
           (error "Timestamp too old: ~s" time))))
     time))
 
-(defmethod add-to-bank-balance ((server server) assetid amount
+(defmethod add-to-server-balance ((server server) assetid amount
                                 &optional (acct $MAIN))
-  "Add AMOUNT to the bank balance for ASSETID in ACCT, default \"main\".
+  "Add AMOUNT to the server balance for ASSETID in ACCT, default \"main\".
    Returns new balance, unless you add 0, then it returns nil."
-  (let ((bankid (bankid server))
+  (let ((serverid (serverid server))
         (db (db server)))
     (unless (eql 0 (bccomp amount 0))
-      (let ((key (asset-balance-key bankid assetid acct)))
+      (let ((key (asset-balance-key serverid assetid acct)))
         (with-db-lock (db key)
           (let* ((balmsg (db-get db key))
                  (balargs (and balmsg
-                               (unpack-bankmsg
+                               (unpack-servermsg
                                 server balmsg $ATBALANCE $BALANCE))))
             (unless (or (null balargs)
                         (equal acct (or (getarg $ACCT balargs) $MAIN)))
-              (error "Bank balance message not for ~s account" acct))
+              (error "Server balance message not for ~s account" acct))
             (let* ((bal (if balargs (getarg $AMOUNT balargs) 0))
                    (newbal (bcadd bal amount))
                    (balsign (bccomp bal 0))
                    (newbalsign (bccomp newbal 0)))
               (when (or (and (>= balsign 0) (< newbalsign 0))
                         (and (< balsign 0) (>= newbalsign 0)))
-                (error "Transaction would put bank out of balance."))
-              ;; $BALANCE => `(,$BANKID ,$TIME ,$ASSET ,$AMOUNT (,$ACCT))
-              (let ((msg (bankmsg
+                (error "Transaction would put server out of balance."))
+              ;; $BALANCE => `(,$SERVERID ,$TIME ,$ASSET ,$AMOUNT (,$ACCT))
+              (let ((msg (servermsg
                           server $ATBALANCE
-                          (apply #'bankmsg
+                          (apply #'servermsg
                            server $BALANCE
-                           bankid (gettime server) assetid newbal
+                           serverid (gettime server) assetid newbal
                            (unless (equal acct $MAIN) (list acct)))))
-                    (reqkey (acct-req-key bankid))
+                    (reqkey (acct-req-key serverid))
                     )
                 (db-put db key msg)
                 ;; Make sure clients update the balance
                 ;; Need to figure out another way to do this.
-                ;; It can make it impossible for the bank
+                ;; It can make it impossible for the server
                 ;; to spend anything, e.g. transaction fees.
                 (db-put db reqkey (bcadd 1 (db-get db reqkey)))
                 newbal))))))))
@@ -560,7 +560,7 @@
   (unless (equal $BALANCE (getarg $REQUEST args))
     (error "Non-balance message passed to handle-balance-msg"))
   (let ((db (db server))
-        (bankid (bankid server))
+        (serverid (serverid server))
         (asset (getarg $ASSET args))
         (amount (getarg $AMOUNT args))
         (acct (or (getarg $ACCT args) $MAIN)))
@@ -592,12 +592,12 @@
        (let* ((asset-balance-key (asset-balance-key id asset acct))
               (acctmsg (db-get db asset-balance-key)))
          (cond ((not acctmsg)
-                (unless (equal id bankid)
+                (unless (equal id serverid)
                   (setf (balance-state-tokens state)
                         (bcadd (balance-state-tokens state) 1)))
                 (compute-storage-charges server id state asset nil nil))
                (t (let* ((acctargs
-                          (unpack-bankmsg server acctmsg $ATBALANCE $BALANCE))
+                          (unpack-servermsg server acctmsg $ATBALANCE $BALANCE))
                          (amount (getarg $AMOUNT acctargs)))
                     (setf (gethash asset bals) (bcadd (gethash asset bals 0) amount))
                     (when (< (bccomp amount 0) 0)
@@ -637,7 +637,7 @@
      (let* ((asset-balance-key (asset-balance-key id asset acct)))
        (when (db-wrapper-get db asset-balance-key)
          (error "Duplicate acct/asset balance pair: ~s/~s" acct asset))
-       (db-put db asset-balance-key (bankmsg server $ATBALANCE msg)))))
+       (db-put db asset-balance-key (servermsg server $ATBALANCE msg)))))
 
 (defstruct storage-info
   percent
@@ -702,7 +702,7 @@
         (wrapped-db (db-wrapper-db db))
         (outbox-contents (db-wrapper-contents db (outbox-key id)))
         (accts (db-wrapper-contents db (balance-key id)))
-        (bankid (bankid server))
+        (serverid (serverid server))
         (tokenid (tokenid server))
         (parser (parser server))
         (negative-assets nil)
@@ -712,8 +712,8 @@
                     (req (elt reqs 0))
                     (args (match-pattern parser req)))
                (when (equal (getarg $REQUEST args) $ATBALANCE)
-                 (unless (equal (getarg $CUSTOMER args) bankid)
-                   (error "Bankmsg not from bank"))
+                 (unless (equal (getarg $CUSTOMER args) serverid)
+                   (error "Servermsg not from server"))
                  (setf req (getarg $MSG args) ;already parsed
                        args (match-pattern parser req)))
                (unless (equal (getarg $REQUEST args) $BALANCE)
@@ -733,8 +733,8 @@
                     (req (elt reqs 0))
                     (args (match-pattern parser req)))
                (when (equal (getarg $REQUEST args) $ATFRACTION)
-                 (unless (equal (getarg $CUSTOMER args) bankid)
-                   (error "Bankmsg not from bank"))
+                 (unless (equal (getarg $CUSTOMER args) serverid)
+                   (error "Servermsg not from server"))
                  (setf req (getarg $MSG args) ;already parsed
                        args (match-pattern parser req)))
                (unless (equal (getarg $REQUEST args) $FRACTION)
@@ -750,8 +750,8 @@
                     (req (elt reqs 0))
                     (args (match-pattern parser req)))
                (when (equal (getarg $REQUEST args) atname)
-                 (unless (equal (getarg $CUSTOMER args) bankid)
-                   (error "Bankmsg not from bank"))
+                 (unless (equal (getarg $CUSTOMER args) serverid)
+                   (error "Servermsg not from server"))
                  (setf req (getarg $MSG args) ;already parsed
                        args (match-pattern parser req)))
                (unless (equal (getarg $REQUEST args) name)
@@ -877,7 +877,7 @@
               (unless (and (equal hash newhash) (bc= cnt newcnt))
                 (error "Outbox hash mismatch"))))))
       ;; Check balance hash
-      (when (and balance-changed-p (not (equal id bankid)))
+      (when (and balance-changed-p (not (equal id serverid)))
         (let ((msg (db-get db (balance-hash-key id))))
           (unless msg
             (error "Missing balance hash update"))
@@ -909,14 +909,14 @@
      (setf (get-message-handler ,message) ',name)
      (defmethod ,name ((,server server) ,args ,reqs) ,@body)))
 
-(define-message-handler do-bankid $BANKID (server inargs reqs)
-  "Look up the bank's public key"
+(define-message-handler do-serverid $SERVERID (server inargs reqs)
+  "Look up the server's public key"
   (declare (ignore reqs))
   (let* ((db (db server))
-         (bankid (bankid server))
+         (serverid (serverid server))
          (coupon (getarg $COUPON inargs))
-         (msg (db-get db $PUBKEYSIG bankid))
-         (args (unpack-bankmsg server msg $ATREGISTER))
+         (msg (db-get db $PUBKEYSIG serverid))
+         (args (unpack-servermsg server msg $ATREGISTER))
          (req (getarg $MSG args))
          (res (get-parsemsg req)))
 
@@ -927,7 +927,7 @@
              (coupon (db-get db key)))
         (unless coupon
           (error "Coupon invalid or already redeemed"))
-        (setq args (unpack-bankmsg server coupon $ATSPEND $SPEND))
+        (setq args (unpack-servermsg server coupon $ATSPEND $SPEND))
         (let ((assetid (getarg $ASSET args))
               (amount (getarg $AMOUNT args))
               (id (getarg $CUSTOMER inargs)))
@@ -939,7 +939,7 @@
             (when (< (bccomp amount (bcadd (regfee server) 10)) 0)
               (error "It costs ~a + 10 usage tokens to register a new account."
                      (regfee server)))))
-        (let ((msg (bankmsg server $COUPONNUMBERHASH coupon-number-hash)))
+        (let ((msg (servermsg server $COUPONNUMBERHASH coupon-number-hash)))
           (dotcat res "." msg))))
 
     res))
@@ -981,7 +981,7 @@
         (let ((inbox (scan-inbox server id)))
           (dolist (inmsg inbox
                    (error "Insufficient asset tokens for registration fee"))
-            (let ((inmsg-args (unpack-bankmsg server inmsg nil t)))
+            (let ((inmsg-args (unpack-servermsg server inmsg nil t)))
               (when (equal $SPEND (getarg $REQUEST inmsg-args))
                 (let ((asset (getarg $ASSET inmsg-args))
                       (amount (getarg $AMOUNT inmsg-args)))
@@ -990,13 +990,13 @@
 
       ;; Create the account
       (let* ((msg (get-parsemsg (car reqs)))
-             (res (bankmsg server $ATREGISTER msg))
+             (res (servermsg server $ATREGISTER msg))
              (time (gettime server)))
         (setf (db-get db $PUBKEY id) pubkey
               (db-get db $PUBKEYSIG id) res)
         ;; Post the debit for the registration fee
         (when (> (bccomp regfee 0)  0)
-          (let* ((spendmsg (bankmsg server
+          (let* ((spendmsg (servermsg server
                                     $INBOX
                                     time
                                     (signed-spend
@@ -1012,7 +1012,7 @@
   "Process a getreq message"
   (declare (ignore reqs))
   (let ((id (getarg $CUSTOMER args)))
-    (bankmsg server $REQ id (or (db-get (db server) (acct-req-key id server)) "0"))))
+    (servermsg server $REQ id (or (db-get (db server) (acct-req-key id server)) "0"))))
 
 (define-message-handler do-gettime $GETTIME (server args reqs)
   "Process a time request."
@@ -1023,7 +1023,7 @@
     (with-db-lock (db (acct-time-key id))
       (let ((time (gettime server)))
         (db-put db (acct-time-key id) time)
-        (bankmsg server $TIME id time)))))
+        (servermsg server $TIME id time)))))
 
 (define-message-handler do-getfees $GETFEES (server args reqs)
   "Process a getfees message."
@@ -1041,11 +1041,11 @@
   "Process a setfees message."
   (let ((db (db server))
         (id (getarg $CUSTOMER args)))
-    (unless (equal id (bankid server))
-      (error "Only the bank can set fees"))
+    (unless (equal id (serverid server))
+      (error "Only the server can set fees"))
     (with-db-lock (db (acct-time-key id))
       (do-setfees-internal server args reqs))
-    (bankmsg server $ATSETFEES (get-parsemsg (car reqs)))))
+    (servermsg server $ATSETFEES (get-parsemsg (car reqs)))))
 
 (defun do-setfees-internal (server args reqs)
   (let ((db (db server))
@@ -1053,7 +1053,7 @@
         (time (getarg $TIME args))
         (count (getarg $COUNT args))
         (cnt 0)
-        (bankid (bankid server))
+        (serverid (serverid server))
         (tokenid (tokenid server))
         (msg-alist nil)
         (fee-alist nil)
@@ -1063,14 +1063,14 @@
         (regfee "0"))
 
     ;; Burn the transaction
-    (deq-time server bankid time)
+    (deq-time server serverid time)
 
     (loop
        for req in (cdr reqs)
        for reqargs = (match-pattern parser req)
        for reqid = (getarg $CUSTOMER reqargs)
        for request = (getarg $REQUEST reqargs)
-       for reqbank = (getarg $BANKID reqargs)
+       for reqserver = (getarg $SERVERID reqargs)
        for reqtime = (getarg $TIME reqargs)
        for reqop = (getarg $OPERATION reqargs)
        for reqasset = (getarg $ASSET reqargs)
@@ -1078,10 +1078,10 @@
        for reqmsg = (get-parsemsg req)
        do
          (incf cnt)
-         (unless (and (equal reqid bankid) (equal reqbank bankid))
-           (error "Fee record not from and for bank"))
+         (unless (and (equal reqid serverid) (equal reqserver serverid))
+           (error "Fee record not from and for server"))
          (unless (equal reqtime time) (error "Timestamp mismatch"))
-           (unless (equal reqid bankid) (error "ID mismatch"))
+           (unless (equal reqid serverid) (error "ID mismatch"))
          (let ((amt (ignore-errors (parse-integer reqamount))))
            (unless (and amt
                         (>= amt (if (equal request $FEE) 0 1)))
@@ -1112,10 +1112,10 @@
                (t (error "Unknown fee request: ~s" request))))
     (unless tranmsg
       (setf tranfee *tranfee-default*
-            tranmsg (bankmsg server $TRANFEE bankid time tokenid tranfee)))
+            tranmsg (servermsg server $TRANFEE serverid time tokenid tranfee)))
     (unless regmsg
       (setf regfee *regfee-default*
-            regmsg (bankmsg server $REGFEE bankid time tokenid regfee)))
+            regmsg (servermsg server $REGFEE serverid time tokenid regfee)))
     (unless (bc= cnt count)
       (error "Wrong number of fee messages, SB: ~s, was: ~s" count cnt))
     
@@ -1154,11 +1154,11 @@
         (with-db-wrapper (db (db server))
           (do-spend-internal server db args reqs))))
 
-    ;; Credit the non-refundable fees to the bank as storage fees
+    ;; Credit the non-refundable fees to the server as storage fees
     (loop
        for (assetid . amount) in feesdiffs
        do
-         (post-storage-fee server assetid (bankid server) amount nil))
+         (post-storage-fee server assetid (serverid server) amount nil))
 
     ;; This is outside the customer lock to avoid deadlock with the issuer account.
     (loop for (assetid . info) in storage-infos
@@ -1178,9 +1178,9 @@
   "Do the work for a spend.
    Returns three values:
     res: The result message to be returned to the client
-    feediffs: list of (assetid . amount) pairs for bank fees
+    feediffs: list of (assetid . amount) pairs for server fees
     storage-infos: list of storage-info instances for storage fees"
-  (let* ((bankid (bankid server))
+  (let* ((serverid (serverid server))
          (parser (parser server))
          (spendmsg (get-parsemsg (car reqs)))
          (id (getarg $CUSTOMER args))
@@ -1192,7 +1192,7 @@
          (note (getarg $NOTE args))
          (asset (lookup-asset server assetid))
          (operation (if (equal id id2) $TRANSFER $SPEND))
-         (fees (and (not (equal id bankid)) (getfees server operation))))
+         (fees (and (not (equal id serverid)) (getfees server operation))))
 
     (cond ((equal id2 $COUPON)
            (ensure-permission server id $MINT-COUPONS)
@@ -1212,8 +1212,8 @@
     ;; Burn the transaction, even if balances don't match.
     (deq-time server id time)
 
-    (when (equal id2 bankid)
-      (error "Spends to the bank are not allowed."))
+    (when (equal id2 serverid)
+      (error "Spends to the server are not allowed."))
 
     (unless asset
       (error "Unknown asset id: ~s" assetid))
@@ -1221,28 +1221,28 @@
     (unless (is-numeric-p amount)
       (error "Not a number: ~s" amount))
 
-    ;; Make sure there are no bank debit inbox entries older
+    ;; Make sure there are no server debit inbox entries older
     ;; than the highest timestamp last read from the inbox
     (let ((inbox (scan-inbox server id))
           (last (get-acct-last server id)))
       (dolist (inmsg inbox)
-        (let* ((inmsg-args (unpack-bankmsg server inmsg))
+        (let* ((inmsg-args (unpack-servermsg server inmsg))
                (spendreq (getarg $MSG inmsg-args)))
           (when (and (or (< (bccomp last 0) 0)
                          (<= (bccomp (getarg $TIME inmsg-args) last) 0))
                      (let ((spendargs (match-pattern (parser server) spendreq)))
-                       (and (equal bankid (getarg $CUSTOMER spendargs))
+                       (and (equal serverid (getarg $CUSTOMER spendargs))
                             (equal $SPEND (getarg $REQUEST spendargs))
                             (< (bccomp (getarg $AMOUNT spendargs) 0) 0))))
             (error
-             "Please process bank debits in your account before doing a spend.")))))
+             "Please process server debits in your account before doing a spend.")))))
 
     (let* ((tokens (if (and (not (equal id id2))
-                            (not (equal id bankid)))
+                            (not (equal id serverid)))
                        (tranfee server)
                        "0"))
            (feesdiffs nil)
-           (outbox-item (bankmsg server $ATSPEND spendmsg))
+           (outbox-item (servermsg server $ATSPEND spendmsg))
            (res outbox-item)
            (feemsg nil)
            (storageamts nil)  ;list of (assetid . amt) for storage fees
@@ -1253,17 +1253,17 @@
       (when (equal id2 $COUPON)
         ;; If it's a coupon request, generate the coupon
         (let* ((coupon-number (random-id))
-               (bankurl (bankurl server))
+               (serverurl (serverurl server))
                (coupon
                 (if note
-                    (bankmsg server $COUPON bankurl coupon-number
+                    (servermsg server $COUPON serverurl coupon-number
                              assetid amount note)
-                    (bankmsg server $COUPON bankurl coupon-number
+                    (servermsg server $COUPON serverurl coupon-number
                              assetid amount)))
                (coupon-number-hash (sha1 coupon-number)))
           (setf (db-get db $COUPON coupon-number-hash) outbox-item)
           (setq coupon
-                (bankmsg server $COUPONENVELOPE id
+                (servermsg server $COUPONENVELOPE id
                          (pubkey-encrypt
                           coupon (db-get (pubkeydb server) id))))
           (dotcat res "." coupon)
@@ -1287,19 +1287,19 @@
                     (unless (and (equal tranasset tokenid)
                                  (equal tranamt tokens))
                       (error "Mismatched tranfee asset or amount")))
-                  (setq feemsg (bankmsg server $ATTRANFEE reqmsg))
+                  (setq feemsg (servermsg server $ATTRANFEE reqmsg))
                   (dotcat outbox-item "." feemsg)
                   (dotcat res "." feemsg))                   
                  ((equal request $STORAGEFEE)
                   (let ((assetid (getarg $ASSET reqargs))
-                        (storagemsg (bankmsg server $ATSTORAGEFEE reqmsg)))
+                        (storagemsg (servermsg server $ATSTORAGEFEE reqmsg)))
                     (when (assocequal assetid storageamts)
                       (error "Duplicate asset in storage fees"))
                     (push (cons assetid (getarg $AMOUNT reqargs)) storageamts)
                     (dotcat res "." storagemsg)))
                  ((equal request $FRACTION)
                   (let* ((fracasset (getarg $ASSET reqargs))
-                         (fracmsg (bankmsg server $ATFRACTION reqmsg))
+                         (fracmsg (servermsg server $ATFRACTION reqmsg))
                          (key (fraction-balance-key id fracasset)))
                     (when (member fracasset fracids :test #'equal)
                       (error "Duplicate fraction assetid"))
@@ -1313,13 +1313,13 @@
                  ((equal request $OUTBOXHASH)
                   (when outboxhash-msg
                     (error "~s appeared multiple times" $OUTBOXHASH))
-                  (setf outboxhash-msg (bankmsg server $ATOUTBOXHASH reqmsg))
+                  (setf outboxhash-msg (servermsg server $ATOUTBOXHASH reqmsg))
                   (db-put db (outbox-hash-key id) outboxhash-msg)
                   (dotcat res "." outboxhash-msg))
                  ((equal request $BALANCEHASH)
                   (when balancehash-msg
                     (error "~s appeared multiple times" $BALANCEHASH))
-                  (setq balancehash-msg (bankmsg server $ATBALANCEHASH reqmsg))
+                  (setq balancehash-msg (servermsg server $ATBALANCEHASH reqmsg))
                   (db-put db (balance-hash-key id) balancehash-msg)
                   (dotcat res "." balancehash-msg))
                  ((equal request $FEE)
@@ -1334,7 +1334,7 @@
                                feeasset feeamount))
                       (setf fees (delete cell fees :test #'eq)))
                     (push (cons feeasset feeamount) feesdiffs)
-                    (let ((msg (bankmsg server $ATFEE reqmsg)))
+                    (let ((msg (servermsg server $ATFEE reqmsg)))
                       (dotcat res "." msg))))
                  (t
                   (error "~s not valid for spend. Only ~s, ~s, ~s, ~s, ~s, & ~s"
@@ -1354,20 +1354,20 @@
 
       ;; Write outbox and check outboxhash
       ;; outboxhash must be included, except on self spends
-      (unless (or (equal id id2) (equal id bankid))
+      (unless (or (equal id id2) (equal id serverid))
         (unless outboxhash-msg
           (error "~s missing" $OUTBOXHASH))
         (setf (db-get db (outbox-key id) time) outbox-item))
 
-      ;; balancehash must be included, except on bank spends
-      (unless (equal id bankid)
+      ;; balancehash must be included, except on server spends
+      (unless (equal id serverid)
         (unless balancehash-msg
           (error "~s missing" $BALANCEHASH)))
 
       ;; Generate inbox item for recipient, if there is one
       (unless (or (equal id2 $COUPON) (equal id id2))
         (let* ((newtime (gettime server))
-               (inbox-item (bankmsg server $INBOX newtime spendmsg)))
+               (inbox-item (servermsg server $INBOX newtime spendmsg)))
           (when feemsg
             (dotcat inbox-item "." feemsg))
           (setf (db-get db (inbox-key id2) newtime) inbox-item)))
@@ -1410,7 +1410,7 @@
    to preserve the digits in the existing sum."
   (let ((db (db server))
         (parser (parser server))
-        (bankid (bankid server)))
+        (serverid (serverid server)))
     (with-db-lock (db (acct-time-key issuer))
       (let* ((key (storage-fee-key issuer assetid))
              (storage-msg (db-get db key)))
@@ -1420,17 +1420,17 @@
               (error "Bad storagefee msg: ~s" storage-msg))
             (let* ((args (match-pattern parser (car reqs)))
                    (amount (getarg $AMOUNT args)))
-              (unless (and (equal (getarg $CUSTOMER args) bankid)
+              (unless (and (equal (getarg $CUSTOMER args) serverid)
                            (equal (getarg $REQUEST args) $STORAGEFEE)
-                           (equal (getarg $BANKID args) bankid)
+                           (equal (getarg $SERVERID args) serverid)
                            (equal (getarg $ASSET args) assetid))
                 (error "Storage fee message malformed"))
               (when (null digits)
                 (setf digits (number-precision amount)))
               (setq storage-fee (wbp (digits) (bcadd storage-fee amount))))))
         (let* ((time (gettime server))
-               (storage-msg (bankmsg server $STORAGEFEE
-                                     bankid time assetid storage-fee)))
+               (storage-msg (servermsg server $STORAGEFEE
+                                     serverid time assetid storage-fee)))
           (db-put db key storage-msg))))))
 
 (define-message-handler do-spendreject $SPENDREJECT (server args reqs)
@@ -1440,13 +1440,13 @@
         (id (getarg $CUSTOMER args))
         (msg (get-parsemsg (car reqs))))
     (with-db-lock (db (acct-time-key id))
-      (let* ((bankid (bankid server))
+      (let* ((serverid (serverid server))
              (time (getarg $TIME args))
              (key (outbox-key id))
              (item (db-get db key time)))
         (unless item
           (error "No outbox entry for time: ~s" time))
-        (let ((args (unpack-bankmsg server item $ATSPEND $SPEND)))
+        (let ((args (unpack-servermsg server item $ATSPEND $SPEND)))
           (unless (equal time (getarg $TIME args))
             (error "Time mismatch in outbox item"))
           (when (equal (getarg $ID args) $COUPON)
@@ -1460,7 +1460,7 @@
                      (error "Time not found in inbox: ~s" time))
               (let* ((item (db-get db key intime))
                      (item2 nil)
-                     (args (and item (unpack-bankmsg
+                     (args (and item (unpack-servermsg
                                       server item $INBOX $SPEND :no-error))))
                 (when (and args (equal (getarg $TIME args) time))
                   ;; Calculate the fee, if there is one
@@ -1468,8 +1468,8 @@
                          (req (second reqs)))
                     (when req
                       (let ((args (match-pattern parser req)))
-                        (unless (equal (getarg $CUSTOMER args) bankid)
-                          (error "Fee message not from bank"))
+                        (unless (equal (getarg $CUSTOMER args) serverid)
+                          (error "Fee message not from server"))
                         (when (equal (getarg $REQUEST args) $ATTRANFEE)
                           (setq req (getarg $MSG args)
                                 args (match-pattern parser req))
@@ -1485,9 +1485,9 @@
                   (unless item2
                     (error "Recipient inbox item removed during spend-reject processing"))
                   (when feeamt
-                    (add-to-bank-balance server feeasset feeamt))
+                    (add-to-server-balance server feeasset feeamt))
                   (let* ((newtime (gettime server))
-                         (item (bankmsg server $INBOX newtime msg))
+                         (item (servermsg server $INBOX newtime msg))
                          (key (inbox-key id)))
                     (setf (db-get db key newtime) item)
                     (return-from do-spendreject item)))))))))))
@@ -1501,7 +1501,7 @@
         (id (getarg $CUSTOMER args)))
     (with-db-lock (db (acct-time-key id))
       (do-couponenvelope-raw server args id)
-      (bankmsg server $ATCOUPONENVELOPE (get-parsemsg (car reqs))))))
+      (servermsg server $ATCOUPONENVELOPE (get-parsemsg (car reqs))))))
 
 (defun do-couponenvelope-raw (server args id)
   "Called by do_register to process coupons there.
@@ -1509,19 +1509,19 @@
   (check-type server server)
 
   (let ((db (db server))
-        (bankid (bankid server))
+        (serverid (serverid server))
         (parser (parser server))
         (encrypted-to (getarg $ID args)))
-    (unless (equal encrypted-to bankid)
-      (error "Coupon not encrypted to bank"))
+    (unless (equal encrypted-to serverid)
+      (error "Coupon not encrypted to server"))
 
     (let* ((coupon (privkey-decrypt (getarg $ENCRYPTEDCOUPON args) (privkey server)))
            (coupon-number (and (coupon-number-p coupon) coupon)))
 
       (unless coupon-number
-        (let ((args (unpack-bankmsg server coupon $COUPON)))
-          (unless (equal bankid (getarg $CUSTOMER args))
-            (error "Coupon not signed by bank"))
+        (let ((args (unpack-servermsg server coupon $COUPON)))
+          (unless (equal serverid (getarg $CUSTOMER args))
+            (error "Coupon not signed by server"))
           (setq coupon-number (getarg $COUPON args))))
 
       (let* ((coupon-number-hash (sha1 coupon-number))
@@ -1549,7 +1549,7 @@
           (t
            (let* ((ok nil)
                   (args (unwind-protect
-                             (prog1 (unpack-bankmsg server outbox-item $ATSPEND)
+                             (prog1 (unpack-servermsg server outbox-item $ATSPEND)
                                     (setq ok t))
                           (unless ok
                             ;; Make sure the spender can cancel the coupon
@@ -1560,8 +1560,8 @@
                   (feemsg nil)
                   (feereq nil)
                   (newtime (gettime server))
-                  (inbox-item (bankmsg server $INBOX newtime spendmsg))
-                  (cnhmsg (bankmsg server $COUPONNUMBERHASH coupon-number-hash)))
+                  (inbox-item (servermsg server $INBOX newtime spendmsg))
+                  (cnhmsg (servermsg server $COUPONNUMBERHASH coupon-number-hash)))
              (dotcat inbox-item "." cnhmsg)
              (when (> (length reqs) 1)
                (setq feereq (second reqs)
@@ -1578,7 +1578,7 @@
     (with-db-lock (db (acct-time-key id))
       (checkreq server args)
       (let* ((inbox (scan-inbox server id))
-             (res (bankmsg server $ATGETINBOX (get-parsemsg (car reqs))))
+             (res (servermsg server $ATGETINBOX (get-parsemsg (car reqs))))
              (last "1"))
 
         (dolist (inmsg inbox)
@@ -1630,7 +1630,7 @@
            place was sb)))
 
 (defmethod do-processinbox-internal ((server server) db args reqs)
-  (let* ((bankid (bankid server))
+  (let* ((serverid (serverid server))
          (parser (parser server))
          (id (getarg $CUSTOMER args))
          (time (getarg $TIME args))
@@ -1646,7 +1646,7 @@
          (storage-infos nil)
          (tobecharged nil)
          (inboxmsgs nil)
-         (res (bankmsg server $ATPROCESSINBOX (get-parsemsg (car reqs))))
+         (res (servermsg server $ATPROCESSINBOX (get-parsemsg (car reqs))))
          (outboxtimes nil)
          (outboxhashreq nil)
          (balancehashreq nil)
@@ -1660,7 +1660,7 @@
       (let* ((item (db-get db inbox-key inboxtime))
              (itemargs (if (null item)
                            (error "No inbox item for time: ~s" inboxtime)
-                           (unpack-bankmsg server item $INBOX t)))
+                           (unpack-servermsg server item $INBOX t)))
              (request (getarg $REQUEST itemargs)))
         (unless (or (equal (getarg $ID itemargs) id)
                     (equal (getarg $ID itemargs) $COUPON))
@@ -1724,8 +1724,8 @@
           (error "Item not from same customer as ~s" $PROCESSINBOX))
         (cond ((or (equal request $SPENDACCEPT)
                    (equal request $SPENDREJECT))
-               ;; $SPENDACCEPT => array($BANKID,$TIME,$id,$NOTE=>1),
-               ;; $SPENDREJECT => array($BANKID,$TIME,$id,$NOTE=>1),
+               ;; $SPENDACCEPT => array($SERVERID,$TIME,$id,$NOTE=>1),
+               ;; $SPENDREJECT => array($SERVERID,$TIME,$id,$NOTE=>1),
                (let* ((otherid (getarg $ID args))
                       (itemargs (gethash argstime spends)))
                  (unless itemargs
@@ -1738,7 +1738,7 @@
                               (itemtime (getarg $TIME itemargs)))
                           (push (cons itemasset (bcsub itemamt)) diffs)
                           (push (list itemasset itemamt itemtime) tobecharged))
-                        (dotcat res "." (bankmsg server $ATSPENDACCEPT reqmsg)))
+                        (dotcat res "." (servermsg server $ATSPENDACCEPT reqmsg)))
                        (t
                         ;; Rejecting the payment. Credit the fee.
                         (let ((feeargs (gethash argstime fees)))
@@ -1746,17 +1746,17 @@
                             (let ((feeasset (getarg $ASSET feeargs))
                                   (feeamt (getarg $AMOUNT feeargs)))
                               (push (cons feeasset (bcsub feeamt)) diffs))))
-                        (dotcat res "." (bankmsg server $ATSPENDREJECT reqmsg))))
+                        (dotcat res "." (servermsg server $ATSPENDREJECT reqmsg))))
                  (let (inboxtime inboxmsg)
-                   (cond ((equal otherid bankid)
+                   (cond ((equal otherid serverid)
                           (when (and (equal request $SPENDREJECT)
                                      (< (bccomp (getarg $AMOUNT itemargs) 0) 0))
-                            (error "You may not reject a bank charge"))
+                            (error "You may not reject a server charge"))
                           (setq inboxtime request
                                 inboxmsg itemargs))
                          (t 
                           (setq inboxtime (gettime server)
-                                inboxmsg (bankmsg server $INBOX
+                                inboxmsg (servermsg server $INBOX
                                                   inboxtime reqmsg))))
                    (push (list otherid inboxtime inboxmsg) inboxmsgs))))
               ((equal request $STORAGEFEE)
@@ -1765,7 +1765,7 @@
                  (when (gethash storageasset storagemsgs)
                    (error "Duplicate storage fee for asset: ~s" storageasset))
                  (setf (gethash storageasset storagemsgs) reqmsg)
-                 (let ((msg (bankmsg server $ATSTORAGEFEE reqmsg)))
+                 (let ((msg (servermsg server $ATSTORAGEFEE reqmsg)))
                    (dotcat res "." msg))))
               ((equal request $FRACTION)
                (checktime argstime time "fraction item")
@@ -1773,16 +1773,16 @@
                  (when (gethash fracasset fracmsgs)
                    (error "Duplicate fraction balance for asset: ~s" fracasset))
                  (setf (gethash fracasset fracmsgs) reqmsg)
-                 (let ((fracmsg (bankmsg server $ATFRACTION reqmsg)))
+                 (let ((fracmsg (servermsg server $ATFRACTION reqmsg)))
                    (dotcat res "." fracmsg)
                    (db-put db (fraction-balance-key id fracasset) fracmsg))))
               ((equal request $OUTBOXHASH)
-               (unless (equal id bankid)
+               (unless (equal id serverid)
                  (when outboxhashreq
                    (error "~s appeared multiple times" $OUTBOXHASH))
                  (checktime argstime time "outboxhash")
                  (setq outboxhashreq req)
-                 (let ((item (bankmsg server $ATOUTBOXHASH (get-parsemsg req))))
+                 (let ((item (servermsg server $ATOUTBOXHASH (get-parsemsg req))))
                    (dotcat res "." item)
                    (db-put db (outbox-hash-key id) item))))
               ((equal request $BALANCE)
@@ -1791,12 +1791,12 @@
                               server db id reqmsg args)))
                  (dotcat res "." balmsg)))
               ((equal request $BALANCEHASH)
-               (unless (equal id bankid)
+               (unless (equal id serverid)
                  (when balancehashreq
                    (error "~s appeared multiple times" $BALANCEHASH))
                  (checktime argstime time "balancehash")
                  (setq balancehashreq req)
-                 (let ((item (bankmsg server $ATBALANCEHASH
+                 (let ((item (servermsg server $ATBALANCEHASH
                                       (get-parsemsg req))))
                    (dotcat res "." item)
                    (db-put db (balance-hash-key id) item))))
@@ -1807,8 +1807,8 @@
                       $STORAGEFEE $FRACTION $OUTBOXHASH
                       $BALANCE $BALANCEHASH)))))
 
-    ;; No outbox hash maintained for the bank
-    (unless (equal id bankid)
+    ;; No outbox hash maintained for the server
+    (unless (equal id serverid)
       ;; Make sure the outbox hash was included iff needed
       (when (or (and outboxtimes (not outboxhashreq))
                 (and (null outboxtimes) outboxhashreq))
@@ -1818,7 +1818,7 @@
                $OUTBOXHASH)))
 
     ;; Remove no longer needed inbox and outbox entries.
-    ;; Probably should have a bank config parameter to archive these somewhere.
+    ;; Probably should have a server config parameter to archive these somewhere.
     (let ((inboxkey (inbox-key id)))
       (dolist (inboxtime inboxtimes)
         (setf (db-get db inboxkey inboxtime) "")))
@@ -1835,14 +1835,14 @@
     ;; Update accepted and rejected spenders' inboxes
     (dolist (inboxmsg (reverse inboxmsgs))
       (destructuring-bind (otherid inboxtime inboxmsg) inboxmsg
-        (cond ((equal otherid bankid)
+        (cond ((equal otherid serverid)
                (let ((request inboxtime)
                      (itemargs inboxmsg))
                  (when (equal request $SPENDREJECT)
-                   ;; Return the funds to the bank's account
+                   ;; Return the funds to the server's account
                    ;; (should this write into the wrapped-db instead
                    ;;  of directly to disk? We're just about to commit).
-                   (add-to-bank-balance
+                   (add-to-server-balance
                     server
                     (getarg $ASSET itemargs)
                     (getarg $AMOUNT itemargs)))))
@@ -1857,7 +1857,7 @@
 
   (let* ((db (db server))
          (parser (parser server))
-         (bankid (bankid server))
+         (serverid (serverid server))
          (outboxkey (outbox-key id))
          (spendmsg (or (db-get db outboxkey spendtime)
                        (error "Can't find outbox item: ~s" spendtime)))
@@ -1867,7 +1867,7 @@
                           reqs))
          (feeargs (and feereq
                        (match-pattern parser feereq))))
-    (unless (and (equal (getarg $CUSTOMER spendargs) bankid)
+    (unless (and (equal (getarg $CUSTOMER spendargs) serverid)
                  (equal (getarg $REQUEST spendargs) $ATSPEND)
                  (or (null feeargs)
                      (equal (getarg $REQUEST feeargs) $ATTRANFEE)))
@@ -1887,7 +1887,7 @@
 (define-message-handler do-storagefees $STORAGEFEES (server args reqs)
   ;; Process a storagefees request
   (let ((db (db server))
-        (bankid (bankid server))
+        (serverid (serverid server))
         (id (getarg $CUSTOMER args)))
     (with-db-lock (db (acct-time-key id))
       (checkreq server args)
@@ -1896,7 +1896,7 @@
              (assetids (db-contents db key)))
         (dolist (assetid assetids)
           (let* ((storagefee (db-get db key assetid))
-                 (args (unpack-bankmsg server storagefee $STORAGEFEE))
+                 (args (unpack-servermsg server storagefee $STORAGEFEE))
                  (amount (getarg $AMOUNT args)))
             (unless (equal assetid (getarg $ASSET args))
               (error "Asset mismatch, sb: ~s, was: ~s"
@@ -1905,15 +1905,15 @@
                 (split-decimal amount)
               (when (> (bccomp amount 0) 0)
                 (let* ((time (gettime server))
-                       (storagefee (bankmsg server $STORAGEFEE
-                                            bankid time assetid fraction))
-                       (spend (bankmsg server $SPEND
-                                       bankid time id assetid amount
+                       (storagefee (servermsg server $STORAGEFEE
+                                            serverid time assetid fraction))
+                       (spend (servermsg server $SPEND
+                                       serverid time id assetid amount
                                        "Storage fees"))
-                       (inbox (bankmsg server $INBOX time spend)))
+                       (inbox (servermsg server $INBOX time spend)))
                   (setf (db-get db key assetid) storagefee)
                   (setf (db-get db inboxkey time) inbox)))))))
-      (bankmsg server $ATSTORAGEFEES (get-parsemsg (car reqs))))))
+      (servermsg server $ATSTORAGEFEES (get-parsemsg (car reqs))))))
 
 (define-message-handler do-getasset $GETASSET (server args reqs)
   (declare (ignore reqs))
@@ -1930,7 +1930,7 @@
 (define-message-handler do-asset $ASSET (server args reqs)
   (let ((db (db server))
         (id (getarg $CUSTOMER args))
-        (bankid (bankid server))
+        (serverid (serverid server))
         (parser (parser server)))
     (ensure-permission server id $ADD-ASSET)
     (with-db-lock (db (acct-time-key id))
@@ -1938,14 +1938,14 @@
       (when (< (length reqs) 2)
         (error "No balance items"))
 
-      ;; $ASSET => array($BANKID,$ASSET,$SCALE,$PRECISION,$ASSETNAME),
+      ;; $ASSET => array($SERVERID,$ASSET,$SCALE,$PRECISION,$ASSETNAME),
       (let* ((assetid (getarg $ASSET args))
              (scale (getarg $SCALE args))
              (precision (getarg $PRECISION args))
              (assetname (getarg $ASSETNAME args))
              (storage-msg nil)
              (exists-p (is-asset-p server assetid))
-             (tokens (if (equal id bankid) "0" "1"))
+             (tokens (if (equal id serverid) "0" "1"))
              (bals (make-equal-hash))
              (acctbals (make-equal-hash))
              (oldneg (make-equal-hash))
@@ -2046,7 +2046,7 @@
           (when errmsg (error "Balance discrepancies: ~s" errmsg)))
 
         ;; balancehash must be included
-        (unless (equal id bankid)
+        (unless (equal id serverid)
           (unless balancehashreq (error "~s missing" $BALANCEHASH))
 
           (multiple-value-bind (hash hashcnt)
@@ -2058,14 +2058,14 @@
   
         ;; All's well with the world. Commit this puppy.
         ;; Add asset
-        (let ((res (bankmsg server $ATASSET (get-parsemsg (car reqs)))))
+        (let ((res (servermsg server $ATASSET (get-parsemsg (car reqs)))))
           (when storage-msg
-            (dotcat res "." (bankmsg server $ATSTORAGE storage-msg)))
+            (dotcat res "." (servermsg server $ATSTORAGE storage-msg)))
 
           (setf (db-get db $ASSET assetid) res)
 
-          ;; Credit bank with tokens
-          (add-to-bank-balance server tokenid tokens)
+          ;; Credit server with tokens
+          (add-to-server-balance server tokenid tokens)
 
           ;; Update balances
           (let ((balancekey (balance-key id)))
@@ -2076,14 +2076,14 @@
                (loop
                   for balasset being the hash-key using (hash-value balance)
                   of balances
-                  for balmsg = (bankmsg server $ATBALANCE balance)
+                  for balmsg = (servermsg server $ATBALANCE balance)
                   do
                   (dotcat res "." balmsg)
                   (setf (db-get db acctkey balasset) balmsg))))
 
           ;; Update balancehash
-          (unless (equal id bankid)
-            (let ((balancehash-item (bankmsg server $ATBALANCEHASH balancehashmsg)))
+          (unless (equal id serverid)
+            (let ((balancehash-item (servermsg server $ATBALANCEHASH balancehashmsg)))
               (dotcat res "." balancehash-item)
               (db-put db (balance-hash-key id) balancehash-item)))
 
@@ -2149,9 +2149,9 @@
     (with-db-lock (db (acct-time-key id))
       (checkreq server args)
 
-      ;; $GETOUTBOX => array($BANKID,$REQ)
+      ;; $GETOUTBOX => array($SERVERID,$REQ)
       (let* ((id (getarg $CUSTOMER args))
-             (msg (bankmsg server $ATGETOUTBOX (get-parsemsg (car reqs))))
+             (msg (servermsg server $ATGETOUTBOX (get-parsemsg (car reqs))))
              (outboxkey (outbox-key id))
              (contents (db-contents db outboxkey))
              (outboxhash (db-get db (outbox-hash-key id))))
@@ -2163,7 +2163,7 @@
 
         msg))))
 
-;; These are set by trubanc-client-web::save-trubanc-application
+;; These are set by truledger-client-web::save-truledger-application
 (defvar *last-commit* nil)
 (defvar *save-application-time* nil)
 
@@ -2173,7 +2173,7 @@
         (id (getarg $CUSTOMER args)))
     (with-db-lock (db (acct-time-key id))
       (checkreq server args)
-      (bankmsg server $VERSION
+      (servermsg server $VERSION
                (or *last-commit* "")
                (stringify (or *save-application-time* (get-unix-time)) "~d")))))
 
@@ -2191,7 +2191,7 @@
          (key (getarg $KEY args))
          (data (getarg $DATA args))
          (keyhash (data-key-hash key (unless anonymous-p id)))
-         (contents (unless (blankp data) (bankmsg server $ATREADDATA id time data)))
+         (contents (unless (blankp data) (servermsg server $ATREADDATA id time data)))
          (old-contents (db-get db $DATA keyhash))
          (oldargs (and old-contents (match-message parser old-contents)))
          (old-data (and oldargs (getarg $DATA oldargs)))
@@ -2245,9 +2245,9 @@
                    $BALANCEHASH balancehash hash balancehashcnt hashcnt))))
 
     ;; All is well.
-    ;; Bank wrap the balance and balancehash
-    (setq balancemsg (bankmsg server $ATBALANCE balancemsg)
-          balancehashmsg (bankmsg server $ATBALANCEHASH balancehashmsg))
+    ;; Server wrap the balance and balancehash
+    (setq balancemsg (servermsg server $ATBALANCE balancemsg)
+          balancehashmsg (servermsg server $ATBALANCEHASH balancehashmsg))
 
     ;; Write the data, balance, and balancehash
     (setf (db-get db $DATA keyhash) contents
@@ -2255,7 +2255,7 @@
           (db-get db (balance-hash-key id)) balancehashmsg)
 
     ;; And cons up the return message
-    (strcat (bankmsg server $ATWRITEDATA id time anonymous key)
+    (strcat (servermsg server $ATWRITEDATA id time anonymous key)
             "."
             balancemsg
             "."
@@ -2285,7 +2285,7 @@
       (let ((res-data (if (blankp size)
                           data
                           (stringify (length data)))))
-        (bankmsg server $ATREADDATA id time res-data)))))
+        (servermsg server $ATREADDATA id time res-data)))))
 
 
 (defstruct grant
@@ -2299,11 +2299,11 @@
   (let* ((msg (db-get (db server) (permission-key id permission)))
          (parser (parser server))
          (reqs (and msg (parse parser msg)))
-         (bankid (bankid server))
+         (serverid (serverid server))
          (res nil))
     (dolist (req reqs)
       (let* ((args (match-pattern parser req)))
-        (unless (and (equal bankid (getarg $CUSTOMER args))
+        (unless (and (equal serverid (getarg $CUSTOMER args))
                      (equal $ATGRANT (getarg $REQUEST args)))
           (error "Malformed ~s message" $ATGRANT))
         (setf args (match-pattern parser (getarg $MSG args)))
@@ -2311,9 +2311,9 @@
           (unless (equal toid id)
             (error "Grant not for proper id. SB: ~s, was: ~s"
                    id toid))
-          (unless (equal bankid (getarg $BANKID args))
-            (error "Bad bankid in grant, SB: ~s, was: ~s"
-                   bankid (getarg $BANKID args)))
+          (unless (equal serverid (getarg $SERVERID args))
+            (error "Bad serverid in grant, SB: ~s, was: ~s"
+                   serverid (getarg $SERVERID args)))
           (unless (equal permission (getarg $PERMISSION args))
             (error "Bad permission in grant, SB: ~s, was: ~s"
                    permission (getarg $PERMISSION args)))
@@ -2328,7 +2328,7 @@
 
 (defun ensure-grant-permission (server id toid permission)
   (unless (or (and (equal id toid)
-                   (equal id (bankid server)))
+                   (equal id (serverid server)))
               (let ((grants (parse-grants server id permission)))
                 (find $GRANT grants :test #'equal :key #'grant-grant)))
     (error "You don't have permission to grant or deny permission: ~s"
@@ -2338,8 +2338,8 @@
   (let ((db (db server))
         (cell (assocequal permission (permissions server))))
     (cond (cell (cdr cell))
-          (t (let ((bankid (bankid server)))
-               (with-db-lock (db (acct-time-key bankid))
+          (t (let ((serverid (serverid server)))
+               (with-db-lock (db (acct-time-key serverid))
                  (setf cell (assocequal permission (permissions server)))
                  (cond
                    (cell (cdr cell))
@@ -2347,7 +2347,7 @@
                                        (not
                                         (null
                                          (parse-grants
-                                          server bankid permission)))))
+                                          server serverid permission)))))
                       (push cell (permissions server))
                       (cdr cell)))))))))
 
@@ -2360,11 +2360,11 @@
       (error "You do not have ~s permission" permission)))
 
 (define-message-handler do-grant $GRANT (server args msgs)
-  ;; (<id>,grant,<bankid>,<time#>,<toid>,<permission>,grant=grant)
+  ;; (<id>,grant,<serverid>,<time#>,<toid>,<permission>,grant=grant)
   (declare (ignore msgs))
   (let ((db (db server))
         (id (getarg $CUSTOMER args))
-        (bankid (getarg $BANKID args))
+        (serverid (getarg $SERVERID args))
         (time (getarg $TIME args))
         (toid (getarg $ID args))
         (grantp (equal $GRANT (getarg $GRANT args)))
@@ -2373,25 +2373,25 @@
     ;; Burn the transaction
     (deq-time server id time)
 
-    (unless (equal bankid (bankid server))
-      (error "Bad bankid in grant request"))
-    (when (and (not (equal id bankid)) (equal toid bankid))
-      (error "You are not allowed to grant permissions to the bank"))
+    (unless (equal serverid (serverid server))
+      (error "Bad serverid in grant request"))
+    (when (and (not (equal id serverid)) (equal toid serverid))
+      (error "You are not allowed to grant permissions to the server"))
     (unless (db-get (pubkeydb server) toid)
       (error "No account for toid: ~s" toid))
-    (when (and (equal toid bankid) (not grantp))
-      (error "Bank must be given transitive grant permission"))
+    (when (and (equal toid serverid) (not grantp))
+      (error "Server must be given transitive grant permission"))
     (ensure-grant-permission server id toid permission)
     (with-db-lock (db (acct-time-key toid))
       (do-grant-internal server args id toid permission))))
 
 (defun do-grant-internal (server args id toid permission)
   (let* ((db (db server))
-         (bankid (bankid server))
+         (serverid (serverid server))
          (grants (parse-grants server toid permission))
          (old-grantp nil)
          (grantp (equal $GRANT (getarg $GRANT args)))
-         (msg (bankmsg server $ATGRANT (get-parsemsg args)))
+         (msg (servermsg server $ATGRANT (get-parsemsg args)))
          (res msg))
     (dolist (grant grants)
       (cond ((equal id (grant-id grant))
@@ -2400,26 +2400,26 @@
                  (setf grantp t))
                (dotcat msg "." (grant-msg grant)))))
     (db-put db (permission-key toid permission) msg)
-    (when (equal toid bankid)
+    (when (equal toid serverid)
       ;; Clear cache
       (setf (permissions server) nil))
-    (when (and old-grantp (or (equal id bankid) (not grantp)))
+    (when (and old-grantp (or (equal id serverid) (not grantp)))
       (garbage-collect-permission server permission))
     res))
 
 (define-message-handler do-deny $DENY (server args msgs)
-  ;; (<id>,deny,<bankid>,<req#>,<toid>,<permission>)
+  ;; (<id>,deny,<serverid>,<req#>,<toid>,<permission>)
   (declare (ignore msgs))
   (checkreq server args)
   (let ((db (db server))
         (id (getarg $CUSTOMER args))
-        (bankid (getarg $BANKID args))
+        (serverid (getarg $SERVERID args))
         (toid (getarg $ID args))
         (permission (getarg $PERMISSION args)))
-    (unless (equal bankid (bankid server))
-      (error "Bad bankid in deny request"))
-    (when (and (not (equal id bankid)) (equal toid bankid))
-      (error "You are not allowed to deny permissions to the bank"))
+    (unless (equal serverid (serverid server))
+      (error "Bad serverid in deny request"))
+    (when (and (not (equal id serverid)) (equal toid serverid))
+      (error "You are not allowed to deny permissions to the server"))
     (ensure-grant-permission server id toid permission)
     (with-db-lock (db (acct-time-key toid))
       (do-deny-internal server args id toid permission))))
@@ -2433,15 +2433,15 @@
         (dolist (grant (cdr grants))
           (dotcat msg "." (grant-msg grant)))
         (db-put (db server) (permission-key toid permission) msg)
-        (when (equal toid (bankid server))
+        (when (equal toid (serverid server))
           ;; Clear cache
           (setf (permissions server) nil)))
       (when (and (equal $GRANT (grant-grant grant))
-                 (or (equal id (bankid server))
+                 (or (equal id (serverid server))
                      (not (find $GRANT grants
                                 :test #'equal :key #'grant-grant))))
         (garbage-collect-permission server permission))))
-  (bankmsg server $ATDENY (get-parsemsg args)))
+  (servermsg server $ATDENY (get-parsemsg args)))
 
 (defstruct grant-info
   id
@@ -2451,7 +2451,7 @@
 
 (defun garbage-collect-permission (server permission)
   (let* ((db (db server))
-         (bankid (bankid server))
+         (serverid (serverid server))
          (info-hash (make-equal-hash))
          (ids (db-contents db $ACCOUNT))
          (cnt 0))
@@ -2474,10 +2474,10 @@
              info-hash)
 
     ;; Compute reachable-grants
-    (let* ((bank-info (gethash bankid info-hash))
-           (grants (and bank-info (grant-info-grants bank-info))))
-      (when bank-info
-        (setf (grant-info-reachable-grants bank-info) grants))
+    (let* ((server-info (gethash serverid info-hash))
+           (grants (and server-info (grant-info-grants server-info))))
+      (when server-info
+        (setf (grant-info-reachable-grants server-info) grants))
       (labels ((mark-grantees (id grantees)
                  (dolist (grantee grantees)
                    (let ((info (gethash grantee info-hash)))
@@ -2493,7 +2493,7 @@
                            (push grant (grant-info-reachable-grants info))
                            (mark-grantees
                             grantee (grant-info-grantees info)))))))))
-        (mark-grantees bankid (grant-info-grantees bank-info))))
+        (mark-grantees serverid (grant-info-grantees server-info))))
                    
     ;; Update the database
     (maphash
@@ -2514,16 +2514,16 @@
     cnt))
 
 (define-message-handler do-permission $PERMISSION (server args msgs)
-  ;; (<id>,permission,<bankid>,<req#>,grant=grant)
+  ;; (<id>,permission,<serverid>,<req#>,grant=grant)
   (declare (ignore msgs))
   (checkreq server args)
   (let ((db (db server))
         (id (getarg $CUSTOMER args))
-        (bankid (getarg $BANKID args))
+        (serverid (getarg $SERVERID args))
         (grant (getarg $GRANT args))
-        (msg (bankmsg server $ATPERMISSION (get-parsemsg args))))
-    (unless (equal bankid (bankid server))
-      (error "Bad bankid in permission request"))
+        (msg (servermsg server $ATPERMISSION (get-parsemsg args))))
+    (unless (equal serverid (serverid server))
+      (error "Bad serverid in permission request"))
     (cond (grant
            (unless (equal grant $GRANT)
              (error "~s arg to ~s command can only be blank or ~s"
@@ -2538,10 +2538,10 @@
                         (grant (find id grants :test #'equal :key #'grant-id)))
                    (when grant
                      (dotcat msg "." (grant-msg grant))))))))
-          (t (dolist (permission (db-contents db (permission-key bankid)))
+          (t (dolist (permission (db-contents db (permission-key serverid)))
                (let ((grants (parse-grants server id permission)))
                  (unless grants
-                   (setf grants (parse-grants server bankid permission)))
+                   (setf grants (parse-grants server serverid permission)))
                  (dolist (grant grants)
                    (dotcat msg "." (grant-msg grant)))))))
     msg))
@@ -2552,8 +2552,8 @@
         (id (getarg $CUSTOMER args))
         (req (getarg $REQ args))
         (keys&values (getarg :rest args)))
-    (unless (equal id (bankid server))
-      (error "Backup command only allowed for bankid"))
+    (unless (equal id (serverid server))
+      (error "Backup command only allowed for serverid"))
     (unless (evenp (length keys&values))
       (error "Odd length key&value list"))
     (checkreq server args)
@@ -2564,7 +2564,7 @@
        do
          ;;(format t "~&~s => ~s~%" key value)
          (setf (db-get db key) value))
-    (bankmsg server $ATBACKUP req)))
+    (servermsg server $ATBACKUP req)))
       
 ;;;
 ;;; End request processing
@@ -2576,7 +2576,7 @@
 (defun server-commands ()
   (or *server-commands*
       (let* ((patterns (patterns))
-             (names `(,$BANKID
+             (names `(,$SERVERID
                       ,$ID
                       ,$REGISTER
                       ,$GETREQ
@@ -2609,7 +2609,7 @@
       (setq *server-commands* commands))))
 
 (defparameter *backup-mode-commands*
-  `(,$BANKID ,$BACKUP ,$GETREQ))
+  `(,$SERVERID ,$BACKUP ,$GETREQ))
 
 (defparameter *backup-mode-only-commands*
   `(,$BACKUP))
@@ -2648,14 +2648,14 @@
     (setq pattern (append `(,$CUSTOMER ,$REQUEST) pattern))
     (let* ((args (or (match-args (car reqs) pattern)
                      (error "Can't match message")))
-           (args-bankid (getarg $BANKID args))
+           (args-serverid (getarg $SERVERID args))
            (note (getarg $NOTE args))
            (handler (get-message-handler request)))
-      (unless (or (null args-bankid)
-                  (and (equal "0" args-bankid)
-                       (equal $BANKID (getarg $REQUEST args)))
-                  (equal args-bankid (bankid server)))
-        (error "bankid mismatch"))
+      (unless (or (null args-serverid)
+                  (and (equal "0" args-serverid)
+                       (equal $SERVERID (getarg $REQUEST args)))
+                  (equal args-serverid (serverid server)))
+        (error "serverid mismatch"))
       (when (> (length note) 4096)
         (error "Note too long. Max: 4096 chars"))
       (funcall handler server args reqs))))

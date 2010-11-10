@@ -2,10 +2,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; File System Database for Trubanc
+;;; File System Database for Truledger
 ;;;
 
-(in-package :trubanc)
+(in-package :truledger)
 
 ;; All put/get database implementations should extend db
 (defclass db ()

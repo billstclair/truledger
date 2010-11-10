@@ -1,33 +1,32 @@
 <html>
 <head>
-<title>Trubanc in Lisp</title>
+<title>Truledger</title>
 </head>
 <body>
 
 <p>
 <a href="../">
-<img style="vertical-align: middle; border: 1px white;" src="../trubanc-logo-50x49.gif" alt="Trubanc" width="50" height="49"/></a>
-<b>Trubanc in Lisp</b></p>
+<img style="vertical-align: middle; border: 1px white;" src="www/truledger-logo-50x49.gif" alt="Truledger" width="50" height="49"/></a>
+<b>Truledger</b></p>
 
-<p>I'm porting Trubanc from PHP to Lisp. This will make it more
-  secure, since it will no longer be necessary to store the bank's
-  private key in plaintext in the file system. It will be stored
-  encrypted, and the bank manager will enter its passphrase when
-  starting the server. It also makes it possible to distribute both
-  client and server as a single executable file on Macintosh, Linux,
-  or Windows. Plus, Lisp is compiled, which will make it a lot faster,
-  though that probably doesn't matter much, since the speed is mostly
-  limited by the file system and the crypto.</p>
+<p><a href="http://Truledger.com/">Truledger</a> is an anonymous,
+digitally-signed accounting and trading system. Like
+<a href="https://loom.cc/">Loom</a>, it allows anyone to issue
+assets. Unlike Loom, which relies entirely on (very good) obscurity
+for security, Truledger's digital signatures allow the bank and the
+customer to prove to each other that they agreed at a particular time
+on their balances. It does this while allowing destruction of
+transaction history for closed trades.</p>
 
 <p>Git repository at
-<a href="http://github.com/billstclair/trubanc-lisp/">
-github.com/billstclair/trubanc-lisp</a></p>
+<a href="http://github.com/billstclair/truledger/">
+github.com/billstclair/truledger</a></p>
 
 <p>
-To download the code to the "trubanc-lisp" subdir of pwd:<br/>
+To download the code to the "truledger" subdir of pwd:<br/>
 <br/>
 <code>
-<span style="margin-left: 15px;">git clone git://github.com/billstclair/trubanc-lisp.git trubanc-lisp</span>
+<span style="margin-left: 15px;">git clone git://github.com/billstclair/truledger.git truledger</span>
 </code>
 </p>
 <p style="font-size: 75%;">Copyright &copy; 

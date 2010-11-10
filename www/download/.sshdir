@@ -1,2 +1,2 @@
 #!/bin/bash
-echo "$HUBTB:/usr/local/www/trubanc.com/www/lisp/www/download"
+echo "$HUBTL:/usr/local/www/truledger/lisp/www/download"

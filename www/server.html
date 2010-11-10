@@ -2,39 +2,39 @@
 <head>
 <link rel="stylesheet" type="text/css" href="css/docstyle.css">
 <link rel="stylesheet" type="text/css" href="css/tables.css">
-<title>Trubanc Server Setup & Maintenance</title>
+<title>Truledger Server Setup & Maintenance</title>
 </head>
 <body>
 
 <div id="wrapper">
-<h1>Trubanc Server Setup & Maintenance</h1>
+<h1>Truledger Server Setup & Maintenance</h1>
 
-<p>This page tells you how to start up and initialize a Trubanc server. It is only useful for people who want to run a Trubanc. If you just want to access somebody else's Trubanc server, you'll likely find the <a href="client.html">client documenation</a> to be more useful.</p>
+<p>This page tells you how to start up and initialize a Truledger server. It is only useful for people who want to run a Truledger. If you just want to access somebody else's Truledger server, you'll likely find the <a href="client.html">client documenation</a> to be more useful.</p>
 
 <span class="summary-header">Note</span>
 <p id="summary">
-If you just want to learn the Trubanc server by doing, follow the
+If you just want to learn the Truledger server by doing, follow the
 directions in the gray boxes titled "Summary".
 </p>
 <hr/>
 
 <h2>Contents</h2>
 <a href="#install">Installation</a><br/>
-<a href="#init">Initializing the Bank Database</a><br/>
-<a href="#backup">Backing Up the Bank Database</a><br/>
+<a href="#init">Initializing the Server Database</a><br/>
+<a href="#backup">Backing Up the Server Database</a><br/>
 <hr/>
 
 <h2><a name="install"></a><a name="install"></a>Installation</h2>
 
-<p>Follow the <a href="client.html#install">Client installation instructions</a>. The Trubanc binaries contain both client and server code.</p>
+<p>Follow the <a href="client.html#install">Client installation instructions</a>. The Truledger binaries contain both client and server code.</p>
 
-<p>Choose a directory in which the databases will be installed. When you run the executable, it will create a "trubanc-dbs" sub-directory of the current directory, and, inside that, "clientdb" and "serverdb" sub-directories.</p>
+<p>Choose a directory in which the databases will be installed. When you run the executable, it will create a "truledger-dbs" sub-directory of the current directory, and, inside that, "clientdb" and "serverdb" sub-directories.</p>
 
-<p>The Trubanc application has a number of command line arguments, none of which are in the client documentation. Here's the help output (in 32-bit Linux):</p>
+<p>The Truledger application has a number of command line arguments, none of which are in the client documentation. Here's the help output (in 32-bit Linux):</p>
 
 <p id="code"><code>
-$ ./trubanc-lx86cl -h<br/>
-Usage is: ./trubanc-lx86cl [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid]<br/>
+$ ./truledger-lx86cl -h<br/>
+Usage is: ./truledger-lx86cl [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid]<br/>
 port defaults to 8782, unless keyfile & certfile are included, then 8783.<br/>
 If port defaults to 8783, then nonsslport defaults to 8782,<br/>
 otherwise the application doesn't listen on a non-ssl port.<br/>
@@ -51,74 +51,74 @@ uid & gid are the user id and group id to change to after listening on the port.
 <tr><td><i>keyfile</i></td><td>Path, absolute or relative to working directory, of SSL private key file.</td></tr>
 <tr><td><i>certfile</i></td><td>Path, absolute or relative to working directory, of SSL certificate file.</td></tr>
 <tr><td><i>nonsslport</i></td><td>If <i>keyfile</i> and <i>certfile</i> are specified, port will be listened on for an SSL connection. If you also want to listen for non-SSL connections, <i>nonsslport</i> says which port to listen on for that. Attempts to access the client or server active pages on <i>nonsslport</i>, will redirect to the SSL <i>port</i>, using HTTPS. Static web pages (see below) will remain unencrypted.</td></tr>
-<tr><td><i>uid</i> / <i>gid</i></td><td>Ports less than 1024 (e.g. the HTTP default, 80, and the HTTPS default, 443) are privileged. You need to run the Trubanc application as root in order to use them. If you do that, and specify <i>uid</i> and <i>gid</i>, the app will change its group id and user id to these after starting to listen on <i>port</i> (and <i>nonsslport</i>). This allows you to use a privileged port, but not run as root. Another way to do that is to run the Trubanc server on non-priveleged port(s) and use Apach <a href="http://httpd.apache.org/docs/2.0/mod/mod_proxy.html">mod_proxy</a> or <a href="http://www.apsis.ch/pound/">Pound</a> or another <a href="http://en.wikipedia.org/wiki/Reverse_proxy">reverse proxy</a> to listen on the privileged port(s).</td></tr>
+<tr><td><i>uid</i> / <i>gid</i></td><td>Ports less than 1024 (e.g. the HTTP default, 80, and the HTTPS default, 443) are privileged. You need to run the Truledger application as root in order to use them. If you do that, and specify <i>uid</i> and <i>gid</i>, the app will change its group id and user id to these after starting to listen on <i>port</i> (and <i>nonsslport</i>). This allows you to use a privileged port, but not run as root. Another way to do that is to run the Truledger server on non-priveleged port(s) and use Apach <a href="http://httpd.apache.org/docs/2.0/mod/mod_proxy.html">mod_proxy</a> or <a href="http://www.apsis.ch/pound/">Pound</a> or another <a href="http://en.wikipedia.org/wiki/Reverse_proxy">reverse proxy</a> to listen on the privileged port(s).</td></tr>
 </table></p>
 
 <p>Since you'll want the server to keep running after you've logged off of the server machine, you'll need to either start it in the startup scripts, or use <code>nohup</code> or <code>screen</code>.</p>
 
 <span class="summary-header">Summary - Server Startup</span>
 <p id="summary"><code>
-$ cd ~/trubanc<br/>
-$ screen -S trubanc<br/>
-$ sudo ./trubanc-lx86cl -p 443 --key key.pem --cert cert.pem --nonsslport 80 --uid `id -u` --gid `id -g`<br/>
+$ cd ~/truledger<br/>
+$ screen -S truledger<br/>
+$ sudo ./truledger-lx86cl -p 443 --key key.pem --cert cert.pem --nonsslport 80 --uid `id -u` --gid `id -g`<br/>
 Client web server started on port 80<br/>
 Web address: http://localhost/</code></p>
 
 <hr/>
 
-<h2><a name="init"></a>Initializing the Bank Database</h2>
+<h2><a name="init"></a>Initializing the Server Database</h2>
 
-<p>Starting the Trubanc application enables the its web server to listen on the port(s) you specified, and the client web server will be fully functional, but the bank database needs to be initialized before it can serve as a Trubanc bank. To do that, go to the "Register a new account" screen, and <a href="client.html#registration">create</a> an account, with a blank "Coupon", for the bank administrator.</p>
+<p>Starting the Truledger application enables the its web server to listen on the port(s) you specified, and the client web server will be fully functional, but the server database needs to be initialized before it can serve as a Truledger server. To do that, go to the "Register a new account" screen, and <a href="client.html#registration">create</a> an account, with a blank "Coupon", for the server administrator.</p>
 
-<p>Now click the "Admin" link at the top of the page, and enter a "Bank Name", "Bank URL", "Bank Passphrase" and "Verification". Enter the passphrase you used for the admin account in "Admin Passphrase" and "Verification".</p>
+<p>Now click the "Admin" link at the top of the page, and enter a "Server Name", "Server URL", "Server Passphrase" and "Verification". Enter the passphrase you used for the admin account in "Admin Passphrase" and "Verification".</p>
 
-<img src="screenshots/admin-init-bank.png" alt="Admin init bank" border="1"/>
+<img src="screenshots/admin-init-server.png" alt="Admin init server" border="1"/>
 
-<p>Press the "Start Server" button. The bank's 3072-bit private key will be created (and a new admin private key if you used a new passphrase for that), both the bank and the administrator accounts will be added to the client database, with each other as contacts, and 200,000 usage tokens will be transferred to the admin account. Because the bank's account doesn't keep an inbox or an outbox, and because customers are not allowed to spend to it, I recommend that you distribute usage tokens, and bank-issued assets, from the admin account. Use the bank account only to give the admin account more usage tokens, and to administer the bank server.</p>
+<p>Press the "Start Server" button. The server's 3072-bit private key will be created (and a new admin private key if you used a new passphrase for that), both the server and the administrator accounts will be added to the client database, with each other as contacts, and 200,000 usage tokens will be transferred to the admin account. Because the server's account doesn't keep an inbox or an outbox, and because customers are not allowed to spend to it, I recommend that you distribute usage tokens, and server-issued assets, from the admin account. Use the server account only to give the admin account more usage tokens, and to administer the server server.</p>
 
 <img src="screenshots/admin-after-init.png" alt="Admin after init" border="1"/>
 
-<p>Above is the "Admin" page after the bank has been initialized. When there's a server database, only the bank can get to the "Admin" page, and new client accounts require a server coupon, or an existing server account. Before that, anyone can create new accounts and go to the "Admin" page.</p>
+<p>Above is the "Admin" page after the server has been initialized. When there's a server database, only the server can get to the "Admin" page, and new client accounts require a server coupon, or an existing server account. Before that, anyone can create new accounts and go to the "Admin" page.</p>
 
-<p>The "Shut down web server" button stops the web server and exits the Trubanc application. The "Stop Server" button stops the bank from serving web requests, but leaves the client web server running to serve client requests. I explain the "Start Backup" and "Enable backup mode" buttons below.</p>
+<p>The "Shut down web server" button stops the web server and exits the Truledger application. The "Stop Server" button stops the server from serving web requests, but leaves the client web server running to serve client requests. I explain the "Start Backup" and "Enable backup mode" buttons below.</p>
 
-<p>When the server is running, it responds to bank requests via the URL "/?msg=...", to client requests via "/client/...", and serves static web pages in the "www" sub-directory of the working directory (http://example.com/foo.html serves the file "www/foo.html"). Only "index.html" is supported as a directory index file, but you can include any other static HTML, images, or JavaScript files you desire. That's how this page is being served. There is currently no support for customizing the client web pages, but you can do anything you want for the static HTML site.</p>
+<p>When the server is running, it responds to server requests via the URL "/?msg=...", to client requests via "/client/...", and serves static web pages in the "www" sub-directory of the working directory (http://example.com/foo.html serves the file "www/foo.html"). Only "index.html" is supported as a directory index file, but you can include any other static HTML, images, or JavaScript files you desire. That's how this page is being served. There is currently no support for customizing the client web pages, but you can do anything you want for the static HTML site.</p>
 
-<p>When you first start the Trubanc application, it serves only client web requests. To start the bank server, you need to log in as the bank. I do this by logging into the bank machine with SSH, then using <a href="http://www.jikos.cz/~mikulas/links/"><code>Links</code></a> in that terminal window to log in to the bank. <a href="http://lynx.isc.org/"><code>Lynx</code></a> would also work, or <a href="http://elinks.or.cz/"><code>ELinks</code></a>. Or, if your bank has SSL, you could log in with a regular web browser.</p>
+<p>When you first start the Truledger application, it serves only client web requests. To start the server server, you need to log in as the server. I do this by logging into the server machine with SSH, then using <a href="http://www.jikos.cz/~mikulas/links/"><code>Links</code></a> in that terminal window to log in to the server. <a href="http://lynx.isc.org/"><code>Lynx</code></a> would also work, or <a href="http://elinks.or.cz/"><code>ELinks</code></a>. Or, if your server has SSL, you could log in with a regular web browser.</p>
 
-<span class="summary-header">Summary - Bank Initialization</span>
+<span class="summary-header">Summary - Server Initialization</span>
 <ul id="summary">
-<li>"<a href="client.html#registration">Register</a> a new account" for the bank administrator.</li>
-<li>Fill in "Bank Name", "Bank URL", "Bank Passphrase", "Verification", "Admin Passphrase", and "Verification", and press the "Start Server" button.</li>
-<li>Create a static web site to tell your customers about your bank.</li>
+<li>"<a href="client.html#registration">Register</a> a new account" for the server administrator.</li>
+<li>Fill in "Server Name", "Server URL", "Server Passphrase", "Verification", "Admin Passphrase", and "Verification", and press the "Start Server" button.</li>
+<li>Create a static web site to tell your customers about your server.</li>
 </ul>
 
 <hr/>
 
-<h2><a name="backup"></a>Backing Up the Bank Database</h2>
+<h2><a name="backup"></a>Backing Up the Server Database</h2>
 
-<p>Since you'll be storing claims to valuable assets in your Trubanc database, you'll probably want to back it up regularly. You can do this by using any file backup mechanism on the "trubanc-dbs" directory, or you can set up a backup server, and let Trubanc back itself up, as changes are made. This section tells you how to do the latter.</p>
+<p>Since you'll be storing claims to valuable assets in your Truledger database, you'll probably want to back it up regularly. You can do this by using any file backup mechanism on the "truledger-dbs" directory, or you can set up a backup server, and let Truledger back itself up, as changes are made. This section tells you how to do the latter.</p>
 
-<p>First, copy the "trubanc-dbs" directory to the backup machine. Then start the Trubanc application on that machine, and log in to the client with the bank's passphrase. Go to the "Admin" page. Enable backup mode by pressing the "Enable backup mode" button (see screenshot above). You'll see this:</p>
+<p>First, copy the "truledger-dbs" directory to the backup machine. Then start the Truledger application on that machine, and log in to the client with the server's passphrase. Go to the "Admin" page. Enable backup mode by pressing the "Enable backup mode" button (see screenshot above). You'll see this:</p>
 
 <img src="screenshots/backup-mode-enabled.png" alt="Backup Mode Enabled" border="1"/>
 
-<p>Now, on your main server, log in as the bank, go to the "Admin" page, enter the URL for the backup server as the "Backup Server URL", fill in the "Notification Email" if you want to be notified of problems with the backup, and press the "Start Backup" button. You'll get an error if it can't reach the backup server. Otherwise, you'll see:</p>
+<p>Now, on your main server, log in as the server, go to the "Admin" page, enter the URL for the backup server as the "Backup Server URL", fill in the "Notification Email" if you want to be notified of problems with the backup, and press the "Start Backup" button. You'll get an error if it can't reach the backup server. Otherwise, you'll see:</p>
 
 <img src="screenshots/backup-running.png" alt="Backup Running" border="1"/>
 
 <p>If you specified a notification email address, you'll get an email when you start the backup server, every ten minutes while it's having a problem backing up, and when it stops having a problem.</p>
 
-<p>If you press the "Stop Backup" button, the entire database will be backed up the next time you enable backup. If, on the other hand, you press the "Shut down web server" button, to stop the server for maintenance or Trubanc application upgrade, it will start backing up automatically the next time you start the server, from wherever it left off when you stopped it.</p>
+<p>If you press the "Stop Backup" button, the entire database will be backed up the next time you enable backup. If, on the other hand, you press the "Shut down web server" button, to stop the server for maintenance or Truledger application upgrade, it will start backing up automatically the next time you start the server, from wherever it left off when you stopped it.</p>
 
 <span class="summary-header">Summary - Backup</span>
 <ul id="summary">
-<li>Copy the "trubanc-dbs" directory to the backup server.</li>
-<li>Start Trubanc on the backup server in the directory containing the "trubanc-dbs" directory.</li>
-<li>Log in as the bank.</li>
+<li>Copy the "truledger-dbs" directory to the backup server.</li>
+<li>Start Truledger on the backup server in the directory containing the "truledger-dbs" directory.</li>
+<li>Log in as the server.</li>
 <li>Go to the "Admin" page.</li>
 <li>Press the "Enable backup mode" button.</li>
-<li>Log in as the bank on the regular Trubanc server.</li>
+<li>Log in as the server on the regular Truledger server.</li>
 <li>Go to the "Admin" page.</li>
 <li>Fill in the "Backup Server URL", and, if desired, the "Notification Email".</li>
 <li>Press the "Start Backup" button.
@@ -128,7 +128,7 @@ Web address: http://localhost/</code></p>
 
 <p>Live long and prosper!</p>
 
-<p>Copyright &copy; 2009 Bill St. Clair, All Rights Reserved</p>
+<p>Copyright &copy; 2009-2010 Bill St. Clair, All Rights Reserved</p>
 </div>
 </body>
 </html>

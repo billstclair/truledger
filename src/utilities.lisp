@@ -5,7 +5,7 @@
 ;;; Various utility functions
 ;;;
 
-(in-package :trubanc)
+(in-package :truledger)
 
 (defun file-get-contents (file)
   (with-open-file (stream file :if-does-not-exist nil)

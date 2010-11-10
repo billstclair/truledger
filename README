@@ -1,34 +1,23 @@
 See INSTALL for installation notes.
 
-All the examples in this file assume that you're in the TRUBANC package.
+All the examples in this file assume that you're in the TRULEDGER package.
 
-The top-level server startup code needs to find the file "server.cfg"
-in the current directory. To create that file:
+If you neglected to start the web server when you loaded the code (via
+the TRULEDGER_PORT environment variable), you can start it with:
 
-  (start-config-server "passphrase")
+  (truledger-web-server nil :port <port>)
 
-Where "passphrase" is the passphrase you want to use for the bank's
-private key.
-
-Then aim your browser at localhost:8000, and specify the database
-directory, the WWW directory, containing static html files to display
-when to "msg" parameter is given, and the port on which to start the
-server. It will create a fresh database, write the server.cfg
-file, and startup the server on the port you specified.
-
-After you've done the configuration, you can start the server from
-"server.cfg" with:
-
-  (start-server "passphrase")
+The default port is 8785 ("TRUL" on a phone dialpad). See the code for
+other keyword parameters.
 
 To save an executable file:
 
-  (save-trubanc-application filename)
+  (save-truledger-application &optional filename)
 
-Starting that executable will query for a passphrase, look for
-server.cfg in the current directory, start a server on the specified
-database, www dir, and port, if it's there, or query for the
-passphrase again and start a config server if it isn't, or if
-something else goes wrong.
+Starting that application will start the client web server on the
+command-line-specified (or default) port.
 
-This is all still a work in progress, so expect lots of bugs.
+After you've started the client web server, you can create a server
+keypair, and start the server by following the directions at the
+"Server Setup & Maintenance" link on the home page
+(http://truledger.com:8080/server.html).

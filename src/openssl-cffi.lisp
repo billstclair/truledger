@@ -5,12 +5,12 @@
 ;;; Interface to the cryptographic functions in the OpenSSL library
 ;;;
 
-(cl:defpackage :trubanc-openssl
-  (:use :cl :cffi :cl-base64 :trubanc)
+(cl:defpackage :truledger-openssl
+  (:use :cl :cffi :cl-base64 :truledger)
   (:export
    ))
 
-(in-package :trubanc-openssl)
+(in-package :truledger-openssl)
 
 (defvar *openssl-process* nil)
 
@@ -66,7 +66,7 @@
 (defcfun ("EVP_des_ede3_cbc" evp-des-ede3-cbc) :pointer
   )
 
-;; Trubanc uses AES-256 with CBC to encrypt private keys
+;; Truledger uses AES-256 with CBC to encrypt private keys
 (defcfun ("EVP_aes_256_cbc" evp-aes-256-cbc) :pointer
   )
 
@@ -519,7 +519,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

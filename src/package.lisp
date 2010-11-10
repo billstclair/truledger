@@ -2,15 +2,15 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Trubanc package definition
+;;; Truledger package definition
 ;;;
 
-(cl:defpackage :trubanc-tokens
+(cl:defpackage :truledger-tokens
   (:use :cl)
   (:export
    #:$TIME
    #:$PRIVKEY
-   #:$BANKID
+   #:$SERVERID
    #:$TOKENID
    #:$REGFEE
    #:$TRANFEE
@@ -111,12 +111,12 @@
    #:$ERRMSG
    #:$BALANCEHASH
    #:$COUNT
-   #:$BANKURL
+   #:$SERVERURL
    #:$ENCRYPTEDCOUPON
    #:$COUPONNUMBERHASH
    #:$ISSUER
-   #:$BANK
-   #:$BANKS
+   #:$SERVER
+   #:$SERVERS
    #:$URL
    #:$NICKNAME
    #:$CONTACT
@@ -134,8 +134,8 @@
    #:$ADD-ASSET
    #:$UNPACK-REQS-KEY))
 
-(cl:defpackage :trubanc
-  (:use :cl :cffi :cl-base64 :cl-who :trubanc-tokens)
+(cl:defpackage :truledger
+  (:use :cl :cffi :cl-base64 :cl-who :truledger-tokens)
   (:export
 
    ;; ccl.lisp
@@ -319,13 +319,13 @@
    #:privkey
    #:pubkey
    #:server
-   #:bankid
+   #:serverid
    #:tokenid
    #:process
    #:privkey
    #:make-server
-   #:bankurl
-   #:bankname
+   #:serverurl
+   #:servername
    #:privkey
    #:db
    #:finalize
@@ -340,7 +340,7 @@
    #:debugmsg
    #:debug-stream-p
    #:server-db-dir
-   #:trubanc-web-server
+   #:truledger-web-server
    #:web-server-active-p
    #:stop-web-server
    #:port-server
@@ -350,19 +350,19 @@
 
    ;; toplevel.lisp
    #:write-application-name
-   #:save-trubanc-application
+   #:save-truledger-application
    #:set-interactive-abort-process
    #:invoking-debugger-hook-on-interrupt
    #:backtrace-string))
 
-(cl:defpackage :trubanc-server
-  (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)
+(cl:defpackage :truledger-server
+  (:use :cl :cl-base64 :cl-who :truledger :truledger-tokens)
   (:export
    #:process
    #:make-server
    #:privkey
-   #:bankurl
-   #:bankname
+   #:serverurl
+   #:servername
    #:privkey
    #:db
    #:backup-mode-p
@@ -373,8 +373,8 @@
    #:backup-notification-email
    #:wrapped-db))
 
-(cl:defpackage :trubanc-client
-  (:use :cl :cl-base64 :cl-who :trubanc :trubanc-tokens)
+(cl:defpackage :truledger-client
+  (:use :cl :cl-base64 :cl-who :truledger :truledger-tokens)
   (:export
    #:client
    #:make-client
@@ -395,20 +395,20 @@
    #:logout
    #:the
    #:user-pubkey
-   #:bank
-   #:bank-id
-   #:bank-name
-   #:bank-url
-   #:getbank
-   #:getbanks
+   #:server
+   #:server-info-id
+   #:server-info-name
+   #:server-info-url
+   #:getserver
+   #:getservers
    #:url-p
    #:parse-coupon
    #:verify-coupon
-   #:bankid-for-url
-   #:verify-bank
-   #:addbank
-   #:setbank
-   #:current-bank
+   #:serverid-for-url
+   #:verify-server
+   #:addserver
+   #:setserver
+   #:current-server
    #:register
    #:privkey-cached-p
    #:need-privkey-cache-p
@@ -419,7 +419,7 @@
    #:contact-name
    #:contact-nickname
    #:contact-note
-   #:contact-banks
+   #:contact-servers
    #:contact-contact-p
    #:getcontacts
    #:getcontact
@@ -536,13 +536,13 @@
    #:backup
    #:backup*))
 
-(cl:defpackage :trubanc-client-web
-  (:use :cl :cffi :cl-base64 :cl-who :trubanc :trubanc-tokens :trubanc-client)
+(cl:defpackage :truledger-client-web
+  (:use :cl :cffi :cl-base64 :cl-who :truledger :truledger-tokens :truledger-client)
   (:export
    #:web-server))
 
-(cl:defpackage :trubanc-test
-  (:use :cl :trubanc :trubanc-tokens :trubanc-client))
+(cl:defpackage :truledger-test
+  (:use :cl :truledger :truledger-tokens :truledger-client))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

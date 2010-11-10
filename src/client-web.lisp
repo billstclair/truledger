@@ -2,10 +2,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; The Trubanc client web server
+;;; The Truledger client web server
 ;;;
 
-(in-package :trubanc-client-web)
+(in-package :truledger-client-web)
 
 ;; Causes WHO and WHOTS to indent prettily by default.
 ;; Remove when debugged, to reduce bandwidth.
@@ -16,7 +16,7 @@
 (defparameter *default-menuitems*
   '(("balance" . "Balance")
     ("contacts" . "Contacts")
-    ("banks" . "Banks")
+    ("servers" . "Servers")
     ("assets" . "Assets")
     ("fees" . "Fees")
     ("permissions" . "Permissions")
@@ -29,8 +29,8 @@
   iphone
   title
   error
-  bankline
-  bankname
+  serverline
+  servername
   session
   html-output
   body
@@ -43,7 +43,7 @@
   postmsg
   )
 
-;; Called from do-trubanc-client in server-web.lisp
+;; Called from do-truledger-client in server-web.lisp
 ;; Returns a string with the contents of the client web page.
 (defun web-server ()
   (let* ((client (make-client (client-db-dir))))
@@ -75,7 +75,7 @@
            "logout" do-logout
            "login" do-login
            "contact" (do-contact)
-           "bank" (do-bank)
+           "server" (do-server)
            "asset" (do-asset)
            "fee" (do-fee)
            "permission" (do-permission)
@@ -94,7 +94,7 @@
            "balance" draw-balance
            "rawbalance" draw-raw-balance
            "contacts" draw-contacts
-           "banks" draw-banks
+           "servers" draw-servers
            "assets" draw-assets
            "fees" draw-fees
            "permissions" draw-permissions
@@ -154,7 +154,7 @@
 
 (defun web-server-really-internal (client)
   (let* ((iphone (search "iPhone" (hunchentoot:user-agent)))
-         (title "Trubanc Client")
+         (title "Truledger Client")
          (session (get-cookie "session"))
          (cw (make-cw :client client :iphone iphone :title title :session session))
          (cmd (parm "cmd")))
@@ -174,21 +174,21 @@
     (cond ((id client)
            (initialize-client-history client)
 
-           (init-bank cw)
+           (init-server cw)
 
-           (unless (bankid client)
+           (unless (serverid client)
              (when (and (not (equal cmd "logout"))
                         (not (equal cmd "login"))
-                        (not (equal cmd "bank"))
+                        (not (equal cmd "server"))
                         (not (equal cmd "admins"))
                         (not (equal cmd "admin")))
-               (setq cmd "banks"))))
+               (setq cmd "servers"))))
           ((not (member cmd '("login" "register" "toggledebug") :test #'equal))
            (setq cmd nil)))
 
     (when (and (or (equal cmd "admins")
                    (equal cmd "admin"))
-               (not (is-local-server-bank-p cw)))
+               (not (is-local-server-server-p cw)))
       (setq cmd nil))
 
     (setf (cw-body cw)
@@ -220,10 +220,10 @@
 ;; Should support a template.lhtml file that users can easily change.
 (defun write-template (cw)
   (let ((title (cw-title cw))
-        (bankname (cw-bankname cw))
+        (servername (cw-servername cw))
         (menu (cw-menu cw)))
-    (unless title (setq title "A Trubanc Web Client"))
-    (unless bankname (setq bankname "Trubanc"))
+    (unless title (setq title "A Truledger Web Client"))
+    (unless servername (setq servername "Truledger"))
 
     (who (s (cw-html-output cw))
       (:html
@@ -238,12 +238,12 @@
         (:p
          (:a :href "../"
              (:img :style "vertical-align: middle;border: 1px white"
-                   :src "../trubanc-logo-50x49.gif"
-                   :alt "Trubanc" :width "50" :height "49"))
-         (:b " " (str bankname))
+                   :src "../truledger-logo-50x49.gif"
+                   :alt "Truledger" :width "50" :height "49"))
+         (:b " " (str servername))
          (when menu
            (str "&nbsp;&nbsp;") (str menu)))
-        (write-bankline cw)
+        (write-serverline cw)
         (write-idcode cw)
         (str (cw-body cw))
         (multiple-value-bind (version time)
@@ -265,7 +265,7 @@
                           :href
                           (stringify
                            version
-                           "http://github.com/billstclair/trubanc-lisp/commit/~a")
+                           "http://github.com/billstclair/truledger-lisp/commit/~a")
                           (str version)))
                        (when time
                          (let ((datestr (datestr time)))
@@ -276,7 +276,7 @@
                :class "version"
                (when (write-version s "Client: " *last-commit* *save-application-time*)
                  (who (s) (:br)))
-               (when (bankid (cw-client cw))
+               (when (serverid (cw-client cw))
                  (unless (equal *last-commit* version)
                    (write-version s "Server: " version time)))))))
         (:p
@@ -286,17 +286,17 @@
               :alt "Made with Lisp" :title "Made with Lisp"
               :width "16" :height "16"))))))))
 
-(defun write-bankline (cw)
+(defun write-serverline (cw)
   (let* ((client (cw-client cw))
-         (bankid (bankid client)))
-    (when bankid
-      (let ((bank (getbank client bankid)))
-        (when bank
-          (let ((name (bank-name bank))
-                (url (bank-url bank)))
+         (serverid (serverid client)))
+    (when serverid
+      (let ((server (getserver client serverid)))
+        (when server
+          (let ((name (server-info-name server))
+                (url (server-info-url server)))
             (who (s (cw-html-output cw))
-              (:b "Bank: ")
-              (:span :title (hsc bankid) (esc name))
+              (:b "Server: ")
+              (:span :title (hsc serverid) (esc name))
               " "
               (:a :href url (str url))
               (:br))))))))
@@ -426,15 +426,15 @@
             (:td)
             (:td
              "<p>To generate a new private key, leave the area below blank, enter a
-passphrase, the passphrase again to verify, a bank coupon, an optional
+passphrase, the passphrase again to verify, a server coupon, an optional
 account name, a key size, and click the \"Create account\" button. To
 use an existing private key, paste the private key below, enter its
-passphrase above, a bank coupon, an optional account name, and click
+passphrase above, a server coupon, an optional account name, and click
 the \"Create account\" button.  To show your encrypted private key,
 enter its passphrase, and click the \"Show key\" button. Warning: if you
 forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
-<p>If you lose your private key, which is stored on the computer running this client, nobody can recover that either. To protect against that, you can choose to cache your encrypted private key on the server, with the checkbox above. If you wish to create a new account in this client, using a previously-cached private key, enter your \"Passphrase\", enter the URL of the bank (e.g \"http://trubanc.com/\") as the \"Coupon\", and press the \"Create account\" button."))
+<p>If you lose your private key, which is stored on the computer running this client, nobody can recover that either. To protect against that, you can choose to cache your encrypted private key on the server, with the checkbox above. If you wish to create a new account in this client, using a previously-cached private key, enter your \"Passphrase\", enter the URL of the server (e.g \"http://truledger.com/\") as the \"Coupon\", and press the \"Create account\" button."))
            (:tr
             (:td)
             (:td (:textarea :name "privkey" :cols "65" :rows "44"
@@ -442,7 +442,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                             (esc key))))))))))
 
 (defun settitle (cw subtitle)
-  (setf (cw-title cw) (stringify subtitle "~a - Trubanc Client")))
+  (setf (cw-title cw) (stringify subtitle "~a - Truledger Client")))
 
 (defun menuitem (cmd text highlight)
   (let ((highlightp (equal cmd highlight)))
@@ -460,18 +460,18 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
   (let ((db (make-fsdb (server-db-dir))))
     (not (null (db-get db $PRIVKEY)))))
 
-(defun is-local-server-bank-p (cw &optional (acceptor hunchentoot:*acceptor*))
+(defun is-local-server-server-p (cw &optional (acceptor hunchentoot:*acceptor*))
   (let* ((port (acceptor-port acceptor))
          (server (port-server port))
          (client (cw-client cw)))
     (or (and client (id client)
              (equal (id client)
-                    (cond (server (bankid server))
+                    (cond (server (serverid server))
                           ((server-db-exists-p)
                            (ignore-errors
                              (let* ((db (make-fsdb (server-db-dir)))
                                     (reqs (parse (parser client)
-                                                 (db-get db $BANKID))))
+                                                 (db-get db $SERVERID))))
                                (and reqs
                                     (null (cdr reqs))
                                     (getarg 2 (car reqs)))))))))
@@ -486,12 +486,12 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 (defun setmenu (cw &optional highlight (menuitems *default-menuitems*))
   (let ((menu nil)
         (client (cw-client cw)))
-    (cond ((and highlight client (bankid client))
+    (cond ((and highlight client (serverid client))
            (loop
               for (cmd . text) in menuitems
               do
               (when (or (not (equal cmd "admins"))
-                        (is-local-server-bank-p cw))
+                        (is-local-server-server-p cw))
                 (if menu
                     (dotcat menu "&nbsp;&nbsp")
                     (setq menu ""))
@@ -508,7 +508,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
   (when (cw-session cw)
     (logout (cw-client cw)))
   (delete-cookie "session")
-  (setf (cw-bankline cw) nil
+  (setf (cw-serverline cw) nil
         (cw-error cw) nil)
   (unless no-draw
     (draw-login cw)))
@@ -517,11 +517,11 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
   (when (and (not (get-running-server))
              (server-privkey-file-exists-p))
     (let* ((db (make-fsdb (server-db-dir)))
-           (bankid-reqs
-            (ignore-errors (parse (parser client) (db-get db $BANKID))))
-           (bankid (and (eql 1 (length bankid-reqs))
-                        (gethash 0 (car bankid-reqs)))))
-      (when (and bankid (equal bankid (id client)))
+           (serverid-reqs
+            (ignore-errors (parse (parser client) (db-get db $SERVERID))))
+           (serverid (and (eql 1 (length serverid-reqs))
+                        (gethash 0 (car serverid-reqs)))))
+      (when (and serverid (equal serverid (id client)))
         (handler-case
             (let* ((server (make-server (server-db-dir) passphrase))
                    (backup-url (backup-url-preference server))
@@ -533,13 +533,13 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                    (errmsg nil))
               (cond (backup-enabled-p
                      (handler-case
-                         (trubanc-server:start-backup-process
+                         (truledger-server:start-backup-process
                           server backup-url notification-email)
                        (error (c)
                          (setq errmsg
                                (format nil "Could not start backup process: ~a" c)))))
                     (backup-mode-p
-                     (setf (trubanc-server:backup-mode-p server) t)))
+                     (setf (truledger-server:backup-mode-p server) t)))
               (setf (port-server (get-current-port)) server)
               (when errmsg
                 (error errmsg)))
@@ -598,8 +598,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                   (error (c) (setq err (stringify c)))))
             (error ()
               (handler-case
-                  ;; Ensure that coupon is a URL for a proper bank
-                  (progn (verify-bank client coupon)
+                  ;; Ensure that coupon is a URL for a proper server
+                  (progn (verify-server client coupon)
                          (when (blankp passphrase2)
                            (setq privkey
                                  (fetch-privkey client coupon passphrase)
@@ -613,7 +613,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                 (progn
                   (cond ((integerp privkey)
                          (when (and (blankp coupon) (server-privkey-file-exists-p))
-                           (error "Bank coupon required for registration")))
+                           (error "Server coupon required for registration")))
                         (t (setq privkey (decode-rsa-private-key privkey passphrase)
                                  allocated-privkey-p t)))
                   (newuser client :passphrase passphrase :privkey privkey)
@@ -643,56 +643,56 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
               (when newacct
                 (unless (blankp coupon)
                   (ignore-errors
-                    (addbank client coupon name t)
+                    (addserver client coupon name t)
                     (cond (fetched-privkey-p
                            (setf (privkey-cached-p client) t))
                           (cacheprivkey
                            (setf (need-privkey-cache-p client) t))))))
-              (init-bank cw)
+              (init-server cw)
               (return-from do-login-internal
-                (if (bankid client)
+                (if (serverid client)
                     (draw-balance cw)
-                    (draw-banks cw))))
+                    (draw-servers cw))))
           (error (c)
             (setq err (stringify c "Login error: ~a")))))
 
       (setf (cw-error cw) err)
       (draw-login cw (parm "privkey")))))
 
-(defun do-bank (cw)
-  "Here to change banks or add a new bank"
-  (bind-parameters (newbank selectbank cacheprivkey uncacheprivkey bankurl name bank)
+(defun do-server (cw)
+  "Here to change servers or add a new server"
+  (bind-parameters (newserver selectserver cacheprivkey uncacheprivkey serverurl name server)
     (let ((client (cw-client cw))
           (err nil))
-      (cond (newbank
-             (setq bankurl (trim bankurl))
+      (cond (newserver
+             (setq serverurl (trim serverurl))
              (handler-case
-                 (progn (addbank client bankurl name)
-                        (setf (user-preference client "bankid") (bankid client)))
+                 (progn (addserver client serverurl name)
+                        (setf (user-preference client "serverid") (serverid client)))
                (error (c) (setq err (stringify c)))))
-            (selectbank
-             (cond ((or (not bank) (equal bank ""))
-                    (setq err "You must choose a bank"))
-                   (t (setf (user-preference client "bankid") bank)
-                      (init-bank cw t)
+            (selectserver
+             (cond ((or (not server) (equal server ""))
+                    (setq err "You must choose a server"))
+                   (t (setf (user-preference client "serverid") server)
+                      (init-server cw t)
                       (setq err (cw-error cw)))))
             ((or cacheprivkey uncacheprivkey)
-             (let ((bankid (bankid client)))
+             (let ((serverid (serverid client)))
                (unwind-protect
                     (handler-case
-                        (progn (unless (equal bank bankid)
-                                 (setbank client bank))
+                        (progn (unless (equal server serverid)
+                                 (setserver client server))
                                (cache-privkey
                                 client (get-cookie "session") uncacheprivkey)
                                (setq err (if cacheprivkey
                                              "Private key cached on server"
                                              "Private key removed from server")))
                       (error (c) (setq err (stringify c))))
-                 (unless (equal bankid (bankid client))
-                   (setbank client bankid))))))                    
+                 (unless (equal serverid (serverid client))
+                   (setserver client serverid))))))                    
       (cond (err
              (setf (cw-error cw) err)
-             (draw-banks cw bankurl name))
+             (draw-servers cw serverurl name))
             (t (draw-balance cw))))))
 
 (defun do-contact (cw)
@@ -811,8 +811,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
          (push (cons :feecnt feecnt) values))
         (update
          (cond
-           ((not (equal (id client) (bankid client)))
-            (setf err "Only the bank may update fees"))
+           ((not (equal (id client) (serverid client)))
+            (setf err "Only the server may update fees"))
            (t (let* ((fees nil))
                 (unless (blankp regfee)
                   (push (make-fee :type $REGFEE :amount regfee) fees))
@@ -838,8 +838,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
   "Add a new fee, or change or delete an existing one"
   (let* ((client (cw-client cw))
          (id (id client))
-         (bankid (bankid client))
-         (bankp (equal id bankid))
+         (serverid (serverid client))
+         (serverp (equal id serverid))
          (err nil))
     (bind-parameters (permission grantor grantee toid-select toid grant-p
                       show hide add remove grant ungrant)
@@ -853,7 +853,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
              (storing-error (err "Error granting permission: ~a")
                (cond ((not (blankp toid))
                       (grant client toid permission grant-p))
-                     (bankp (grant client bankid permission t)))))
+                     (serverp (grant client serverid permission t)))))
             (remove
              (storing-error (err "Error denying permission: ~a")
                (deny client grantee permission)))
@@ -870,7 +870,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
   (db-get (db server) $BACKUP $PREFERENCE name))
 
 (defun (setf backup-preference) (value server name)
-  (setf (db-get (trubanc-server:wrapped-db server) $BACKUP $PREFERENCE name)
+  (setf (db-get (truledger-server:wrapped-db server) $BACKUP $PREFERENCE name)
         value))
 
 (defun backup-url-preference (server)
@@ -909,7 +909,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
 (defun do-admin-internal 
     (cw passphrase verification adminpass adminverify)
-  (bind-parameters (bankname bankurl backup-url notification-email
+  (bind-parameters (servername serverurl backup-url notification-email
                              killclient killserver
                              togglebackup togglebackupmode)
     (let ((client (cw-client cw))
@@ -922,23 +922,23 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
             (killserver
              (setf (port-server (get-current-port)) nil)
              (when server
-               (trubanc-server:stop-backup-process server nil)))
+               (truledger-server:stop-backup-process server nil)))
             (togglebackup
              (setq err (toggle-backup cw server backup-url notification-email)))
             (togglebackupmode
              (cond ((null server) (setq err "Server not running."))
                    ((backup-mode-preference server)
                     (setf (backup-mode-preference server) nil
-                          (trubanc-server:backup-mode-p server) nil))
+                          (truledger-server:backup-mode-p server) nil))
                    (t (setf (backup-mode-preference server) "backup"
-                            (trubanc-server:backup-mode-p server) t))))
+                            (truledger-server:backup-mode-p server) t))))
             (server
              (setq err "Server already running"))
-            ((blankp bankname)
-             (setq err "Bank name must be set"))
-            ((or (blankp bankurl)
-                 (not (url-p bankurl)))
-             (setq err "Bank URL must be a web address"))
+            ((blankp servername)
+             (setq err "Server name must be set"))
+            ((or (blankp serverurl)
+                 (not (url-p serverurl)))
+             (setq err "Server URL must be a web address"))
             ((or (blankp passphrase)
                  (not (equal passphrase verification)))
              (setq err "Passphrase didn't match verification"))
@@ -950,21 +950,21 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                    (progn (login cl passphrase) t)
                  (error ()
                    nil)))
-             (setq err "Bank already has a client account. Not handled."))
+             (setq err "Server already has a client account. Not handled."))
             (t (let ((server (handler-case
                                  (make-server (server-db-dir) passphrase
-                                              :bankname bankname
-                                              :bankurl bankurl)
+                                              :servername servername
+                                              :serverurl serverurl)
                                (error (c)
                                  (setq err (stringify
-                                            c "Error initializing bank: ~a"))
+                                            c "Error initializing server: ~a"))
                                  nil))))
                  (when server
                    ;; Enable server web hosting
                    (setf (port-server (acceptor-port hunchentoot:*acceptor*))
                          server)
-                   (let ((bankid (bankid server))
-                         (admin-name (stringify bankname "~a Admin"))
+                   (let ((serverid (serverid server))
+                         (admin-name (stringify servername "~a Admin"))
                          (admin-id nil)
                          (admin-exists-p nil))
                      ;; Login as admin on client, creating account if necessary
@@ -977,9 +977,9 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                      (unless err
                        (setq admin-id (id client))
                        (ignore-errors
-                         ;; If we can set the bank, the admin user
+                         ;; If we can set the server, the admin user
                          ;; already has an account.
-                         (setbank client bankid)
+                         (setserver client serverid)
                          (setq admin-exists-p t)))
                      (unless err
                        (let ((privkey-str
@@ -995,10 +995,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                                    (stringify
                                     c "Can't create server account in client")))))
                        (handler-case
-                           (addbank client bankurl bankname)
+                           (addserver client serverurl servername)
                          (error (c)
                            (setq err (stringify
-                                      c "Can't add bank to client: ~a")))))
+                                      c "Can't add server to client: ~a")))))
                      (unless (or err admin-exists-p)
                        (handler-case
                            (spend client admin-id (tokenid server) "200000")
@@ -1009,30 +1009,30 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                          (handler-case
                              (progn
                                (login client adminpass)
-                               (addbank client bankurl admin-name)
-                               (addcontact client bankid bankname "The bank"))
+                               (addserver client serverurl admin-name)
+                               (addcontact client serverid servername "The server"))
                            (error (c)
                              (setq err (stringify
-                                        c "Can't add bank to admin account: ~a"))))))
+                                        c "Can't add server to admin account: ~a"))))))
 
                      (unless err
                        (handler-case
                            (let ((session (login-new-session client passphrase)))
                              (set-cookie "session" session)
-                             (setbank client bankid)
+                             (setserver client serverid)
                              (addcontact client admin-id admin-name
-                                         "The bank administrator"))
+                                         "The server administrator"))
                          (error (c)
                            (setq err (stringify
-                                      c "Can't login as bank: ~a")))))
+                                      c "Can't login as server: ~a")))))
 
                      (unless err
-                       (setq bankname nil
-                             bankurl nil
+                       (setq servername nil
+                             serverurl nil
                              err "Server started!")))))))
 
       (setf (cw-error cw) err)
-      (draw-admin cw bankname bankurl))))
+      (draw-admin cw servername serverurl))))
 
 (defun toggle-backup (cw server backup-url &optional notification-email)
   (declare (ignore cw))
@@ -1040,10 +1040,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
       (progn
         (unless server
           (error "Can't toggle backup when server isn't enabled"))
-        (let ((backup-p (trubanc-server:backup-process-url server)))
+        (let ((backup-p (truledger-server:backup-process-url server)))
           (cond (backup-p
                  (setf (backup-enabled-preference server) nil)
-                 (trubanc-server:stop-backup-process server)
+                 (truledger-server:stop-backup-process server)
                  "Backup process stopped.")
                 ((not (url-p backup-url))
                  (error "Not a URL: ~a" backup-url))
@@ -1051,7 +1051,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                  (setf (backup-url-preference server) backup-url
                        (notification-email-preference server) notification-email
                        (backup-enabled-preference server) "enabled")
-                 (trubanc-server:start-backup-process
+                 (truledger-server:start-backup-process
                   server backup-url notification-email)
                  "Backup process started."))))
     (error (c)
@@ -1080,7 +1080,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                    (not (blankp allowunregistered))
                    (id-p recipient)
                    (not (ignore-errors (get-id client recipient))))
-          (setq err "Recipient ID not registered at bank")))
+          (setq err "Recipient ID not registered at server")))
 
       (cond ((blankp recipient)
              (cond ((blankp mintcoupon)
@@ -1265,32 +1265,32 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
         (set-cookie "debug" "debug")
         (delete-cookie "debug"))
     (enable-debug-stream new-debug)
-    (cond ((bankid client) (draw-balance cw))
-          ((id client) (draw-banks cw))
+    (cond ((serverid client) (draw-balance cw))
+          ((id client) (draw-servers cw))
           (t (draw-login cw)))))
 
-(defun init-bank (cw &optional report-error-p)
+(defun init-server (cw &optional report-error-p)
   (let* ((client (cw-client cw))
-         (bankid (user-preference client "bankid"))
+         (serverid (user-preference client "serverid"))
          (err nil))
-    (when bankid
-      (handler-case (setbank client bankid nil)
+    (when serverid
+      (handler-case (setserver client serverid nil)
         (error (c)
-          (setf err (stringify c "Can't set bank: ~a")
-                (user-preference client "bankid") nil
-                bankid nil))))
-    (unless (bankid client)
-      (dolist (bank (getbanks client))
-        (let ((bankid (bank-id bank)))
+          (setf err (stringify c "Can't set server: ~a")
+                (user-preference client "serverid") nil
+                serverid nil))))
+    (unless (serverid client)
+      (dolist (server (getservers client))
+        (let ((serverid (server-info-id server)))
           (handler-case
-              (progn (setbank client bankid)
-                     (setf (user-preference client "bankid") bankid)
+              (progn (setserver client serverid)
+                     (setf (user-preference client "serverid") serverid)
                      (return))
             (error (c)
-              (setq err (stringify c "Can't set bank: ~a")
-                    bankid nil))))))
-    (unless (or (bankid client) err)
-      (setq err "No known banks. Please add one."))
+              (setq err (stringify c "Can't set server: ~a")
+                    serverid nil))))))
+    (unless (or (serverid client) err)
+      (setq err "No known servers. Please add one."))
 
   (when report-error-p
     (setf (cw-error cw) err))))
@@ -1356,7 +1356,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
              (nickname (contact-nickname contact))
              (client (cw-client cw)))
         (ignore-errors
-          (unless (equal otherid (bankid client))
+          (unless (equal otherid (serverid client))
             (let* ((tokenid (fee-assetid (getfees client))))
               (unless (getbalance client nil tokenid)
                 (setq nickname "My Sponsor")))))
@@ -1394,11 +1394,11 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                      spend-amount recipient note toacct tonewacct nickname
                      mintcoupon)
   (let* ((client (cw-client cw))
-         (bankid (bankid client))
-         (banks (getbanks client))
+         (serverid (serverid client))
+         (servers (getservers client))
          (err nil)
          (iphone (strstr (or (hunchentoot:header-in* "User-Agent") "") "iPhone"))
-         (bankcode "")
+         (servercode "")
          inboxcode
          seloptions
          selignoreoptions
@@ -1429,28 +1429,28 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
     (settitle cw "Balance")
     (setmenu cw "balance")
 
-    (let ((bankopts
+    (let ((serveropts
            (with-output-to-string (s)
-             (dolist (bank banks)
-               (let ((bid (bank-id bank)))
-                 (unless (equal bid bankid)
+             (dolist (server servers)
+               (let ((bid (server-info-id server)))
+                 (unless (equal bid serverid)
                    (unless (equal (userreq client bid) "-1")
-                     (let ((bname (bank-name bank))
-                           (burl (bank-url bank)))
+                     (let ((bname (server-info-name server))
+                           (burl (server-info-url server)))
                        (who (s)
                          (:option :value bid (str bname) " " (str burl)))))))))))
-      (unless (blankp bankopts)
+      (unless (blankp serveropts)
         (setq
-         bankcode
+         servercode
          (whots (s)
-           (form (s "bank")
+           (form (s "server")
              (:select
-              :name "bank"
-              (:option :value "" "Choose a bank...")
-              (str bankopts))
-             (:input :type "submit" :name "selectbank" :value "Change Bank"))))))
+              :name "server"
+              (:option :value "" "Choose a server...")
+              (str serveropts))
+             (:input :type "submit" :name "selectserver" :value "Change Server"))))))
 
-    (when bankid
+    (when serverid
       ;; Print inbox, if there is one
 
       (setq inbox (storing-error (err "Error getting inbox: ~a")
@@ -1814,7 +1814,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                    (str (contact-options-string
                          client contacts recipient
                          (lambda (x) (setf found x)))))))
-          (when (or (equal (id client) (bankid client))
+          (when (or (equal (id client) (serverid client))
                     (not (or can-mint-token-p can-mint-p)))
             (setq disablemint t))
 
@@ -1945,7 +1945,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                      (form (s "sync"
                             :style "margin: 0px;") ; prevent whitespace below button
                        (:input :type "submit" :name "resync"
-                               :value "Resync with bank"))
+                               :value "Resync with server"))
                      (form (s "toggledebug"
                             :style "margin: 0px;") ; prevent whitespace below button
                        (:input :type "submit" :name "toggledebug"
@@ -1974,7 +1974,7 @@ balance screen.")
                         (:p
                          "To mint a coupon, enter the \"Spend Amount\", check the \"Mint coupon\"
 box, and click the \"Spend\" button next to the asset you want to
-transfer to the coupon. You can redeem a coupon on the \"Banks\" page.")
+transfer to the coupon. You can redeem a coupon on the \"Servers\" page.")
                         (:p
                          "Entering a \"Nickname\" will add the \"Recipient ID\" to your contacts
 list with that nickname, or change the nickname of the selected
@@ -1993,7 +1993,7 @@ list with that nickname, or change the nickname of the selected
         (who (s (cw-html-output cw))
           (str err)
           (:br)
-          (str bankcode)
+          (str servercode)
           (str inboxcode)
           (str spendcode)
           (str outboxcode)
@@ -2114,28 +2114,28 @@ list with that nickname, or change the nickname of the selected
                   (:td :valign "top" (esc assetname))
                   (:td (:pre (str (trimmsg msg))))))))))))))
 
-(defun draw-banks(cw &optional bankurl name)
+(defun draw-servers(cw &optional serverurl name)
   (let* ((client (cw-client cw))
-         (banks (getbanks client))
+         (servers (getservers client))
          (err (cw-error cw))
          (stream (cw-html-output cw)))
 
-    (setf (cw-onload cw) "document.forms[0].bankurl.focus()")
-    (settitle cw "Banks")
-    (setmenu cw "banks")
+    (setf (cw-onload cw) "document.forms[0].serverurl.focus()")
+    (settitle cw "Servers")
+    (setmenu cw "servers")
 
     (who (stream)
       (draw-error cw stream err)
       (:br)
-      (form (stream "bank")
+      (form (stream "server")
         (:table
          (:tr
-          (:td (:b "Bank URL"
+          (:td (:b "Server URL"
                    (:br)
                    "or Coupon:"))
           (:td
-           (:input :type "text" :name "bankurl" :size "64"
-                                                :value bankurl)))
+           (:input :type "text" :name "serverurl" :size "64"
+                                                :value serverurl)))
          (:tr
           (:td (:b "Account Name"
                    (:br)
@@ -2146,36 +2146,36 @@ list with that nickname, or change the nickname of the selected
          (:tr
           (:td)
           (:td
-           (:input :type "submit" :name "newbank" :value "Add Bank")
+           (:input :type "submit" :name "newserver" :value "Add Server")
            (:input :type "submit" :name "cancel" :value "Cancel"))))))
 
-    (when banks
+    (when servers
       (who (stream)
           (:table
            :class "prettytable"
            (:tr
-            (:th "Bank")
+            (:th "Server")
             (:th "URL")
             (:th "ID")
             (:th "Choose")
             (:th "Private Key"))
-           (dolist (bank banks)
-             (let ((bid (bank-id bank)))
+           (dolist (server servers)
+             (let ((bid (server-info-id server)))
                (unless (equal (userreq client bid) "-1")
-                 (let ((name (bank-name bank))
-                       (url (hsc (bank-url bank)))
+                 (let ((name (server-info-name server))
+                       (url (hsc (server-info-url server)))
                        (cached-p (privkey-cached-p client bid)))
                    (when (blankp name)
                      (setq name "unnamed"))
-                   (form (stream "bank"
+                   (form (stream "server"
                           :style "margin: 0px;") ; prevent whitespace below button
-                     (:input :type "hidden" :name "bank" :value bid)
+                     (:input :type "hidden" :name "server" :value bid)
                      (:tr
                       (:td (esc name))
                       (:td (:a :href url (str url)))
                       (:td (esc bid))
                       (:td
-                       (:input :type "submit" :name "selectbank"
+                       (:input :type "submit" :name "selectserver"
                                               :value "Choose"))
                       (:td :style "text-align: center;"                        
                        (:input :type "submit"
@@ -2362,7 +2362,7 @@ list with that nickname, or change the nickname of the selected
 (defun render-fee-row (cw feeidx type assetid amt &optional assetname)
   (let* ((client (cw-client cw))
          (stream (cw-html-output cw))
-         (bankp (equal (id client) (bankid client)))
+         (serverp (equal (id client) (serverid client)))
          (feeidx-p (integerp feeidx)))
     (unless assetname
       (let ((asset (ignore-errors (getasset client assetid))))
@@ -2371,7 +2371,7 @@ list with that nickname, or change the nickname of the selected
     (who (stream)
       (:tr
        (:td
-        (if (and bankp feeidx-p)
+        (if (and serverp feeidx-p)
             (htm
              (:select
               :name (format nil "type~d" feeidx)
@@ -2381,7 +2381,7 @@ list with that nickname, or change the nickname of the selected
                        (str $TRANSFER))))
             (htm (str type))))
        (:td :align "right"
-            (if bankp
+            (if serverp
                 (htm (:input :type "text"
                              :name (if feeidx-p
                                        (format nil "amt~d" feeidx)
@@ -2390,7 +2390,7 @@ list with that nickname, or change the nickname of the selected
                              :size "10"
                              :style "text-align: right;"))
                 (htm (esc amt))))
-       (:td (if (and bankp feeidx-p)
+       (:td (if (and serverp feeidx-p)
                 (htm (:select
                       :name (format nil "asset~d" feeidx)
                       (dolist (asset (getassets client))
@@ -2405,7 +2405,7 @@ list with that nickname, or change the nickname of the selected
 (defun draw-fees (cw &optional values)
   (let* ((client (cw-client cw))
          (stream (cw-html-output cw))
-         (bankp (equal (id client) (bankid client)))
+         (serverp (equal (id client) (serverid client)))
          (feeidx 0))
     (multiple-value-bind (tranfee regfee fees) (getfees client t)
       (settitle cw "Fees")
@@ -2462,7 +2462,7 @@ list with that nickname, or change the nickname of the selected
                (setf feecnt (max feecnt feeidx))
                (htm
                 (:input :type "hidden" :name "feecnt" :value feecnt)))))
-          (when bankp
+          (when serverp
             (htm
              "To remove a fee, clear its amount."
              (:br)
@@ -2479,8 +2479,8 @@ list with that nickname, or change the nickname of the selected
   (let* ((client (cw-client cw))
          (stream (cw-html-output cw))
          (id (id client))
-         (bankid (bankid client))
-         (bankp (equal id bankid))
+         (serverid (serverid client))
+         (serverp (equal id serverid))
          (err (cw-error cw))
          (permissions (storing-error (err "Error getting permissions: ~a")
                         (get-permissions client nil t)))
@@ -2492,9 +2492,9 @@ list with that nickname, or change the nickname of the selected
                (let ((permission-p (get-permissions client permission)))
                  (push (make-permission
                         :id nil
-                        :toid (and (or bankp permission-p) id)
+                        :toid (and (or serverp permission-p) id)
                         :permission permission
-                        :grant-p bankp)
+                        :grant-p serverp)
                        permissions)))))
       (declare (dynamic-extent #'ensure-permission))
       ;; These really should be returned by the server somehow
@@ -2540,7 +2540,7 @@ list with that nickname, or change the nickname of the selected
                             (id-namestr cw grantee "You")
                             "&nbsp;")))
               (:td
-               (cond (bankp
+               (cond (serverp
                       (if grantor
                           (htm
                            (:input
@@ -2563,7 +2563,7 @@ list with that nickname, or change the nickname of the selected
                              (get-granted-permissions client)))
                     (contacts (getcontacts client)))
                (dolist (grant grants)
-                 (unless (and bankp (equal (permission-toid grant) bankid))
+                 (unless (and serverp (equal (permission-toid grant) serverid))
                    (form (stream "permission")
                      (:input :type "hidden" :name "permission" :value perm)
                      (:input :type "hidden" :name "grantor" :value grantor)
@@ -2607,18 +2607,18 @@ list with that nickname, or change the nickname of the selected
                     :type "submit" :name "add" :value "Add"))))))
            (setf last-perm perm)))))))
 
-(defun draw-admin (cw &optional bankname bankurl)
+(defun draw-admin (cw &optional servername serverurl)
   (let ((s (cw-html-output cw))
         (disable-p (server-db-exists-p))
         (server (get-running-server))
         (port (get-current-port)))
-    (setf (cw-onload cw) "document.forms[0].bankname.focus()")
+    (setf (cw-onload cw) "document.forms[0].servername.focus()")
     (settitle cw "Admin")
     (setmenu cw "admins")
 
     (when server
-      (setq bankname (bankname server)
-            bankurl (bankurl server)))
+      (setq servername (servername server)
+            serverurl (serverurl server)))
 
     (who (s)
       (draw-error cw s)
@@ -2639,7 +2639,7 @@ list with that nickname, or change the nickname of the selected
           (when (and disable-p (not server))
             (who (s)
               (:br)
-              (str "To start it, log out, and log back in as the bank.")))
+              (str "To start it, log out, and log back in as the server.")))
           (when server
             (who (s)
               (:br)
@@ -2647,14 +2647,14 @@ list with that nickname, or change the nickname of the selected
                       :value "Stop Server")
               (:br))))
         (when server
-          (let* ((backup-p (trubanc-server:backup-process-url server))
+          (let* ((backup-p (truledger-server:backup-process-url server))
                  (backup-url (or backup-p
                                  (backup-url-preference server)
                                  ""))
                  (notification-email
-                  (or (trubanc-server:backup-notification-email server)
+                  (or (truledger-server:backup-notification-email server)
                       (notification-email-preference server)))
-                 (backup-mode-p (trubanc-server:backup-mode-p server)))
+                 (backup-mode-p (truledger-server:backup-mode-p server)))
             (cond (backup-mode-p
                    (form (s "admin")
                      "Backup mode enabled"
@@ -2665,7 +2665,7 @@ list with that nickname, or change the nickname of the selected
                    (form (s "admin")
                      "Backup "
                      (str (if backup-p
-                              (if (trubanc-server:backup-failing-p server)
+                              (if (truledger-server:backup-failing-p server)
                                   "is failing to backup."
                                   "is running.")
                               (if (backup-enabled-preference server)
@@ -2699,23 +2699,23 @@ list with that nickname, or change the nickname of the selected
           (:br)
           (:table
            (:tr
-            (:td (:b "Bank Name:"))
+            (:td (:b "Server Name:"))
             (:td (:input :type "text"
-                         :name "bankname"
-                         :value bankname
+                         :name "servername"
+                         :value servername
                          :disabled disable-p
                          :size 30)))
            (:tr
-            (:td (:b "Bank URL:"))
+            (:td (:b "Server URL:"))
             (:td (:input :type "text"
-                         :name "bankurl"
-                         :value bankurl
+                         :name "serverurl"
+                         :value serverurl
                          :disabled disable-p
                          :size 30)))
            (unless disable-p
              (who (s)
                (:tr
-                (:td (:b "Bank Passphrase:"))
+                (:td (:b "Server Passphrase:"))
                 (:td (:input :type "password"
                              :name "passphrase"
                              :value ""
@@ -2747,7 +2747,7 @@ list with that nickname, or change the nickname of the selected
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

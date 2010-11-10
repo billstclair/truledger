@@ -1,10 +1,10 @@
 #!/bin/bash
-# Load Trubanc and save-application
+# Load Truledger and save-application
 rm src/*.*fsl                   # Force recompile
-ccl -e '(load "trubanc-loader.lisp")' \
-    -e '(when (find-package :trubanc) (in-package :trubanc))' \
+ccl -e '(load "truledger-loader.lisp")' \
+    -e '(when (find-package :truledger) (in-package :truledger))' \
     -e '(write-application-name "appname.txt")' \
-    -e '(trubanc:save-trubanc-application)'
+    -e '(truledger:save-truledger-application)'
 APPNAME=`cat appname.txt`
 tar -czf $APPNAME.tar.gz $APPNAME
 echo $APPNAME packaged as $APPNAME.tar.gz

@@ -2,12 +2,12 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Trubanc mail sending.
+;;; Truledger mail sending.
 ;;; A thin wrapper around cl-smtp:send-email, which computes
 ;;; the smtp host from the to domain.
 ;;;
 
-(in-package :trubanc)
+(in-package :truledger)
 
 (defun mx-hosts (domain)
   "Return the mail servers for DOMAIN, sorted by priority"
@@ -36,7 +36,7 @@
                                                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

@@ -1,18 +1,18 @@
 ; -*- mode: lisp -*-
 
-(cl:defpackage #:trubanc-loader
+(cl:defpackage #:truledger-loader
     (:use #:cl :ccl)
   (:export #:add-to-registry
            #:loadsys
            #:load-swank
            #:*source-directory*))
 
-(in-package #:trubanc-loader)
+(in-package #:truledger-loader)
 
 (defvar *source-directory*
   (make-pathname :name nil :type nil
                  :defaults (or *load-pathname* *default-pathname-defaults*))
-  "The directory that holds the Trubanc source files, which is assumed
+  "The directory that holds the Truledger source files, which is assumed
    to be the same directory that this file is being loaded from.")
 
 (require "asdf")
@@ -38,7 +38,7 @@
     (loadsys :swank)
     (let ((sym (find-symbol "*DEFAULT-WORKER-THREAD-BINDINGS*" :swank)))
       (when (and sym (boundp sym) (listp (symbol-value sym)))
-        (set sym (cons (cons '*package* (find-package :trubanc))
+        (set sym (cons (cons '*package* (find-package :truledger))
                        (symbol-value sym)))))
     (funcall (find-symbol "CREATE-SERVER" :swank) :port port :dont-close t)))
 
@@ -49,17 +49,17 @@
 ;; Remove this to switch to the new all-lisp crypto code
 (pushnew :openssl-cffi *features*)
 
-(loadsys :trubanc)
+(loadsys :truledger)
 
-(let ((port (ignore-errors (parse-integer (ccl:getenv "TRUBANC_PORT")))))
+(let ((port (ignore-errors (parse-integer (ccl:getenv "TRULEDGER_PORT")))))
   (when port
-    (trubanc:trubanc-web-server nil :port port)))
+    (truledger:truledger-web-server nil :port port)))
 
 
-;; This is not in the :trubanc package def, so that people
+;; This is not in the :truledger package def, so that people
 ;; who incorporate that system, instead of loading it from here,
 ;; won't need this file.
-(use-package :trubanc-loader :trubanc)
+(use-package :truledger-loader :truledger)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

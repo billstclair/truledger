@@ -1,19 +1,19 @@
 <html>
 <head>
-<title>Trubanc in Plain English</title>
+<title>Truledger in Plain English</title>
 </head>
 <body>
-<h1>Trubanc in Plain English</h1>
+<h1>Truledger in Plain English</h1>
 
 <p>
-<a href="http://Trubanc.com/">Trubanc</a> is an anonymous,
+<a href="http://Truledger.com/">Truledger</a> is an anonymous,
 digitally-signed vault and trading system. Like
 <a href="https://loom.cc/">Loom</a>, it allows anyone to issue assets
 (digital currencies). Unlike Loom, which relies entirely on (very
-good) obscurity for security, Trubanc's digital signatures allow the
-bank and the customer to prove to each other that they agreed at a
+good) obscurity for security, Truledger's digital signatures allow the
+server and the customer to prove to each other that they agreed at a
 particular time on their balances. It does this while allowing
-destruction of transaction history for closed trades. Trubanc will
+destruction of transaction history for closed trades. Truledger will
 initially provide server-based trading. Eventually, it will provide
 digital checks and bearer certificates. These, however, WILL require
 permanent storage of transaction history (unless they expire).
@@ -21,15 +21,15 @@ permanent storage of transaction history (unless they expire).
 
 <p>
 <a href="db.txt">doc/db.txt</a> gives a terse
-description of the Trubanc server database and protocol. This page
+description of the Truledger server database and protocol. This page
 attempts to render the protocol in plain English.
 </p>
 
 <p>
-Trubanc uses public key cryptography to sign all messages passed back
-and forth between its web interface and the Trubanc server. Digital
+Truledger uses public key cryptography to sign all messages passed back
+and forth between its web interface and the Truledger server. Digital
 signatures are a virtually unforgeable way to ensure that a message
-was written by its purported author. Trubanc uses OpenSSL for its
+was written by its purported author. Truledger uses OpenSSL for its
 public key cryptography. You probably use OpenSSL every time you visit
 a secure web site, https://somewhere.com/, as does the web server. I
 didn't roll my own. Just used the same tried and true technology that
@@ -41,8 +41,8 @@ and
 </p>
 
 <p>
-I'm going to use four actors in the scenarios that follow. "Bank" is
-the name of the Trubanc server. "Bob" and "Sue" are two customers,
+I'm going to use four actors in the scenarios that follow. "Server" is
+the name of the Truledger server. "Bob" and "Sue" are two customers,
 who will trade with each other. "Spammer" is a third customer, unknown
 to Bob or Sue.
 </p>
@@ -50,34 +50,34 @@ to Bob or Sue.
 <h2>Scenario: Opening an Account</h2>
 
 <p>
-Sue (via email or IM): Hey, Bob. Check out Trubanc. Go to
-Trubanc.com, download the client, and install it on your
+Sue (via email or IM): Hey, Bob. Check out Truledger. Go to
+Truledger.com, download the client, and install it on your
 computer. Then create a private key, and send me your ID, and I'll
 give you some usage tokens so that you can create an account.
 </p>
 
 <p>
-Bob (via email or IM): Thanks, Sue! I installed the Trubanc client
+Bob (via email or IM): Thanks, Sue! I installed the Truledger client
 and created a private key. Here's my ID.
 </p>
 
 <p>
 
 <p>
-Sue (via her Trubanc client): Hey bank, Here's a new request
+Sue (via her Truledger client): Hey server, Here's a new request
 number. Give me a transaction number please.<br/>
 Signed: Sue
 </p>
 
 <p>
-Bank: Here's a new transaction number.<br/>
-Signed: Bank
+Server: Here's a new transaction number.<br/>
+Signed: Server
 </p>
 
 <p>
-Sue: Hey bank, here's that transaction number you gave me. Please
+Sue: Hey server, here's that transaction number you gave me. Please
 spend 50 usage tokens to Bob's ID, with a message of "Hey
-Bob. Welcome to Trubanc!" I'm paying 2 usage tokens as a transaction
+Bob. Welcome to Truledger!" I'm paying 2 usage tokens as a transaction
 fee, which I'll get back when Bob accepts the spend.  My balance after
 this transaction will be 1025 usage tokens. My outbox hash after this
 transaction will be X.<br/>
@@ -85,28 +85,28 @@ Signed: Sue
 </p>
 
 <p>
-Bank: I processed your spend of 50 usage tokens to Bob's ID. I agree
+Server: I processed your spend of 50 usage tokens to Bob's ID. I agree
 that the transaction fee at the time of this transaction is 2 usage
 tokens, and that your balance after this transaction is 1025 usage
 tokens. I agree with you on your outbox hash.<br/>
-Signed: Bank
+Signed: Server
 </p>
 
 <p>
 Sue (via email or IM): OK, Bob. I've given you 50 usage tokens. You
-should now be able to create an account at Trubanc.com. Send me a
-message via Trubanc when you've registered.
+should now be able to create an account at Truledger.com. Send me a
+message via Truledger when you've registered.
 </p>
 
 <p>
-Bob (via his Trubanc client): Hello bank. Here's my ID and my public
+Bob (via his Truledger client): Hello server. Here's my ID and my public
 key. What's your ID and public key?<br/>
 Signed: Bob
 </p>
 
 <p>
-Bank: Here's my ID and public key.<br/>
-Signed: Bank
+Server: Here's my ID and public key.<br/>
+Signed: Server
 </p>
 
 <p>
@@ -115,9 +115,9 @@ Signed: Bob
 </p>
 
 <p>
-Bank: I've registered your ID and public key. Somebody gave you enough
-tokens to register. Welcome to Trubanc.<br/>
-Signed: Bank
+Server: I've registered your ID and public key. Somebody gave you enough
+tokens to register. Welcome to Truledger.<br/>
+Signed: Server
 </p>
 
 <p>-----</p>
@@ -125,10 +125,10 @@ Signed: Bank
 <p>
 In order to sign a message, you need to have a private key. In order
 to verify the signature on a message, you need to have the
-corresponding public key. Trubanc identifies customers by the hash of
+corresponding public key. Truledger identifies customers by the hash of
 their public key, their ID. The ID is a 40-character string of numbers
 and the letters A to F, the hexadecimal representation of a 160-bit
-number. You identify your account to the Trubanc client with a
+number. You identify your account to the Truledger client with a
 passphrase, which is used to encrypt your private key on your
 disk. You'll only need to copy and paste your ID when you want to tell
 a trading partner how to send you money for the first time, or to seed
@@ -138,25 +138,25 @@ your account with usage tokens, as Sue did for Bob.
 <p>
 Usage tokens are an idea from Patrick
 Chkoreff's <a href="https://loom.cc/">Loom</a> system. They are a way
-to charge for the bank's resources. You have to buy storage for your
+to charge for the server's resources. You have to buy storage for your
 account balances, and lease temporary storage for transactions. Usage
-tokens are the "currency" used to do this. Trubanc also supports fees
-in other asset types, for bank management that wants to make more than
-the sale of usage tokens. Trubanc uses the file system as a
-database. One file in the Trubanc database costs one usage
+tokens are the "currency" used to do this. Truledger also supports fees
+in other asset types, for server management that wants to make more than
+the sale of usage tokens. Truledger uses the file system as a
+database. One file in the Truledger database costs one usage
 token. Files vary in size, but are usually about 8K, mostly
 signatures.
 </p>
 
 <p>
-Note that Bob had to send his public key to the bank twice, once when
-he requested the bank's public key, and again when he
-registered. Every message going to and from Trubanc is digitally
+Note that Bob had to send his public key to the server twice, once when
+he requested the server's public key, and again when he
+registered. Every message going to and from Truledger is digitally
 signed. It's only possible to verify a digital signature if you know
 the public key of the signer. A new customer's public key isn't in the
 database until after he's registered, so the first two messages, in
-which the new customer gets the bank's public key, so that he can
-verify the bank's signatures, and the registration request, both need
+which the new customer gets the server's public key, so that he can
+verify the server's signatures, and the registration request, both need
 to include the customers's public key, so that the signatures on those
 two messages can themselves be verified. After registration is
 complete, subsequent messages need to carry only the ID; the public
@@ -168,91 +168,91 @@ Actual messages sent (with the signature that goes with each
 parenthesized item omitted):<br>
 </p>
 <pre>
-Sue: (&lt;suesid>,gettime,&lt;bankid>,&lt;req#>)
-Bank: (&lt;bankid>,time,&lt;suesid>,&lt;time#>)
-Sue: (&lt;suesid>,spend,&lt;bankid>,&lt;time#>,&lt;bobsid>,&lt;tokenid>,50,Hey Bob\. Welcome to Trubanc!).
-        (&lt;suesid>,tranfee,&lt;bankid>,&lt;time#>,&lt;tokenid>,2).
-        (&lt;suesid>,balance,&lt;bankid>,&lt;time#>,&lt;tokenid>,1025).
-        (&lt;suesid>,outboxhash,&lt;bankid>,&lt;time#>,X)
-Bank: (&lt;bankid>,@spend,(&lt;suesid>,spend,&lt;bankid>,&lt;time#>,&lt;bobsid>,&lt;tokenid>,50,Hey Bob\. Welcome to Trubanc!)).
-        (&lt;bankid>,@tranfee,(&lt;suesid>,tranfee,&lt;bankid>,&lt;time#>,&lt;tokenid>,2)).
-        (&lt;bankid>,@balance,(&lt;suesid>,balance,&lt;bankid>,&lt;time#>,&lt;tokenid>,1025)).
-        (&lt;bankid>,@outboxhash,(&lt;suesid>,outboxhash,&lt;bankid>,&lt;time#>,X))
-Bob: (&lt;bobsid>,bankid,&lt;pubkey>)
-Bank: (&lt;bankid>,register,&lt;bankid>,&lt;pubkey>,Trubanc)
-Bob: (&lt;bobsid>,register,&lt;bankid>,&lt;pubkey>,Bob)
-Bank: (&lt;bankid>,@register,(&lt;bobsid>,register,&lt;bankid>,&lt;pubkey>,Bob))
+Sue: (&lt;suesid>,gettime,&lt;serverid>,&lt;req#>)
+Server: (&lt;serverid>,time,&lt;suesid>,&lt;time#>)
+Sue: (&lt;suesid>,spend,&lt;serverid>,&lt;time#>,&lt;bobsid>,&lt;tokenid>,50,Hey Bob\. Welcome to Truledger!).
+        (&lt;suesid>,tranfee,&lt;serverid>,&lt;time#>,&lt;tokenid>,2).
+        (&lt;suesid>,balance,&lt;serverid>,&lt;time#>,&lt;tokenid>,1025).
+        (&lt;suesid>,outboxhash,&lt;serverid>,&lt;time#>,X)
+Server: (&lt;serverid>,@spend,(&lt;suesid>,spend,&lt;serverid>,&lt;time#>,&lt;bobsid>,&lt;tokenid>,50,Hey Bob\. Welcome to Truledger!)).
+        (&lt;serverid>,@tranfee,(&lt;suesid>,tranfee,&lt;serverid>,&lt;time#>,&lt;tokenid>,2)).
+        (&lt;serverid>,@balance,(&lt;suesid>,balance,&lt;serverid>,&lt;time#>,&lt;tokenid>,1025)).
+        (&lt;serverid>,@outboxhash,(&lt;suesid>,outboxhash,&lt;serverid>,&lt;time#>,X))
+Bob: (&lt;bobsid>,serverid,&lt;pubkey>)
+Server: (&lt;serverid>,register,&lt;serverid>,&lt;pubkey>,Truledger)
+Bob: (&lt;bobsid>,register,&lt;serverid>,&lt;pubkey>,Bob)
+Server: (&lt;serverid>,@register,(&lt;bobsid>,register,&lt;serverid>,&lt;pubkey>,Bob))
 </pre>
 
 <h2>Scenario: Receiving Assets</h2>
 
 <p>
-Bob: Hello bank. Here's my ID and a new request number. What's in my
+Bob: Hello server. Here's my ID and a new request number. What's in my
 inbox?<br/>
 Signed: Bob
 </p>
 
 <p>
-Bank: Your inbox contains a 50 usage token spend from Sue with a
-message of "Hey Bob. Welcome to Trubanc!" It also contains a 10 usage
-token charge from the bank with a message of "Registration Fee". Here
+Server: Your inbox contains a 50 usage token spend from Sue with a
+message of "Hey Bob. Welcome to Truledger!" It also contains a 10 usage
+token charge from the server with a message of "Registration Fee". Here
 are two transaction numbers you can use to accept these spends and do
 a spend yourself.<br/>
-Signed: Bank
+Signed: Server
 </p>
 
 <p>
 Bob: Here's my ID and the first of the transaction numbers you gave
 me. Accept the spend from Sue with a message of, "Thanks, Sue. I'm
-excited about Trubanc!" Accept the bank charge. My balance after this
+excited about Truledger!" Accept the server charge. My balance after this
 transaction will be 39 usage tokens.<br/>
 Signed: Bob
 </p>
 
 <p>
-Bank: I've processed the spend from Sue and the bank charge. I agree
+Server: I've processed the spend from Sue and the server charge. I agree
 that your balance after this transaction is 39 usage tokens.<br/>
-Signed: Bank
+Signed: Server
 </p>
 
 <p>-----</p>
 
 <p>
-One possible attack on an electronic bank can be for someone to replay
+One possible attack on an electronic server can be for someone to replay
 an intercepted message. Unless the protocol protects against that,
-this can cause problems. Except for the bankid request, the
+this can cause problems. Except for the serverid request, the
 registration request, and a request for a customer's last request
 number, every information request must be accompanied by a request
 number that is larger than the customer's last used request number,
 and every transaction must be accompanied by a transaction number that
-is given out by the bank. The bank maintains a counter, which it
+is given out by the server. The server maintains a counter, which it
 increments each time someone asks for a transaction number. This makes
 requests that reveal information or initiate transactions impossible
 to replay without a customer's passphrase and private key. In the
-Trubanc world, your passphrase and your private key are your
+Truledger world, your passphrase and your private key are your
 identity. Guard them well.
 </p>
 
 <p>
-Another possible replay attack is to intercept a message for one bank
+Another possible replay attack is to intercept a message for one server
 and send it to another. Customers could protect against this by having
 different IDs, hence different public/private key pairs, for different
-banks. But it will be very convenient to use the same ID. Your friends
+servers. But it will be very convenient to use the same ID. Your friends
 will recognize you, and you'll have only one passphrase to
-remember. So the bank's ID is included in almost every request.
-Requests meant for another bank will not work.
+remember. So the server's ID is included in almost every request.
+Requests meant for another server will not work.
 </p>
 
 <p>
 You're probably wondering why Bob's balance after the transaction is
 39, instead of 40, usage tokens. He got 50 usage tokens from Sue, and
-paid the bank 10 usage tokens for his registration fee. The additional
+paid the server 10 usage tokens for his registration fee. The additional
 usage token is the price of the new file used to store the usage token
 balance. Storage costs usage tokens. Loom charges 1 usage token for
 each 16 bytes of storage. I considered charging per byte, but decided
 that charging per file was easier to handle, though not quite as
 fair. It only makes sense if message sizes are limited, of course. If
-you were allowed megabyte messages, then Trubanc would have to charge
+you were allowed megabyte messages, then Truledger would have to charge
 per byte, or per kilobyte.
 </p>
 
@@ -260,36 +260,36 @@ per byte, or per kilobyte.
 Actual messages sent:
 </p>
 <pre>
-Bob: (&lt;bobsid>,getinbox,&lt;bankid>,&lt;req#>)
-Bank: (&lt;bankid,@getinbox,(&lt;bobsid>,getinbox,&lt;bankid>,&lt;req#>)).
-        (&lt;bankid>,inbox,&lt;time3#>,(&lt;suesid>,spend,&lt;bankid>,&lt;time#>,&lt;bobsid>,&lt;tokenid>,50,Hey Bob\. Welcome to Trubanc!)).
-        (&lt;bankid>,inbox,&lt;time4#>,(&lt;bankid>,spend,&lt;bankid>,&lt;time2#>,&lt;bobsid>,&lt;tokenid>,-10,Registration Fee)).
-        (&lt;bankid>,time,&lt;bobsid>,&lt;time5#>).
-        (&lt;bankid>,time,&lt;bobsid>,&lt;time6#>)
-Bob: (&lt;bobsid>,processinbox,&lt;bankid>,&lt;time5#>,&lt;time3#>|&lt;time4#>).
-       (&lt;bobsid>,spend|accept,&lt;bankid>,&lt;suesid>,&lt;time#>,Thanks Sue\. I'm excited about Trubanc!).
-       (&lt;bobsid>,spend|accept,&lt;bankid>,&lt;bankid>,&lt;time2#>).
-       (&lt;bobsid>,balance,&lt;bankid>,&lt;time5#>,&lt;tokenid>,39)
-Bank: (&lt;bankid>,@processinbox,(&lt;bobsid>,processinbox,&lt;bankid>,&lt;time5#>,&lt;time3#>|&lt;time4#>)).
-        (&lt;bankid>,@spend|accept,(&lt;bobsid>,spend|accept,&lt;bankid>,&lt;suesid>,&lt;time#>,Thanks Sue\. I'm excited about Trubanc!)).
-        (&lt;bankid>,@spend|accept,(&lt;bobsid>,spend|accept,&lt;bankid>,&lt;bankid>,&lt;time2#>)).
-        (&lt;bankid>,@balance,(&lt;bobsid>,balance,&lt;bankid>,&lt;time5#>,&lt;tokenid>,39))
+Bob: (&lt;bobsid>,getinbox,&lt;serverid>,&lt;req#>)
+Server: (&lt;serverid,@getinbox,(&lt;bobsid>,getinbox,&lt;serverid>,&lt;req#>)).
+        (&lt;serverid>,inbox,&lt;time3#>,(&lt;suesid>,spend,&lt;serverid>,&lt;time#>,&lt;bobsid>,&lt;tokenid>,50,Hey Bob\. Welcome to Truledger!)).
+        (&lt;serverid>,inbox,&lt;time4#>,(&lt;serverid>,spend,&lt;serverid>,&lt;time2#>,&lt;bobsid>,&lt;tokenid>,-10,Registration Fee)).
+        (&lt;serverid>,time,&lt;bobsid>,&lt;time5#>).
+        (&lt;serverid>,time,&lt;bobsid>,&lt;time6#>)
+Bob: (&lt;bobsid>,processinbox,&lt;serverid>,&lt;time5#>,&lt;time3#>|&lt;time4#>).
+       (&lt;bobsid>,spend|accept,&lt;serverid>,&lt;suesid>,&lt;time#>,Thanks Sue\. I'm excited about Truledger!).
+       (&lt;bobsid>,spend|accept,&lt;serverid>,&lt;serverid>,&lt;time2#>).
+       (&lt;bobsid>,balance,&lt;serverid>,&lt;time5#>,&lt;tokenid>,39)
+Server: (&lt;serverid>,@processinbox,(&lt;bobsid>,processinbox,&lt;serverid>,&lt;time5#>,&lt;time3#>|&lt;time4#>)).
+        (&lt;serverid>,@spend|accept,(&lt;bobsid>,spend|accept,&lt;serverid>,&lt;suesid>,&lt;time#>,Thanks Sue\. I'm excited about Truledger!)).
+        (&lt;serverid>,@spend|accept,(&lt;bobsid>,spend|accept,&lt;serverid>,&lt;serverid>,&lt;time2#>)).
+        (&lt;serverid>,@balance,(&lt;bobsid>,balance,&lt;serverid>,&lt;time5#>,&lt;tokenid>,39))
 </pre>
 
 <h2>Scenario: Closing a Transaction</h2>
 
 <p>
-Sue: Hello bank. Here's my ID and a new request number. What's in my
+Sue: Hello server. Here's my ID and a new request number. What's in my
 inbox?<br/>
 Signed: Sue
 </p>
 
 <p>
-Bank: Your inbox contains an acceptance from Bob of your 50 usage
+Server: Your inbox contains an acceptance from Bob of your 50 usage
 token spend with a message of, "Thanks Sue. I'm excited about
-Trubanc!" Here are two transaction numbers you can use to close that
+Truledger!" Here are two transaction numbers you can use to close that
 transaction and do a new spend.<br/>
-Signed: Bank
+Signed: Server
 </p>
 
 <p>
@@ -300,17 +300,17 @@ Signed: Sue
 </p>
 
 <p>
-Bank: I've cleared the spend to Bob (and refunded the usage tokens
+Server: I've cleared the spend to Bob (and refunded the usage tokens
 that were leasing the outbox and inbox locations). I agree that your
 balance after this transaction is 1027 usage tokens. And I agree that
 your outbox hash after this transaction is Y.<br/>
-Signed: Bank
+Signed: Server
 </p>
 
 <p>-----</p>
 
 <p>
-There are three main parts of a Trubanc account: the balances, the
+There are three main parts of a Truledger account: the balances, the
 outbox, and the inbox. Value is stored in all three places. When you
 do a spend, your balance for the spent asset is debited, and the spend
 request is stored in your outbox and in the recipients inbox. You are
@@ -321,21 +321,21 @@ acceptance notice is added to your inbox. When you acknowledge his
 acceptance of the spend, the spend request is removed from your
 outbox, the acceptance notice is removed from your inbox, and the two
 usage tokens you paid to lease those files is credited to your
-balance. This three step process is necessary, because the bank can't
+balance. This three step process is necessary, because the server can't
 modify your balances without your signed permission, and it can't
 modify the recipient's balances without his signed permission.
 </p>
 
 <p>
 You may be wondering what an "outbox hash" is. Your balances plus your
-outbox represent the part of your account that you and the bank have
+outbox represent the part of your account that you and the server have
 agreed upon. Your inbox is changed without your knowledge, but the
-bank needs your signed permission to change your outbox (do a spend)
+server needs your signed permission to change your outbox (do a spend)
 or your balances. Since your outbox might get large, instead of
 sending the entire contents back and forth every time you do a spend,
 or acknowledge the acceptance (or rejection) of a spend by a
 recipient, you compute a hash of your outbox, and send that instead,
-and the bank responds with an acknowledgement of that outbox hash
+and the server responds with an acknowledgement of that outbox hash
 (thank you to Patrick Chkoreff for this idea).
 </p>
 
@@ -343,34 +343,34 @@ and the bank responds with an acknowledgement of that outbox hash
 Actual messages sent:
 </p>
 <pre>
-Sue: (&lt;suesid>,getinbox,&lt;bankid>,&lt;req2#>)
-Bank: (&lt;bankid,@getinbox,(&lt;suesid>,getinbox,&lt;bankid>,&lt;req2#>)).
-        (&lt;bankid>,inbox,&lt;time7#>,(&lt;bobsid>,spend|accept,&lt;bankid>,&lt;suesid>,&lt;time#>,Thanks Sue\. I'm excited about Trubanc!)).
-        (&lt;bankid>,time,&lt;bobsid>,&lt;time8#>).
-        (&lt;bankid>,time,&lt;bobsid>,&lt;time9#>)
-Sue: (&lt;suesid>,processinbox,&lt;bankid>,&lt;time8#>,&lt;time7#>).
-       (&lt;suesid>,balance,&lt;bankid>,&lt;time8#>,&lt;tokenid>,1027).
-       (&lt;suesid>,outboxhash,&lt;bankid>,&lt;time8#>,Y)
-Bank: (&lt;bankid>,@processinbox,(&lt;suesid>,processinbox,&lt;bankid>,&lt;time8#>,&lt;time7#>)).
-        (&lt;bankid>,@balance,(&lt;suesid>,balance,&lt;bankid>,&lt;time8#>,&lt;tokenid>,1027)).
-        (&lt;bankid>,@outboxhash,(&lt;suesid>,outboxhash,&lt;bankid>,&lt;time8#>,Y))
+Sue: (&lt;suesid>,getinbox,&lt;serverid>,&lt;req2#>)
+Server: (&lt;serverid,@getinbox,(&lt;suesid>,getinbox,&lt;serverid>,&lt;req2#>)).
+        (&lt;serverid>,inbox,&lt;time7#>,(&lt;bobsid>,spend|accept,&lt;serverid>,&lt;suesid>,&lt;time#>,Thanks Sue\. I'm excited about Truledger!)).
+        (&lt;serverid>,time,&lt;bobsid>,&lt;time8#>).
+        (&lt;serverid>,time,&lt;bobsid>,&lt;time9#>)
+Sue: (&lt;suesid>,processinbox,&lt;serverid>,&lt;time8#>,&lt;time7#>).
+       (&lt;suesid>,balance,&lt;serverid>,&lt;time8#>,&lt;tokenid>,1027).
+       (&lt;suesid>,outboxhash,&lt;serverid>,&lt;time8#>,Y)
+Server: (&lt;serverid>,@processinbox,(&lt;suesid>,processinbox,&lt;serverid>,&lt;time8#>,&lt;time7#>)).
+        (&lt;serverid>,@balance,(&lt;suesid>,balance,&lt;serverid>,&lt;time8#>,&lt;tokenid>,1027)).
+        (&lt;serverid>,@outboxhash,(&lt;suesid>,outboxhash,&lt;serverid>,&lt;time8#>,Y))
 </pre>
 
 <h2>Scenario: Preventing Spam</h2>
 
 <p>
-Spammer (likely via an automated client): Hey bank. Here's a new
+Spammer (likely via an automated client): Hey server. Here's a new
 request number. Give me a transaction number please.<br/>
 Signed: Spammer
 </p>
 
 <p>
-Bank: Here's a new transaction number.<br/>
-Signed: Bank
+Server: Here's a new transaction number.<br/>
+Signed: Server
 </p>
 
 <p>
-Spammer: Hey bank. Here's that transaction number you gave me. Please
+Spammer: Hey server. Here's that transaction number you gave me. Please
 spend 0 usage tokens to Bob's ID, with a message of, "Go all
 night. Visit BuyViagra.com." I'm paying 2 usage tokens as a
 transaction fee, which I'll get back when Bob accepts the spend. My
@@ -380,25 +380,25 @@ Signed: Spammer
 </p>
 
 <p>
-Bank: I processed your spend of 0 usage tokens to Bob's ID. I agree
+Server: I processed your spend of 0 usage tokens to Bob's ID. I agree
 that the transaction fee at the time of this transaction is 2 usage
 tokens, and that your balance after this transaction is 2425 usage
 tokens. I agree with you on your outbox hash.<br/>
-Signed: Bank
+Signed: Server
 </p>
 
 <p>
-Bob: Hello bank. Here's my ID and a new request number. What's in my
+Bob: Hello server. Here's my ID and a new request number. What's in my
 inbox?<br/>
 Signed: Bob
 </p>
 
 <p>
-Bank: Your inbox contains a 0 usage token spend from Spammer with a
+Server: Your inbox contains a 0 usage token spend from Spammer with a
 message of, "Go all night. Visit BuyViagra.com." Here are two
 transaction numbers you can use to accept these spends and do a spend
 yourself.<br/>
-Signed: Bank
+Signed: Server
 </p>
 
 <p>
@@ -410,16 +410,16 @@ Signed: Bob
 </p>
 
 <p>
-Bank: I've rejected the spend from Spammer. I agree that your balance
+Server: I've rejected the spend from Spammer. I agree that your balance
 after this transaction is 41 usage tokens.<br/>
-Signed: Bank
+Signed: Server
 </p>
 
 <p>-----</p>
 
 <p>
 Spends can be rejected. The amount spent goes back to the spender, but
-the recipient pockets the transaction fee. Zero spends use Trubanc as
+the recipient pockets the transaction fee. Zero spends use Truledger as
 a simple messaging service. But not a free one, unless the recipient
 wants the message. IMHO, spam exists largely because it is nearly free
 to send email. In a system where each spam message costs 2 usage
@@ -431,51 +431,51 @@ will tell.
 Actual messages sent:
 </p>
 <pre>
-Spammer: (&lt;spammersid>,gettime,&lt;bankid>,&lt;req#>)
-Bank: (&lt;bankid>,time,&lt;spammersid>,&lt;time10#>)
-Spammer: (&lt;spammersid>,spend,&lt;bankid>,&lt;time10#>,&lt;bobsid>,&lt;tokenid>,0,Go all night\. Visit BuyViagra.com\.).
-        (&lt;spammersid>,tranfee,&lt;bankid>,&lt;time#>,&lt;tokenid>,2).
-        (&lt;spammersid>,balance,&lt;bankid>,&lt;time#>,&lt;tokenid>,2425).
-        (&lt;spammersid>,outboxhash,&lt;bankid>,&lt;time#>,Z)
-Bank: (&lt;bankid>,@spend,(&lt;spammersid>,spend,&lt;bankid>,&lt;time#>,&lt;bobsid>,&lt;tokenid>,0,Go all night\. Visit BuyViagra.com\.)).
-        (&lt;bankid>,@tranfee,(&lt;spammersid>,tranfee,&lt;bankid>,&lt;time#>,&lt;tokenid>,2)).
-        (&lt;bankid>,@balance,(&lt;spammersid>,balance,&lt;bankid>,&lt;time#>,&lt;tokenid>,2425)).
-        (&lt;bankid>,@outboxhash,(&lt;spammersid>,outboxhash,&lt;bankid>,&lt;time#>,Z))
-Bob: (&lt;bobsid>,getinbox,&lt;bankid>,&lt;req2#>)
-Bank: (&lt;bankid,@getinbox,(&lt;bobsid>,getinbox,&lt;bankid>,&lt;req2#>)).
-        (&lt;bankid>,inbox,&lt;time11#>,(&lt;spammersid>,spend,&lt;bankid>,&lt;time10#>,&lt;bobsid>,&lt;tokenid>,0,Go all night\. Visit BuyViagra.com\.)).
-        (&lt;bankid>,time,&lt;bobsid>,&lt;time12#>).
-        (&lt;bankid>,time,&lt;bobsid>,&lt;time13#>)
-Bob: (&lt;bobsid>,processinbox,&lt;bankid>,&lt;time12#>,&lt;time11#>).
-       (&lt;bobsid>,spend|reject,&lt;bankid>,&lt;spammersid>,&lt;time12#>,&lt;time10#>,Thanks for the tokens).
-       (&lt;bobsid>,balance,&lt;bankid>,&lt;time12#>,&lt;tokenid>,41)
-Bank: (&lt;bankid>,@processinbox,(&lt;bobsid>,processinbox,&lt;bankid>,&lt;time12#>,&lt;time11#>)).
-        (&lt;bankid>,@spend|reject,(&lt;bobsid>,spend|accept,&lt;bankid>,&lt;spammersid>,&lt;time12#>,&lt;time10#>,Thanks for the tokens)).
-        (&lt;bankid>,@balance,(&lt;bobsid>,balance,&lt;bankid>,&lt;time12#>,&lt;tokenid>,41))
+Spammer: (&lt;spammersid>,gettime,&lt;serverid>,&lt;req#>)
+Server: (&lt;serverid>,time,&lt;spammersid>,&lt;time10#>)
+Spammer: (&lt;spammersid>,spend,&lt;serverid>,&lt;time10#>,&lt;bobsid>,&lt;tokenid>,0,Go all night\. Visit BuyViagra.com\.).
+        (&lt;spammersid>,tranfee,&lt;serverid>,&lt;time#>,&lt;tokenid>,2).
+        (&lt;spammersid>,balance,&lt;serverid>,&lt;time#>,&lt;tokenid>,2425).
+        (&lt;spammersid>,outboxhash,&lt;serverid>,&lt;time#>,Z)
+Server: (&lt;serverid>,@spend,(&lt;spammersid>,spend,&lt;serverid>,&lt;time#>,&lt;bobsid>,&lt;tokenid>,0,Go all night\. Visit BuyViagra.com\.)).
+        (&lt;serverid>,@tranfee,(&lt;spammersid>,tranfee,&lt;serverid>,&lt;time#>,&lt;tokenid>,2)).
+        (&lt;serverid>,@balance,(&lt;spammersid>,balance,&lt;serverid>,&lt;time#>,&lt;tokenid>,2425)).
+        (&lt;serverid>,@outboxhash,(&lt;spammersid>,outboxhash,&lt;serverid>,&lt;time#>,Z))
+Bob: (&lt;bobsid>,getinbox,&lt;serverid>,&lt;req2#>)
+Server: (&lt;serverid,@getinbox,(&lt;bobsid>,getinbox,&lt;serverid>,&lt;req2#>)).
+        (&lt;serverid>,inbox,&lt;time11#>,(&lt;spammersid>,spend,&lt;serverid>,&lt;time10#>,&lt;bobsid>,&lt;tokenid>,0,Go all night\. Visit BuyViagra.com\.)).
+        (&lt;serverid>,time,&lt;bobsid>,&lt;time12#>).
+        (&lt;serverid>,time,&lt;bobsid>,&lt;time13#>)
+Bob: (&lt;bobsid>,processinbox,&lt;serverid>,&lt;time12#>,&lt;time11#>).
+       (&lt;bobsid>,spend|reject,&lt;serverid>,&lt;spammersid>,&lt;time12#>,&lt;time10#>,Thanks for the tokens).
+       (&lt;bobsid>,balance,&lt;serverid>,&lt;time12#>,&lt;tokenid>,41)
+Server: (&lt;serverid>,@processinbox,(&lt;bobsid>,processinbox,&lt;serverid>,&lt;time12#>,&lt;time11#>)).
+        (&lt;serverid>,@spend|reject,(&lt;bobsid>,spend|accept,&lt;serverid>,&lt;spammersid>,&lt;time12#>,&lt;time10#>,Thanks for the tokens)).
+        (&lt;serverid>,@balance,(&lt;bobsid>,balance,&lt;serverid>,&lt;time12#>,&lt;tokenid>,41))
 </pre>
 
 <h2>Scenario: Issuing Assets</h2>
 
 <p>
-Bob: Hey bank. Here's a new request number. Give me a transaction
+Bob: Hey server. Here's a new request number. Give me a transaction
 number please.<br/>
 Signed: Bob
 </p>
 
 <p>
-Bank: Here's a new transaction number.<br/>
-Signed: Bank
+Server: Here's a new transaction number.<br/>
+Signed: Server
 </p>
 
 <p>
-Bob: Hey bank. Here's that transaction number you gave me. Please
+Bob: Hey server. Here's that transaction number you gave me. Please
 register a new asset named "Bob GoldGrams". It has a scale of 7 and a
 precision of 3. Its ID is &lt;bobggid>. My balance after this transaction
 will be 39 usage tokens and -1 &lt;bobggid>.
 </p>
 
 <p>
-Bank: I have registered the new "Bob GoldGrams" asset. I agree that
+Server: I have registered the new "Bob GoldGrams" asset. I agree that
 your balance after this transaction is 39 usage tokens and
 -1 &lt;bobggid>.
 </p>
@@ -483,18 +483,18 @@ your balance after this transaction is 39 usage tokens and
 <p>-----</p>
 
 <p>
-Like Loom, Trubanc allows customers to create their own asset
+Like Loom, Truledger allows customers to create their own asset
 types. Then, if they can convince them to do so, other customers can
-trade in that asset type. The ID of a Trubanc asset is the sha1 hash
+trade in that asset type. The ID of a Truledger asset is the sha1 hash
 of the creator's ID, its scale, its precision, and its name. But the
-message the customer signs to create the asset, and that the bank
-signs to acknowledge creation, also contains the bankid. This allows
-the asset to be registered at multiple banks, with the same ID, but
-makes each particular registration specific to a specific bank. Hence,
+message the customer signs to create the asset, and that the server
+signs to acknowledge creation, also contains the serverid. This allows
+the asset to be registered at multiple servers, with the same ID, but
+makes each particular registration specific to a specific server. Hence,
 it makes sense for an asset issuer to provide a service of
-transferring his holdings of his asset between banks at which he's
-registered; it's self-evident that Bob GoldGrams at Bank A are
-the same asset as Bob GoldGrams at bank B.
+transferring his holdings of his asset between servers at which he's
+registered; it's self-evident that Bob GoldGrams at Server A are
+the same asset as Bob GoldGrams at server B.
 </p>
 
 <p>
@@ -503,12 +503,12 @@ out the intricacies yet.
 </p>
 
 <p>
-Like Loom, all amounts in Trubanc are stored as integers. The scale
+Like Loom, all amounts in Truledger are stored as integers. The scale
 value controls where the decimal point goes in the real-world
 representation of that value: move it left by scale places. The
 precision controls the minimum number of decimal places that are
 printed. So with a scale of 7 and a precision of 3, the value 12000000
-will be printed by Trubanc clients as 1.200, and the minimum value for
+will be printed by Truledger clients as 1.200, and the minimum value for
 Bob's new currency is 0.0000001, one ten-millionth of a gram of gold,
 or $0.000003 at $30/gram: 3 ten-thousandths of a cent. Hello
 micropayments.
@@ -521,7 +521,7 @@ issuer, who can spend as much as he wants, and a bunch of positive
 balances, and outbox entries. A -1 balance in the issuer's account
 means there are no outstanding balances or outbox entries in that
 asset, so that's where Bob's Bob GoldGrams balance begins. Users of an
-asset have to trust the issuer when he tells them, outside of Trubanc,
+asset have to trust the issuer when he tells them, outside of Truledger,
 that his asset is backed by something of real value, and that he'll
 never issue more of the virtual asset than he has in the backing
 commodity. Well, unless he wants to act like a country, and issue fiat
@@ -533,59 +533,59 @@ else. Good luck getting people to go for that.
 Actual messages sent:
 </p>
 <pre>
-Bob: (&lt;bobsid>,gettime,&lt;bankid>,&lt;req3#>)
-Bank: (&lt;bankid>,time,&lt;bobsid>,&lt;time13#>)
-Bob: (&lt;bobsid>,asset,&lt;bankid>,&lt;bobggid>,7,3,Bob GoldGrams).
-       (&lt;bobsid>,balance,&lt;bankid>,&lt;time13#>,&lt;tokenid>,39).
-       (&lt;bobsid,balance,&lt;bankid>,&lt;time13#>,&lt;bobggid>,-1)
-Bank: (&lt;bankid>,#asset,(&lt;bobsid>,asset,&lt;bankid>,&lt;bobggid>,7,3,Bob GoldGrams)).
-       (&lt;bankid>,#balance,(&lt;bobsid>,balance,&lt;bankid>,&lt;time13#>,&lt;tokenid>,39)).
-       (&lt;bankid>,#balance,(&lt;bobsid,balance,&lt;bankid>,&lt;time13#>,&lt;bobggid>,-1))
+Bob: (&lt;bobsid>,gettime,&lt;serverid>,&lt;req3#>)
+Server: (&lt;serverid>,time,&lt;bobsid>,&lt;time13#>)
+Bob: (&lt;bobsid>,asset,&lt;serverid>,&lt;bobggid>,7,3,Bob GoldGrams).
+       (&lt;bobsid>,balance,&lt;serverid>,&lt;time13#>,&lt;tokenid>,39).
+       (&lt;bobsid,balance,&lt;serverid>,&lt;time13#>,&lt;bobggid>,-1)
+Server: (&lt;serverid>,#asset,(&lt;bobsid>,asset,&lt;serverid>,&lt;bobggid>,7,3,Bob GoldGrams)).
+       (&lt;serverid>,#balance,(&lt;bobsid>,balance,&lt;serverid>,&lt;time13#>,&lt;tokenid>,39)).
+       (&lt;serverid>,#balance,(&lt;bobsid,balance,&lt;serverid>,&lt;time13#>,&lt;bobggid>,-1))
 </pre>
 
 <h2>Scenario: Multiple Sub-Accounts</h2>
 
 <p>
-Bob: Hey bank. Here's a new request number. Give me a transaction
+Bob: Hey server. Here's a new request number. Give me a transaction
 number please.<br/>
 Signed: Bob
 </p>
 
 <p>
-Bank: Here's a new transaction number.<br/>
-Signed: Bank
+Server: Here's a new transaction number.<br/>
+Signed: Server
 </p>
 
 <p>
-Bob: Hey bank. Here's that transaction number you gave me. Make a zero
+Bob: Hey server. Here's that transaction number you gave me. Make a zero
 spend to myself. My balance after the transaction will be 38 usage
 tokens, -311.0347681 Bob GoldGrams in my default sub-account, and
 311.034768 Bob GoldGrams in my "Gun Safe" sub-account.
 </p>
 
 <p>
-Bank: I did that spend. I agree with you that after the transaction,
+Server: I did that spend. I agree with you that after the transaction,
 your balance is 38 usages tokens, -311.0347681 Bob GoldGrams in your
 default account, and 311.034768 Bob GoldGrams in your "Gun Safe"
 sub-account.
 </p>
 
 <p>
-Bob: Hey bank. Here's a new request number. Give me a transaction
+Bob: Hey server. Here's a new request number. Give me a transaction
 number please.<br/>
 Signed: Bob
 </p>
 
 <p>
-Bank: Here's a new transaction number.<br/>
-Signed: Bank
+Server: Here's a new transaction number.<br/>
+Signed: Server
 </p>
 
 <p>
-Bob: Hey bank. Here's that transaction number you gave me. Please
+Bob: Hey server. Here's that transaction number you gave me. Please
 spend 2.4056304 Bob GoldGrams to Sue, with a message of, "Well, I
 finally issued my new currency, backed by Krugerands in my gun
-safe. I'm giving you a gram in thanks for turning me on to Trubanc,
+safe. I'm giving you a gram in thanks for turning me on to Truledger,
 and <a href="http://www.google.com/search?q=(36+dollars+%2F+(796.60+dollars+per++troy+ounce))+in+grams">
 1.4056304 grams</a> for 36 <a href="http://capulin.com/">Capulin
 Coffee</a> Units, which you said you'd sell me, so I can buy more of
@@ -599,19 +599,19 @@ Signed: Bob
 </p>
 
 <p>
-Bank: I have done your spend of 2.4056304 Bob GoldGrams to Sue, with
+Server: I have done your spend of 2.4056304 Bob GoldGrams to Sue, with
 your message, and a transaction fee of 2 usage tokens. I agree that
 your balance after this transaction is 36 usage tokens, and
 309.6291376 Bob GoldGrams in your "Gun Safe" sub-account. I agree on the
 outbox hash.<br/>
-Signed: Bank
+Signed: Server
 </p>
 
 <p>-----</p>
 
 <p>
-Trubanc supports splitting up your balances into multiple
-"sub-accounts". Much like a conventional bank gives you a checking
+Truledger supports splitting up your balances into multiple
+"sub-accounts". Much like a conventional server gives you a checking
 account and a savings account, you can use these sub-accounts to help
 manage your assets. You can have as many of them as you wish, limited
 only by having usage tokens to pay for the files.
@@ -640,36 +640,36 @@ the outbox and inbox stuff.
 Actual messages sent:
 </p>
 <pre>
-Bob: (&lt;bobsid>,gettime,&lt;bankid>,&lt;req4#>)
-Bank: (&lt;bankid>,time,&lt;bobsid>,&lt;time14#>)
-Bob: (&lt;bobsid>,spend,&lt;bankid>,&lt;time14#>,&lt;bobsid>,&lt;bobggid>,0).
-        (&lt;bobsid>,balance,&lt;bankid>,&lt;time14#>,&lt;bobggid>,-3110347681).
-        (&lt;bobsid>,balance,&lt;bankid>,&lt;time14#>,&lt;bobggid>,3110347680,Gun Safe)
-Bank: (&lt;bankid>,@spend,(&lt;bobsid>,spend,&lt;bankid>,&lt;time14#>,&lt;bobsid>,&lt;bobggid>,0)).
-        (&lt;bankid>,@balance,(&lt;bobsid>,balance,&lt;bankid>,&lt;time14#>,&lt;bobggid>,-3110347681)).
-        (&lt;bankid>,@balance,(&lt;bobsid>,balance,&lt;bankid>,&lt;time14#>,&lt;bobggid>,3110347680,Gun Safe))
-Bob: (&lt;bobsid>,gettime,&lt;bankid>,&lt;req5#>)
-Bank: (&lt;bankid>,time,&lt;bobsid>,&lt;time15#>)
-Bob: (&lt;bobsid>,spend,&lt;bankid>,&lt;time15#>,&lt;suesid>,&lt;bobggid>,24056304,Well\, I
+Bob: (&lt;bobsid>,gettime,&lt;serverid>,&lt;req4#>)
+Server: (&lt;serverid>,time,&lt;bobsid>,&lt;time14#>)
+Bob: (&lt;bobsid>,spend,&lt;serverid>,&lt;time14#>,&lt;bobsid>,&lt;bobggid>,0).
+        (&lt;bobsid>,balance,&lt;serverid>,&lt;time14#>,&lt;bobggid>,-3110347681).
+        (&lt;bobsid>,balance,&lt;serverid>,&lt;time14#>,&lt;bobggid>,3110347680,Gun Safe)
+Server: (&lt;serverid>,@spend,(&lt;bobsid>,spend,&lt;serverid>,&lt;time14#>,&lt;bobsid>,&lt;bobggid>,0)).
+        (&lt;serverid>,@balance,(&lt;bobsid>,balance,&lt;serverid>,&lt;time14#>,&lt;bobggid>,-3110347681)).
+        (&lt;serverid>,@balance,(&lt;bobsid>,balance,&lt;serverid>,&lt;time14#>,&lt;bobggid>,3110347680,Gun Safe))
+Bob: (&lt;bobsid>,gettime,&lt;serverid>,&lt;req5#>)
+Server: (&lt;serverid>,time,&lt;bobsid>,&lt;time15#>)
+Bob: (&lt;bobsid>,spend,&lt;serverid>,&lt;time15#>,&lt;suesid>,&lt;bobggid>,24056304,Well\, I
       finally issued my new currency\, backed by Krugerands in my gun
-      safe\. I'm giving you a gram in thanks for turning me on to Trubanc\,
+      safe\. I'm giving you a gram in thanks for turning me on to Truledger\,
       and 1\.4056304 grams for 36 Capulin Coffee Units\, which you said you'd
       sell me\, so I can buy more of Daniel Fourwinds' fine coffee that we
       relished at your house the other day\. I used a gold price of
       $796\.60/ounce, Kitco's bid price this morning\.).
-       (&lt;bobsid>,tranfee,&lt;bankid>,&lt;time15#>,&lt;tokenid>,2).
-       (&lt;bobsid>,balance,&lt;bankid>,&lt;time15#>,&lt;bobggid>,3096291376,Gun Safe).
-       (&lt;bobsid>,outboxhash,&lt;bankid>,&lt;time15#>,A)
-Bank: (&lt;bankid>,@spend,(&lt;bobsid>,spend,&lt;bankid>,&lt;time15#>,&lt;suesid>,&lt;bobggid>,24056304,Well\, I
+       (&lt;bobsid>,tranfee,&lt;serverid>,&lt;time15#>,&lt;tokenid>,2).
+       (&lt;bobsid>,balance,&lt;serverid>,&lt;time15#>,&lt;bobggid>,3096291376,Gun Safe).
+       (&lt;bobsid>,outboxhash,&lt;serverid>,&lt;time15#>,A)
+Server: (&lt;serverid>,@spend,(&lt;bobsid>,spend,&lt;serverid>,&lt;time15#>,&lt;suesid>,&lt;bobggid>,24056304,Well\, I
        finally issued my new currency\, backed by Krugerands in my gun
-       safe\. I'm giving you a gram in thanks for turning me on to Trubanc\,
+       safe\. I'm giving you a gram in thanks for turning me on to Truledger\,
        and 1\.4056304 grams for 36 Capulin Coffee Units\, which you said you'd
        sell me\, so I can buy more of Daniel Fourwinds' fine coffee that we
        relished at your house the other day\. I used a gold price of
        $796\.60/ounce, Kitco's bid price this morning\.)).
-       (&lt;bankid>,@tranfee,(&lt;bobsid>,tranfee,&lt;bankid>,&lt;time15#>,&lt;tokenid>,2)).
-       (&lt;bankid>,@balance,(&lt;bobsid>,balance,&lt;bankid>,&lt;time15#>,&lt;bobggid>,3096291376,Gun Safe)).
-       (&lt;bankid>,@outboxhash,(&lt;bobsid>,outboxhash,&lt;bankid>,&lt;time15#>,A))
+       (&lt;serverid>,@tranfee,(&lt;bobsid>,tranfee,&lt;serverid>,&lt;time15#>,&lt;tokenid>,2)).
+       (&lt;serverid>,@balance,(&lt;bobsid>,balance,&lt;serverid>,&lt;time15#>,&lt;bobggid>,3096291376,Gun Safe)).
+       (&lt;serverid>,@outboxhash,(&lt;bobsid>,outboxhash,&lt;serverid>,&lt;time15#>,A))
 </pre>
 
 <h2>Scenario: Getting Information</h2>

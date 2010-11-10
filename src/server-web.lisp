@@ -2,13 +2,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; The Trubanc server web interface
+;;; The Truledger server web interface
 ;;;
 ;;; (let ((server (make-server "/users/billstclair/testserverdb" "passphrase")))
-;;;   (trubanc-web-server server))
+;;;   (truledger-web-server server))
 ;;;
 
-(in-package :trubanc)
+(in-package :truledger)
 
 (defvar *ports-to-servers*
   (make-hash-table :test 'eql))
@@ -105,7 +105,7 @@
      ,@body))
 
 (defun server-db-dir ()
-  "trubanc-dbs/serverdb")
+  "truledger-dbs/serverdb")
 
 (defvar *debug-stream* t)
 
@@ -138,7 +138,7 @@
   (when (and *debug-stream* (stringp format-string))
     (apply #'format *debug-stream* format-string format-args)))
 
-(defun do-trubanc-web-server ()
+(defun do-truledger-web-server ()
   (let* ((acceptor hunchentoot:*acceptor*)
          (port (hunchentoot:acceptor-port acceptor))
          (server (port-server port))
@@ -171,11 +171,11 @@
 
 (defvar *last-uri* nil)
 
-(defun do-trubanc-web-client ()
+(defun do-truledger-web-client ()
   (let* ((port (hunchentoot:acceptor-port hunchentoot:*acceptor*))
          (*default-pathname-defaults* (or (port-pathname-defaults port)
                                           *default-pathname-defaults*)))
-    (trubanc-client-web:web-server)))
+    (truledger-client-web:web-server)))
   
 (defvar *web-script-handlers*
   (make-hash-table :test 'equal))
@@ -194,7 +194,7 @@
        (when (eql port (car key))
          (remhash key *web-script-handlers*))))
 
-(hunchentoot:define-easy-handler (trubanc-server :uri 'identity) ()
+(hunchentoot:define-easy-handler (truledger-server :uri 'identity) ()
   (let* ((script (hunchentoot:script-name*))
          (acceptor hunchentoot:*acceptor*)
          (port (hunchentoot:acceptor-port acceptor))
@@ -216,7 +216,7 @@
  WeScDyN49po5Z4gIRGQ8xG12pRRJ0hgzPkKMEc45AIBSCrVWAIC19toatdbtnFIi
  AGqtmVL6eEE3A2NMq+d5hve+1Xum//xMI7wAbKVIbzySjiIAAAAASUVORK5CYII=")
 
-(defparameter *trubanc-logo-base64*
+(defparameter *truledger-logo-base64*
 "R0lGODlhMgAxAPcAAAAAAA0AABwAACoAACsVADgVADkAAEccAEgnDEolAFQsCVkm
  AFxZUl04DmRiYGYzAGZCFmZNGmtjUmtnXW1DFm5fR3Bwa3NFD3RJEXVbOHY7AHZO
  G3hID3lNEnlWKHl1anpoS3t5c3xyWn1RFH1SGIFUFoJWG4KAdINcI4RoQYVZFoVi
@@ -670,7 +670,7 @@ p.version {
 
 (defparameter *coded-files*
   `(("/little-lambda.png" do-png ,(b642s *little-lambda-base64*))
-    ("/trubanc-logo-50x49.gif" do-png ,(b642s *trubanc-logo-base64*) "image/gif")
+    ("/truledger-logo-50x49.gif" do-png ,(b642s *truledger-logo-base64*) "image/gif")
     ("/site-icon.ico" do-png ,(b642s *site-icon-base64*) "image/x-icon")
     ("/css/tables.css" do-text ,*tables-css* "text/text")))
 
@@ -694,8 +694,8 @@ p.version {
                          (and (equal "lisp" (pathname-type file))
                               "text/plain"))))))))))
 
-(defparameter *default-server-port* 8782) ; "TRUB" on a phone dialpad
-(defparameter *default-server-ssl-port* 8783) ; add one for SSL port
+(defparameter *default-server-port* 8785) ; "TRUL" on a phone dialpad
+(defparameter *default-server-ssl-port* 8786) ; add one for SSL port
 
 #|| Creating a self-signed certificate
 openssl genrsa -out key.pem
@@ -741,7 +741,7 @@ openssl x509 -in cert.pem -text -noout
 
 ) ; #+windows
 
-(defun trubanc-web-server (server &key
+(defun truledger-web-server (server &key
                            (pathname-defaults nil)
                            (www-dir "www")
                            ssl-certificate-file
@@ -781,11 +781,11 @@ openssl x509 -in cert.pem -text -noout
                   (port-www-dir port) www-dir
                   (port-pathname-defaults port) pathname-defaults)
             (setf (get-web-script-handler port "/")
-                  'do-trubanc-web-server
+                  'do-truledger-web-server
                   (get-web-script-handler port "/client")
                   #'(lambda () (hunchentoot:redirect "/client/"))
                   (get-web-script-handler port "/client/")
-                  'do-trubanc-web-client)        
+                  'do-truledger-web-client)        
             (setf (port-acceptor port) acceptor)
             (hunchentoot:start acceptor)
             acceptor))
@@ -816,10 +816,10 @@ openssl x509 -in cert.pem -text -noout
     (cond ((equal script "/")
            (if (parm "msg")
                (redirect-to-ssl to-port)
-               (do-trubanc-web-server)))
+               (do-truledger-web-server)))
           ((equal script "/client/")
            (redirect-to-ssl to-port))
-          (t (do-trubanc-web-server)))))
+          (t (do-truledger-web-server)))))
 
 (defun redirect-to-ssl (to-port)
   (hunchentoot:redirect
@@ -862,9 +862,9 @@ openssl x509 -in cert.pem -text -noout
                               (if ssl-p "https" "http") port)
                       :redirect nil)))))))))
 
-(defun send-bank-request (uri &optional msg-p)
+(defun send-server-request (uri &optional msg-p)
   (drakma:http-request
-   (format nil "http://~a~@[?msg=(bc50c4fd9c228a21f64d34ca644a46c1fe8520e4%2Cbankid%2C-----BEGIN+PUBLIC+KEY-----%0AMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMwfcmkk2coTuYAEbdZ5iXggObNPzbSi%0ADnVtndZFe4%2F4Xg0IQPfpQ04OkhWIftMy1OjFhGlBzzNzdW98KYwKMgsCAwEAAQ%3D%3D%0A-----END+PUBLIC+KEY-----%0A)%3A%0AsLJ9GqFjZ61fq%2FbDFL6rxpY3w2s5dWIAXJCvPKQTPEkrG%2F2I1fwxBfugBmn%2FiPwa%0AjCRtnFDnrn7Mv%2BUY%2BSH4yw%3D%3D~]" uri msg-p)))
+   (format nil "http://~a~@[?msg=(bc50c4fd9c228a21f64d34ca644a46c1fe8520e4%2Cserverid%2C-----BEGIN+PUBLIC+KEY-----%0AMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMwfcmkk2coTuYAEbdZ5iXggObNPzbSi%0ADnVtndZFe4%2F4Xg0IQPfpQ04OkhWIftMy1OjFhGlBzzNzdW98KYwKMgsCAwEAAQ%3D%3D%0A-----END+PUBLIC+KEY-----%0A)%3A%0AsLJ9GqFjZ61fq%2FbDFL6rxpY3w2s5dWIAXJCvPKQTPEkrG%2F2I1fwxBfugBmn%2FiPwa%0AjCRtnFDnrn7Mv%2BUY%2BSH4yw%3D%3D~]" uri msg-p)))
 
 (defvar *stop-pounding-flag* nil)
 (defvar *pound-lock* (make-lock "Pound lock"))
@@ -879,7 +879,7 @@ openssl x509 -in cert.pem -text -noout
         (loop
            (when *stop-pounding-flag* (return))
            (ignore-errors
-             (send-bank-request uri msg-p)
+             (send-server-request uri msg-p)
              (with-lock-grabbed (*pound-lock*)
                (incf *pound-count*))))))))
 
@@ -891,7 +891,7 @@ openssl x509 -in cert.pem -text -noout
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

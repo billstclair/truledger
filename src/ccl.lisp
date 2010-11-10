@@ -5,7 +5,7 @@
 ;;; CCL interface functions 
 ;;;
 
-(in-package :trubanc)
+(in-package :truledger)
 
 ;; This noticeably speeds things up
 (ccl:egc nil)
@@ -30,7 +30,7 @@
 (defun gc ()
   (ccl:gc))
 
-(defclass trubanc-application (ccl::application)
+(defclass truledger-application (ccl::application)
   ())
 
 (defun set-interactive-abort-process (&optional (process ccl:*current-process*))
@@ -45,7 +45,7 @@
                          toplevel-function
                          init-file
                          error-handler
-                         (application-class 'trubanc-application)
+                         (application-class 'truledger-application)
                          clear-clos-caches
                          purify
                          impurify
@@ -151,7 +151,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

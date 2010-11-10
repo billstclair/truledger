@@ -1,0 +1,6 @@
+#!/bin/bash
+# Usage is: "truledger [slimeport]"
+rm src/*.*fsl                   # Force recompile
+ccl -e '(load "truledger-loader.lisp")' \
+    -e '(when (find-package :truledger) (in-package :truledger))' \
+    -e "(truledger-loader:load-swank $1)"

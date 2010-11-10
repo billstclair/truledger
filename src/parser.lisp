@@ -8,7 +8,7 @@
 ;;; Values can be (id,...):signature forms.
 ;;;
 
-(in-package :trubanc)
+(in-package :truledger)
 
 (defconstant $PARSER-MSGKEY "%msg%")
 
@@ -20,10 +20,10 @@
           :initform nil)
    (keydict :initform (make-hash-table :test 'equal)
             :accessor parser-keydict)
-   (bank-getter :initarg :bank-getter
+   (server-getter :initarg :server-getter
                 :type (or function null)
                 :initform nil
-                :accessor parser-bank-getter)
+                :accessor parser-server-getter)
    (always-verify-sigs-p :initform nil
                          :initarg :always-verify-sigs-p
                          :accessor parser-always-verify-sigs-p)
@@ -146,7 +146,7 @@
                          (setq id (and dict (gethash 0 dict)))
                          (when (not (and (equal id "0")
                                          (member (gethash 1 dict)
-                                                 '("bankid" "readdata")
+                                                 '("serverid" "readdata")
                                                  :test 'equal)))
                            (unless id
                              (error "Signature without ID at ~d" pos))
@@ -185,7 +185,7 @@
          (dict-1 (gethash 1 dict)))
     (when (and (not pubkey)
                (or (equal dict-1 "register")
-                   (equal dict-1 "bankid")))
+                   (equal dict-1 "serverid")))
       ;; May be the first time we've seen this ID.
       ;; If it's a key definition message, we're set
       (setq pubkey
@@ -372,7 +372,7 @@
      finally
        (return (str-replace ",(" #.(format nil ",~%(") res))))
 
-(defmethod match-pattern ((parser parser) req &optional bankid)
+(defmethod match-pattern ((parser parser) req &optional serverid)
   (let* ((patterns (patterns))
          (request (gethash 1 req))
          (pattern (gethash request patterns)))
@@ -385,15 +385,15 @@
                request
                pattern
                (get-parsemsg req)))
-      (let ((args-bankid (gethash $BANKID args)))
-        (when args-bankid
-          (unless bankid
-            (let ((bank-getter (parser-bank-getter parser)))
-              (when bank-getter
-                (setq bankid (funcall bank-getter)))))
-          (unless (or (blankp bankid) (equal bankid args-bankid))
-            (error "bankid mismatch, sb: ~s, was: ~s"
-                   bankid args-bankid))))
+      (let ((args-serverid (gethash $SERVERID args)))
+        (when args-serverid
+          (unless serverid
+            (let ((server-getter (parser-server-getter parser)))
+              (when server-getter
+                (setq serverid (funcall server-getter)))))
+          (unless (or (blankp serverid) (equal serverid args-serverid))
+            (error "serverid mismatch, sb: ~s, was: ~s"
+                   serverid args-serverid))))
       (when (> (length (gethash $NOTE args)) 4096)
         (error "Note too long. Max: 4096 chars"))
       args)))
@@ -407,7 +407,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

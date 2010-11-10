@@ -2,10 +2,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Trubanc server backup
+;;; Truledger server backup
 ;;;
 
-(in-package :trubanc-server)
+(in-package :truledger-server)
 
 (defun make-backup-db (db &optional url email)
   (let ((res (make-instance 'backup-db :wrapped-db db :url url :email email))
@@ -138,18 +138,18 @@
             (last-read-key db) nil))))
 
 (defun make-backup-client (server remote-url)
-  (let* ((client (trubanc-client:make-client (client-db-dir)))
-         (bankid (bankid server))
-         (remote-bankid (trubanc-client:bankid-for-url client remote-url)))
-    (unless (equal bankid remote-bankid)
-      (error "Remote bank not for same bankid as local bank"))
-    (setf (id client) bankid
-          (bankid client) bankid
+  (let* ((client (truledger-client:make-client (client-db-dir)))
+         (serverid (serverid server))
+         (remote-serverid (truledger-client:serverid-for-url client remote-url)))
+    (unless (equal serverid remote-serverid)
+      (error "Remote server not for same serverid as local server"))
+    (setf (id client) serverid
+          (serverid client) serverid
           (privkey client) (privkey server)
-          (server client) (trubanc-client:make-server-proxy client remote-url))
+          (server client) (truledger-client:make-server-proxy client remote-url))
     ;; Ensure remote server is in backup mode
-    (trubanc-client:getreq client t)
-    (trubanc-client:backup client)
+    (truledger-client:getreq client t)
+    (truledger-client:backup client)
     client))
 
 (defun backup-existing-db (db)
@@ -245,14 +245,14 @@
     (when send-email
       (when (send-backup-db-email
              db
-             "Trubanc backup failing notification"
-             "Trubanc backup is failing from ~a to ~a")
+             "Truledger backup failing notification"
+             "Truledger backup is failing from ~a to ~a")
         (setf (backup-db-sent-failure-email db) t)))))
 
 (defun backup-db-from (db)
-  (let ((url (db-get db $BANKURL)))
+  (let ((url (db-get db $SERVERURL)))
     (or (and url (url-email-address url))
-        "admin@trubanc.com")))
+        "admin@truledger.com")))
 
 (defun url-email-address (url)
   (let* ((host (puri:uri-host (puri:parse-uri url))))
@@ -272,7 +272,7 @@
 
 (defun do-backup-process (db client server)
   (check-type db backup-db)
-  (check-type client trubanc-client:client)
+  (check-type client truledger-client:client)
   (check-type server server)
   (unwind-protect
        (progn
@@ -302,7 +302,7 @@
   (let ((keys&values nil)
         (data-size 0)
         (done nil)
-        (bankreq-key (append-db-keys $ACCOUNT (id client) $REQ))
+        (serverreq-key (append-db-keys $ACCOUNT (id client) $REQ))
         (initreq-p nil)
         (read-index (read-index db))
         (thunk (lambda ())))
@@ -311,7 +311,7 @@
          (unless key
            (setq done t)
            (return))
-         (unless (equal key bankreq-key)
+         (unless (equal key serverreq-key)
            (push key keys&values)
            (push value keys&values)
            (incf data-size (+ (length key) (length value)))
@@ -329,8 +329,8 @@
             (progn
               (when initreq-p
                 (setq initreq-p nil)
-                (trubanc-client:getreq client t))
-              (trubanc-client:backup* client keys&values)
+                (truledger-client:getreq client t))
+              (truledger-client:backup* client keys&values)
               (cancel-timer (backup-db-failing-thunk db))
               (setf (backup-db-failing-thunk db) nil
                     (backup-db-send-email-on-failure db) t)
@@ -339,8 +339,8 @@
                 (setf (backup-db-sent-failure-email db) nil)
                 (send-backup-db-email
                  db
-                 "Trubanc backup working again"
-                 "Trubanc backup is working again from ~a to ~a"))
+                 "Truledger backup working again"
+                 "Truledger backup is working again from ~a to ~a"))
               (return))
           (error (c)
             (declare (ignorable c))
@@ -358,14 +358,14 @@
     (setf (db server) db
           (backup-process-db server) db
           (backup-process server) (process-run-function
-                                   "Trubanc Backup"
+                                   "Truledger Backup"
                                    #'do-backup-process
                                    db client server))
     (unless (blankp notify-email)
       (send-backup-db-email
        db
-       "Trubanc backup started"
-       "Trubanc backup started from ~a to ~a"))))
+       "Truledger backup started"
+       "Truledger backup started from ~a to ~a"))))
 
 (defun send-backup-db-email (db subject message-format)
   (let ((to (backup-db-email db)))
@@ -376,7 +376,7 @@
                             to
                             subject
                             (format nil message-format
-                                    (db-get db $BANKURL)
+                                    (db-get db $SERVERURL)
                                     (backup-db-url db)))
       t)))
 
@@ -393,7 +393,7 @@
                                                         
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

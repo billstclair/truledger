@@ -2,10 +2,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; The toplevel function for the Trubanc application
+;;; The toplevel function for the Truledger application
 ;;;
 
-(in-package :trubanc-client-web)
+(in-package :truledger-client-web)
 
 (defun toplevel-function ()
   (set-interactive-abort-process)
@@ -112,7 +112,7 @@ uid & gid are the user id and group id to change to after listening on the port.
     (when gid (setq gid (parse-integer gid)))
     #+loadswank
     (when slimeport
-      (push (cons '*package* (find-package :trubanc))
+      (push (cons '*package* (find-package :truledger))
             swank:*default-worker-thread-bindings*)
       (swank:create-server :port slimeport :dont-close t))
     slimeport                           ;no warning
@@ -120,7 +120,7 @@ uid & gid are the user id and group id to change to after listening on the port.
         (let* ((dispport (or nonsslport port))
                (url (format nil "http://localhost~@[:~a~]/"
                             (unless (eql dispport 80) dispport))))
-          (trubanc-web-server
+          (truledger-web-server
            nil
            :port port
            :ssl-privatekey-file keyfile
@@ -132,7 +132,7 @@ uid & gid are the user id and group id to change to after listening on the port.
                   (or nonsslport port))
           (format t "Web address: ~a~%" url)
           (when (server-db-exists-p)
-            (format t "REMEMBER TO LOG IN AS THE BANK TO START THE SERVER!!~%"))
+            (format t "REMEMBER TO LOG IN AS THE SERVER TO START THE SERVER!!~%"))
           (finish-output)
           (browse-url url))
       (error (c)
@@ -199,9 +199,9 @@ uid & gid are the user id and group id to change to after listening on the port.
     (write-string name s)))
 
 (defun application-name ()
-  (stringify (target-suffix) "trubanc-~a"))
+  (stringify (target-suffix) "truledger-~a"))
 
-(defun save-trubanc-application (&optional (filename (application-name)))
+(defun save-truledger-application (&optional (filename (application-name)))
   (stop-web-server)
   (setq *last-commit* (last-commit))
   (setq *save-application-time* (get-unix-time))
@@ -212,7 +212,7 @@ uid & gid are the user id and group id to change to after listening on the port.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009 Bill St. Clair
+;;; Copyright 2009-2010 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

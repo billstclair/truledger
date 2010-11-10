@@ -1,6 +1,0 @@
-#!/bin/bash
-# Usage is: "trubanc [slimeport]"
-rm src/*.*fsl                   # Force recompile
-ccl -e '(load "trubanc-loader.lisp")' \
-    -e '(when (find-package :trubanc) (in-package :trubanc))' \
-    -e "(trubanc-loader:load-swank $1)"

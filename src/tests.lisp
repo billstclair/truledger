@@ -2,13 +2,13 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Test code for Trubanc client and server
+;;; Test code for Truledger client and server
 ;;;
 
-(in-package :trubanc-test)
+(in-package :truledger-test)
 
 (defvar *test-pathname*
-  (or *load-pathname* "~/loom/web/trubanc/lisp/src/tests.lisp"))
+  (or *load-pathname* "~/loom/web/truledger/lisp/src/tests.lisp"))
 
 (defparameter *www-dir*
   (directory-namestring (merge-pathnames "../www/" *test-pathname*)))
@@ -48,8 +48,8 @@
       (ignore-errors (recursive-delete-directory client-dir)))
     (setf (server ts) (make-server
                        server-dir passphrase
-                       :bankname "Test Bank"
-                       :bankurl (format nil "http://localhost:~d/" port)
+                       :servername "Test Server"
+                       :serverurl (format nil "http://localhost:~d/" port)
                        :privkey-size 512)
           (client ts) (make-client client-dir
                                    :test-server (unless network-p (server ts))))
@@ -57,7 +57,7 @@
       (start-test-web-server ts))))
 
 (defmethod start-test-web-server ((ts test-state))
-  (trubanc-web-server (server ts) :www-dir *www-dir* :port (port ts)))
+  (truledger-web-server (server ts) :www-dir *www-dir* :port (port ts)))
 
 (defmethod stop-test-web-server ((ts test-state))
   (stop-web-server (port ts)))
@@ -80,8 +80,8 @@
 (defmethod id ((ts test-state))
   (id (client ts)))
 
-(defmethod bankid ((ts test-state))
-  (bankid (server ts)))
+(defmethod serverid ((ts test-state))
+  (serverid (server ts)))
 
 (defmethod getassets ((ts test-state))
   (getassets (client ts)))
@@ -89,10 +89,10 @@
 (defmethod tokenid ((ts test-state))
   (tokenid (client ts)))
 
-(defmethod login-bank ((ts test-state))
+(defmethod login-server ((ts test-state))
   (let* ((server (server ts))
          (client (client ts))
-         (bankid (bankid server))
+         (serverid (serverid server))
          (passphrase (passphrase ts)))
     (handler-case (login client passphrase)
       (error ()
@@ -101,9 +101,9 @@
           (newuser client
                    :passphrase passphrase
                    :privkey privkey))))
-    (handler-case (setbank client bankid)
+    (handler-case (setserver client serverid)
       (error ()
-        (addbank client (bankurl server))
+        (addserver client (serverurl server))
         (let ((balance (getbalance client))
               (tokenid (tokenid server)))
           (loop
@@ -117,7 +117,7 @@
                        (amount (balance-amount bal))
                        (formatted-amount (balance-formatted-amount bal)))
                    (assert (equal tokenid assetid))
-                   (assert (equal assetname "Test Bank Usage Tokens"))
+                   (assert (equal assetname "Test Server Usage Tokens"))
                    (assert (equal amount "-1"))
                    (assert (equal formatted-amount "-0"))))))))
     (id client)))
@@ -128,15 +128,15 @@
     (handler-case (login client passphrase)
       (error ()
         (newuser client :passphrase passphrase :privkey 512)))
-    (handler-case (setbank client (bankid server))
+    (handler-case (setserver client (serverid server))
       (error ()
-        (handler-case (addbank client (bankurl server) name)
+        (handler-case (addserver client (serverurl server) name)
           (error ()
             (let ((id (id client)))
-              (login-bank ts)
-              (spend client id (tokenid server) "200" nil "Welcome to my bank")
+              (login-server ts)
+              (spend client id (tokenid server) "200" nil "Welcome to my server")
               (login client passphrase)
-              (addbank client (bankurl server) name))))))
+              (addserver client (serverurl server) name))))))
     (id client)))
 
 (defmethod accept-inbox ((ts test-state) &optional (accept-p t))
@@ -175,14 +175,14 @@
   (let* ((client (client ts))
          (id (login-user ts user))
          (fee-asset (fee-assetid (getfees client))))
-    (login-bank ts)
+    (login-server ts)
     (spend client id fee-asset amount)
     (login-user ts user)
     (accept-inbox ts)))
 
 (defun set-standard-fees (ts)
   (let ((client (client ts)))
-    (login-bank ts)
+    (login-server ts)
     (setfees client)
     (let ((permissions (get-permissions client nil t)))
       (dolist (permission permissions)
@@ -441,13 +441,13 @@
          (fees (list (make-fee :type $TRANFEE :assetid tokenid :amount 1)
                      (make-fee :type $REGFEE :assetid tokenid :amount 10)))
          (goldgrams (bill-goldgrams-assetid ts)))
-    (login-bank ts)
+    (login-server ts)
     (apply #'setfees client
            `(,@fees
              ,(make-fee :type $SPEND :assetid tokenid :amount 2)
              ,(make-fee :type $TRANSFER :assetid tokenid :amount 3)))
     (give-tokens ts "bill" (+ 10 1 2 10 3))
-    (let ((bank-tokens (progn (login-bank ts)
+    (let ((server-tokens (progn (login-server ts)
                               (reinit-balances client)
                               (balance-amount (getbalance ts $MAIN tokenid))))
           (tokens (progn (login-user ts "bill")
@@ -456,9 +456,9 @@
       (spend client john tokenid "10")
       (let ((sb (bcsub tokens 10 1 2))
             (was (balance-amount (getbalance ts $MAIN tokenid)))
-            (bank-sb (bcadd bank-tokens 2))
-            (bank-was (progn
-                        (login-bank ts)
+            (server-sb (bcadd server-tokens 2))
+            (server-was (progn
+                        (login-server ts)
                         (storagefees client)
                         (accept-inbox ts)
                         (prog1 (balance-amount (getbalance ts $MAIN tokenid))
@@ -467,10 +467,10 @@
           (error "Outspend w/token fee mismatch. Old: ~s, SB: ~s, Was: ~s"
                  tokens sb was))
         (setf tokens was)
-        (unless (bc= bank-sb bank-was)
-          (error "Outspend w/token fee bank mismatch. Old: ~s, SB: ~s, Was: ~s"
-                 bank-tokens bank-sb bank-was))
-        (setf bank-tokens bank-was))
+        (unless (bc= server-sb server-was)
+          (error "Outspend w/token fee server mismatch. Old: ~s, SB: ~s, Was: ~s"
+                 server-tokens server-sb server-was))
+        (setf server-tokens server-was))
       (spend client bill tokenid "10" `(,$MAIN "backup"))
       (let ((sb (bcsub tokens 10 3 (if backup-p 0 1)))
             (was (balance-amount (getbalance ts $MAIN tokenid))))
@@ -479,7 +479,7 @@
                  tokens sb was))))
 
     ;; Test with goldgrams as a fee
-    (login-bank ts)
+    (login-server ts)
     (apply #'setfees client
            `(,@fees
              ,(make-fee :type $SPEND :assetid goldgrams
@@ -496,8 +496,8 @@
                  gg sb was))))
     (login-user ts "john")
     (accept-inbox ts)
-    (let ((bankgg (progn
-                    (login-bank ts)
+    (let ((servergg (progn
+                    (login-server ts)
                     (storagefees client)
                     (accept-inbox ts)
                     (let ((bal (getbalance client $MAIN goldgrams)))
@@ -509,9 +509,9 @@
                 (balance-formatted-amount
                  (getbalance client $MAIN goldgrams)))))
       (spend client john goldgrams "1" `(,$MAIN "backup"))
-      (let ((banksb (wbp (7) (bcadd bankgg ".002")))
-            (bankwas (progn
-                       (login-bank ts)
+      (let ((serversb (wbp (7) (bcadd servergg ".002")))
+            (serverwas (progn
+                       (login-server ts)
                        (storagefees client)
                        (accept-inbox ts)
                        (balance-formatted-amount
@@ -521,10 +521,10 @@
                    (login-user ts "john")
                    (balance-formatted-amount
                     (getbalance client $MAIN goldgrams)))))
-        (unless (bc= banksb bankwas)
-          (error "Spend goldgrams transfer bank mismatch. Old:~s, sb: ~s, was: ~s"
-                 bankgg banksb bankwas))
-        (setf bankgg bankwas)
+        (unless (bc= serversb serverwas)
+          (error "Spend goldgrams transfer server mismatch. Old:~s, sb: ~s, was: ~s"
+                 servergg serversb serverwas))
+        (setf servergg serverwas)
         (unless (bc= sb was)
           (error "Spend goldgrams transfer mismatch. Old: ~s, sb: ~s, was: ~s"
                  gg sb was)))
@@ -532,9 +532,9 @@
                 (getbalance client "backup" goldgrams)))
 
       (spend client bill goldgrams "0.5" "backup")
-      (let ((banksb (wbp (7) (bcadd bankgg ".001")))
-            (bankwas (progn
-                       (login-bank ts)
+      (let ((serversb (wbp (7) (bcadd servergg ".001")))
+            (serverwas (progn
+                       (login-server ts)
                        (storagefees client)
                        (accept-inbox ts)
                        (balance-formatted-amount
@@ -544,10 +544,10 @@
                    (login-user ts "john")
                    (balance-formatted-amount
                     (getbalance client "backup" goldgrams)))))
-        (unless (bc= banksb bankwas)
-          (error "Spend goldgrams bank mismatch. Old:~s, sb: ~s, was: ~s"
-                 bankgg banksb bankwas))
-        (setf bankgg bankwas)
+        (unless (bc= serversb serverwas)
+          (error "Spend goldgrams server mismatch. Old:~s, sb: ~s, was: ~s"
+                 servergg serversb serverwas))
+        (setf servergg serverwas)
         (unless (bc= sb was)
           (error "Spend goldgrams mismatch. Old: ~s, sb: ~s, was: ~s"
                  gg sb was))
@@ -562,7 +562,7 @@
     (spend client bill goldgrams "0.1")
     (sleep 0.5)
     (spend client bill tokenid "10")
-    (login-bank ts)
+    (login-server ts)
     (storagefees client)
     (accept-inbox ts)
     (values
@@ -574,16 +574,16 @@
 (defun permissions-test (ts)
   (set-standard-fees ts)
   (let ((client (client ts))
-        (bankid (bankid ts))
+        (serverid (serverid ts))
         (tokenid (tokenid ts))
         (bill (prog1 (login-user ts "bill") (accept-inbox ts)))
         (john (prog1 (login-user ts "john") (accept-inbox ts)))
         (mike (prog1 (login-user ts "mike") (accept-inbox ts)))
         (goldgrams (bill-goldgrams-assetid ts)))
-    (login-bank ts)
+    (login-server ts)
     ;; Test $MINT-TOKENS permission
     (assert (nth-value 1 (ignore-errors (grant client bill $MINT-TOKENS t))))
-    (grant client bankid $MINT-TOKENS t)
+    (grant client serverid $MINT-TOKENS t)
     (grant client bill $MINT-TOKENS t)
     (give-tokens ts "bill" 12)
     (multiple-value-bind (permissions grant-p)
@@ -591,7 +591,7 @@
       (assert grant-p)
       (assert (eql (length permissions) 1))
       (let ((perm (car permissions)))
-        (assert (and (equal (permission-id perm) bankid)
+        (assert (and (equal (permission-id perm) serverid)
                      (equal (permission-toid perm) bill)
                      (equal (permission-permission perm) $MINT-TOKENS)
                      (permission-grant-p perm)))))                         
@@ -602,7 +602,7 @@
     (assert (nth-value 1 (ignore-errors (spend client $COUPON tokenid 10))))
 
     ;; Test multiple grants
-    (login-bank ts)
+    (login-server ts)
     (grant client mike $MINT-TOKENS t)
     (login-user ts "mike")
     (grant client john $MINT-TOKENS)
@@ -614,7 +614,7 @@
       (assert (and (find bill permissions :test #'equal :key #'permission-id)
                    (find mike permissions :test #'equal :key #'permission-id)
                    grant-p)))
-    (login-bank ts)
+    (login-server ts)
     (deny client bill $MINT-TOKENS)
     (login-user ts "john")
     (multiple-value-bind (permissions grant-p)
@@ -622,7 +622,7 @@
       (assert (and (eql 1 (length permissions))
                    (find mike permissions :test #'equal :key #'permission-id)
                    (not grant-p))))
-    (login-bank ts)
+    (login-server ts)
     (deny client mike $MINT-TOKENS)
     (login-user ts "john")
     (multiple-value-bind (permissions grant-p)
@@ -630,13 +630,13 @@
       (assert (and (null permissions) (null grant-p))))
 
     ;; Test circular grants
-    (login-bank ts)
+    (login-server ts)
     (grant client bill $MINT-TOKENS t)
     (login-user ts "bill")
     (grant client john $MINT-TOKENS t)
     (login-user ts "john")
     (grant client bill $MINT-TOKENS t)
-    (login-bank ts)
+    (login-server ts)
     (deny client bill $MINT-TOKENS)
     (login-user ts "bill")
     (assert (not (get-permissions client $MINT-TOKENS t)))
@@ -648,12 +648,12 @@
     (assert (nth-value 1 (ignore-errors (spend client $COUPON tokenid 10))))
     (spend client $COUPON goldgrams 1)
     (cancel-outbox ts)
-    (login-bank ts)
-    (grant client bankid $MINT-COUPONS t)
+    (login-server ts)
+    (grant client serverid $MINT-COUPONS t)
     (login-user ts "bill")
     (assert (nth-value 1 (ignore-errors (spend client $COUPON tokenid 10))))
     (assert (nth-value 1 (ignore-errors (spend client $COUPON goldgrams 1))))
-    (login-bank ts)
+    (login-server ts)
     (grant client bill $MINT-COUPONS t)
     (login-user ts "bill")
     (assert (nth-value 1 (ignore-errors (spend client $COUPON tokenid 10))))
@@ -666,12 +666,12 @@
 
     ;; Test ADD-ASSET permission
     ;; Already made bill goldgrams asset with no permission in place
-    (login-bank ts)
-    (grant client bankid $ADD-ASSET t)
+    (login-server ts)
+    (grant client serverid $ADD-ASSET t)
     (login-user ts "bill")
     (assert (nth-value 1 (ignore-errors
                            (addasset client 7 3 "Bill Silver Grams"))))
-    (login-bank ts)
+    (login-server ts)
     (grant client bill $ADD-ASSET)
     (addasset client 7 3 "Bill Silver Grams")
 

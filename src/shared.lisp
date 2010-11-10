@@ -5,7 +5,7 @@
 ;;; Shared by client and server
 ;;;
 
-(in-package :trubanc)
+(in-package :truledger)
 
 (defun escape (str)
   "Escape a string for inclusion in a message"
@@ -62,53 +62,53 @@
 (defun patterns ()
   (or *patterns*
       (let ((patterns `(;; Customer messages
-                        (,$BANKID . (,$PUBKEY (,$COUPON)))
-                        (,$ID . (,$BANKID ,$ID))
+                        (,$SERVERID . (,$PUBKEY (,$COUPON)))
+                        (,$ID . (,$SERVERID ,$ID))
                         (,$BALANCE .
-                         (,$BANKID ,$TIME ,$ASSET ,$AMOUNT (,$ACCT)))
-                        (,$OUTBOXHASH . (,$BANKID ,$TIME ,$COUNT ,$HASH))
-                        (,$BALANCEHASH . (,$BANKID ,$TIME ,$COUNT ,$HASH))
-                        (,$GETFEES . (,$BANKID ,$REQ (,$OPERATION)))
+                         (,$SERVERID ,$TIME ,$ASSET ,$AMOUNT (,$ACCT)))
+                        (,$OUTBOXHASH . (,$SERVERID ,$TIME ,$COUNT ,$HASH))
+                        (,$BALANCEHASH . (,$SERVERID ,$TIME ,$COUNT ,$HASH))
+                        (,$GETFEES . (,$SERVERID ,$REQ (,$OPERATION)))
                         (,$SETFEES . (,$TIME ,$COUNT))
                         (,$SPEND .
-                         (,$BANKID ,$TIME ,$ID ,$ASSET ,$AMOUNT (,$NOTE)))
-                        (,$GETASSET . (,$BANKID ,$REQ ,$ASSET))
+                         (,$SERVERID ,$TIME ,$ID ,$ASSET ,$AMOUNT (,$NOTE)))
+                        (,$GETASSET . (,$SERVERID ,$REQ ,$ASSET))
                         (,$ASSET .
-                         (,$BANKID ,$ASSET ,$SCALE ,$PRECISION ,$ASSETNAME))
-                        (,$STORAGE . (,$BANKID ,$TIME ,$ASSET ,$PERCENT))
-                        (,$STORAGEFEE . (,$BANKID ,$TIME ,$ASSET ,$AMOUNT))
-                        (,$FRACTION . (,$BANKID ,$TIME ,$ASSET ,$AMOUNT))
-                        (,$REGISTER . (,$BANKID ,$PUBKEY (,$NAME)))
-                        (,$GETREQ . (,$BANKID))
-                        (,$SPENDACCEPT . (,$BANKID ,$TIME ,$ID (,$NOTE)))
-                        (,$SPENDREJECT . (,$BANKID ,$TIME ,$ID (,$NOTE)))
-                        (,$GETOUTBOX .(,$BANKID ,$REQ))
-                        (,$GETBALANCE . (,$BANKID ,$REQ (,$ACCT) (,$ASSET)))
-                        (,$GETINBOX . (,$BANKID ,$REQ))
-                        (,$PROCESSINBOX . (,$BANKID ,$TIME ,$TIMELIST))
-                        (,$STORAGEFEES . (,$BANKID ,$REQ))
-                        (,$GETTIME . (,$BANKID ,$REQ))
+                         (,$SERVERID ,$ASSET ,$SCALE ,$PRECISION ,$ASSETNAME))
+                        (,$STORAGE . (,$SERVERID ,$TIME ,$ASSET ,$PERCENT))
+                        (,$STORAGEFEE . (,$SERVERID ,$TIME ,$ASSET ,$AMOUNT))
+                        (,$FRACTION . (,$SERVERID ,$TIME ,$ASSET ,$AMOUNT))
+                        (,$REGISTER . (,$SERVERID ,$PUBKEY (,$NAME)))
+                        (,$GETREQ . (,$SERVERID))
+                        (,$SPENDACCEPT . (,$SERVERID ,$TIME ,$ID (,$NOTE)))
+                        (,$SPENDREJECT . (,$SERVERID ,$TIME ,$ID (,$NOTE)))
+                        (,$GETOUTBOX .(,$SERVERID ,$REQ))
+                        (,$GETBALANCE . (,$SERVERID ,$REQ (,$ACCT) (,$ASSET)))
+                        (,$GETINBOX . (,$SERVERID ,$REQ))
+                        (,$PROCESSINBOX . (,$SERVERID ,$TIME ,$TIMELIST))
+                        (,$STORAGEFEES . (,$SERVERID ,$REQ))
+                        (,$GETTIME . (,$SERVERID ,$REQ))
                         (,$COUPONENVELOPE . (,$ID ,$ENCRYPTEDCOUPON))
-                        (,$GETVERSION . (,$BANKID ,$REQ))
+                        (,$GETVERSION . (,$SERVERID ,$REQ))
                         (,$VERSION . (,$VERSION ,$TIME))
-                        (,$WRITEDATA . (,$BANKID ,$TIME ,$ANONYMOUS ,$KEY ,$DATA))
-                        (,$READDATA . (,$BANKID ,$REQ ,$KEY (,$SIZE)))
-                        (,$GRANT . (,$BANKID ,$TIME ,$ID ,$PERMISSION (,$GRANT)))
-                        (,$DENY . (,$BANKID ,$REQ ,$ID ,$PERMISSION))
-                        (,$PERMISSION . (,$BANKID ,$REQ (,$GRANT)))
+                        (,$WRITEDATA . (,$SERVERID ,$TIME ,$ANONYMOUS ,$KEY ,$DATA))
+                        (,$READDATA . (,$SERVERID ,$REQ ,$KEY (,$SIZE)))
+                        (,$GRANT . (,$SERVERID ,$TIME ,$ID ,$PERMISSION (,$GRANT)))
+                        (,$DENY . (,$SERVERID ,$REQ ,$ID ,$PERMISSION))
+                        (,$PERMISSION . (,$SERVERID ,$REQ (,$GRANT)))
                         (,$BACKUP . (,$REQ :rest))
 
-                        ;; Bank signed messages
+                        ;; Server signed messages
                         (,$FAILED . (,$MSG ,$ERRMSG))
                         (,$TOKENID . (,$TOKENID))
-                        (,$REGFEE . (,$BANKID ,$TIME ,$ASSET ,$AMOUNT))
-                        (,$TRANFEE . (,$BANKID ,$TIME ,$ASSET ,$AMOUNT))
-                        (,$FEE . (,$BANKID ,$TIME ,$OPERATION ,$ASSET ,$AMOUNT))
+                        (,$REGFEE . (,$SERVERID ,$TIME ,$ASSET ,$AMOUNT))
+                        (,$TRANFEE . (,$SERVERID ,$TIME ,$ASSET ,$AMOUNT))
+                        (,$FEE . (,$SERVERID ,$TIME ,$OPERATION ,$ASSET ,$AMOUNT))
                         (,$TIME . (,$ID ,$TIME))
                         (,$INBOX . (,$TIME ,$MSG))
                         (,$REQ . (,$ID ,$REQ))
                         (,$COUPON .
-                         (,$BANKURL ,$COUPON ,$ASSET ,$AMOUNT (,$NOTE)))
+                         (,$SERVERURL ,$COUPON ,$ASSET ,$AMOUNT (,$NOTE)))
                         (,$COUPONNUMBERHASH . (,$COUPON))
                         (,$ATREGISTER . (,$MSG))
                         (,$ATOUTBOXHASH . (,$MSG))
@@ -145,13 +145,13 @@
         (setq *patterns* hash))))
 
 (defmethod dirhash ((db db) key unpacker &optional newitem removed-names)
-  "Return the hash of a directory, KEY, of bank-signed messages.
-    The hash is of the user messages wrapped by the bank signing.
-    NEWITEM is a new item or an array of new items, not bank-signed.
+  "Return the hash of a directory, KEY, of server-signed messages.
+    The hash is of the user messages wrapped by the server signing.
+    NEWITEM is a new item or an array of new items, not server-signed.
     REMOVED-NAMES is a list of names in the KEY dir to remove.
-    UNPACKER is a function to call with a single-arg, a bank-signed
+    UNPACKER is a function to call with a single-arg, a server-signed
     message. It returns a parsed and matched ARGS hash table whose $MSG
-    element is the parsed user message wrapped by the bank signing.
+    element is the parsed user message wrapped by the server signing.
     Returns two values, the sha1 hash of the items and the number of items."
   (let ((contents (db-contents db key))
         (items nil))
@@ -162,7 +162,7 @@
             (let* ((args (funcall unpacker msg))
                    (req (gethash $MSG args)))
               (unless req
-                (error "Directory msg is not a bank-wrapped message"))
+                (error "Directory msg is not a server-wrapped message"))
               (unless (setq msg (get-parsemsg req))
                 (error "get-parsemsg didn't find anything"))
               (push msg items))))))
@@ -179,7 +179,7 @@
 (defmethod balancehash ((db db) unpacker balancekey &optional acctbals)
   "Compute the balance hash as two values: hash & count.
    UNPACKER is a function of one argument, a string, representing
-   a bank-signed message. It returns the unpackaged bank message
+   a server-signed message. It returns the unpackaged server message
    BALANCEKEY is the key to the user balance directory.
    ACCTBALS is null or a hash table of hash tables: acct => (assetid => msg)"
   (let* ((hash nil)
@@ -298,7 +298,7 @@
 
 ;; The directory for the client database
 (defun client-db-dir ()
-  "trubanc-dbs/clientdb")
+  "truledger-dbs/clientdb")
 
 ;;;
 ;;; Latches - there's probably a standard name for this

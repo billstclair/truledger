@@ -1,11 +1,10 @@
 #!/bin/bash
 # Push the HEAD to the shared repository
 # assumes the following remotes:
-# git remote add trubanc git+ssh://$HUBTB/usr/local/www/trubanc.com/trubanc-lisp.git
-# git remote add github git@github.com:billstclair/trubanc-lisp.git
-git push --tags trubanc master
+# git remote add truledger git+ssh://$HUBTL/usr/local/www/truledger/truledger.git
+# git remote add github git@github.com:billstclair/truledger.git
+git push --tags truledger master
 git push --tags github master
 
-
-# useful for remote machines
-# git remote add github git://github.com/billstclair/trubanc-lisp.git
+# useful for public access
+# git remote add github git://github.com/billstclair/truledger.git

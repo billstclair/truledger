@@ -5,12 +5,12 @@
 ;;; tokenize the protocol strings
 ;;;
 
-(in-package :trubanc-tokens)
+(in-package :truledger-tokens)
 
 ;; db file & directory names
 (defconstant $TIME "time")
 (defconstant $PRIVKEY "privkey")
-(defconstant $BANKID "bankid")
+(defconstant $SERVERID "serverid")
 (defconstant $TOKENID "tokenid")
 (defconstant $REGFEE "regfee")
 (defconstant $TRANFEE "tranfee")
@@ -114,7 +114,7 @@
 (defconstant $ERRMSG "errmsg")
 (defconstant $BALANCEHASH "balancehash")
 (defconstant $COUNT "count")
-(defconstant $BANKURL "bankurl")
+(defconstant $SERVERURL "serverurl")
 (defconstant $ENCRYPTEDCOUPON "encryptedcoupon")
 (defconstant $COUPONNUMBERHASH "couponnumberhash")
 (defconstant $ISSUER "issuer")
@@ -123,8 +123,8 @@
 (defconstant $SIZE "size")
 
 ;; Client database keys
-(defconstant $BANK "bank")
-(defconstant $BANKS "banks")
+(defconstant $SERVER "server")
+(defconstant $SERVERS "servers")
 (defconstant $URL "url")
 (defconstant $NICKNAME "nickname")
 (defconstant $CONTACT "contact")

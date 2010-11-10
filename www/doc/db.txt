@@ -7,46 +7,46 @@ Items whose names end with "#" are sequence numbers.
 name:<item> denotes an optional item, passed by position or name
 Items in parens  are signed. Signature omitted here.
 
-trubanc-dbs/serverdb/
-  time=(<bankid>,time,<time#>)  -- The global timestamp
+truledger-dbs/serverdb/
+  time=(<serverid>,time,<time#>)  -- The global timestamp
   privkey=<privkey>   -- the private key. Maybe this shouldn't be in
                       -- the database, so it doesn't get backed up,
                       -- But once we have a stand-alone server, it
                       -- will need a passphrase to use
-  tokenid=(<bankid>,tokenid,<tokenid>)  -- The assetid of the usage token asset
-  regfee=(<bankid>,regfee,<bankid>,<time#>,<tokenid>,<amount>)
+  tokenid=(<serverid>,tokenid,<tokenid>)  -- The assetid of the usage token asset
+  regfee=(<serverid>,regfee,<serverid>,<time#>,<tokenid>,<amount>)
                    -- Usage tokens paid for registration
                    -- default: 10 (pubkey/<id> (2),
                                   account/<id>/(time, last, req, outboxhash),
                                   and a few for good luck)
-  tranfee=(<bankid>,tranfee,<bankid>,<time#>,<tokenid>,<amount>)
+  tranfee=(<serverid>,tranfee,<serverid>,<time#>,<tokenid>,<amount>)
                    -- Usage tokens paid for a transaction.
                    -- Returned when the transaction completes.
                    -- Given to recipient when he rejects a spend (anti-spam)
                    -- Default: 2 (inbox & outbox entry)
   fee/  -- permanent fees, paid for transactions of the given type
         -- Default: none
-    spend=(<bankid>,fee,<bankid>,<time#>,spend,<assetid>,<amount>)[...]
-    transfer=(<bankid>,fee,<bankid>,<time#>,transfer,<assetid>,<amount>)[...]
-    asset=(<bankid>,fee,<bankid>,<time#>,asset,<assetid>,<amount>)[...]
+    spend=(<serverid>,fee,<serverid>,<time#>,spend,<assetid>,<amount>)[...]
+    transfer=(<serverid>,fee,<serverid>,<time#>,transfer,<assetid>,<amount>)[...]
+    asset=(<serverid>,fee,<serverid>,<time#>,asset,<assetid>,<amount>)[...]
   pubkey/  -- for fast lookup. Must verify that <id> = hash(<pubkey>)
     <id>=<pubkey>
   pubkeysig/
-    <id>=(<bankid>,@register,(<id>,register,<bankid>,<pubkey>,name=<name>))
+    <id>=(<serverid>,@register,(<id>,register,<serverid>,<pubkey>,name=<name>))
   data/
     <keyhash>=<id>,<data>
   asset/ -- Where the asset types are stored
-    <assetid>=(<bankid>,@asset,(<id>,asset,<bankid>,<assetid>,<scale>,<precision>,<assetname>)).
-              (<bankid>,@storage,(<id>,storage,<bankid>,<time#>,<assetid>,<percent>))
+    <assetid>=(<serverid>,@asset,(<id>,asset,<serverid>,<assetid>,<scale>,<precision>,<assetname>)).
+              (<serverid>,@storage,(<id>,storage,<serverid>,<time#>,<assetid>,<percent>))
         -- The assetid is the sha1 hash of a comma-separated
         -- concatenation of <id>,<scale>,<precision>,<assetname>
         -- This makes an assetid impossible to forge, though there
         -- can be multiple assets with the same name. Customer beware.
-        -- Note that because the assetid is unique, it can cross bank boundaries.
+        -- Note that because the assetid is unique, it can cross server boundaries.
         -- @storage fees are optional
         -- <percent> is a decimal number giving the percent charge per year
   coupon
-    <couponhash>=(<bankid>,@spend,(<id>,spend,<bankid>,<time#>,coupon,<assetid>,<amount>,note:<note>))
+    <couponhash>=(<serverid>,@spend,(<id>,spend,<serverid>,<time#>,coupon,<assetid>,<amount>,note:<note>))
   account/
     <id>/
       time=<time#>  -- 0 when no outstanding transaction, or the
@@ -55,83 +55,83 @@ trubanc-dbs/serverdb/
       last=<time#>  -- The last used value of /account/<id>/time
       req=<req#>    -- starts at 0. New requests must have a higher number
       fraction/     -- fractional amounts due to storage fees
-        <assetid>=(<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid>,<amount>))
-      balancehash=(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<count>,<hash>))
+        <assetid>=(<serverid>,@fraction,(<id>,fraction,<serverid>,<time#>,<assetid>,<amount>))
+      balancehash=(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<count>,<hash>))
       balance/
         <acct>/  -- "main" is the default acct name
-          <assetid>=(<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>))
-      outboxhash=(<bankid>,@outboxhash,(<id>,outboxhash,<bankid>,<time#>,<count>,<hash>))
+          <assetid>=(<serverid>,@balance,(<id>,balance,<serverid>,<time#>,<assetid>,<amount>,acct:<acct>))
+      outboxhash=(<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<time#>,<count>,<hash>))
       outbox/
-        <time2#>=(<bankid>,@spend,(<id>,spend,<bankid>,<time2#>,<id2>,<assetid2>,<amount2>,note:<note2>)).
-                 (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time2#>,<tokenid>,<amount2fee>))
-        <time3#>=(<bankid>,@spend,(<id>,spend,<bankid>,<time3#>,<id3>,<assetid3>,<amount3>,note:<note3>)).
-                 (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time3#>,<tokenid>,<amount3fee>))
+        <time2#>=(<serverid>,@spend,(<id>,spend,<serverid>,<time2#>,<id2>,<assetid2>,<amount2>,note:<note2>)).
+                 (<serverid>,@tranfee,(<id>,tranfee,<serverid>,<time2#>,<tokenid>,<amount2fee>))
+        <time3#>=(<serverid>,@spend,(<id>,spend,<serverid>,<time3#>,<id3>,<assetid3>,<amount3>,note:<note3>)).
+                 (<serverid>,@tranfee,(<id>,tranfee,<serverid>,<time3#>,<tokenid>,<amount3fee>))
       inbox/
-        <time5#>=(<bankid>,inbox,<time5#>,(<id2>,spend|accept,<bankid>,<time2#>,<id>,note:<note22>))
-        <time6#>=(<bankid>,inbox,<time6#>,(<id3>,spend|reject,<bankid>,<time3#>,<id>,note:<note32>))
-        <time7#>=(<bankid>,inbox,<time7#>,(<id4>,spend,<bankid>,<time4#>,<id>,<assetid4>,<amount4>,note:<note4>)).
-                 (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time4#>,<tokenid>,<amount4fee>))
+        <time5#>=(<serverid>,inbox,<time5#>,(<id2>,spend|accept,<serverid>,<time2#>,<id>,note:<note22>))
+        <time6#>=(<serverid>,inbox,<time6#>,(<id3>,spend|reject,<serverid>,<time3#>,<id>,note:<note32>))
+        <time7#>=(<serverid>,inbox,<time7#>,(<id4>,spend,<serverid>,<time4#>,<id>,<assetid4>,<amount4>,note:<note4>)).
+                 (<serverid>,@tranfee,(<id>,tranfee,<serverid>,<time4#>,<tokenid>,<amount4fee>))
       storagefee/  -- accumulators for storage fees. <amount>s have fractions
-        <assetid>=(<bankid>,storagefee,<bankid>,<time#>,<assetid>,<amount>)
+        <assetid>=(<serverid>,storagefee,<serverid>,<time#>,<assetid>,<amount>)
       permission/
-        <permission>=(<bankid>,@grant,(<id>,grant,<bankid>,<time#>,<toid>,<permission>,grant=grant))...
-      vendacct=(<bankid>,@vendacct,(<id>,vendacct,<bankid>,<time#>,<acct>))
+        <permission>=(<serverid>,@grant,(<id>,grant,<serverid>,<time#>,<toid>,<permission>,grant=grant))...
+      vendacct=(<serverid>,@vendacct,(<id>,vendacct,<serverid>,<time#>,<acct>))
       defvend/
-        <vend#>=(<bankid>,@defvend,(<id>,defvend,<bankid>,<time#>,<vend#>,expires=<time#>,note=<note>).
-               (<id>,vendin,<bankid>,<time#>,<vend#>,<assetid1>,<amount1>).
-               (<id>,vendin,<bankid>,<time#>,<vend#>,<assetid2>,<amount2>).
+        <vend#>=(<serverid>,@defvend,(<id>,defvend,<serverid>,<time#>,<vend#>,expires=<time#>,note=<note>).
+               (<id>,vendin,<serverid>,<time#>,<vend#>,<assetid1>,<amount1>).
+               (<id>,vendin,<serverid>,<time#>,<vend#>,<assetid2>,<amount2>).
                ...
-               (<id>,vendin,<bankid>,<time#>,<vend#>,<assetidN>,<amountN>).
-               (<id>,vendout,<bankid>,<time#>,<vend#>,<assetid-o1>,<amount-o1>).
-               (<id>,vendout,<bankid>,<time#>,<vend#>,<assetid-o2>,<amount-o2>).
+               (<id>,vendin,<serverid>,<time#>,<vend#>,<assetidN>,<amountN>).
+               (<id>,vendout,<serverid>,<time#>,<vend#>,<assetid-o1>,<amount-o1>).
+               (<id>,vendout,<serverid>,<time#>,<vend#>,<assetid-o2>,<amount-o2>).
                ...
-               (<id>,vendout,<bankid>,<time#>,<vend#>,assetid-oN>,<amount-oN>))
+               (<id>,vendout,<serverid>,<time#>,<vend#>,assetid-oN>,<amount-oN>))
       vendpool/
-        <assetid>=(<bankid>,spend,<bankid>,<time#>,<id>,<assetid>,<amount>)
+        <assetid>=(<serverid>,spend,<serverid>,<time#>,<id>,<assetid>,<amount>)
       transaction/
-        (<bankid>,@spend,(<id>,spend,<time#>,<id2>,<bankid>,<assetid>,<amount>,note:<note>))...
+        (<serverid>,@spend,(<id>,spend,<time#>,<id2>,<serverid>,<assetid>,<amount>,note:<note>))...
           or
-        (<bankid,@processinbox,(<id>,processinbox,<bankid>,<time11#>,<time7#>|<time8#>|<time9#>)...
+        (<serverid,@processinbox,(<id>,processinbox,<serverid>,<time11#>,<time7#>|<time8#>|<time9#>)...
 
 
 === Transactions ===
 
-Note that <bankid> is sent in almost all transactions. This guarantees
-that the request is actually meant for that bank. It also makes it
-easy to notice if somebody steals the machine, but not the bank's
+Note that <serverid> is sent in almost all transactions. This guarantees
+that the request is actually meant for that server. It also makes it
+easy to notice if somebody steals the machine, but not the server's
 private key passphrase. They will be able to resign all the database
 contents, but since all the customer-signed data contains the original
-bankid, a customer will notice the change, and be able to prove it.
-The bank checks, for all request, that the <bankid> sent matches. I
+serverid, a customer will notice the change, and be able to prove it.
+The server checks, for all request, that the <serverid> sent matches. I
 won't repeat this requirement below.
 
 
-Get bankid
+Get serverid
 ----------
   Customer sends:
 
-(<id>,bankid,<pubkey>)
+(<id>,serverid,<pubkey>)
 
-  If <id> is the public key ID for <pubkey>, bank returns:
+  If <id> is the public key ID for <pubkey>, server returns:
 
-(<bankid>,register,<bankid>,<pubkey>,name=<name>)
+(<serverid>,register,<serverid>,<pubkey>,name=<name>)
 
-  The <bankid> is required for the other requests, and the bank's
+  The <serverid> is required for the other requests, and the server's
   public key, to validate them. So a new customer will need to do this
   first.
 
-  If there's a mismatch, bank returns:
+  If there's a mismatch, server returns:
 
-(<bankid>,failed,(<id>,bankid,<pubkey>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,serverid,<pubkey>),errcode:<errcode>,reason:<reason>)
 
-  Which the client will be unable to parse, not knowing the bank's public key.
+  Which the client will be unable to parse, not knowing the server's public key.
 
   In order to make this command possible to send without first
   generating a public key pair, you can use "0" for the <id>,
   anything, including blank, for the <pubkey>, and any non-blank
   string as the signature. E.g.:
 
-(0,bankid,):0
+(0,serverid,):0
 
 
 Create account
@@ -139,29 +139,29 @@ Create account
 
   Customer sends:
 
-(<id>,register,<bankid>,<pubkey>,name=<name>)
+(<id>,register,<serverid>,<pubkey>,name=<name>)
 
-  If the id is new, matches the pubkey, the <bankid> is correct, the
+  If the id is new, matches the pubkey, the <serverid> is correct, the
   signature is OK, and the customer has enough usage tokens in his
   inbox (spending usage tokens to a new <id> is how the account
-  directory is actually created), bank adds a negative spend for the
+  directory is actually created), server adds a negative spend for the
   registration tokens to customer's inbox, and responds with:
 
-(<bankid>,@register,(<id>,register,<bankid>,<pubkey>,name=<name>))
+(<serverid>,@register,(<id>,register,<serverid>,<pubkey>,name=<name>))
 
-  This is the first time the bank will have seen the customer's
+  This is the first time the server will have seen the customer's
   pubkey.  The parsing code notices these "id" messages, and verifies
   pubkey if unknown, before using it to verify the registration
   message itself.  Customer will need to process his inbox to transfer
-  his introduction tokens, and the bank's charges against them, to his
-  balance. Banks can choose to put negative spends in your inbox to
+  his introduction tokens, and the server's charges against them, to his
+  balance. Servers can choose to put negative spends in your inbox to
   charge periodic fees. You usually won't be able to spend an asset
-  to anyone but the asset issuer until you pay those fees. Banks can
+  to anyone but the asset issuer until you pay those fees. Servers can
   also choose to allow negative spends from any customer to
   another. This is a request for money, and can be denied like any
   other spend.
 
-(<bankid>,failed,(<id>,register,<pubkey>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,register,<pubkey>),errcode:<errcode>,reason:<reason>)
 
   Note that pubkeys bigger than 4096 bits won't be accepted. Really
   big keys are a good way to DOS attack the server.
@@ -171,38 +171,38 @@ Create account
   the usage tokens necessary to fund the new account, plus other
   assets:
 
-(<id>,register,<bankid>,<pubkey>,name=<name>).
-(<id>,couponenvelope,<bankid>,<encrytped-coupon>)...
+(<id>,register,<serverid>,<pubkey>,name=<name>).
+(<id>,couponenvelope,<serverid>,<encrytped-coupon>)...
 
-  Where <encrypted-coupon> is the following, encrypted to the bank's
+  Where <encrypted-coupon> is the following, encrypted to the server's
   public key.
 
-(<bankid>,coupon,<bankurl>,<coupon>,<assetid>,<amount>,note:<note>)
+(<serverid>,coupon,<serverurl>,<coupon>,<assetid>,<amount>,note:<note>)
 
-  The bank will append the normal couponenvelope response to the
+  The server will append the normal couponenvelope response to the
   register response:
 
-(<bankid>,@register,(<id>,register,<bankid>,<pubkey>,name=<name>)).
-(<bankid>,@couponenvelope,(<id>,couponenvelope,<bankid>,<encrytped-coupon>))
+(<serverid>,@register,(<id>,register,<serverid>,<pubkey>,name=<name>)).
+(<serverid>,@couponenvelope,(<id>,couponenvelope,<serverid>,<encrytped-coupon>))
 
 Look up pubkey
 --------------
 
   Customer sends:
 
-(<id>,id,<bankid>,<id2>)
+(<id>,id,<serverid>,<id2>)
 
-  Use 0 for <id2> to look up the bank's key.
-  If <id2> is registered, bank responds with:
+  Use 0 for <id2> to look up the server's key.
+  If <id2> is registered, server responds with:
 
-(<bankid>,@register,(<id2>,register,<bankid>,<pubkey>,name=<name>))
+(<serverid>,@register,(<id2>,register,<serverid>,<pubkey>,name=<name>))
 
-  If there is no such id, bank responds with:
+  If there is no such id, server responds with:
 
-(<bankid>,failed,(<id>,id,<bankid>,<id2>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,id,<serverid>,<id2>),errcode:<errcode>,reason:<reason>)
 
   Note that only registered customers can ask for another customer's
-  public key. Otherwise, the bank won't know the public key with which
+  public key. Otherwise, the server won't know the public key with which
   to validate the request. Also note that this request can be replayed.
   The response is always the same, so what's the harm?
 
@@ -212,11 +212,11 @@ Get Req
 
   Customer sends:
 
-(<id>,getreq,<bankid>)
+(<id>,getreq,<serverid>)
 
-  Bank returns:
+  Server returns:
 
-(<bankid>,req,<id>,<req#>)
+(<serverid>,req,<id>,<req#>)
 
   Note that this request can be replayed. The customer needs to have
   some way of getting back in sync for requests. This is it.  It makes
@@ -229,20 +229,20 @@ Get timestamp
 
   Customer sends:
 
-(<id>,gettime,<bankid>,<req#>)
+(<id>,gettime,<serverid>,<req#>)
 
-  Bank compares <req#> to /accounts/<id>/req. If <req#> is greater,
-  bank sets /account/<id>/req to <req#>, increments /time to <time#>,
+  Server compares <req#> to /accounts/<id>/req. If <req#> is greater,
+  server sets /account/<id>/req to <req#>, increments /time to <time#>,
   sets /account/<id>/time to <time#>, and returns:
 
-(<bankid>,time,<id>,<time#>)
+(<serverid>,time,<id>,<time#>)
 
-  Otherwise, bank returns:
+  Otherwise, server returns:
 
-(<bankid>,failed,(<id>,gettime,<bankid>,<req#>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,gettime,<serverid>,<req#>),errcode:<errcode>,reason:<reason>)
 
   Note that this always creates a new <time#>, larger than any
-  timestamp in the bank. If the cusomter didn't use the last <time#>
+  timestamp in the server. If the cusomter didn't use the last <time#>
   returned from this request, it is overwritten, and can no longer be
   used.
 
@@ -251,24 +251,24 @@ Get fees
 
   Customer sends:
 
-(<id>,getfees,<bankid>,<req#>,operation=<operation>)
+(<id>,getfees,<serverid>,<req#>,operation=<operation>)
 
-  Bank compares <req#> to /account/<id>/req. If <req#>
-  is greater, bank sets /account/<id>/req to <req#>,
+  Server compares <req#> to /account/<id>/req. If <req#>
+  is greater, server sets /account/<id>/req to <req#>,
   increments /time to <time#>, and returns /regfee,
   /tranfee, and /fee/<operation>, for all fee
   items if operation is not included.
 
-(<bankid>regfee,<bankid>,<time#>,0,<amount>).
-  (<bankid>,tranfee,<bankid>,<time#>,0,<amount>).
-  (<bankid>,fee,<bankid>,<time#>,<operation>,<assetid>,<amount>).
-  (<bankid>,fee,<bankid>,<time#>,<operation2>,assetid2>,<amount2>).
+(<serverid>regfee,<serverid>,<time#>,0,<amount>).
+  (<serverid>,tranfee,<serverid>,<time#>,0,<amount>).
+  (<serverid>,fee,<serverid>,<time#>,<operation>,<assetid>,<amount>).
+  (<serverid>,fee,<serverid>,<time#>,<operation2>,assetid2>,<amount2>).
   ...
-  (<bankid>,fee,<bankid>,<time#>,<operationN>,<assetidN>,<amountN>)
+  (<serverid>,fee,<serverid>,<time#>,<operationN>,<assetidN>,<amountN>)
 
-  Otherwise, bank returns:
+  Otherwise, server returns:
 
-(<bankid>,failed,(<id>,getfees,<bankid>,<req#>,<operation>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,getfees,<serverid>,<req#>,<operation>),errcode:<errcode>,reason:<reason>)
 
 
 Set Fees
@@ -276,21 +276,21 @@ Set Fees
 
   Customer sends:
 
-(<bankid>,setfees,<time#>,<cnt#>).
-(<bankid>,fee,spend,<time#>,<assetid>,<amount>)...
-(<bankid>,fee,transfer,<time#>,<assetid>,<amount>)...
-(<bankid>,fee,asset,<time#>,<assetid>,<amount>)...
+(<serverid>,setfees,<time#>,<cnt#>).
+(<serverid>,fee,spend,<time#>,<assetid>,<amount>)...
+(<serverid>,fee,transfer,<time#>,<assetid>,<amount>)...
+(<serverid>,fee,asset,<time#>,<assetid>,<amount>)...
 
-  Bank checks that the <time#> is equal to /account/<id>/time, that
+  Server checks that the <time#> is equal to /account/<id>/time, that
   <cnt#> is the number of fee records passed, that the <time#> fields
   all match, and that the <assetid>s all name known assets. It replaces
   the fees at fee/ with the ones in the message, and returns:
 
-(<bankid>,@setfees,(<bankid>,setfees,<time#>,<cnt#>))
+(<serverid>,@setfees,(<serverid>,setfees,<time#>,<cnt#>))
 
-  If there is an error, bank returns:
+  If there is an error, server returns:
 
-(<bankid>,failed>,(<bankid>,setfees,<time#>,<cnt#>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed>,(<serverid>,setfees,<time#>,<cnt#>),errcode:<errcode>,reason:<reason>)
 
 
 Spend
@@ -298,42 +298,42 @@ Spend
 
   Customer sends the following. Second and subsequent balance items
   are for the fee assets. Customer can pick whatever accounts he likes
-  for the fees to be taken from. The bank figures out if it can make
+  for the fees to be taken from. The server figures out if it can make
   it work.
 
-(<id>,spend,<bankid>,<time#>,<id2>,<assetid>,<amount>,note:<note>).
-  (<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>).
-  (<id>,storagefee,<bankid>,<time#>,<assetid>,<storageamount>).
-  (<id>,fee,<bankid>,<time#>,<operation>,<feeasset>,<feeamount>).
-  (<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>).
-  (<id>,fraction,<bankid>,<time#>,<assetid>,<fractionamount>).
-  (<id>,balance,<bankid>,<time#>,<assetid2>,<amount2>,acct:<acctN>).
+(<id>,spend,<serverid>,<time#>,<id2>,<assetid>,<amount>,note:<note>).
+  (<id>,tranfee,<serverid>,<time#>,<tokenid>,<amount2fee>).
+  (<id>,storagefee,<serverid>,<time#>,<assetid>,<storageamount>).
+  (<id>,fee,<serverid>,<time#>,<operation>,<feeasset>,<feeamount>).
+  (<id>,balance,<serverid>,<time#>,<assetid>,<amount>,acct:<acct>).
+  (<id>,fraction,<serverid>,<time#>,<assetid>,<fractionamount>).
+  (<id>,balance,<serverid>,<time#>,<assetid2>,<amount2>,acct:<acctN>).
   ...
-  (<id>,balance,<bankid>,<time#>,<assetidN>,<amountN>,acct:<acctN>).
-  (<id>,outboxhash,<bankid>,<time#>,<outboxcount>,<outboxhash>).
-  (<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>)
+  (<id>,balance,<serverid>,<time#>,<assetidN>,<amountN>,acct:<acctN>).
+  (<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>).
+  (<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>)
 
-  Bank checks that the <time#> is equal to /account/<id>/time, that
+  Server checks that the <time#> is equal to /account/<id>/time, that
   the balances match (after subtracting the spend amount & fees), and
-  that the hashes match what the customer sent. If they match, bank
+  that the hashes match what the customer sent. If they match, server
   computes the item list below, stores it in the database in the
   directory /account/<id>/transaction, and returns:
 
-(<bankid>,@spend,(<id>,spend,<time#>,<id2>,<bankid>,<assetid>,<amount>,note:<note>)).
-  (<bankid>,@storagefee,(<id>,storagefee,<bankid>,<time#>,<assetid>,<storageamount>)).
-  (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>)).
-  (<bankid>,@fee,(<id>,fee,<bankid>,<time#>,<operation>,<feeasset>,<feeamount>)).
-  (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,<assetid>,<amount>,acct:<acct>)).
-  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid>,<amount>)).
-  (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,assetid2>,<amount2>,acct:<acct2>)).
+(<serverid>,@spend,(<id>,spend,<time#>,<id2>,<serverid>,<assetid>,<amount>,note:<note>)).
+  (<serverid>,@storagefee,(<id>,storagefee,<serverid>,<time#>,<assetid>,<storageamount>)).
+  (<serverid>,@tranfee,(<id>,tranfee,<serverid>,<time#>,<tokenid>,<amount2fee>)).
+  (<serverid>,@fee,(<id>,fee,<serverid>,<time#>,<operation>,<feeasset>,<feeamount>)).
+  (<serverid>,@balance,(<id>,balance,<time#>,<serverid>,<assetid>,<amount>,acct:<acct>)).
+  (<serverid>,@fraction,(<id>,fraction,<serverid>,<time#>,<assetid>,<amount>)).
+  (<serverid>,@balance,(<id>,balance,<time#>,<serverid>,assetid2>,<amount2>,acct:<acct2>)).
   ...
-  (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,<assetidN>,<amountN>,acct:<acctN>)).
-  (<bankid,@outboxhash,(<id>,outboxhash,<bankid>,<time#>,<outboxcount>,<outboxhash>)).
-  (<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))
+  (<serverid>,@balance,(<id>,balance,<time#>,<serverid>,<assetidN>,<amountN>,acct:<acctN>)).
+  (<serverid,@outboxhash,(<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>)).
+  (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))
 
-If they don't match, bank returns:
+If they don't match, server returns:
 
-(<bankid>,failed,(<id>,spend,<bankid>,<time#>,<id2>,<assetid>,<amount>,note:<note>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,spend,<serverid>,<time#>,<id2>,<assetid>,<amount>,note:<note>),errcode:<errcode>,reason:<reason>)
 
   This is the first phase of the two-phase commit for spends.
 
@@ -352,49 +352,49 @@ If they don't match, bank returns:
   the client and server disagree on something.
 
   To commit the transaction, the customer countersigns the
-  balancehash, and sends it back to the bank:
+  balancehash, and sends it back to the server:
 
-(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>)))
+(<id>,commit,(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>)))
 
-  The bank checks that <time#> matches the timestamp in the saved
-  transaction. If it does the bank sets /account/<id>/time to 0,
+  The server checks that <time#> matches the timestamp in the saved
+  transaction. If it does the server sets /account/<id>/time to 0,
   stores the spend in /account/<id>/outbox/<time#> and
   /account/<id2>/inbox/<time#>, sets the
   /account/<id>/balance/<acct>/<assetid> to the balances from
   /account/<id>/transaction, udpates /account/<id>/outboxhash, and
   /account/<id>/balancehash with the signed hashes, and sends:
 
-(<bankid>,@commit,(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))))
+(<serverid>,@commit,(<id>,commit,(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))))
 
-  If the bank no longer has a record of the first phase of the
+  If the server no longer has a record of the first phase of the
   transaction, it will send:
 
-(<bankid>,failed,(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,commit,(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))),errcode:<errcode>,reason:<reason>)
 
-  If the customer disagrees with the bank's first response, he can rollback
+  If the customer disagrees with the server's first response, he can rollback
   the transaction by sending:
 
-(<id>,rollback,<bankid>,<time#>)
+(<id>,rollback,<serverid>,<time#>)
 
-  The bank removes the /account/<id>/transaction file, and responds
+  The server removes the /account/<id>/transaction file, and responds
   with:
 
-(<bankid>,@rollback,(<id>,rollback,<bankid>,<time#>))
+(<serverid>,@rollback,(<id>,rollback,<serverid>,<time#>))
 
-  If the bank charges non-refunable fees for spends, they must be
+  If the server charges non-refunable fees for spends, they must be
   included with the customer's spend message, and they will be
   included in the return message, signed with the same timestamp as
   the customer's spend message. <operation> in the "fee" items can be
   "spend" or "transfer", depending on whether the spend is to another
   customer or a self-spend that moves between accts. Non-refundable
-  fees are retained by the bank even if the recipient rejects the
-  spend. They provide a steady source of revenue to pay for the bank's
-  operation. They will usually be small, at least for banks that want
+  fees are retained by the server even if the recipient rejects the
+  spend. They provide a steady source of revenue to pay for the server's
+  operation. They will usually be small, at least for servers that want
   to attract cusomers.
 
   The refundable fees are stored in the outbox and included in the
-  bank response in case they change between the time the spend is
-  initiated and when it is closed. Note that the bank does NOT credit
+  server response in case they change between the time the spend is
+  initiated and when it is closed. Note that the server does NOT credit
   its own account with the refundable fees. Those are left in the
   outbox, pending acceptance or rejection of the spend. If accepted,
   the fees are credited back to the customer account. If the recipient
@@ -409,24 +409,24 @@ Cancel Spend
 
   Customer sends:
 
-(<id>,spend|reject,<bankid>,<time#>,<id>,note:<note>)
+(<id>,spend|reject,<serverid>,<time#>,<id>,note:<note>)
 
-  Bank ensures that there is an outbox entry for <time#>, and that it
+  Server ensures that there is an outbox entry for <time#>, and that it
   has not been accepted or rejected by its recipient. Removes the
   inbox entry from the recipient, and adds an inbox entry to
   customer's inbox that looks just like the recipient rejected the
   spend, except that it's from the customer instead of the recipient.
   The customer can use processinbox on it just like any other rejected
-  spend. The usage tokens paid for the spend are taken by the bank,
+  spend. The usage tokens paid for the spend are taken by the server,
   just like any other rejected spend. This discourages lots of
-  cancelling of spends. Bank returns:
+  cancelling of spends. Server returns:
 
-(<bankid>,INBOX,<time2#>,(<id>,spend|cancel,<bankid>,<time#>,<id>,note:<note>))
+(<serverid>,INBOX,<time2#>,(<id>,spend|cancel,<serverid>,<time#>,<id>,note:<note>))
 
   If there's no outbox entry for <time#>, or the recipient has already
-  accepted or rejected the spend, bank returns:
+  accepted or rejected the spend, server returns:
 
-(<bankid>,failed,(<id>,spend|reject,<bankid>,<time#>,<id>,note:<note>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,spend|reject,<serverid>,<time#>,<id>,note:<note>),errcode:<errcode>,reason:<reason>)
 
 
 Query Inbox
@@ -434,32 +434,32 @@ Query Inbox
 
   Customer sends:
 
-(<id>,getinbox,<bankid>,<req#>)
+(<id>,getinbox,<serverid>,<req#>)
 
-  Bank compares <req#> to /account/<id>/req. If <req#> is greater,
-  bank sets /account/<id>/req to <req#> and responds with contents of
-  /account/<id>/inbox/, separated by periods. Bank also sets
+  Server compares <req#> to /account/<id>/req. If <req#> is greater,
+  server sets /account/<id>/req to <req#> and responds with contents of
+  /account/<id>/inbox/, separated by periods. Server also sets
   /account/<id>/last to the highest of the timestamps in the inbox.
 
-(<bankid>,@getinbox,(<id>,getinbox,<bankid>,<req#>).
-  (<bankid>,inbox,<time6#>,(<id2>,spend|accept,<bankid>,<time2#>,note:<note22>)).
-  (<bankid>,inbox,<time7#>,(<id3>,spend|reject,<bankid>,<time3#>,note:<note32>)).
-  (<bankid>,inbox,<time8#>,(<id4>,spend,<bankid>,<time4#>,note:<note4>)).
-  (<bankid>,@tranfee,(<id4>,tranfee,<bankid>,<time4#>,<tokenid>,<amount4fee>)).
-  (<bankid>,inbox,<time9#>,(<id5>,spend,<bankid>,time5#>,note:<note5>)).
-  (<bankid>,@tranfee,(<id5>,tranfee,<bankid>,<time5#>,<tokenid>,<amount5fee>)).
-  (<bankid>,storagefee,<bankid>,<time10#>,<assetid>,<amount>).
-  (<bankid>,storagefee,<bankid>,<time11#>,<assetid2>,<amount>)
+(<serverid>,@getinbox,(<id>,getinbox,<serverid>,<req#>).
+  (<serverid>,inbox,<time6#>,(<id2>,spend|accept,<serverid>,<time2#>,note:<note22>)).
+  (<serverid>,inbox,<time7#>,(<id3>,spend|reject,<serverid>,<time3#>,note:<note32>)).
+  (<serverid>,inbox,<time8#>,(<id4>,spend,<serverid>,<time4#>,note:<note4>)).
+  (<serverid>,@tranfee,(<id4>,tranfee,<serverid>,<time4#>,<tokenid>,<amount4fee>)).
+  (<serverid>,inbox,<time9#>,(<id5>,spend,<serverid>,time5#>,note:<note5>)).
+  (<serverid>,@tranfee,(<id5>,tranfee,<serverid>,<time5#>,<tokenid>,<amount5fee>)).
+  (<serverid>,storagefee,<serverid>,<time10#>,<assetid>,<amount>).
+  (<serverid>,storagefee,<serverid>,<time11#>,<assetid2>,<amount>)
 
-  Otherwise, bank sends:
+  Otherwise, server sends:
 
-(<bankid>,failed,(<id>,inbox,<bankid>,<req#>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,inbox,<serverid>,<req#>),errcode:<errcode>,reason:<reason>)
 
-  The bank will not allow a spend to be done if there are any inbox
-  entries with a bank-signed timestamp less than /account/<id>/last,
+  The server will not allow a spend to be done if there are any inbox
+  entries with a server-signed timestamp less than /account/<id>/last,
   except the first spend after a processinbox that clears the
   inbox. This forces customers to complete inbox transactions, and be
-  in sync with the bank about their balances and outbox contents, if
+  in sync with the server about their balances and outbox contents, if
   they want to be able to do spends. Allowing the first spend after
   the inbox is cleared to got through ensures that frequent spends
   into your account don't lock you out from doing spends yourself.
@@ -469,50 +469,50 @@ Process Inbox
 
   Customer sends:
 
-(<id>,processinbox,<bankid>,<time12#>,<time6#>|<time7#>|<time8#>|<time9#>).
-  (<id>,spend|accept,<bankid>,<id4>,<time4#>,note:<note42>).
-  (<id>,spend|reject,<bankid,<id5>,<time5#>,note:<note52>).
-  (<id>,balance,<bankid>,<time12#>,<assetid>,<amount>,acct:<acct>).
-  (<id>,storagefee,<bankid>,<time12#>,<assetid>,<storageamount>).
-  (<id>,fraction,<bankid>,<time12#>,<assetid>,<fractionamount>).
-  (<id>,balance,<bankid>,<time12#>,assetid2>,<amount2>,acct:<acct2>).
-  (<id>,storagefee,<bankid>,<time12#>,<assetid2>,<storageamount2>).
-  (<id>,fraction,<bankid>,<time12#>,<assetid2>,<fractionamount2>).
+(<id>,processinbox,<serverid>,<time12#>,<time6#>|<time7#>|<time8#>|<time9#>).
+  (<id>,spend|accept,<serverid>,<id4>,<time4#>,note:<note42>).
+  (<id>,spend|reject,<serverid,<id5>,<time5#>,note:<note52>).
+  (<id>,balance,<serverid>,<time12#>,<assetid>,<amount>,acct:<acct>).
+  (<id>,storagefee,<serverid>,<time12#>,<assetid>,<storageamount>).
+  (<id>,fraction,<serverid>,<time12#>,<assetid>,<fractionamount>).
+  (<id>,balance,<serverid>,<time12#>,assetid2>,<amount2>,acct:<acct2>).
+  (<id>,storagefee,<serverid>,<time12#>,<assetid2>,<storageamount2>).
+  (<id>,fraction,<serverid>,<time12#>,<assetid2>,<fractionamount2>).
   ...
-  (<id>,balance,<bankid>,<time12#>,<assetidN>,<amount3>,acct:<acctN>).
-  (<id>,storagefee,<bankid>,<time12#>,<assetidN>,<storageamountN>).
-  (<id>,fraction,<bankid>,<time12#>,<assetidN>,<fractionamountN>).
-  (<id>,outboxhash,<bankid>,<time12#>,<outboxcount>,<outboxhash>).
-  (<id>,balancehash,<bankid>,<time12#>,<balancecount>,<balancehash>)
+  (<id>,balance,<serverid>,<time12#>,<assetidN>,<amount3>,acct:<acctN>).
+  (<id>,storagefee,<serverid>,<time12#>,<assetidN>,<storageamountN>).
+  (<id>,fraction,<serverid>,<time12#>,<assetidN>,<fractionamountN>).
+  (<id>,outboxhash,<serverid>,<time12#>,<outboxcount>,<outboxhash>).
+  (<id>,balancehash,<serverid>,<time12#>,<balancecount>,<balancehash>)
 
-  Bank compares <time12#> to /account/<id>/time. If it's the
-  same, bank processes the requested inbox transactions, and compares
+  Server compares <time12#> to /account/<id>/time. If it's the
+  same, server processes the requested inbox transactions, and compares
   the result to the balances and hashes sent by customer. If
-  correct, bank computes the response below, stores it in
+  correct, server computes the response below, stores it in
   /account/<id>/tranaction, and responds with:
 
-(<bankid,@processinbox,(<id>,processinbox,<bankid>,<time12#>,<time7#>|<time8#>|<time9#>).
-  (<bankid>,@spend|accept,(<id>,spend|accept,<bankid>,<id4>,<time4#>,note:<note42>)).
-  (<bankid,@spend|reject,(<id>,spend|reject,<bankid,<id5>,<time5#>,note:<note52>)).
-  (<bankid>,@balance,(<id>,balance,<bankid>,<time12#>,<assetid>,<amount>,acct:<acct>)).
-  (<bankid>,@balance,(<id>,balance,<bankid>,time12#>,assetid2>,<amount2>,acct:<acct2>)).
+(<serverid,@processinbox,(<id>,processinbox,<serverid>,<time12#>,<time7#>|<time8#>|<time9#>).
+  (<serverid>,@spend|accept,(<id>,spend|accept,<serverid>,<id4>,<time4#>,note:<note42>)).
+  (<serverid,@spend|reject,(<id>,spend|reject,<serverid,<id5>,<time5#>,note:<note52>)).
+  (<serverid>,@balance,(<id>,balance,<serverid>,<time12#>,<assetid>,<amount>,acct:<acct>)).
+  (<serverid>,@balance,(<id>,balance,<serverid>,time12#>,assetid2>,<amount2>,acct:<acct2>)).
   ...
-  (<bankid>,@balance,(<id>,balance,<bankid>,<time12#>,<assetidN>,<amount3>,acct:<acctN>)).
-  (<bankid>,@outboxhash,(<id>,outboxhash,<bankid>,<time12#>,<outboxcount>,<outboxhash>)).
-  (<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time12#>,<balancecount>,<balancehash>))
+  (<serverid>,@balance,(<id>,balance,<serverid>,<time12#>,<assetidN>,<amount3>,acct:<acctN>)).
+  (<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<time12#>,<outboxcount>,<outboxhash>)).
+  (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time12#>,<balancecount>,<balancehash>))
 
-  Otherwise, bank returns:
+  Otherwise, server returns:
 
-(<bankid>,failed,(<id>,processinbox,<bankid>,<time12#>|<time6#>|<time7#>|<time8#>|<time9#>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,processinbox,<serverid>,<time12#>|<time6#>|<time7#>|<time8#>|<time9#>),errcode:<errcode>,reason:<reason>)
 
   Again, that was the first phase of the two phase commit.
 
   To commit the transaction, the customer countersigns the
-  balancehash, and sends it back to the bank:
+  balancehash, and sends it back to the server:
 
-(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time12#>,<balancecount>,<balancehash>)))
+(<id>,commit,(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time12#>,<balancecount>,<balancehash>)))
 
-  The bank sets /account/<id>/time to <time12#>, removes the
+  The server sets /account/<id>/time to <time12#>, removes the
   transaction from /account/<id>/inbox/, removes completed
   transactions from /account/<id>/outbox/, signs and adds spend|accept
   and spend|reject items to the other customers' inboxes, updates the
@@ -520,22 +520,22 @@ Process Inbox
   /account/<id>/transaction, updates /account/<id>/outboxhash, and
   /account/<id>/balancehash with the signed hashes, and sends back:
 
-(<bankid>,@commit,(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time12#>,<balancecount>,<balancehash>))))
+(<serverid>,@commit,(<id>,commit,(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time12#>,<balancecount>,<balancehash>))))
 
-  If the bank no longer has a record of the first phase of the
+  If the server no longer has a record of the first phase of the
   transaction, it will send:
 
-(<bankid>,failed,(<id>,commit,(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,commit,(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))),errcode:<errcode>,reason:<reason>)
 
-  If the customer disagrees with the banks first response, he can
+  If the customer disagrees with the servers first response, he can
   rollback the transaction by sending:
 
-(<id>,rollback,<bankid>,<time12#>)
+(<id>,rollback,<serverid>,<time12#>)
 
-  The bank removes the /account/<id>/transaction file, and responds
+  The server removes the /account/<id>/transaction file, and responds
   with:
 
-(<bankid>,@rollback,(<id>,rollback,<bankid>,<time12#>))
+(<serverid>,@rollback,(<id>,rollback,<serverid>,<time12#>))
 
   This is the most complicated function in the system. It has to deal
   with two kinds of inbox items. The first is spontaneous spends from
@@ -547,11 +547,11 @@ Process Inbox
 
   Note that the customer decides which <acct> names will get the spends
   and the usage token refunds by where he specifies the balances in the
-  "balance" items. The bank only verifies that the assets can be
+  "balance" items. The server only verifies that the assets can be
   distributed as the customer requested.
 
   Rejected spends credit the usage tokens to the recipient, not the
-  spender. This discourages spam, even in an otherwise free bank.
+  spender. This discourages spam, even in an otherwise free server.
 
 
 Accept storage fees
@@ -559,37 +559,37 @@ Accept storage fees
 
   Customer sends:
 
-(<id>,storagefees,<bankid>,<req#>)
+(<id>,storagefees,<serverid>,<req#>)
 
-  Bank compares <req#> to /account/<id>/req. If <req#> is greater,
-  bank sets /account/<id>/req to <req#>. Then bank subtracts the
+  Server compares <req#> to /account/<id>/req. If <req#> is greater,
+  server sets /account/<id>/req to <req#>. Then server subtracts the
   integer parts from the storage fees in /account/<id>/storagefee,
-  turns them into bank spends on the inbox, and returns:
+  turns them into server spends on the inbox, and returns:
 
-(<bankid>,@storagefees,(<id>,storagefees,<bankid>,<req#>))
+(<serverid>,@storagefees,(<id>,storagefees,<serverid>,<req#>))
 
-  Otherwise, bank returns:
+  Otherwise, server returns:
 
-(<bankid>,failed,(<id>,storagefees,<bankid>,<req#>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,storagefees,<serverid>,<req#>),errcode:<errcode>,reason:<reason>)
 
 Lookup asset
 ------------
 
   Customer sends:
 
-(<id>,getasset,<req#>,<bankid>,<assetid>)
+(<id>,getasset,<req#>,<serverid>,<assetid>)
 
-  Bank compares <req#> to /account/<id>/req. If <req#>
-  is greater, bank sets /account/<id>/req to <req#>. Then,
-  if <assetid> exists in /asset, bank returns:
+  Server compares <req#> to /account/<id>/req. If <req#>
+  is greater, server sets /account/<id>/req to <req#>. Then,
+  if <assetid> exists in /asset, server returns:
 
-(<bankid>,@asset,(<issuerid>,asset,<bankid>,<assetid>,<scale>,<precision>,<assetname>)).
-(<bankid>,@storage,(<issuerid>,storage,<bankid>,<time#>,<assetid>,<percent>))
+(<serverid>,@asset,(<issuerid>,asset,<serverid>,<assetid>,<scale>,<precision>,<assetname>)).
+(<serverid>,@storage,(<issuerid>,storage,<serverid>,<time#>,<assetid>,<percent>))
 
   Where the @storage item is optional.
-  Otherwise, bank returns:
+  Otherwise, server returns:
 
-(<bankid>,failed,(<id>,getasset,<bankid>,<assetid>,<random>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,getasset,<serverid>,<assetid>,<random>),errcode:<errcode>,reason:<reason>)
 
 
 Create asset
@@ -597,14 +597,14 @@ Create asset
 
   Customer sends:
 
-(<id>,asset,<bankid>,<assetid>,<scale>,<precision>,<assetname>).
-  (<id>,storage,<bankid>,<assetid>,<time4#>,<percent>).
-  (<id>,fee,<bankid>,<time4#>,asset,<feeassetid>,<feeamount>).
-  (<id>,balance,<bankid>,<time4#>,<assetid>,-1,acct:<acct1>).
-  (<id>,balance,<bankid>,<time4#>,assetid2>,<amount2>acct:<acct2>).
+(<id>,asset,<serverid>,<assetid>,<scale>,<precision>,<assetname>).
+  (<id>,storage,<serverid>,<assetid>,<time4#>,<percent>).
+  (<id>,fee,<serverid>,<time4#>,asset,<feeassetid>,<feeamount>).
+  (<id>,balance,<serverid>,<time4#>,<assetid>,-1,acct:<acct1>).
+  (<id>,balance,<serverid>,<time4#>,assetid2>,<amount2>acct:<acct2>).
   ...
-  (<id>,balance,<bankid>,<time4#>,<assetidN>,<amountN>,acct:<acctN>).
-  (<id>,balancehash,<bankid>,<time4#>,<balancecount>,<balancehash>)
+  (<id>,balance,<serverid>,<time4#>,<assetidN>,<amountN>,acct:<acctN>).
+  (<id>,balancehash,<serverid>,<time4#>,<balancecount>,<balancehash>)
 
   Note that the balance for the new asset is "-1". Like loom, the sum
   of all balances for an <assetid> add up to -1. A negative balance
@@ -617,22 +617,22 @@ Create asset
   the balances in /account/<id>/balance/<acctN> (including 1 usage
   token for the /asset/<assetid> file, 1 usage token for the balance
   file for the new asset, and the non-refundable asset creation fee),
-  and the balancehash matches, then bank adds
+  and the balancehash matches, then server adds
   <assetid>=(<id>,asset,<assetid>,<scale>,<precision>,<assetname>) to
   /asset/, clears /account/<id>/time, and returns:
 
-(<bankid>,@asset,(<id>,asset,<bankid>,<assetid>,<assetname>)).
-  (<bankid>,@storage,(<id>,storage,<bankid>,<time4#>,<assetid>,<percent>)).
-  (<bankid>,@fee,(<id>,fee,<bankid>,asset,<feeassetid>,<feeamount>)).
-  (<bankid>,@balance,(<id>,balance,<bankid>,<time4#>,<assetid>,-1,acct:<acct1>)).
-  (<bankid>,@balance,(<id>,balance,<bankid>,<time4#>,assetid2>,<amount2>acct:<acct2>)).
+(<serverid>,@asset,(<id>,asset,<serverid>,<assetid>,<assetname>)).
+  (<serverid>,@storage,(<id>,storage,<serverid>,<time4#>,<assetid>,<percent>)).
+  (<serverid>,@fee,(<id>,fee,<serverid>,asset,<feeassetid>,<feeamount>)).
+  (<serverid>,@balance,(<id>,balance,<serverid>,<time4#>,<assetid>,-1,acct:<acct1>)).
+  (<serverid>,@balance,(<id>,balance,<serverid>,<time4#>,assetid2>,<amount2>acct:<acct2>)).
   ...
-  (<bankid>,@balance,(<id>,balance,<bankid>,<time4#>,assetidN>,<amountN>acct:<acctN>)).
-  (<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time4#>,<balancecount>,<balancehash>))
+  (<serverid>,@balance,(<id>,balance,<serverid>,<time4#>,assetidN>,<amountN>acct:<acctN>)).
+  (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time4#>,<balancecount>,<balancehash>))
 
-  Otherwise, bank returns:
+  Otherwise, server returns:
 
-(<bankid>,failed,(<id>,asset,<bankid>,<assetid>,<assetname>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,asset,<serverid>,<assetid>,<assetname>),errcode:<errcode>,reason:<reason>)
 
   The "storage" fee is optional. To change or add a storage fee, send a new
   "asset" message with the new storage fee. This costs 1 usage token, even
@@ -644,21 +644,21 @@ Get outbox
 
   If customer needs to get back in sync with his outbox, he can send:
 
-(<id>,getoutbox,<bankid>,req#>)
+(<id>,getoutbox,<serverid>,req#>)
 
-  Bank compares <req#> to /account/<id>/req. If <req#>
-  is greater, bank sets /account/<id>/req to <req#>. Then,
-  if the <id> exists, bank returns:
+  Server compares <req#> to /account/<id>/req. If <req#>
+  is greater, server sets /account/<id>/req to <req#>. Then,
+  if the <id> exists, server returns:
 
-(<bankid>,@getoutbox,(<id>,getoutbox,<bankid>,<req#>).
-  (<bankid>,@spend,(<id>,spend,<time2#>,<id2>,<bankid>,<assetid2>,<amount2>,note:<note2>,acct:<acct2>))
-  (<bankid>,@spend,<id>,spend,<time3#>,<id3>,<bankid>,<assetid3>,<amount3>,note:<note3>,acct:<acct3>))
+(<serverid>,@getoutbox,(<id>,getoutbox,<serverid>,<req#>).
+  (<serverid>,@spend,(<id>,spend,<time2#>,<id2>,<serverid>,<assetid2>,<amount2>,note:<note2>,acct:<acct2>))
+  (<serverid>,@spend,<id>,spend,<time3#>,<id3>,<serverid>,<assetid3>,<amount3>,note:<note3>,acct:<acct3>))
   ...
-  (<bankid>,@outboxhash,(<id>,outboxhash,<time#>,<bankid>,<hash>))
+  (<serverid>,@outboxhash,(<id>,outboxhash,<time#>,<serverid>,<hash>))
 
-  Otherwise, bank returns:
+  Otherwise, server returns:
 
-(<bankid>,failed,(<id>,getoutbox,<bankid>,req#>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,getoutbox,<serverid>,req#>),errcode:<errcode>,reason:<reason>)
 
 
 Get balance
@@ -666,85 +666,85 @@ Get balance
 
   If the customer loses track of a balance, customer can send:
 
-(<id>,getbalance,<bankid>,<req#>,acct:<acct>,asset:<assetid>)
+(<id>,getbalance,<serverid>,<req#>,acct:<acct>,asset:<assetid>)
 
-  Bank compares <req#> to /account/<id>/req. If <req#> is greater,
-  bank sets /account/<id>/req to <req#>.  Then bank returns
+  Server compares <req#> to /account/<id>/req. If <req#> is greater,
+  server sets /account/<id>/req to <req#>.  Then server returns
   information about the specified <acct>s and <assetid>s If acct is
   not specified then information about all accounts is returned. If
   assetid is not specified, then information about all assetids is
   returned. The "fraction" balances are returned only if <acct> is not
   specified.
 
-(<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>)).
-(<bankid>,@balance,(<id>,balance,<bankid>,<time2#>,<assetid2>,<amount2>,acct:<acct2>)).
+(<serverid>,@balance,(<id>,balance,<serverid>,<time#>,<assetid>,<amount>,acct:<acct>)).
+(<serverid>,@balance,(<id>,balance,<serverid>,<time2#>,<assetid2>,<amount2>,acct:<acct2>)).
 ...
-(<bankid>,@balance,(<id>,balance,<bankid>,<timeN#>,<assetidN>,<amountN>,acct:<acctN>)).
-(<bankid>,@fraction,(<id>,fraction,<bankid>,<timef1#>,<assetid>,<amountf1>).
-(<bankid>,@fraction,(<id>,fraction,<bankid>,<timef2#>,<assetid>,<amountf2>).
+(<serverid>,@balance,(<id>,balance,<serverid>,<timeN#>,<assetidN>,<amountN>,acct:<acctN>)).
+(<serverid>,@fraction,(<id>,fraction,<serverid>,<timef1#>,<assetid>,<amountf1>).
+(<serverid>,@fraction,(<id>,fraction,<serverid>,<timef2#>,<assetid>,<amountf2>).
 ...
-(<bankid>,@fraction,(<id>,fraction,<bankid>,<timefN#>,<assetid>,<amountfN>).
-(<bankid>,storagefee,<bankid>,<time#>,<assetid>,<amount>).
-(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))
+(<serverid>,@fraction,(<id>,fraction,<serverid>,<timefN#>,<assetid>,<amountfN>).
+(<serverid>,storagefee,<serverid>,<time#>,<assetid>,<amount>).
+(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))
 
-  Otherwise, bank returns:
+  Otherwise, server returns:
 
-(<bankid>,failed,(<id>,getbalance,<bankid>,<req#>,acct:<acct>,assetid:<assetid>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,getbalance,<serverid>,<req#>,acct:<acct>,assetid:<assetid>),errcode:<errcode>,reason:<reason>)
 
 
 Coupons
 -------
   Customer sends:
 
-(<id>,spend,<bankid>,<time#>,coupon,<assetid>,<amount>,note:<note>))
-  (<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>).
-  (<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>).
-  (<id>,balance,<bankid>,<time#>,<assetid2>,<amount2>,acct:<acct2>).
+(<id>,spend,<serverid>,<time#>,coupon,<assetid>,<amount>,note:<note>))
+  (<id>,tranfee,<serverid>,<time#>,<tokenid>,<amount2fee>).
+  (<id>,balance,<serverid>,<time#>,<assetid>,<amount>,acct:<acct>).
+  (<id>,balance,<serverid>,<time#>,<assetid2>,<amount2>,acct:<acct2>).
   ...
-  (<id>,balance,<bankid>,<time#>,<assetidN>,<amountN>,acct:<acctN>).
-  (<id>,outboxhash,<bankid>,<time#>,<outboxcount>,<outboxhash>).
-  (<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>)
+  (<id>,balance,<serverid>,<time#>,<assetidN>,<amountN>,acct:<acctN>).
+  (<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>).
+  (<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>)
 
-  Bank checks that the <time#> is equal to /account/<id>/time, that
+  Server checks that the <time#> is equal to /account/<id>/time, that
   the balances match (after subtracting the spend amount fees), and
-  that the hashes match what the customer sent. If they match, bank
+  that the hashes match what the customer sent. If they match, server
   computes the item list below, stores it in the database in the file
   /account/<id>/outbox, and returns:
 
-(<bankid>,@spend,(<id>,spend,<time#>,spend,<bankid>,<assetid>,<amount>,note:<note>,acct:<acct>)).
-  (<bankid>,couponenvelope,<id>,<encrypted-coupon>).
-  (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>)).
-  (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,<assetid>,<amount>,acct:<acct>)).
-  (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,assetid2>,<amount2>,acct:<acct2>)).
+(<serverid>,@spend,(<id>,spend,<time#>,spend,<serverid>,<assetid>,<amount>,note:<note>,acct:<acct>)).
+  (<serverid>,couponenvelope,<id>,<encrypted-coupon>).
+  (<serverid>,@tranfee,(<id>,tranfee,<serverid>,<time#>,<tokenid>,<amount2fee>)).
+  (<serverid>,@balance,(<id>,balance,<time#>,<serverid>,<assetid>,<amount>,acct:<acct>)).
+  (<serverid>,@balance,(<id>,balance,<time#>,<serverid>,assetid2>,<amount2>,acct:<acct2>)).
   ...
-  (<bankid>,@balance,(<id>,balance,<time#>,<bankid>,<assetidN>,<amountN>,acct:<acctN>)).
-  (<bankid,@outboxhash,(<id>,outboxhash,<bankid>,<time#>,<outboxcount>,<outboxhash>)).
-  (<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))
+  (<serverid>,@balance,(<id>,balance,<time#>,<serverid>,<assetidN>,<amountN>,acct:<acctN>)).
+  (<serverid,@outboxhash,(<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>)).
+  (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))
 
   Where <encrypted-coupon> is the following, encrypted with the public
   key for <id>:
 
-(<bankid>,coupon,<bankurl>,<coupon>,<assetid>,<amount>,note:<note>)
+(<serverid>,coupon,<serverurl>,<coupon>,<assetid>,<amount>,note:<note>)
 
   <coupon> is the coupon number, a random ID.
 
-  Bank also stores, at coupon/<couponhash> (the hash of the <coupon>
+  Server also stores, at coupon/<couponhash> (the hash of the <coupon>
   number)  the following:
 
-(<bankid>,@spend,(<id>,spend,<bankid>,<time#>,coupon,<assetid>,<amount>,note:<note>))
+(<serverid>,@spend,(<id>,spend,<serverid>,<time#>,coupon,<assetid>,<amount>,note:<note>))
 
-  Note that this makes it impossible for the bank alone to reproduce
+  Note that this makes it impossible for the server alone to reproduce
   the coupon, since there's no plain-text copy of the coupon number.
   The only copy of the coupon number is in the customer's outbox,
   encrypted to his public key. This doesn't really matter for the
-  current web server implementation, where the bank's private key is
+  current web server implementation, where the server's private key is
   stored in the database, but an eventual stand-alone servrer, that
-  requires the passphrase for the bank's private key at startup time,
+  requires the passphrase for the server's private key at startup time,
   could be fully secure, even if the database is revealed.
 
-  If the balances, balancehash, or outboxhash don't match, bank returns:
+  If the balances, balancehash, or outboxhash don't match, server returns:
 
-(<bankid>,failed,(<id>,spend,<bankid>,<time#>,coupon,<assetid>,<amount>,note:<note>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,spend,<serverid>,<time#>,coupon,<assetid>,<amount>,note:<note>),errcode:<errcode>,reason:<reason>)
 
   This is an alternative form of the "spend" command. It creates a
   bearer coupon. Intead of putting an entry in the inbox of the
@@ -752,35 +752,35 @@ Coupons
   returns the coupon to the spender, encrypted with his public key.
   He can then give it to whomever he pleases, and that person can
   redeem it, with the couponenvelope request below. This is the normal
-  way to introduce someone to a Trubanc server.
+  way to introduce someone to a Truledger server.
 
 
 Redeeming Coupons
 -----------------
   Customer sends:
 
-(<id>,couponenvelope,<bankid>,<encrytped-coupon>)
+(<id>,couponenvelope,<serverid>,<encrytped-coupon>)
 
-  Where <encrypted-coupon> is the following, encrypted to the bank's
+  Where <encrypted-coupon> is the following, encrypted to the server's
   public key.
 
-(<bankid>,coupon,<bankurl>,<coupon>,<assetid>,<amount>,note:<note>)
+(<serverid>,coupon,<serverurl>,<coupon>,<assetid>,<amount>,note:<note>)
 
-  Bank checks at coupon/<coupon> to make sure the coupon hasn't yet
+  Server checks at coupon/<coupon> to make sure the coupon hasn't yet
   been spent, enters in the inbox of <id>, an entry that looks like a
-  spend from the bank for <assetid><amount>, enters in the inbox of
+  spend from the server for <assetid><amount>, enters in the inbox of
   the original creator of the coupon an entry that looks like a
-  spendaccept from the bank for the spend that created the coupon, and
+  spendaccept from the server for the spend that created the coupon, and
   returns:
 
-(<bankid>,@couponenvelope,(<id>,couponenvelope,<bankid>,<encrytped-coupon>))
+(<serverid>,@couponenvelope,(<id>,couponenvelope,<serverid>,<encrytped-coupon>))
 
   Where <encrypted-coupon> is the coupon above, encrypted to the
-  bank's public key.
+  server's public key.
 
-  If the coupon has already been spent, bank returns:
+  If the coupon has already been spent, server returns:
 
-(<bankid>,failed,(<id>,couponenvelope,<bankid>,<encrytped-coupon>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,couponenvelope,<serverid>,<encrytped-coupon>),errcode:<errcode>,reason:<reason>)
 
 
 Switching Asset Issuance
@@ -796,15 +796,15 @@ Write data
 
   Customer sends:
 
-(<id>,writedata,<bankid>,<time#>,<anonymous>,<key>,<data>).
-(<id>,balance,<bankid>,<time#>,<tokenid>,<feeamount>).
-(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>)
+(<id>,writedata,<serverid>,<time#>,<anonymous>,<key>,<data>).
+(<id>,balance,<serverid>,<time#>,<tokenid>,<feeamount>).
+(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>)
 
-  Bank returns:
+  Server returns:
 
-(<bankid>,@writedata,<id>,<time#>,<anonymous>,<key>).
-(<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<tokenid>,<feeamount>)).
-(<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))
+(<serverid>,@writedata,<id>,<time#>,<anonymous>,<key>).
+(<serverid>,@balance,(<id>,balance,<serverid>,<time#>,<tokenid>,<feeamount>)).
+(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))
 
   <id>.<time#>.<data> is written to the database at dir/<keyhash>,
   where <keyhash> is sha1(<key>), if <anonymous> is non-blank, or
@@ -823,15 +823,15 @@ Read Data
 
   Customer sends:
 
-(<id>,readdata,<bankid>,<req#>,<key>,size=<size>)
+(<id>,readdata,<serverid>,<req#>,<key>,size=<size>)
 
   Or, for <anonymous> writes:
 
-(0,readdata,<bankid>,0,<key>,size=<size>):0
+(0,readdata,<serverid>,0,<key>,size=<size>):0
 
-  Bank returns:
+  Server returns:
 
-(<bankid>,@readdata,<id>,<time#>,<key>,<data>)
+(<serverid>,@readdata,<id>,<time#>,<key>,<data>)
 
   Unsigned messages are allowed to fetch <anonymous> data, so that
   this can be used to cache private keys on the server, stored with
@@ -845,13 +845,13 @@ Grant permission
 
   Customer sends:
 
-(<id>,grant,<bankid>,<time#>,<toid>,<permission>,grant=grant)
+(<id>,grant,<serverid>,<time#>,<toid>,<permission>,grant=grant)
 
-  Bank compares <time#> to /account/<id>/time. If it's the
-  same, bank checks that <id> has permission to grant <permission>, if so,
-  bank returns and stores at account/<id>/permissions/<permission>:
+  Server compares <time#> to /account/<id>/time. If it's the
+  same, server checks that <id> has permission to grant <permission>, if so,
+  server returns and stores at account/<id>/permissions/<permission>:
 
-(<bankid>,@grant,(<id>,grant,<bankid>,<req#>,<toid>,<permission>,grant=grant))
+(<serverid>,@grant,(<id>,grant,<serverid>,<req#>,<toid>,<permission>,grant=grant))
 
   Even though it requires a file to store, granting permissions is free.
 
@@ -859,24 +859,24 @@ Grant permission
   is a "transitive grant". <id> is allowed to grant the permission to
   others. Otherwise, <id> can only use the permission.
 
-  The bank has grant permission for all permissions. If the bank grants
+  The server has grant permission for all permissions. If the server grants
   itself a permission, then other accounts need that permission to do
-  what it controls. If the bank does NOT have a permission, then everybody
+  what it controls. If the server does NOT have a permission, then everybody
   is allowed to do what it controls, without permission.
 
   Useful permissions:
 
   mint-tokens
     allows minting of usage token coupons and spending of usage tokens
-    to new accounts. If the bank requires this permission, then only
-    it or its proxies can give new acccounts. Allows the bank to
+    to new accounts. If the server requires this permission, then only
+    it or its proxies can give new acccounts. Allows the server to
     enforce know-your-customer type rules.
 
   mint-coupons
     Sometimes you want to also control the minting of non-token coupons.
 
   add-asset
-    allows the creation of new assets. If the bank requires this permission,
+    allows the creation of new assets. If the server requires this permission,
     then only it or its proxies can create new asset types.
 
 Remove permission
@@ -884,10 +884,10 @@ Remove permission
 
   Customer sends:
 
-(<id>,deny,<bankid>,<req#>,<toid>,<permission>)
+(<id>,deny,<serverid>,<req#>,<toid>,<permission>)
 
-  Bank removes the grant record from <id> stored at
-  account/<toid>/permissions/<permission>. The bank can remove any
+  Server removes the grant record from <id> stored at
+  account/<toid>/permissions/<permission>. The server can remove any
   grant record. Other users can only remove grant records that they
   directly created. If the removed grant record has transitive grant
   permission, then all transitively granted permissions are also
@@ -895,7 +895,7 @@ Remove permission
 
   Acknowledged with:
 
-(<bankid>,@deny,(<id>,deny,<bankid>,<req#>,<toid>,<permission>))
+(<serverid>,@deny,(<id>,deny,<serverid>,<req#>,<toid>,<permission>))
 
   If more than one <id> grants a permission to <toid>, then all
   of them will be stored at account/<toid>/permissions/<permission>,
@@ -908,21 +908,21 @@ Get permissions
 
 Customer sends:
 
-(<id>,permission,<bankid>,<req#>,grant=grant)
+(<id>,permission,<serverid>,<req#>,grant=grant)
 
   If the final grant arg is included, and is "grant", searches all
   accounts for permission directly granted by <id>. If "grant" is
   NOT included, returns a list of all permissions granted to <id>.
   If a permission is required, but NOT granted to <id>, returns the
-  bank's grant record for that permission.
+  server's grant record for that permission.
 
-  Bank returns:
+  Server returns:
 
-(<bankid>,@permission,(<id>,permission,<bankid>,<req#>,grant=grant).
-(<bankid>,@grant,(<id>,grant,<bankid>,<time#>,<toid>,<permission>,grant=grant)).
-(<bankid>,@grant,(<id2>,grant,<bankid>,<time#2>,<toid2>,<permission>,grant=grant)).
+(<serverid>,@permission,(<id>,permission,<serverid>,<req#>,grant=grant).
+(<serverid>,@grant,(<id>,grant,<serverid>,<time#>,<toid>,<permission>,grant=grant)).
+(<serverid>,@grant,(<id2>,grant,<serverid>,<time#2>,<toid2>,<permission>,grant=grant)).
 ...
-(<bankid>,@grant,(<idN>,grant,<bankid>,<time#N>,<toidN>,<permission>,grant=grant)).
+(<serverid>,@grant,(<idN>,grant,<serverid>,<time#N>,<toidN>,<permission>,grant=grant)).
 
 
 Backup
@@ -931,22 +931,22 @@ Backup
 
 (<id>,backup,<req#>,<key1>,<value1>,<key2>,<value2>,...)
 
-  Bank checks that <id> is the bankid, then stores <valuei> at <keyi> in
-  the database. Bank returns:
+  Server checks that <id> is the serverid, then stores <valuei> at <keyi> in
+  the database. Server returns:
 
-(<bankid>,@backup,<req#>)
+(<serverid>,@backup,<req#>)
 
 
 Setting the Automatic Vend Acct
 -------------------------------
   Customer sends:
 
-(<id>,vendacct,<bankid>,<time#>,<acct>)
+(<id>,vendacct,<serverid>,<time#>,<acct>)
 
-  Bank checks that <time#> is equal to /account/<id>/time, then signs
+  Server checks that <time#> is equal to /account/<id>/time, then signs
   the message, stores it in /account/<id>/vendacct, and returns:
 
-(<bankid>,@vendacct,(<id>,vendacct,<bankid>,<time#>,<acct>))
+(<serverid>,@vendacct,(<id>,vendacct,<serverid>,<time#>,<acct>))
 
   This specified the acct that will be used as a source for automatic
   vends. The default is the "main" acct.
@@ -956,32 +956,32 @@ Creating an Automatic Vend
 --------------------------
   Customer sends:
 
-(<id>,defvend,<bankid>,<time#>,<vend#>,expires=<expirationtime#>,note=<description>).
-  (<id>,vendin,<bankid>,<time#>,<vend#>,<assetid1>,<amount1>).
-  (<id>,vendin,<bankid>,<time#>,<vend#>,<assetid2>,<amount2>).
+(<id>,defvend,<serverid>,<time#>,<vend#>,expires=<expirationtime#>,note=<description>).
+  (<id>,vendin,<serverid>,<time#>,<vend#>,<assetid1>,<amount1>).
+  (<id>,vendin,<serverid>,<time#>,<vend#>,<assetid2>,<amount2>).
   ...
-  (<id>,vendin,<bankid>,<time#>,<vend#>,<assetidN>,<amountN>).
-  (<id>,vendout,<bankid>,<time#>,<vend#>,<assetid-o1>,<amount-o1>).
-  (<id>,vendout,<bankid>,<time#>,<vend#>,<assetid-o2>,<amount-o2>).
+  (<id>,vendin,<serverid>,<time#>,<vend#>,<assetidN>,<amountN>).
+  (<id>,vendout,<serverid>,<time#>,<vend#>,<assetid-o1>,<amount-o1>).
+  (<id>,vendout,<serverid>,<time#>,<vend#>,<assetid-o2>,<amount-o2>).
   ...
-  (<id>,vendout,<bankid>,<time#>,<vend#>,assetid-oM>,<amount-oM>)
+  (<id>,vendout,<serverid>,<time#>,<vend#>,assetid-oM>,<amount-oM>)
 
-  Bank checks that <time#> is equal to /account/<id>/time, checks that
+  Server checks that <time#> is equal to /account/<id>/time, checks that
   there is no overlap between the <assetidI> and the <assetid-oI>,
   then signs the entire message (not each component), stores that in
   the database at /defvend/<vend#>, overwriting an earlier definition
   for the same <vend#>, if there, and returns:
 
-(<bankid>,@defvend,
-  (<id>,defvend,<bankid>,<time#>,<vend#>,expires=<expirationtime#>,note=<description>).
-  (<id>,vendin,<bankid>,<time#>,<vend#>,<assetid1>,<amount1>).
-  (<id>,vendin,<bankid>,<time#>,<vend#>,<assetid2>,<amount2>).
+(<serverid>,@defvend,
+  (<id>,defvend,<serverid>,<time#>,<vend#>,expires=<expirationtime#>,note=<description>).
+  (<id>,vendin,<serverid>,<time#>,<vend#>,<assetid1>,<amount1>).
+  (<id>,vendin,<serverid>,<time#>,<vend#>,<assetid2>,<amount2>).
   ...
-  (<id>,vendin,<bankid>,<time#>,<vend#>,<assetidN>,<amountN>).
-  (<id>,vendout,<bankid>,<time#>,<vend#>,<assetid-o1>,<amount-o1>).
-  (<id>,vendout,<bankid>,<time#>,<vend#>,<assetid-o2>,<amount-o2>).
+  (<id>,vendin,<serverid>,<time#>,<vend#>,<assetidN>,<amountN>).
+  (<id>,vendout,<serverid>,<time#>,<vend#>,<assetid-o1>,<amount-o1>).
+  (<id>,vendout,<serverid>,<time#>,<vend#>,<assetid-o2>,<amount-o2>).
   ...
-  (<id>,vendout,<bankid>,<time#>,<vend#>,assetid-oN>,<amount-oN>))
+  (<id>,vendout,<serverid>,<time#>,<vend#>,assetid-oN>,<amount-oN>))
 
   This defines a vending machine, an automated trade. Anyone who knows
   <id> and <vend#> can invoke this trade with the "vend" message
@@ -996,30 +996,30 @@ Trade with an Automated Vend
 ----------------------------
   Customer sends:
 
-(<id>,vend,<bankid>,<time#>,<id2>,<vend#>,<count>).
-  (<id>,spend,<bankid>,<time#>,<assetid1>,<amount1>).
-  (<id>,spend,<bankid>,<time#>,assetid2>,<amount2>).
+(<id>,vend,<serverid>,<time#>,<id2>,<vend#>,<count>).
+  (<id>,spend,<serverid>,<time#>,<assetid1>,<amount1>).
+  (<id>,spend,<serverid>,<time#>,assetid2>,<amount2>).
   ...
-  (<id>,spend,<bankid>,<time#>,<assetidN>,<amountN>).
-  (<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>).
-  (<id>,storagefee,<bankid>,<time#>,<assetid>,<storageamount>).
-  (<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>).
-  (<id>,fraction,<bankid>,<time#>,<assetid>,<fractionamount>).
-  (<id>,balance,<bankid>,<time#>,<assetid2>,<amount2>,acct:<acct2>).
-  (<id>,fraction,<bankid>,<time#>,<assetid2>,<fractionamount2>).
+  (<id>,spend,<serverid>,<time#>,<assetidN>,<amountN>).
+  (<id>,tranfee,<serverid>,<time#>,<tokenid>,<amount2fee>).
+  (<id>,storagefee,<serverid>,<time#>,<assetid>,<storageamount>).
+  (<id>,balance,<serverid>,<time#>,<assetid>,<amount>,acct:<acct>).
+  (<id>,fraction,<serverid>,<time#>,<assetid>,<fractionamount>).
+  (<id>,balance,<serverid>,<time#>,<assetid2>,<amount2>,acct:<acct2>).
+  (<id>,fraction,<serverid>,<time#>,<assetid2>,<fractionamount2>).
   ...
-  (<id>,balance,<bankid>,<time#>,<assetidN>,<amountN>,acct:<acctN>).
-  (<id>,fraction,<bankid>,<time#>,<assetidN>,<fractionamountN>).
-  (<id>,balance,<bankid>,<time#>,<assetid-o1>,<amount>,acct:<acct>).
-  (<id>,fraction,<bankid>,<time#>,<assetid-o1>,<fractionamount>).
-  (<id>,balance,<bankid>,<time#>,<assetid-o2>,<amount2>,acct:<acct2>).
-  (<id>,fraction,<bankid>,<time#>,<assetid-o2>,<fractionamount2>).
+  (<id>,balance,<serverid>,<time#>,<assetidN>,<amountN>,acct:<acctN>).
+  (<id>,fraction,<serverid>,<time#>,<assetidN>,<fractionamountN>).
+  (<id>,balance,<serverid>,<time#>,<assetid-o1>,<amount>,acct:<acct>).
+  (<id>,fraction,<serverid>,<time#>,<assetid-o1>,<fractionamount>).
+  (<id>,balance,<serverid>,<time#>,<assetid-o2>,<amount2>,acct:<acct2>).
+  (<id>,fraction,<serverid>,<time#>,<assetid-o2>,<fractionamount2>).
   ...
-  (<id>,balance,<bankid>,<time#>,<assetid-oN>,<amount-oN>,acct:<acctN>).
-  (<id>,fraction,<bankid>,<time#>,<assetid-oN>,<fractionamount-oN>).
-  (<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>)
+  (<id>,balance,<serverid>,<time#>,<assetid-oN>,<amount-oN>,acct:<acctN>).
+  (<id>,fraction,<serverid>,<time#>,<assetid-oN>,<fractionamount-oN>).
+  (<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>)
 
-  Bank checks that <time#> is equal to /account/<id>/time, checks that
+  Server checks that <time#> is equal to /account/<id>/time, checks that
   the spends on the <assetidI> are <count> times the "vendin" values
   in the definition at /account/<id2>/defvend/<vend#>, and that the
   existing user balances minus the "spend"s match the corresponding
@@ -1032,31 +1032,31 @@ Trade with an Automated Vend
   it updates the /vendpool/<id2>/<assetI> and
   /vendpool/<id2>/asset-oI> messages with the "spend" amounts received
   and the "vendout" amounts spent. Finally, it updates the user
-  balances, fractions, and balancehash, with bank-signed messages, and
+  balances, fractions, and balancehash, with server-signed messages, and
   returns:
 
-(<bankid>,@vend,(<id>,vend,<bankid>,<time#>,<id2>,<vend#>,<count>).
-  (<bankid>,@spend,(<id>,spend,<bankid>,<time#>,<id2>,<assetid1>,<amount1>)).
-  (<bankid>,@spend,(<id>,spend,<bankid>,<time#>,<id2>,assetid2>,<amount2>)).
+(<serverid>,@vend,(<id>,vend,<serverid>,<time#>,<id2>,<vend#>,<count>).
+  (<serverid>,@spend,(<id>,spend,<serverid>,<time#>,<id2>,<assetid1>,<amount1>)).
+  (<serverid>,@spend,(<id>,spend,<serverid>,<time#>,<id2>,assetid2>,<amount2>)).
   ...
-  (<bankid>,@spend,(<id>,spend,<bankid>,<time#>,<id2>,<assetidN>,<amountN>)).
-  (<bankid>,@tranfee,(<id>,tranfee,<bankid>,<time#>,<tokenid>,<amount2fee>)).
-  (<bankid>,@storagefee,(<id>,storagefee,<bankid>,<time#>,<assetid>,<storageamount>)).
-  (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid>,<amount>,acct:<acct>)).
-  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid>,<fractionamount>)).
-  (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid2>,<amount2>,acct:<acct2>)).
-  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid2>,<fractionamount2>)).
+  (<serverid>,@spend,(<id>,spend,<serverid>,<time#>,<id2>,<assetidN>,<amountN>)).
+  (<serverid>,@tranfee,(<id>,tranfee,<serverid>,<time#>,<tokenid>,<amount2fee>)).
+  (<serverid>,@storagefee,(<id>,storagefee,<serverid>,<time#>,<assetid>,<storageamount>)).
+  (<serverid>,@balance,(<id>,balance,<serverid>,<time#>,<assetid>,<amount>,acct:<acct>)).
+  (<serverid>,@fraction,(<id>,fraction,<serverid>,<time#>,<assetid>,<fractionamount>)).
+  (<serverid>,@balance,(<id>,balance,<serverid>,<time#>,<assetid2>,<amount2>,acct:<acct2>)).
+  (<serverid>,@fraction,(<id>,fraction,<serverid>,<time#>,<assetid2>,<fractionamount2>)).
   ...
-  (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetidN>,<amountN>,acct:<acctN>)).
-  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetidN>,<fractionamountN>)).
-  (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid-o1>,<amount>,acct:<acct>)).
-  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid-o1>,<fractionamount>)).
-  (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid-o2>,<amount2>,acct:<acct2>)).
-  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid-o2>,<fractionamount2>)).
+  (<serverid>,@balance,(<id>,balance,<serverid>,<time#>,<assetidN>,<amountN>,acct:<acctN>)).
+  (<serverid>,@fraction,(<id>,fraction,<serverid>,<time#>,<assetidN>,<fractionamountN>)).
+  (<serverid>,@balance,(<id>,balance,<serverid>,<time#>,<assetid-o1>,<amount>,acct:<acct>)).
+  (<serverid>,@fraction,(<id>,fraction,<serverid>,<time#>,<assetid-o1>,<fractionamount>)).
+  (<serverid>,@balance,(<id>,balance,<serverid>,<time#>,<assetid-o2>,<amount2>,acct:<acct2>)).
+  (<serverid>,@fraction,(<id>,fraction,<serverid>,<time#>,<assetid-o2>,<fractionamount2>)).
   ...
-  (<bankid>,@balance,(<id>,balance,<bankid>,<time#>,<assetid-oN>,<amount-oN>,acct:<acctN>)).
-  (<bankid>,@fraction,(<id>,fraction,<bankid>,<time#>,<assetid-oN>,<fractionamount-oN>)).
-  (<bankid>,@balancehash,(<id>,balancehash,<bankid>,<time#>,<balancecount>,<balancehash>))
+  (<serverid>,@balance,(<id>,balance,<serverid>,<time#>,<assetid-oN>,<amount-oN>,acct:<acctN>)).
+  (<serverid>,@fraction,(<id>,fraction,<serverid>,<time#>,<assetid-oN>,<fractionamount-oN>)).
+  (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))
 
   
 Accept Automatic Vends
@@ -1064,21 +1064,21 @@ Accept Automatic Vends
 
   Customer sends:
 
-(<id>,vendpool,<bankid>,<req#>)
+(<id>,vendpool,<serverid>,<req#>)
 
-  Bank compares <req#> to /account/<id>/req. If <req#> is greater,
-  bank sets /account/<id>/req to <req#>. Then bank signs, as "inbox"
+  Server compares <req#> to /account/<id>/req. If <req#> is greater,
+  server sets /account/<id>/req to <req#>. Then server signs, as "inbox"
   items, and moves the spends on /account/<id>/vendpool to the
   customer's inbox, and returns:
 
-(<bankid>,@vendpool,(<id>,vendpool,<bankid>,<time#>))
+(<serverid>,@vendpool,(<id>,vendpool,<serverid>,<time#>))
 
-  Otherwise, bank returns:
+  Otherwise, server returns:
 
-(<bankid>,failed,(<id>,vendpool,<bankid>,<time#>),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,vendpool,<serverid>,<time#>),errcode:<errcode>,reason:<reason>)
 
 
-// Copyright 2008-2009 Bill St. Clair
+// Copyright 2008-2010 Bill St. Clair
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

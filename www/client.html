@@ -1,23 +1,23 @@
 <html>
 <head>
 <link rel="stylesheet" type="text/css" href="css/docstyle.css">
-<title>A Trubanc Web Client</title>
+<title>A Truledger Web Client</title>
 </head>
 <body>
 
 <div id="wrapper">
-<h1>A Trubanc Web Client</h1>
+<h1>A Truledger Web Client</h1>
 
-<p>I have written a <a href="./">Trubanc</a> web client, mostly as an example of how to use the <a href="src/client.lisp">client API</a>, but also as a useful tool for maintaining multiple Trubanc accounts on multiple Trubanc servers.</p>
+<p>I have written a <a href="./">Truledger</a> web client, mostly as an example of how to use the <a href="src/client.lisp">client API</a>, but also as a useful tool for maintaining multiple Truledger accounts on multiple Truledger servers.</p>
 
 <p>
-If you are interested in technical details of what goes on behind the scenes,  <a href="doc/plain-english.html">Trubanc in Plain English</a> describes communication between the Trubanc server and Trubanc client.</p>
+If you are interested in technical details of what goes on behind the scenes,  <a href="doc/plain-english.html">Truledger in Plain English</a> describes communication between the Truledger server and Truledger client.</p>
 
-<p><b>Disclaimer:</b> This site has a fully-functional <a href="client/">Trubanc client</a> and server, but you wouldn't want to store any real money here. First, you enter your passphrase into the client unencrypted, so it's visible to anyone who can see your web traffic. You COULD install the client on your own computer and get rid of that problem, but the Trubanc server on this machine is under development, so I may occasionally break things.  I hope that one day soon there will be many real Trubanc servers to choose from, hosted outside of the influence of the US government, and backed up daily to prevent data loss. For now, though, please use this site only to become accustomed to Trubanc, and to help me test it.</p>
+<p><b>Disclaimer:</b> This site has a fully-functional <a href="client/">Truledger client</a> and server, but you wouldn't want to store any real money here. First, you enter your passphrase into the client unencrypted, so it's visible to anyone who can see your web traffic. You COULD install the client on your own computer and get rid of that problem, but the Truledger server on this machine is under development, so I may occasionally break things.  I hope that one day soon there will be many real Truledger servers to choose from, hosted outside of the influence of the US government, and backed up daily to prevent data loss. For now, though, please use this site only to become accustomed to Truledger, and to help me test it.</p>
 
 <span class="summary-header">Note</span>
 <p id="summary">
-If you just want to learn the Trubanc web client by doing, follow the
+If you just want to learn the Truledger web client by doing, follow the
 directions in the gray boxes titled "Summary".
 </p>
 <hr />
@@ -34,7 +34,7 @@ directions in the gray boxes titled "Summary".
 - <a href="#messaging">Messaging</a><br />
 - <a href="#bal_other">Other Balance Screen Functions</a><br />
 <a href="#contacts">Contacts Screen</a><br />
-<a href="#banks">Adding a Bank</a><br />
+<a href="#servers">Adding a Server</a><br />
 <a href="#assets">Assets Screen</a><br />
 - <a href="#asset_issue">Issuing Assets</a><br />
 - <a href="#storage">Updating Storage Fees</a><br />
@@ -43,56 +43,56 @@ directions in the gray boxes titled "Summary".
 
 <h2><a name="install"></a>Installation</h2>
 
-<p>The latest version of the Trubanc client is available for your operating system on the <a target="_blank" href="download/">download page</a>.</p>
+<p>The latest version of the Truledger client is available for your operating system on the <a target="_blank" href="download/">download page</a>.</p>
 
 <h3>Windows</h3>
 
-<p>To use the Trubanc client in Windows, you will need all three Windows files from the <a target="_blank" href="download/">download page</a>.  The first file will install the C++ libraries from Microsoft.  The second file will install OpenSSL_Lite, which Windows will use to create the required encryption keys.  The third file is the actual Trubanc client.</p>
+<p>To use the Truledger client in Windows, you will need all three Windows files from the <a target="_blank" href="download/">download page</a>.  The first file will install the C++ libraries from Microsoft.  The second file will install OpenSSL_Lite, which Windows will use to create the required encryption keys.  The third file is the actual Truledger client.</p>
 
 <p>To install the C++ libraries, merely double-click the executable file and select "Run".  After you accept the license agreement, the libraries will intall automatically.</p>
 
 <p>To install OpenSSL_Lite, double-click the executable file and select "Run".  You will be asked to accept the license agreement and specify the installation location.  You can accept all the default options.</p>
 
-<p>Create a "trubanc" directory on your hard drive and unzip the Trubanc client in that directory.  To run the client, double-click the extracted file.  The Trubanc client will start a webserver in the terminal window and connect to it with your default web browser.</p>
+<p>Create a "truledger" directory on your hard drive and unzip the Truledger client in that directory.  To run the client, double-click the extracted file.  The Truledger client will start a webserver in the terminal window and connect to it with your default web browser.</p>
 
 <p>To stop the webserver, close your browser and the terminal window.</p>
 
 <h3>Linux</h3>
-<p>Download the latest Trubanc client for linux and place it in a "trubanc" directory of your home folder.  From the terminal window, enter the trubanc directory and unroll the tar ball.</p>
+<p>Download the latest Truledger client for linux and place it in a "truledger" directory of your home folder.  From the terminal window, enter the truledger directory and unroll the tar ball.</p>
 
 <p id="code">
-  cd trubanc<br />
-  tar -xvzf trubanc-lx86cl.tar.gz
+  cd truledger<br />
+  tar -xvzf truledger-lx86cl.tar.gz
 </p>
 
-<p>When you execute the included file, Trubanc client will start a webserver and connect to it with your default web browser.</p>
+<p>When you execute the included file, Truledger client will start a webserver and connect to it with your default web browser.</p>
 
-<p id="code">./trubanc-lx86cl</p>
+<p id="code">./truledger-lx86cl</p>
 
 <p>You can stop the webserver using the "Shut down web server" button on the Admin screen, or by typing Ctrl-C in the terminal window where you started it.<p>
 
 <h3>Mac OS X</h3>
 
-<p>Same as Linux, but the archive is named <code>trubanc-dx86cl.tar.gz</code> or
-<code>trubanc-dx86cl64.tar.gz</code>, and the executable is named
-<code>trubanc-dx86cl</code> or <code>trubanc-dx86cl64</code>.</p>
+<p>Same as Linux, but the archive is named <code>truledger-dx86cl.tar.gz</code> or
+<code>truledger-dx86cl64.tar.gz</code>, and the executable is named
+<code>truledger-dx86cl</code> or <code>truledger-dx86cl64</code>.</p>
 
 <h3>FreeBSD</h3>
 
-<p>Same as Linux, but the archive is named <code>trubanc-fx86cl.tar.gz</code> or
-<code>trubanc-fx86cl64.tar.gz</code>, and the executable is named
-<code>trubanc-fx86cl</code> or <code>trubanc-fx86cl64</code>.</p>
+<p>Same as Linux, but the archive is named <code>truledger-fx86cl.tar.gz</code> or
+<code>truledger-fx86cl64.tar.gz</code>, and the executable is named
+<code>truledger-fx86cl</code> or <code>truledger-fx86cl64</code>.</p>
 
 <hr />
 
 <h2><a name="login"></a>Login and Registration</h2>
 
-<p>When you first start the Trubanc client, you will see the Login screen. If you have previously created an account, simply enter your passphrase and click the "Login" button.</p>
+<p>When you first start the Truledger client, you will see the Login screen. If you have previously created an account, simply enter your passphrase and click the "Login" button.</p>
 
 <div id="concept">
   <p class = "concept-header">Passphrase</p>
 
-  <p>Your passphrase is your username and your password in one. The passphrase is used to decrypt an encrypted version of your <a href="http://www.pgpi.org/doc/pgpintro/">PGP private key</a>, which is stored on your disk. That private key is used to digitally sign all messages send to the bank, guaranteeing that requests from you really <i>are</i> from you. You must remember your passphrase as it will not be retrievable by anyone.  If you lose your passphrase, your account and all its assets will be lost forever (unless the bank establishes some other way of identifying you, in which case they'll likely have an off-line recovery mechanism, but that would defeat the anonymous nature of Trubanc).</p>
+  <p>Your passphrase is your username and your password in one. The passphrase is used to decrypt an encrypted version of your <a href="http://www.pgpi.org/doc/pgpintro/">PGP private key</a>, which is stored on your disk. That private key is used to digitally sign all messages send to the server, guaranteeing that requests from you really <i>are</i> from you. You must remember your passphrase as it will not be retrievable by anyone.  If you lose your passphrase, your account and all its assets will be lost forever (unless the server establishes some other way of identifying you, in which case they'll likely have an off-line recovery mechanism, but that would defeat the anonymous nature of Truledger).</p>
 
   <p>If you prefer to use a random passphrase, the <a href="https://loom.cc/?function=folder_tools">Loom Tools</a> page has a random-word passphrase generator. Press the "Random" button in the "Passphrase" line.</p>
 </div>
@@ -106,26 +106,26 @@ login screen to go to the Registration screen.</p>
 
 <p>Enter your chosen passphrase twice.  You must remember your passphrase, as it will not be retrievable if you forget it.</p>
 
-<p>Trubanc clients and servers are protected from spammers by a coupon system. To register your account with a Trubanc server you will need to receive a unique Trubanc coupon from a friend or the bank proprietor.  After you register, you will be able to "mint" coupons to fund new accounts for your friends.</p>
+<p>Truledger clients and servers are protected from spammers by a coupon system. To register your account with a Truledger server you will need to receive a unique Truledger coupon from a friend or the server proprietor.  After you register, you will be able to "mint" coupons to fund new accounts for your friends.</p>
 
-<p>The optional account name will be transmitted to other Trubanc users when you interact with them.  If you choose to use an account name, it should be descriptive, as in your name or your business name.</p>
+<p>The optional account name will be transmitted to other Truledger users when you interact with them.  If you choose to use an account name, it should be descriptive, as in your name or your business name.</p>
 
-<p>As part of the data security used by Trubanc, the computer running the client caches an encrypted private key.  Like your passphrase, if that private key is lost (hard drive crash, fire, etc.), your account will be lost.  By default, Trubanc caches a copy of the private key on the server, also, allowing you to recover your account.  If you do not want Trubanc to cache your private key on the Trubanc server, you should uncheck the box marked "Cache encrypted private key on server" (not recommended).</p>
+<p>As part of the data security used by Truledger, the computer running the client caches an encrypted private key.  Like your passphrase, if that private key is lost (hard drive crash, fire, etc.), your account will be lost.  By default, Truledger caches a copy of the private key on the server, also, allowing you to recover your account.  If you do not want Truledger to cache your private key on the Truledger server, you should uncheck the box marked "Cache encrypted private key on server" (not recommended).</p>
 
-<p>RSA Labs <a href="http://www.rsa.com/rsalabs/node.asp?id=2004">estimates</a> that an encryption key size of 3072 bits (the Trubanc default) should be secure until beyond the year 2031. Smaller key sizes are minimally faster to
+<p>RSA Labs <a href="http://www.rsa.com/rsalabs/node.asp?id=2004">estimates</a> that an encryption key size of 3072 bits (the Truledger default) should be secure until beyond the year 2031. Smaller key sizes are minimally faster to
 generate and use, but at the expense of account security</p>
 
-<p>Press the "Create account" button to generate the encryption keys and register your account with the Trubanc server.  Be patient as the keys are generated and the client is redirected to your new account balances page.</p>
+<p>Press the "Create account" button to generate the encryption keys and register your account with the Truledger server.  Be patient as the keys are generated and the client is redirected to your new account balances page.</p>
 
 <span class="summary-header">Summary - Registration</span>
 <ul id="summary">
-  <li>Get a Trubanc coupon from a friend or the bank proprietor.</li>
+  <li>Get a Truledger coupon from a friend or the server proprietor.</li>
   <li>Choose a passphrase.</li>
-  <li>Start the Trubanc client.</li>
+  <li>Start the Truledger client.</li>
   <li>Click the "Register a new account" link to go to the registration
   screen.</li>
   <li>Enter your passphrase and verify it.</li>
-  <li>Paste the Trubanc coupon code.</li>
+  <li>Paste the Truledger coupon code.</li>
   <li>Press the "Create account" button.</li>
 </ul>
 
@@ -133,24 +133,24 @@ generate and use, but at the expense of account security</p>
 
 <p>To show your private key, enter your passphrase and press the "Show key" button.</p>
 
-<p>If you would like to register a previously created account with this client, paste the account's private key in the large text box at the bottom of the screen and enter your passphrase and Trubanc coupon.</p>
+<p>If you would like to register a previously created account with this client, paste the account's private key in the large text box at the bottom of the screen and enter your passphrase and Truledger coupon.</p>
 
-<p>To register an account with this client using a private key cached on a Trubanc server, enter your passphrase and use the bank's Trubanc url as the coupon code.</p>
+<p>To register an account with this client using a private key cached on a Truledger server, enter your passphrase and use the server's Truledger url as the coupon code.</p>
 <hr />
 
 <h2><a name="balance"></a>Balance Screen</h2>
 
-<p>The Balance screen is where you view your Trubanc account balances and send and receive assets.</p>
+<p>The Balance screen is where you view your Truledger account balances and send and receive assets.</p>
 
-<p>At the top of the screen, in addition to the bank name and your account name, is a field labled "Your ID".  This is how other Trubanc users identify your account when sending you assets.</p>
+<p>At the top of the screen, in addition to the server name and your account name, is a field labled "Your ID".  This is how other Truledger users identify your account when sending you assets.</p>
 
-<p>Below that you will see your inbox.  After registering an account with a new bank, you will see at least two items in your inbox.  One item will be the coupon you received from a friend or the bank propietor giving you enough Trubanc usage tokens to pay the registration fee.  Another item will be a negative spend from the bank to pay that registration fee.</p>
+<p>Below that you will see your inbox.  After registering an account with a new server, you will see at least two items in your inbox.  One item will be the coupon you received from a friend or the server propietor giving you enough Truledger usage tokens to pay the registration fee.  Another item will be a negative spend from the server to pay that registration fee.</p>
 
-<p>In Trubanc, no one can change your account balances without your signature, and a countersignature from the bank.  To authorize changes to your account balances, you must explicitly make or accept "spends".</p>
+<p>In Truledger, no one can change your account balances without your signature, and a countersignature from the server.  To authorize changes to your account balances, you must explicitly make or accept "spends".</p>
 
 <div id="concept">
   <p class="concept-header">Spends</p>
-  <p>Trubanc spends are essentially digital notes, signed by you and countersigned by the bank.  Assets are moved between and within accounts by generating and accepting spends.</p>
+  <p>Truledger spends are essentially digital notes, signed by you and countersigned by the server.  Assets are moved between and within accounts by generating and accepting spends.</p>
 </div>
 
 <img src="screenshots/inbox.png" alt="inbox screenshot" border="1"/>
@@ -171,7 +171,7 @@ generate and use, but at the expense of account security</p>
   the other person's reply here for acknowledgements of your spends.</li>
 </ol>
 
-<p><img style="height: 30px; width: 36px; float: left" src="screenshots/Attention.png" alt="Attention!"/><b>"Notes" are passed between the Trubanc client and server unencrypted. Do not include information in a note or reply that would compromise the security of your account.</b></p>
+<p><img style="height: 30px; width: 36px; float: left" src="screenshots/Attention.png" alt="Attention!"/><b>"Notes" are passed between the Truledger client and server unencrypted. Do not include information in a note or reply that would compromise the security of your account.</b></p>
 
 <p>To accept, reject, or ignore a spend, select what you want to do in each row's "Action" column.</p>
 
@@ -190,7 +190,7 @@ to each row.</p>
 
 <h3><a name="balances"></a>Balances</h3>
 
-<p>The balances of all the assets you hold in your Trubanc accounts and sub-accounts are shown in the balances section.  Negative balances indicate that you are the issuer of that particular asset (see <a href="#asset_issue">Issuing Assets</a>).  Zero balances are not shown.</p>
+<p>The balances of all the assets you hold in your Truledger accounts and sub-accounts are shown in the balances section.  Negative balances indicate that you are the issuer of that particular asset (see <a href="#asset_issue">Issuing Assets</a>).  Zero balances are not shown.</p>
 
 <p> The "Spend" buttons beside each asset will be used by you to indicate which asset to attach to spends you generate and coupons you mint.</p>
 
@@ -201,13 +201,13 @@ to each row.</p>
 <p>To make a spend, fill in the "Spend amount", choose a "Recipient" or
 enter a "Recipient ID", enter (optionally) a "Note", and click the "Spend" button next to the asset you wish to spend.  Entering a "Nickname" will add the "Recipient ID" to your contacts list with that nickname, or change the nickname of the selected "Recipient".</p>
 
-<p><img style="height: 30px; width: 36px; float: left" src="screenshots/Attention.png" alt="Attention!"/><b>"Notes" are passed between the Trubanc client and server unencrypted. Do not include information in a note or reply that would compromise the security of your account.</b></p>
+<p><img style="height: 30px; width: 36px; float: left" src="screenshots/Attention.png" alt="Attention!"/><b>"Notes" are passed between the Truledger client and server unencrypted. Do not include information in a note or reply that would compromise the security of your account.</b></p>
 
-<p>Trubanc allows you to create multiple sub-accounts for your assets.  To create and transfer balances into sub-accounts, enter the "Spend Amount", select or fill-in the "Transfer to" name (letters and numbers only), and click the "Spend" button next to the asset you want to transfer from.</p>
+<p>Truledger allows you to create multiple sub-accounts for your assets.  To create and transfer balances into sub-accounts, enter the "Spend Amount", select or fill-in the "Transfer to" name (letters and numbers only), and click the "Spend" button next to the asset you want to transfer from.</p>
 
 <p>To mint a coupon, enter the "Spend Amount", check the "Mint coupon"
 box, and click the "Spend" button next to the asset you want to
-transfer to the coupon. You can redeem a coupon on the "Banks" page.</p>
+transfer to the coupon. You can redeem a coupon on the "Servers" page.</p>
 
 <img src="screenshots/outbox.png" alt="outbox screenshot" border="1"/>
 
@@ -215,7 +215,7 @@ transfer to the coupon. You can redeem a coupon on the "Banks" page.</p>
 
 <img src="screenshots/coupon.png" alt="coupon screenshot" border="1"/>
 
-<p>Spends that have not yet been accepted or rejected, and coupons that have not yet been redeemed, can be cancelled by pressing the "Cancel" button in that row of the "Outbox" section. Cancelled spends will come into your inbox just as if the recipient had rejected them, except the bank will charge a transaction fee to discourage this as a regular practice. Cancelled coupons will come into your inbox as a regular spend, as if you had redeemed the coupon.</p>
+<p>Spends that have not yet been accepted or rejected, and coupons that have not yet been redeemed, can be cancelled by pressing the "Cancel" button in that row of the "Outbox" section. Cancelled spends will come into your inbox just as if the recipient had rejected them, except the server will charge a transaction fee to discourage this as a regular practice. Cancelled coupons will come into your inbox as a regular spend, as if you had redeemed the coupon.</p>
 
 <span class="summary-header">Summary - Spending Assets</span>
 <ul id="summary">
@@ -227,24 +227,24 @@ transfer to the coupon. You can redeem a coupon on the "Banks" page.</p>
 </ul>
 
 <div id="concept">
-  <p class="concept-header">Trubanc Usage Tokens</p>
+  <p class="concept-header">Truledger Usage Tokens</p>
 
-  <p>Trubanc Usage Tokens are used to lease space on a Trubanc server and to pay fees for bank services.  When you register a new account, the bank will charge a registration fee, and one token for each file your account creates.</p>
+  <p>Truledger Usage Tokens are used to lease space on a Truledger server and to pay fees for server services.  When you register a new account, the server will charge a registration fee, and one token for each file your account creates.</p>
 
-  <p>Each spend and coupon you generate creates two files on the server, one in your outbox and one in the recipient's inbox, so you are charged two Trubanc Usage Tokens to lease server space.  When the recipient accepts or rejects your spend, the file is deleted from that person's inbox and another file is generated in your inbox.  When you process the acknowledgement in your inbox, both the file in your inbox and the file in your outbox are deleted, and the server returns two Trubanc Usage Tokens to you.</p>
+  <p>Each spend and coupon you generate creates two files on the server, one in your outbox and one in the recipient's inbox, so you are charged two Truledger Usage Tokens to lease server space.  When the recipient accepts or rejects your spend, the file is deleted from that person's inbox and another file is generated in your inbox.  When you process the acknowledgement in your inbox, both the file in your inbox and the file in your outbox are deleted, and the server returns two Truledger Usage Tokens to you.</p>
 
-  <p>Each sub-account you create creates one file on the Trubanc server.  This is a permanent file, so you cannot recover the one-token lease payment.</p>
+  <p>Each sub-account you create creates one file on the Truledger server.  This is a permanent file, so you cannot recover the one-token lease payment.</p>
 
-  <p>Through Trubanc Usage Tokens, the bank ensures that server capacity will be sufficient to service their customers' activities.</p>
+  <p>Through Truledger Usage Tokens, the server ensures that server capacity will be sufficient to service their customers' activities.</p>
 </div>
 
 <h3><a name="messaging"></a>Messaging</h3>
 
-<p>If you generate a spend with a zero "Spend amount", the spend acts very much like an e-mail to the recipient.  If the recipient accepts your zero spend, the Trubanc server will refund the two usage tokens charged to generate the spend once the transaction is closed out.</p>
+<p>If you generate a spend with a zero "Spend amount", the spend acts very much like an e-mail to the recipient.  If the recipient accepts your zero spend, the Truledger server will refund the two usage tokens charged to generate the spend once the transaction is closed out.</p>
 
-<p>If the recipient rejects your spend, however, the recipient will receive the two Trubanc Usage Token refund.  Therefore, while messaging through the Trubanc server is essentially free, unsolicited messaging, or spamming, is an expensive proposition.</p>
+<p>If the recipient rejects your spend, however, the recipient will receive the two Truledger Usage Token refund.  Therefore, while messaging through the Truledger server is essentially free, unsolicited messaging, or spamming, is an expensive proposition.</p>
 
-<p><img style="height: 30px; width: 36px; float: left" src="screenshots/Attention.png" alt="Attention!"/><b>"Notes" are passed between the Trubanc client and server unencrypted. Do not include information in a note or reply that would compromise the security of your account.</b></p>
+<p><img style="height: 30px; width: 36px; float: left" src="screenshots/Attention.png" alt="Attention!"/><b>"Notes" are passed between the Truledger client and server unencrypted. Do not include information in a note or reply that would compromise the security of your account.</b></p>
 
 <h3><a name="bal_other"></a>Other Balance Screen Functions</h3>
 
@@ -252,12 +252,12 @@ transfer to the coupon. You can redeem a coupon on the "Banks" page.</p>
 
 <img src="screenshots/history.png" alt="history screenshot" border="1"/>
 
-<p>If you are a Trubanc developer, you can view the raw balance information by clicking the "Show raw balance" link and view the client server communications with the "Enable debugging" button.</p>
+<p>If you are a Truledger developer, you can view the raw balance information by clicking the "Show raw balance" link and view the client server communications with the "Enable debugging" button.</p>
 <hr />
 
 <h2><a name="contacts"></a>Contacts Screen</h2>
 
-<p>The Trubanc server keeps track of customers by their ID, the SHA1 hash of
+<p>The Truledger server keeps track of customers by their ID, the SHA1 hash of
 their public encryption keys. Remembering 40-character hex strings tends to be
 hard for most humans, though, so the web client allows you to associate nicknames with your contacts. The Contacts screen shows you contacts that you have added in the past and allows you to add new ones.</p>
 
@@ -267,7 +267,7 @@ hard for most humans, though, so the web client allows you to associate nickname
 
 <p>You can also add a contact from the "Inbox" section of the Balance screen or while generating a spend by filling in the "Nickname" box.</p>
 
-<p>Pressing the "Sync with Server" button will update your contact list on both the server and the client.  This can be helpful if you use multiple clients to access your Trubanc account.</p>
+<p>Pressing the "Sync with Server" button will update your contact list on both the server and the client.  This can be helpful if you use multiple clients to access your Truledger account.</p>
 
 <p>To delete a contact, check the box in the far right column of that contact's row, and press the "Delete checked" button.</p>
 
@@ -283,27 +283,27 @@ hard for most humans, though, so the web client allows you to associate nickname
 </ul>
 <hr />
 
-<h2><a name="banks"></a>Adding a Bank</h2>
+<h2><a name="servers"></a>Adding a Server</h2>
 
-<p>To create an account at a new bank, or add an existing bank account to
-a new client, use the Banks screen.</p> 
+<p>To create an account at a new server, or add an existing server account to
+a new client, use the Servers screen.</p> 
 
-<p>To create a new account, you must have a previously-minted coupon.  Paste the coupon into "Bank URL or Coupon". If you want the account to be named, enter an "Account name".  Then press the "Add Bank" button.</p>
+<p>To create a new account, you must have a previously-minted coupon.  Paste the coupon into "Server URL or Coupon". If you want the account to be named, enter an "Account name".  Then press the "Add Server" button.</p>
 
-<p>To redeem a coupon into an existing account, paste the coupon code into "Bank URL or Coupon" and press the "Add Bank" button.</p>
+<p>To redeem a coupon into an existing account, paste the coupon code into "Server URL or Coupon" and press the "Add Server" button.</p>
 
-<p>To add an existing account at another bank to a client, enter the URL of the bank's Trubanc server as the coupon.  Then press the "Add Bank" button.</p>
+<p>To add an existing account at another server to a client, enter the URL of the server's Truledger server as the coupon.  Then press the "Add Server" button.</p>
 
-<p><img src="screenshots/banks.png" alt="banks screenshot" border="1"/></p>
+<p><img src="screenshots/servers.png" alt="servers screenshot" border="1"/></p>
 
-<span class="summary-header">Summary - Adding a Bank</span>
+<span class="summary-header">Summary - Adding a Server</span>
 <ul id="summary">
-  <li>Acquire a coupon with usage tokens for the new bank.</li>
-  <li>Go to the Banks screen.</li>
-  <li>Paste the coupon into "Bank URL or Coupon".</li>
+  <li>Acquire a coupon with usage tokens for the new server.</li>
+  <li>Go to the Servers screen.</li>
+  <li>Paste the coupon into "Server URL or Coupon".</li>
   <li>Enter an "Account Name", if you want to identify yourself with
 other than your ID.</li>
-  <li>Press the "Add Bank" button.</li>
+  <li>Press the "Add Server" button.</li>
 </ul>
 <hr />
 
@@ -311,7 +311,7 @@ other than your ID.</li>
 
 <h3><a name="asset_issue"></a>Issuing Assets</h3>
 
-<p>Many Trubanc banks will issue their own assets. Many of the existing digital gold currencies work that way. But, like <a href="https://loom.cc/">Loom</a>, Trubanc allows anyone to issue a currency. If you convince enough people that your currency is stable and accepted by enough people, they'll use it.  It costs two Trubanc Usage Tokens to create a new asset type.</p>
+<p>Many Truledger servers will issue their own assets. Many of the existing digital gold currencies work that way. But, like <a href="https://loom.cc/">Loom</a>, Truledger allows anyone to issue a currency. If you convince enough people that your currency is stable and accepted by enough people, they'll use it.  It costs two Truledger Usage Tokens to create a new asset type.</p>
 
 <img src="screenshots/asset_issue.png" alt="assets screenshot" border="1"/>
 
@@ -335,7 +335,7 @@ it that you can back with the commodity you've choosen to back it.</p>
 
 <p>You can move asset issuance to another sub-account, or transfer it to another person, by doing a spend for the entire negative amount. So, right after asset creation, when your balance is "-0.000" in  your "main" sub-account, you can type "-0" as the "Spend amount" on the Balance screen, and select either a "Recipient" or a "Transfer to" sub-account. If you transfer issuance to another person, you'll likely want to inform your asset holders of the change. It could have an effect on the perceived value of your asset.</p>
 
-<p>Storage fees should be set at a competitive rate (typically 1-5% per year).  Storage fees are charged by the Trubanc server when the assets are spent for the entire time the asset holder has held the asset.  The recipient of an asset is charged for the storage fees of assets in his or her inbox.</p>
+<p>Storage fees should be set at a competitive rate (typically 1-5% per year).  Storage fees are charged by the Truledger server when the assets are spent for the entire time the asset holder has held the asset.  The recipient of an asset is charged for the storage fees of assets in his or her inbox.</p>
 
 <span class="summary-header">Summary - Issuing Assets</span>
 <ul id="summary">
@@ -346,7 +346,7 @@ it that you can back with the commodity you've choosen to back it.</p>
 
 <h3><a name="storage"></a>Assets Used and Updating Storage Fees</h3>
 
-<p>Below the add assets form is a list of all the assets you currently hold or have held in the past.  The list includes the name, scale, precision, and storage fees for each asset, as well as the "owner" or asset issuer.  The list also includes a unique Asset ID for each asset.  This Asset ID is used throughout Trubanc to identify a particular asset, to prevent counterfeiting.</p>
+<p>Below the add assets form is a list of all the assets you currently hold or have held in the past.  The list includes the name, scale, precision, and storage fees for each asset, as well as the "owner" or asset issuer.  The list also includes a unique Asset ID for each asset.  This Asset ID is used throughout Truledger to identify a particular asset, to prevent counterfeiting.</p>
 
 <p>If you are the issuer of an asset, a text box in the list will allow you to change the storage fees for that asset.  Type the new storage fee into the text box and press the "Update Storage Fees" button.</p>
 
@@ -360,7 +360,7 @@ it that you can back with the commodity you've choosen to back it.</p>
 
 <h2><a name="admin"></a>Admin Screen</h2>
 
-<p>The admin screen is used by bank propieters and Trubanc server administrators.  Bank customers will not have to use this screen.</p>
+<p>The admin screen is used by server propieters and Truledger server administrators.  Server customers will not have to use this screen.</p>
 <hr />
 
 <p>Thanks to Brock Lorber for extensively revising this page.<br/>

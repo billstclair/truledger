@@ -4,6 +4,6 @@ _darcs
 *.exe.zip
 *.exe
 .DS_Store
-trubanc-dbs
-trubanc-dx86cl64
+truledger-dbs
+truledger-dx86cl64
 
