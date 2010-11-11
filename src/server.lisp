@@ -2513,6 +2513,11 @@
 
     cnt))
 
+(defparameter *all-permissions*
+  (list $MINT-TOKENS
+        $MINT-COUPONS
+        $ADD-ASSET))
+
 (define-message-handler do-permission $PERMISSION (server args msgs)
   ;; (<id>,permission,<serverid>,<req#>,grant=grant)
   (declare (ignore msgs))
@@ -2538,12 +2543,20 @@
                         (grant (find id grants :test #'equal :key #'grant-id)))
                    (when grant
                      (dotcat msg "." (grant-msg grant))))))))
-          (t (dolist (permission (db-contents db (permission-key serverid)))
-               (let ((grants (parse-grants server id permission)))
-                 (unless grants
-                   (setf grants (parse-grants server serverid permission)))
-                 (dolist (grant grants)
-                   (dotcat msg "." (grant-msg grant)))))))
+          (t (let ((permissions (db-contents db (permission-key serverid))))
+               (dolist (permission permissions)
+                 (let ((grants (parse-grants server id permission)))
+                   (unless grants
+                     (setf grants (parse-grants server serverid permission)))
+                   (dolist (grant grants)
+                     (dotcat msg "." (grant-msg grant)))))
+               (dolist (permission *all-permissions*)
+                 (unless (member permission permissions :test #'equal)
+                   (let ((m (servermsg
+                               server $ATGRANT
+                               (servermsg
+                                server $GRANT serverid "" id permission))))
+                     (dotcat msg "." m)))))))
     msg))
 
 (define-message-handler do-backup $BACKUP (server args reqs)

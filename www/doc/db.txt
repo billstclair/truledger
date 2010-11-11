@@ -924,6 +924,12 @@ Customer sends:
 ...
 (<serverid>,@grant,(<idN>,grant,<serverid>,<time#N>,<toidN>,<permission>,grant=grant)).
 
+  When the final grant arg is NOT "grant", there will be three kinds
+  of grant messages returned. Expliticitly granted permissions will
+  have a <toid> of <id> and a non-blank <time>. Default permissions,
+  not controlled by the server, will have a <toid> of <id> and a blank
+  <time>. Non-granted, but required permissions will have a <toid> of
+  <serverid>.
 
 Backup
 ------

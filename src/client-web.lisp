@@ -2482,25 +2482,9 @@ list with that nickname, or change the nickname of the selected
          (serverid (serverid client))
          (serverp (equal id serverid))
          (err (cw-error cw))
+         (last-perm nil)
          (permissions (storing-error (err "Error getting permissions: ~a")
-                        (get-permissions client nil t)))
-         (last-perm nil))
-    (flet ((ensure-permission (permission)
-             (unless (member permission permissions
-                             :test #'equal
-                             :key #'permission-permission)
-               (let ((permission-p (get-permissions client permission)))
-                 (push (make-permission
-                        :id nil
-                        :toid (and (or serverp permission-p) id)
-                        :permission permission
-                        :grant-p serverp)
-                       permissions)))))
-      (declare (dynamic-extent #'ensure-permission))
-      ;; These really should be returned by the server somehow
-      (ensure-permission $MINT-COUPONS)
-      (ensure-permission $MINT-TOKENS)
-      (ensure-permission $ADD-ASSET))
+                        (get-permissions client nil t))))
     (setf permissions (stable-sort permissions #'string<
                                    :key #'permission-permission))
     (settitle cw "Permissions")

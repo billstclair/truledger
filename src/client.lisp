@@ -2626,9 +2626,20 @@
                                (db-get db (server-permission-key
                                            client permission)))))
                          (t (loop for permission in
-                                 (db-contents db (server-permission-key client))
-                               collect
-                                 (db-get db (permission-key permission))))))
+                                 (union 
+                                  (db-contents
+                                   db (server-permission-key client))
+                                  (unless serverp
+                                    (db-contents
+                                     db (user-permission-key client)))
+                                  :test #'equal)
+                               for msg = (or (db-get
+                                              db (permission-key permission))
+                                             (unless serverp
+                                               (db-get
+                                                db (server-permission-key
+                                                    client permission))))
+                               collect msg))))
              (grant-p nil)
              (server-permissions nil)
              (permissions nil))
@@ -2647,16 +2658,22 @@
                                                    (getarg $grant args))
                                    :time (getarg $TIME args))))
                   (cond ((equal (permission-toid permission) id)
+                         (when (blankp (permission-time permission))
+                           ;; Default permission. Clear id.
+                           (setf (permission-id permission) nil))
                          (push permission permissions)
                          (when (permission-grant-p permission)
                            (setf grant-p t)))
                         ((equal (permission-toid permission) serverid)
+                         (setf (permission-id permission) nil
+                               (permission-toid permission) nil
+                               (permission-grant-p permission) nil)
                          (push permission server-permissions))
                         (t (error "found permission for bad id"))))))))
         (if permission
             (values (or permissions (not server-permissions))
                     grant-p)
-            permissions)))))
+            (append permissions server-permissions))))))
 
 (defun get-permissions-internal (client id &optional reinit-p)
   (let* ((db (db client))
