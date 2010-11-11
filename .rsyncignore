@@ -5,5 +5,5 @@ _darcs
 *.exe
 .DS_Store
 truledger-dbs
-truledger-dx86cl64
+truledger-*86cl*
 .git

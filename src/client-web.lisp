@@ -265,7 +265,7 @@
                           :href
                           (stringify
                            version
-                           "http://github.com/billstclair/truledger-lisp/commit/~a")
+                           "http://github.com/billstclair/truledger/commit/~a")
                           (str version)))
                        (when time
                          (let ((datestr (datestr time)))
