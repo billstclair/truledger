@@ -2174,7 +2174,7 @@
     (with-db-lock (db (acct-time-key id))
       (checkreq server args)
       (servermsg server $VERSION
-               (or *last-commit* "")
+               (or *last-commit* (last-commit) "")
                (stringify (or *save-application-time* (get-unix-time)) "~d")))))
 
 (defun data-key-hash (key id)

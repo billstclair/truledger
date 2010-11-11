@@ -331,6 +331,7 @@
    #:db
    #:finalize
    #:*last-commit*
+   #:last-commit
    #:*save-application-time*
 
    ;; server-web.lisp
