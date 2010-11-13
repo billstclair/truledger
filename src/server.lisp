@@ -2579,7 +2579,7 @@
       (error "Only the issuer can audit an asset"))
     (when (equal assetid (tokenid server))
       (error "Auditing not supported for tokenid"))
-    (with-write-locked-fsdb (db)
+    (with-write-locked-fsdb (db t)
       (do-audit-internal server args assetid issuer))))
 
 (defun do-audit-internal (server args assetid issuer)

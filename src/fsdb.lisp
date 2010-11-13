@@ -187,111 +187,59 @@
 ;;; Maybe I should use CCL's read-write locks instead.
 ;;;
 
-(defstruct lock-count
-  (readers 0)
-  write-waiting-p
-  (write-semaphore (make-semaphore)))
+(defmacro with-read-locked-rwlock ((lock) &body body)
+  (let ((thunk (gensym "THUNK")))
+    `(flet ((,thunk () ,@body))
+       (declare (dynamic-extent #',thunk))
+       (call-with-read-locked-rwlock #',thunk ,lock))))
+
+(defun call-with-read-locked-rwlock (thunk lock)
+  (read-lock-rwlock lock)
+  (unwind-protect
+       (funcall thunk)
+    (read-unlock-rwlock lock)))
+
+(defmacro with-write-locked-rwlock ((lock &optional reading-p) &body body)
+  (let ((thunk (gensym "THUNK")))
+    `(flet ((,thunk () ,@body))
+       (declare (dynamic-extent #',thunk))
+       (call-with-write-locked-rwlock #',thunk ,lock ,reading-p))))
+
+(defun call-with-write-locked-rwlock (thunk lock &optional reading-p)
+  (write-lock-rwlock lock reading-p)
+  (unwind-protect
+       (funcall thunk)
+    (write-unlock-rwlock lock reading-p)))
 
 ;; dir -> lock-count
-(defvar *dir-lock-counts*
+(defvar *dir-locks*
   (make-equal-hash))
 
-(defvar *dir-lock-counts-lock*
-  (make-lock "*dir-lock-counts-lock*"))
+(defvar *dir-locks-lock*
+  (make-lock "*dir-locks-lock*"))
 
-(defun get-dir-lock-count (dir)
-  (or (gethash dir *dir-lock-counts*)
-      (setf (gethash dir *dir-lock-counts*) (make-lock-count))))
-
-(defun read-lock-dir (dir)
-  (let ((count nil))
-    (loop
-       (with-lock-grabbed (*dir-lock-counts-lock* "read-lock-dir")
-         (unless count
-           (setf count (get-dir-lock-count dir)))
-         (unless (lock-count-write-waiting-p count)
-           (incf (lock-count-readers count))
-           (return)))
-       (process-wait
-        "read-lock-dir"
-        (lambda (count)
-          (not (lock-count-write-waiting-p count)))
-        count))))
-
-(defun read-unlock-dir (dir)
-  (with-lock-grabbed (*dir-lock-counts-lock* "read-unlock-dir")
-    (let ((count (get-dir-lock-count dir)))
-      (assert (not (eql 0 (lock-count-readers count))))
-      (when (eql 0 (decf (lock-count-readers count)))
-        (when (lock-count-write-waiting-p count)
-          (signal-semaphore (lock-count-write-semaphore count)))))))
-
-(defun write-lock-dir (dir &optional not-reading-p)
-  (let (count)
-    (with-lock-grabbed (*dir-lock-counts-lock* "write-lock-dir")
-      (setf count (get-dir-lock-count dir))
-      (assert (not (lock-count-write-waiting-p count)))
-      (setf (lock-count-write-waiting-p count) t)
-      (unless not-reading-p
-        (decf (lock-count-readers count))))
-    (let ((done nil))
-      (unwind-protect
-           (unless (eql 0 (lock-count-readers count))
-             (wait-on-semaphore (lock-count-write-semaphore count))
-             (setf done t))
-        (unless done
-          (setf (lock-count-write-waiting-p count) nil))))))
-
-(defun write-unlock-dir (dir &optional not-reading-p)
-  (let (count)
-    (with-lock-grabbed (*dir-lock-counts-lock* "write-unlock-dir")
-      (setf count (get-dir-lock-count dir))
-      (setf (lock-count-write-waiting-p count) nil)
-      (unless not-reading-p
-        (incf (lock-count-readers count))))))
-
-(defmacro with-read-locked-dir ((dir) &body body)
-  (let ((thunk (gensym "THUNK")))
-    `(flet ((,thunk () ,@body))
-       (declare (dynamic-extent #',thunk))
-       (call-with-read-locked-dir #',thunk ,dir))))
-
-(defun call-with-read-locked-dir (thunk dir)
-  (read-lock-dir dir)
-  (unwind-protect
-       (funcall thunk)
-    (read-unlock-dir dir)))
-
-(defmacro with-write-locked-dir ((dir &optional not-reading-p) &body body)
-  (let ((thunk (gensym "THUNK")))
-    `(flet ((,thunk () ,@body))
-       (declare (dynamic-extent #',thunk))
-       (call-with-write-locked-dir #',thunk ,dir ,not-reading-p))))
-
-(defun call-with-write-locked-dir (thunk dir &optional not-reading-p)
-  (write-lock-dir dir not-reading-p)
-  (unwind-protect
-       (funcall thunk)
-    (write-unlock-dir dir not-reading-p)))
+(defun get-dir-lock (dir)
+  (or (gethash dir *dir-locks*)
+      (setf (gethash dir *dir-locks*) (make-read-write-lock))))
 
 (defmacro with-read-locked-fsdb ((fsdb) &body body)
-  `(with-read-locked-dir ((fsdb-dir ,fsdb))
+  `(with-read-locked-rwlock ((get-dir-lock (fsdb-dir ,fsdb)))
      ,@body))
 
-(defmacro with-write-locked-fsdb ((fsdb) &body body)
-  `(with-write-locked-dir ((fsdb-dir ,fsdb))
+(defmacro with-write-locked-fsdb ((fsdb &optional reading-p) &body body)
+  `(with-write-locked-rwlock ((get-dir-lock (fsdb-dir ,fsdb)) ,reading-p)
      ,@body))
 
-(defun test-dir-lock (&optional (iterations 3) (readers 5))
+(defun rwlock-test (&optional (iterations 3) (readers 5))
   (let ((stop nil)
-        (dir "dir")
+        (lock (make-read-write-lock))
         (stream *standard-output*))
     (dotimes (i readers)
       (process-run-function
        (format nil "Reader ~s" i)
        (lambda (cnt)
          (loop
-            (with-read-locked-dir (dir)
+            (with-read-locked-rwlock (lock)
               (format stream "Start reader ~s~%" cnt)
               (sleep 0.5)
               (format stream "Stop reader ~s~%" cnt))
@@ -300,8 +248,8 @@
     (unwind-protect
          (dotimes (i iterations)
            (sleep 0.1)
-           (with-read-locked-dir (dir)
-             (with-write-locked-dir (dir)
+           (with-read-locked-rwlock (lock)
+             (with-write-locked-rwlock (lock t)
                (format t "Start writer~%")
                (sleep 0.1)
                (format t "Stop writer~%"))))

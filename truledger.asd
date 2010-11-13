@@ -14,6 +14,7 @@
     :components
     ((:file "package")
      (:file "ccl")
+     (:file "read-write-lock")
      (:file "sendmail")
      (:file "utilities")
      (:file "timer")

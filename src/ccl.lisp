@@ -88,14 +88,29 @@
 (defmacro with-lock-grabbed ((lock &optional (whostate "Lock")) &body body)
   `(ccl:with-lock-grabbed (,lock ,whostate) ,@body))
 
+#+not
+(progn
+;; This code doesn't work right.
+;; Use the version in read-write-lock.lisp
+
 (defun make-read-write-lock ()
   (ccl:make-read-write-lock))
 
 (defun read-lock-rwlock (rwlock)
   (ccl::read-lock-rwlock rwlock))
 
-(defun write-lock-rwlock (rwlock)
+(defun read-unlock-rwlock (rwlock)
+  (unlock-rwlock rwlock))
+
+(defun write-lock-rwlock (rwlock &optional reading-p)
+  (when reading-p
+    (unlock-rwlock rwlock))
   (ccl::write-lock-rwlock rwlock))
+
+(defun write-unlock-rwlock (rwlock &optional reading-p)
+  (unlock-rwlock rwlock)
+  (when reading-p
+    (read-lock-rwlock rwlock)))
 
 (defun unlock-rwlock (rwlock)
   (ccl::unlock-rwlock rwlock))
@@ -105,6 +120,8 @@
 
 (defmacro with-write-lock ((lock) &body body)
   `(ccl:with-write-lock (,lock) ,@body))
+
+)                                       ;end of progn
 
 ;;;
 ;;; Semaphores
