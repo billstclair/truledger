@@ -66,6 +66,7 @@
 (defconstant $GRANT "grant")
 (defconstant $DENY "deny")
 (defconstant $PERMISSION "permission")
+(defconstant $AUDIT "audit")
 
 ;; Affirmations
 (defconstant $ATREGISTER "@register")
@@ -81,7 +82,7 @@
 (defconstant $ATASSET "@asset")
 (defconstant $ATGETINBOX "@getinbox")
 (defconstant $ATPROCESSINBOX "@processinbox")
-(defconstant $ATSTORAGEFEES "atstoragefees")
+(defconstant $ATSTORAGEFEES "@storagefees")
 (defconstant $ATSPENDACCEPT "@spend|accept")
 (defconstant $ATSPENDREJECT "@spend|reject")
 (defconstant $ATGETOUTBOX "@getoutbox")
@@ -93,6 +94,7 @@
 (defconstant $ATGRANT "@grant")
 (defconstant $ATDENY "@deny")
 (defconstant $ATPERMISSION "@permission")
+(defconstant $ATAUDIT "@audit")
 (defconstant $ATBACKUP "@backup")
 
 ;; request parameter names

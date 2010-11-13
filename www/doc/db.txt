@@ -67,10 +67,13 @@ truledger-dbs/serverdb/
         <time3#>=(<serverid>,@spend,(<id>,spend,<serverid>,<time3#>,<id3>,<assetid3>,<amount3>,note:<note3>)).
                  (<serverid>,@tranfee,(<id>,tranfee,<serverid>,<time3#>,<tokenid>,<amount3fee>))
       inbox/
-        <time5#>=(<serverid>,inbox,<time5#>,(<id2>,spend|accept,<serverid>,<time2#>,<id>,note:<note22>))
-        <time6#>=(<serverid>,inbox,<time6#>,(<id3>,spend|reject,<serverid>,<time3#>,<id>,note:<note32>))
-        <time7#>=(<serverid>,inbox,<time7#>,(<id4>,spend,<serverid>,<time4#>,<id>,<assetid4>,<amount4>,note:<note4>)).
+        <time6#>=(<serverid>,inbox,<time6#>,(<id2>,spend|accept,<serverid>,<time2#>,<id>,note:<note22>))
+        <time7#>=(<serverid>,inbox,<time7#>,(<id3>,spend|reject,<serverid>,<time3#>,<id>,note:<note32>))
+        <time8#>=(<serverid>,inbox,<time8#>,(<id4>,spend,<serverid>,<time4#>,<id>,<assetid4>,<amount4>,note:<note4>)).
                  (<serverid>,@tranfee,(<id>,tranfee,<serverid>,<time4#>,<tokenid>,<amount4fee>))
+        <time9#>=(<serverid>,inbox,<time9#>,(<id4>,spend,<serverid>,<time5#>,<id>,<assetid5>,<amount5>,note:<note5>)).
+                 (<serverid>,@tranfee,(<id>,tranfee,<serverid>,<time5#>,<tokenid>,<amount9fee>)).
+                 (<serverid>,couponnumberhash,<coupon>)
       storagefee/  -- accumulators for storage fees. <amount>s have fractions
         <assetid>=(<serverid>,storagefee,<serverid>,<time#>,<assetid>,<amount>)
       permission/
@@ -736,11 +739,8 @@ Coupons
   Note that this makes it impossible for the server alone to reproduce
   the coupon, since there's no plain-text copy of the coupon number.
   The only copy of the coupon number is in the customer's outbox,
-  encrypted to his public key. This doesn't really matter for the
-  current web server implementation, where the server's private key is
-  stored in the database, but an eventual stand-alone servrer, that
-  requires the passphrase for the server's private key at startup time,
-  could be fully secure, even if the database is revealed.
+  encrypted to his public key. This protects coupons from being
+  revealed, even if the database is revealed.
 
   If the balances, balancehash, or outboxhash don't match, server returns:
 
@@ -777,6 +777,13 @@ Redeeming Coupons
 
   Where <encrypted-coupon> is the coupon above, encrypted to the
   server's public key.
+
+  Note that the inbox item on the server has an additional
+  "couponnumberhash" message, which encodes the hash of the coupon
+  number, so that the server can recreate the coupon if the redeemer
+  rejects the spend. The "getinbox" command does not return the
+  couponhash to the client. It looks to the client like a regular
+  spend, except the <id> field in the spend is "coupon".
 
   If the coupon has already been spent, server returns:
 
@@ -930,6 +937,36 @@ Customer sends:
   not controlled by the server, will have a <toid> of <id> and a blank
   <time>. Non-granted, but required permissions will have a <toid> of
   <serverid>.
+
+Audit
+-----
+
+  Customer sends:
+
+(<id>,audit,<serverid>,<req#>,<asset>)
+
+  Where <asset> is any <asset> that <id> issues, or any asset if <id>
+  is <serverid>. If <id> is <serverid>, then <asset> may also be left
+  blank, to audit all assets. The server walks the entire database,
+  adding up balances for the specified <asset>s. It returns a number
+  of server-signed balance messages, giving how much needs to be added
+  to the <asset>s to bring them into balance. If a balance amount is
+  positive, then there are more claims on the asset than the issuer
+  thinks he has given out. If negative, then there are fewer claims on
+  the asset than the issuer thinks he's given out. Server returns:
+
+(<serverid>,@audit,(<id>,audit,<serverid>,<req#>,<asset>)).
+(<serverid>,@balance,(<serverid>,balance,<serverid>,<time#>,<assetid1>,<amount1>,audit).
+(<serverid>,@balance,(<serverid>,balance,<serverid>,<time#>,<assetid2>,<amount2>,audit).
+...
+(<serverid>,@balance,(<serverid>,balance,<serverid>,<time#>,<assetidN>,<amountN>,audit)
+
+  Balances in the asset issuer's "audit" acct are not included, so he
+  can spend to that acct to balance his books of auditing debits,
+  keeping track of how much he's had to do so over time. I haven't
+  thought of a good way to balance out auditing credits. Maybe I
+  should allow the "audit" acct balance to go negative, but that's a
+  bunch of special casing for no good reason.
 
 Backup
 ------

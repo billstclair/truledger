@@ -1801,8 +1801,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
         (let* ((recipopts nil)
                (found nil)
                (disablemint nil)
-               (can-mint-token-p (get-permissions client $MINT-TOKENS t))
-               (can-mint-p (get-permissions client $MINT-COUPONS))
+               (can-mint-token-p
+                (ignore-errors (get-permissions client $MINT-TOKENS)))
+               (can-mint-p
+                (ignore-errors (get-permissions client $MINT-COUPONS)))
                (recipientid nil)
                (acctcode nil)
                (instructions nil))

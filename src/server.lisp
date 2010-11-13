@@ -1250,25 +1250,6 @@
            (outboxhash-msg nil)
            (balancehash-msg nil))
 
-      (when (equal id2 $COUPON)
-        ;; If it's a coupon request, generate the coupon
-        (let* ((coupon-number (random-id))
-               (serverurl (serverurl server))
-               (coupon
-                (if note
-                    (servermsg server $COUPON serverurl coupon-number
-                             assetid amount note)
-                    (servermsg server $COUPON serverurl coupon-number
-                             assetid amount)))
-               (coupon-number-hash (sha1 coupon-number)))
-          (setf (db-get db $COUPON coupon-number-hash) outbox-item)
-          (setq coupon
-                (servermsg server $COUPONENVELOPE id
-                         (pubkey-encrypt
-                          coupon (db-get (pubkeydb server) id))))
-          (dotcat res "." coupon)
-          (dotcat outbox-item "." coupon)))
-
       (loop
          for req in (cdr reqs)
          for reqargs = (match-pattern parser req)
@@ -1341,6 +1322,25 @@
                          request
                          $TRANFEE $STORAGEFEE $FRACTION
                          $BALANCE $OUTBOXHASH $BALANCEHASH))))
+
+      (when (equal id2 $COUPON)
+        ;; If it's a coupon request, generate the coupon
+        (let* ((coupon-number (random-id))
+               (serverurl (serverurl server))
+               (coupon
+                (if note
+                    (servermsg server $COUPON serverurl coupon-number
+                             assetid amount note)
+                    (servermsg server $COUPON serverurl coupon-number
+                             assetid amount)))
+               (coupon-number-hash (sha1 coupon-number)))
+          (setf (db-get db $COUPON coupon-number-hash) outbox-item)
+          (setq coupon
+                (servermsg server $COUPONENVELOPE id
+                         (pubkey-encrypt
+                          coupon (db-get (pubkeydb server) id))))
+          (dotcat res "." coupon)
+          (dotcat outbox-item "." coupon)))
 
       ;; tranfee must be included if there's a transaction fee
       (when (and (not (eql 0 (bccomp tokens 0)))
@@ -1537,14 +1537,19 @@
              (or (dolist (time inbox nil)
                    (let ((item (db-get db key time)))
                      (when (search #.(strcat "," $COUPON ",") item)
-                       (let ((reqs (parse parser item)))
-                         (when (> (length reqs) 1)
-                           (let* ((req (second reqs))
-                                  (msg (match-pattern parser req)))
-                             (when (equal coupon-number-hash (getarg COUPON msg))
-                               ;; Customer already redeemded this coupon.
-                               ;; Success if he tries to do it again.
-                               (return t))))))))
+                       (let* ((reqs (parse parser item))
+                              (req (find-if
+                                    (lambda (req)
+                                      (equal $COUPONNUMBERHASH
+                                             (gethash 1 req)))
+                                    reqs))
+                              (msg (and req (match-pattern parser req))))
+                         (when (and msg
+                                    (equal coupon-number-hash
+                                           (getarg $COUPON msg)))
+                           ;; Customer already redeemded this coupon.
+                           ;; Success if he tries to do it again.
+                           (return t))))))
                  (error "Coupon already redeemed"))))
           (t
            (let* ((ok nil)
@@ -2559,6 +2564,44 @@
                      (dotcat msg "." m)))))))
     msg))
 
+(define-message-handler do-audit $AUDIT (server args reqs)
+  (declare (ignore reqs))
+  (let* ((db (db server))
+         (serverid (serverid server))
+         (id (getarg $CUSTOMER args))
+         (assetid (getarg $ASSET args))
+         (assetmsg (cond ((id-p assetid)
+                          (or (db-get db $ASSET assetid)
+                              (error "Unknown asset ID: ~s" assetid)))
+                         (t (error "Not an ID: ~s" assetid))))
+         (issuer (unpack-servermsg server assetmsg $ATASSET $ASSET $CUSTOMER)))
+    (unless (or (equal id serverid) (equal id issuer))
+      (error "Only the issuer can audit an asset"))
+    (when (equal assetid (tokenid server))
+      (error "Auditing not supported for tokenid"))
+    (with-write-locked-fsdb (db)
+      (do-audit-internal server args assetid issuer))))
+
+(defun do-audit-internal (server args assetid issuer)
+  args
+  (let ((db (db server))
+        (total 0))
+    ;; Need to do locking here somehow.
+    (dolist (anid (db-contents db $ACCOUNT))
+      (let ((key (append-db-keys $ACCOUNT anid $BALANCE)))
+        (dolist (acct (db-contents db key))
+          (unless (and (equal anid issuer)
+                       (equal acct $AUDIT))
+            (let* ((balance (db-get db key acct assetid))
+                   (amount
+                    (and balance
+                         (unpack-servermsg
+                          server balance $ATBALANCE $BALANCE $AMOUNT))))
+              (when amount
+                (setf total (bcadd total amount))))))))
+    ;; Add up inbox amounts, coupons, fractions, and queued storagefees
+    ))
+
 (define-message-handler do-backup $BACKUP (server args reqs)
   (declare (ignore reqs))
   (let ((db (db server))
@@ -2612,6 +2655,7 @@
                       ,$GRANT
                       ,$DENY
                       ,$PERMISSION
+                      ,$AUDIT
                       ,$BACKUP))
              (commands (make-hash-table :test #'equal)))
       (loop
@@ -2642,7 +2686,8 @@
             (debugmsg "Server error: ~a~%~a" c (backtrace-string)))
           (return-from process
             (failmsg server msg (format nil "~a" c))))))
-    (process-internal server msg)))
+    (with-read-locked-fsdb ((db server))
+      (process-internal server msg))))
 
 (defun process-internal (server msg)
   (let* ((parser (parser server))

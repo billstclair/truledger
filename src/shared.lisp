@@ -96,6 +96,7 @@
                         (,$GRANT . (,$SERVERID ,$TIME ,$ID ,$PERMISSION (,$GRANT)))
                         (,$DENY . (,$SERVERID ,$REQ ,$ID ,$PERMISSION))
                         (,$PERMISSION . (,$SERVERID ,$REQ (,$GRANT)))
+                        (,$AUDIT . (,$SERVERID ,$REQ ,$ASSET))
                         (,$BACKUP . (,$REQ :rest))
 
                         ;; Server signed messages

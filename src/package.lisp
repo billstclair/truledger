@@ -59,6 +59,7 @@
    #:$GRANT
    #:$DENY
    #:$PERMISSION
+   #:$AUDIT
    #:$ANONYMOUS
    #:$KEY
    #:$DATA
@@ -207,6 +208,8 @@
    #:append-db-keys
    #:%append-db-keys
    #:with-fsdb-filename
+   #:with-read-locked-fsdb
+   #:with-write-locked-fsdb
    #:db-wrapper
    #:make-db-wrapper
    #:db-wrapper-db

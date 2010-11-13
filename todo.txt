@@ -10,6 +10,20 @@ Audit server balances.
 
 ----------------------------------------------------------------------
 
+XML-RPC or REST/JSON interface to the client, to make it easy to
+connect other languages.
+
+http://wiki.apache.org/couchdb/HTTP_Document_API
+http://www.sowbug.org/mt/2008/06/couchdb-cheat-sheet.html
+
+http://www.xmlrpc.com/directory/1568/implementations
+
+----------------------------------------------------------------------
+
+Inbox hash to prevent server or communication tampering?
+
+----------------------------------------------------------------------
+
 Automatic interserver transfers.
 
 Deposit a coupon from one server in another one.
