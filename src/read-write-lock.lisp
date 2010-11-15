@@ -1,9 +1,12 @@
 (in-package :truledger)
 
+;; Maybe this should use lists of processes instead of counters.
+;; This is a little faster and conses less (not at all), but is more
+;; brittle.
 (defstruct read-write-lock
   (lock (truledger:make-lock))
   (readers 0)
-  write-waiting-p
+  (write-waiting-p nil)
   (write-semaphore (truledger:make-semaphore)))
 
 (defun read-lock-rwlock (lock)
@@ -27,19 +30,17 @@
          (read-write-lock-write-semaphore lock))))))
 
 (defun write-lock-rwlock (lock &optional reading-p)
-  (truledger:with-lock-grabbed ((read-write-lock-lock lock))
-    (assert (not (read-write-lock-write-waiting-p lock)))
-    (setf (read-write-lock-write-waiting-p lock) t)
-    (when reading-p
-      (decf (read-write-lock-readers lock))))
-  (let ((done nil))
-    (unwind-protect
-         (unless (eql 0 (read-write-lock-readers lock))
-           (truledger:wait-on-semaphore
-            (read-write-lock-write-semaphore lock))
-           (setf done t))
-      (unless done
-        (setf (read-write-lock-write-waiting-p lock) nil)))))
+  (let ((wait-p nil))
+    (truledger:with-lock-grabbed ((read-write-lock-lock lock))
+      (assert (not (read-write-lock-write-waiting-p lock)))
+      (setf (read-write-lock-write-waiting-p lock) t)
+      (when reading-p
+        (decf (read-write-lock-readers lock)))
+      (unless (eql 0 (read-write-lock-readers lock))
+        (setf wait-p t)))
+    (when wait-p
+      (truledger:wait-on-semaphore
+       (read-write-lock-write-semaphore lock)))))
 
 (defun write-unlock-rwlock (lock &optional reading-p)
   (truledger:with-lock-grabbed ((read-write-lock-lock lock))

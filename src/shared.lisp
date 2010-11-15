@@ -136,6 +136,7 @@
                         (,$ATGRANT . (,$MSG))
                         (,$ATDENY . (,$MSG))
                         (,$ATPERMISSION . (,$MSG))
+                        (,$ATAUDIT . (,$MSG))
                         (,$ATBACKUP . (,$REQ))
                         ))
             (hash (make-hash-table :test 'equal)))

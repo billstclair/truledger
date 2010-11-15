@@ -2806,6 +2806,55 @@
     (unless (equal msg (get-parsemsg (getarg $MSG args)))
       (error "Malformed return from server for ~s command" $DENY))))
 
+(defmethod audit ((client client) assetid)
+  "Audit the asset with ASSETID. Return three values:
+   1) The formatted total
+   2) The fractional total
+   3) The raw total (arg 1 as an integer string)."
+  (require-current-server client "In audit(): Server not set")
+  (let ((serverid (serverid client))
+        (id (id client))
+        (asset (getasset client assetid)))
+    (unless (and asset
+                 (or (equal id serverid)
+                     (equal id (asset-id asset))))
+      (error "Audit only allowed by asset issuer"))
+    (handler-case
+        (audit-internal client assetid asset)
+      (error ()
+        (audit-internal client assetid asset t)))))
+
+(defun audit-internal (client assetid asset &optional reinit-p)
+  (let* ((serverid (serverid client))
+         (req# (getreq client reinit-p))
+         (msg (custmsg
+               client $AUDIT serverid req# assetid))
+         (servermsg (process (server client) msg))
+         (args (unpack-servermsg client servermsg $ATAUDIT serverid))
+         (reqs (getarg $UNPACK-REQS-KEY args))
+         (parser (parser client))
+         amount
+         (fraction "0"))
+    (unless (equal msg (get-parsemsg (getarg $MSG args)))
+      (error "Server didn't wrap request message"))
+    (dolist (req (cdr reqs))
+      (let* ((args (match-pattern parser req serverid))
+             (op (getarg $REQUEST args)))
+        (assert (equal serverid (getarg $CUSTOMER args)))
+        (assert (equal serverid (getarg $SERVERID args)))
+        (assert (equal req# (getarg $TIME args)))
+        (assert (equal assetid (getarg $ASSET args)))
+        (cond ((equal op $BALANCE)
+               (setf amount (getarg $AMOUNT args)))
+              ((equal op $FRACTION)
+               (setf fraction (getarg $FRACTION args)))
+              (t (error "Unknown operation in ~s return: ~s" $AUDIT op)))))
+    (values (format-value
+             (if (< (bccomp amount 0) 0) (bcsub amount 1) amount)
+             (asset-scale asset) (asset-precision asset))
+            fraction
+            amount)))
+
 (defmethod backup ((client client) &rest keys&values)
   (backup* client keys&values))
 

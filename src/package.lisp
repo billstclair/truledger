@@ -93,6 +93,7 @@
    #:$ATGRANT
    #:$ATDENY
    #:$ATPERMISSION
+   #:$ATAUDIT
    #:$ATBACKUP
    #:$CUSTOMER
    #:$REQUEST
@@ -534,6 +535,7 @@
    #:permission-time
    #:grant
    #:deny
+   #:audit
    #:user-preference
    #:userreq
    #:trimmsg

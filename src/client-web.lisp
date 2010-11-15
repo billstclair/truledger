@@ -746,7 +746,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
   "Add a new asset, or change the storage fee"
   (let ((client (cw-client cw))
         (err nil))
-    (bind-parameters (newasset updatepercent scale precision assetname storage)
+    (bind-parameters (newasset updatepercent audit
+                      scale precision assetname storage)
       (cond (newasset
              (cond ((or (blankp scale) (blankp precision) (blankp assetname))
                     (setq err
@@ -762,7 +763,11 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                       (error (c)
                         (setq err (stringify c "Error adding asset: ~a"))))))
              (if (setf (cw-error cw) err)
-                 (draw-assets cw scale precision assetname storage)
+                 (draw-assets cw
+                              :scale scale
+                              :precision precision
+                              :assetname assetname
+                              :storage storage)
                  (draw-assets cw)))
             (updatepercent
              (bind-parameters (percentcnt)
@@ -786,6 +791,22 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                      (when err (return)))))
                (setf (cw-error cw) err)
                (draw-assets cw)))
+            (audit
+             (let ((assets (getassets client))
+                   (id (id client))
+                   (serverid (serverid client))
+                   (tokenid (tokenid client))
+                   (audits nil))
+               (dolist (asset assets)
+                 (let ((assetid (asset-assetid asset)))
+                   (when (and (or (equal serverid id)
+                                  (equal id (asset-id asset)))
+                              (not (equal assetid tokenid)))
+                     (push (cons assetid
+                                 (multiple-value-list
+                                  (audit client assetid)))
+                           audits))))
+               (draw-assets cw :audits audits)))
             (t (draw-balance cw))))))
 
 (defun do-fee (cw)
@@ -1077,7 +1098,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
       (when (blankp recipient)
         (setq recipient recipientid)
         (when (and (not (blankp recipient))
-                   (not (blankp allowunregistered))
+                   (blankp allowunregistered)
                    (id-p recipient)
                    (not (ignore-errors (get-id client recipient))))
           (setq err "Recipient ID not registered at server")))
@@ -2259,7 +2280,8 @@ list with that nickname, or change the nickname of the selected
             (:input :type "submit" :name "deletecontacts"
                     :value "Delete checked")))))))
 
-(defun draw-assets(cw &optional scale precision assetname storage)
+(defun draw-assets(cw &key scale precision assetname storage
+                   audits)
   (let* ((client (cw-client cw))
          (assets (getassets client))
          (stream (cw-html-output cw))
@@ -2267,7 +2289,8 @@ list with that nickname, or change the nickname of the selected
          (precision (hsc precision))
          (assetname (hsc assetname))
          (storage (hsc storage))
-         (incnt 0))
+         (incnt 0)
+         (owner-p nil))
     (setf (cw-onload cw) "document.forms[0].scale.focus()")
     (settitle cw "Assets")
     (setmenu cw "assets")
@@ -2320,7 +2343,7 @@ list with that nickname, or change the nickname of the selected
         (:th "Precision")
         (:th "Storage Fee" (:br) "(%/year)")
         (:th "Owner")
-        (:th "Asset ID"))
+        (:th (str (if audits "Asset ID/Audits" "Asset ID"))))
        (dolist (asset assets)
          (let* ((ownerid (asset-id asset))
                 (namestr (id-namestr cw ownerid))
@@ -2328,10 +2351,14 @@ list with that nickname, or change the nickname of the selected
                 (scale (asset-scale asset))
                 (precision (asset-precision asset))
                 (assetname (asset-name asset))
-                (percent (asset-percent asset)))
+                (percent (asset-percent asset))
+                (cell (assoc assetid audits :test #'equal))
+                (balance (second cell))
+                (fraction (third cell)))
            (setq percent
                  (if (equal ownerid (id client))
                      (whots (s)
+                       (setf owner-p t)
                        (:input :type "hidden"
                                :name (stringify incnt "assetid~d")
                                :value (hsc assetid))
@@ -2341,7 +2368,7 @@ list with that nickname, or change the nickname of the selected
                        (:input :type "text"
                                :name (stringify incnt "percent~d")
                                :value (hsc percent)
-                               :size "10"
+                               :size "7"
                                :style "text-align: right;"))
                      (hsc percent)))
            (incf incnt)
@@ -2353,13 +2380,27 @@ list with that nickname, or change the nickname of the selected
               (:td :align "right" (esc precision))
               (:td :align "right" (str percent))
               (:td (str namestr))
-              (:td (esc assetid)))))))
+              (:td (esc assetid)
+                   (when balance
+                     (htm
+                      (:br)
+                      (:b "Balance: ")
+                      (str balance)))
+                   (when fraction
+                     (htm
+                      (:br)
+                      (:b "Fraction: ")
+                      (str fraction)))))))))
       (when (> incnt 0)
         (who (stream)
           (:input :type "hidden" :name "percentcnt" :value incnt)
           (:br)
           (:input :type "submit" :name "updatepercent"
-                  :value "Update Storage Fees")))))))
+                  :value "Update Storage Fees")
+          (when owner-p
+            (htm
+             " "
+             (:input :type "submit" :name "audit" :value "Audit")))))))))
 
 (defun render-fee-row (cw feeidx type assetid amt &optional assetname)
   (let* ((client (cw-client cw))

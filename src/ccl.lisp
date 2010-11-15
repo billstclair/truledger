@@ -92,6 +92,8 @@
 (progn
 ;; This code doesn't work right.
 ;; Use the version in read-write-lock.lisp
+;; In this version, an outstanding attempt to grab the write lock
+;; doesn't block read-lock attempts.
 
 (defun make-read-write-lock ()
   (ccl:make-read-write-lock))
@@ -121,7 +123,7 @@
 (defmacro with-write-lock ((lock) &body body)
   `(ccl:with-write-lock (,lock) ,@body))
 
-)                                       ;end of progn
+)  ;end of progn
 
 ;;;
 ;;; Semaphores

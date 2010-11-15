@@ -956,10 +956,13 @@ Audit
   the asset than the issuer thinks he's given out. Server returns:
 
 (<serverid>,@audit,(<id>,audit,<serverid>,<req#>,<asset>)).
-(<serverid>,@balance,(<serverid>,balance,<serverid>,<time#>,<assetid1>,<amount1>,audit).
-(<serverid>,@balance,(<serverid>,balance,<serverid>,<time#>,<assetid2>,<amount2>,audit).
+(<serverid>,balance,<serverid>,<req#>,<assetid1>,<amount1>,audit).
+(<serverid>,fraction,<serverid>,<req#>,<assetid1>,<fraction1>)
+(<serverid>,balance,<serverid>,<req#>,<assetid2>,<amount2>,audit).
+(<serverid>,fraction,<serverid>,<req#>,<assetid2>,<fraction2>)
 ...
-(<serverid>,@balance,(<serverid>,balance,<serverid>,<time#>,<assetidN>,<amountN>,audit)
+(<serverid>,balance,<serverid>,<req#>,<assetidN>,<amountN>,audit).
+(<serverid>,fraction,<serverid>,<req#>,<assetidN>,<fractionN>)
 
   Balances in the asset issuer's "audit" acct are not included, so he
   can spend to that acct to balance his books of auditing debits,

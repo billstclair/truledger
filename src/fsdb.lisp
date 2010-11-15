@@ -211,7 +211,7 @@
        (funcall thunk)
     (write-unlock-rwlock lock reading-p)))
 
-;; dir -> lock-count
+;; dir -> read-write-lock
 (defvar *dir-locks*
   (make-equal-hash))
 
@@ -220,7 +220,9 @@
 
 (defun get-dir-lock (dir)
   (or (gethash dir *dir-locks*)
-      (setf (gethash dir *dir-locks*) (make-read-write-lock))))
+      (with-lock-grabbed (*dir-locks-lock*)
+        (or (gethash dir *dir-locks*)
+            (setf (gethash dir *dir-locks*) (make-read-write-lock))))))
 
 (defmacro with-read-locked-fsdb ((fsdb) &body body)
   `(with-read-locked-rwlock ((get-dir-lock (fsdb-dir ,fsdb)))

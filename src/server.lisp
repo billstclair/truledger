@@ -2566,41 +2566,118 @@
 
 (define-message-handler do-audit $AUDIT (server args reqs)
   (declare (ignore reqs))
-  (let* ((db (db server))
-         (serverid (serverid server))
+  (let* ((serverid (serverid server))
          (id (getarg $CUSTOMER args))
          (assetid (getarg $ASSET args))
-         (assetmsg (cond ((id-p assetid)
-                          (or (db-get db $ASSET assetid)
-                              (error "Unknown asset ID: ~s" assetid)))
-                         (t (error "Not an ID: ~s" assetid))))
+         (req (checkreq server args)))
+    (unless (id-p assetid)
+      (error "Not an ID: ~s" assetid))
+    (multiple-value-bind (total fraction audit-acct-total)
+        (audit server id assetid)
+      (setf total (bcsub total audit-acct-total))
+      (let* ((msg (servermsg server $ATAUDIT (get-parsemsg args)))
+             (totalmsg (servermsg
+                        server $BALANCE serverid req assetid total "audit"))
+             (fractionmsg (unless (bc= fraction 0)
+                           (servermsg
+                            server $FRACTION serverid req assetid fraction))))
+        (dotcat msg "." totalmsg)
+        (when fractionmsg
+          (dotcat msg "." fractionmsg))
+        msg))))
+      
+
+(defun audit (server id assetid)
+  "Audit the given asset. Return three values:
+   1) The grand total of all balances for the asset.
+   2) The fractional part of the grand total.
+   3) The total of the issuer's \"audit\" account.
+   If in balance since the last audit correction, the 1 + 2
+   will = 3. If really in balance, all will be 0.
+   ID is who's asking. Errors if that's not the server or
+   the asset issuer."
+  (let* ((db (db server))
+         (serverid (serverid server))
+         (assetmsg (or (db-get db $ASSET assetid)
+                       (error "Unknown asset ID: ~s" assetid)))
          (issuer (unpack-servermsg server assetmsg $ATASSET $ASSET $CUSTOMER)))
     (unless (or (equal id serverid) (equal id issuer))
       (error "Only the issuer can audit an asset"))
     (when (equal assetid (tokenid server))
       (error "Auditing not supported for tokenid"))
     (with-write-locked-fsdb (db t)
-      (do-audit-internal server args assetid issuer))))
+      (audit-internal server assetid issuer))))
 
-(defun do-audit-internal (server args assetid issuer)
-  args
+(defun audit-internal (server assetid issuer)
   (let ((db (db server))
-        (total 0))
-    ;; Need to do locking here somehow.
-    (dolist (anid (db-contents db $ACCOUNT))
-      (let ((key (append-db-keys $ACCOUNT anid $BALANCE)))
+        (total "1")                     ; Account for -1 represents 0
+        (fraction "0")
+        (precision 0)
+        (audit-acct-total "0"))
+    ;; Add up balances
+    (dolist (id (db-contents db $ACCOUNT))
+      (let ((key (append-db-keys $ACCOUNT id $BALANCE)))
         (dolist (acct (db-contents db key))
-          (unless (and (equal anid issuer)
-                       (equal acct $AUDIT))
-            (let* ((balance (db-get db key acct assetid))
-                   (amount
-                    (and balance
-                         (unpack-servermsg
-                          server balance $ATBALANCE $BALANCE $AMOUNT))))
-              (when amount
-                (setf total (bcadd total amount))))))))
-    ;; Add up inbox amounts, coupons, fractions, and queued storagefees
-    ))
+          (let* ((balance (db-get db key acct assetid))
+                 (amount
+                  (and balance
+                       (unpack-servermsg
+                        server balance $ATBALANCE $BALANCE $AMOUNT))))
+            (when amount
+              (setf total (bcadd total amount))
+              (when (and (equal id issuer)
+                         (equal acct "audit"))
+                (setf audit-acct-total
+                      (bcadd audit-acct-total amount))))))
+
+        ;; Add up inbox amounts
+        (let* ((key (append-db-keys key $INBOX)))
+          (dolist (time (db-contents db key))
+            (let* ((msg (db-get db key time))
+                   (args (unpack-servermsg server msg $INBOX))
+                   (msgtime (getarg $TIME args)))
+              (unless (equal msgtime time)
+                (error "Time mismatch in ~s: SB: ~s, Was: ~s"
+                       key time msgtime))
+              (setf args (getarg $MSG args))
+              (when (and (equal $SPEND (getarg $OPERATION args))
+                         (equal assetid (getarg $ASSET args)))
+                (setf total (bcadd total (getarg $AMOUNT args)))))))
+
+        ;; Add fraction
+        (let* ((fracmsg (db-get db key $FRACTION assetid))
+               (args (and fracmsg
+                          (unpack-servermsg
+                           server fracmsg $ATFRACTION $FRACTION)))
+               (frac (and args (getarg $AMOUNT args))))
+          (when args
+            (assert (and frac (equal assetid (getarg $ASSET args))))
+            (setf precision (max precision (number-precision frac)))
+            (wbp (precision)
+              (setf fraction (bcadd fraction frac)))))
+
+      ))
+
+    ;; Add up coupons
+    (dolist (hash (db-contents db $COUPON))
+      (let* ((msg (db-get db $COUPON hash))
+             (args (unpack-servermsg server msg $ATSPEND $SPEND)))
+        (when (equal assetid (getarg $ASSET args))
+          (setf total (bcadd total (getarg $AMOUNT args))))))
+
+    ;; Add queued storagefees
+    (let* ((msg (db-get db $ACCOUNT issuer $STORAGEFEE assetid))
+           (args (and msg (unpack-servermsg server msg $STORAGEFEE)))
+           (frac (and args (getarg $AMOUNT args))))
+      (when args
+        (assert (and frac (equal assetid (getarg $ASSET args))))
+        (setf precision (max precision (number-precision frac)))
+        (wbp (precision)
+          (setf fraction (bcadd fraction frac)))))
+
+    (multiple-value-setq (total fraction)
+      (normalize-balance total fraction (number-precision fraction)))
+    (values total fraction audit-acct-total)))
 
 (define-message-handler do-backup $BACKUP (server args reqs)
   (declare (ignore reqs))
