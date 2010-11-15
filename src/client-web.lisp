@@ -851,7 +851,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                 (handler-case (apply #'setfees client fees)
                   (error (c)
                     (setf err (format nil "~a" c))))))))
-             ))
+        (t (return-from do-fee (draw-balance cw)))))
     (setf (cw-error cw) err)
     (draw-fees cw values)))
 
@@ -883,7 +883,9 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                (grant client grantee permission t)))
             (ungrant
              (storing-error (err "Error removing grant permission: ~a")
-               (grant client grantee permission nil))))
+               (grant client grantee permission nil)))
+            (t (return-from do-permission
+                 (draw-balance cw))))
       (setf (cw-error cw) err)
       (draw-permissions cw permission grantor))))
 
@@ -2283,6 +2285,7 @@ list with that nickname, or change the nickname of the selected
 (defun draw-assets(cw &key scale precision assetname storage
                    audits)
   (let* ((client (cw-client cw))
+         (tokenid (tokenid client))
          (assets (getassets client))
          (stream (cw-html-output cw))
          (scale (hsc scale))
@@ -2356,7 +2359,8 @@ list with that nickname, or change the nickname of the selected
                 (balance (second cell))
                 (fraction (third cell)))
            (setq percent
-                 (if (equal ownerid (id client))
+                 (if (and (equal ownerid (id client))
+                          (not (equal assetid tokenid)))
                      (whots (s)
                        (setf owner-p t)
                        (:input :type "hidden"
@@ -2396,8 +2400,10 @@ list with that nickname, or change the nickname of the selected
           (:input :type "hidden" :name "percentcnt" :value incnt)
           (:br)
           (:input :type "submit" :name "updatepercent"
-                  :value "Update Storage Fees")
-          (when owner-p
+                  :value (if owner-p
+                             "Update Storage Fees"
+                             "Refresh"))
+          (when (or owner-p (equal (id client) (serverid client)))
             (htm
              " "
              (:input :type "submit" :name "audit" :value "Audit")))))))))
@@ -2632,7 +2638,9 @@ list with that nickname, or change the nickname of the selected
                    "grant "
                    (:input
                     :type "submit" :name "add" :value "Add"))))))
-           (setf last-perm perm)))))))
+           (setf last-perm perm))))
+      (form (stream "permission")
+        (:input :type "submit" :name "cancel" :value "Cancel")))))
 
 (defun draw-admin (cw &optional servername serverurl)
   (let ((s (cw-html-output cw))

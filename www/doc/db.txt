@@ -946,23 +946,24 @@ Audit
 (<id>,audit,<serverid>,<req#>,<asset>)
 
   Where <asset> is any <asset> that <id> issues, or any asset if <id>
-  is <serverid>. If <id> is <serverid>, then <asset> may also be left
-  blank, to audit all assets. The server walks the entire database,
-  adding up balances for the specified <asset>s. It returns a number
-  of server-signed balance messages, giving how much needs to be added
-  to the <asset>s to bring them into balance. If a balance amount is
-  positive, then there are more claims on the asset than the issuer
-  thinks he has given out. If negative, then there are fewer claims on
-  the asset than the issuer thinks he's given out. Server returns:
+  is <serverid>. The server walks the entire database, adding up
+  balances for the specified <asset>. It returns a server-signed
+  balance message, and, optionally, a server-signed fraction message,
+  giving how much needs to be added to the <asset> to bring it into
+  balance. If a balance amount is positive, then there are more claims
+  on the asset than the issuer thinks he has given out. If negative,
+  then there are fewer claims on the asset than the issuer thinks he's
+  given out. Server returns:
 
 (<serverid>,@audit,(<id>,audit,<serverid>,<req#>,<asset>)).
-(<serverid>,balance,<serverid>,<req#>,<assetid1>,<amount1>,audit).
-(<serverid>,fraction,<serverid>,<req#>,<assetid1>,<fraction1>)
-(<serverid>,balance,<serverid>,<req#>,<assetid2>,<amount2>,audit).
-(<serverid>,fraction,<serverid>,<req#>,<assetid2>,<fraction2>)
-...
-(<serverid>,balance,<serverid>,<req#>,<assetidN>,<amountN>,audit).
-(<serverid>,fraction,<serverid>,<req#>,<assetidN>,<fractionN>)
+(<serverid>,balance,<serverid>,<req#>,<asset>,<amount>,audit).
+(<serverid>,fraction,<serverid>,<req#>,<asset>,<fraction>)
+
+  Note that the <req#> is returned in the <time#> location of the
+  "balance" and "fraction" items.
+
+  I have not yet implemented auditing of the usage tokens. Both client
+  and server get an error if you attempt that.
 
   Balances in the asset issuer's "audit" acct are not included, so he
   can spend to that acct to balance his books of auditing debits,

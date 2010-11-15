@@ -2,14 +2,6 @@ Periodic task to assess storage fees for inactive balances.
 
 ----------------------------------------------------------------------
 
-Audit server balances.
-
-1) Audit all: can be requested by the server (or whomever it gives permission)
-2) Audit asset type: can be requested by asset issuer (or whomever he
-   gives permission?)
-
-----------------------------------------------------------------------
-
 XML-RPC or REST/JSON interface to the client, to make it easy to
 connect other languages.
 
@@ -42,19 +34,6 @@ Transaction fees? To servers AND issuer?
 How to help the issuer keep track of where the assets he's storing are held?
 
 ----------------------------------------------------------------------
-
-Non-refundable transaction fees.
-Fixed, asset type(s) specified.
-Percent of amount transferred, in asset transferred.
-
-Always paid by spender?
-Always paid to server, or split between server and asset issuer?
-
-----------------------------------------------------------------------
-
-High-level Database API and layered database. Ease committing
-transactions and computing hashes. Also make it a lot easier to add
-new features.
 
 Two-phase commit.
 
