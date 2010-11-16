@@ -972,6 +972,61 @@ Audit
   should allow the "audit" acct balance to go negative, but that's a
   bunch of special casing for no good reason.
 
+Disagreement Resolution
+-----------------------
+
+  Customer sends:
+
+(<id>,resolve,<serverid>,<time#>).
+(<serverid>,@balance,(<id>,balance,<serverid>,<time1#>,<assetid1>,<amount1>,acct:<acct1>))
+(<serverid>,@fraction,(<id>,fraction,<serverid>,<time1#>,<assetid1>,<fractionamount1>).
+...
+(<serverid>,@balance,(<id>,balance,<serverid>,<timeN#>,<assetidN>,<amountN>,acct:<acctN>)).
+(<serverid>,@fraction,(<id>,fraction,<serverid>,<timeN#>,<assetidN>,<fractionamountN>).
+(<id>,balancehash,<serverid>,<time#>,<count>,<hash>).
+(<serverid>,@spend,(<id>,spend,<serverid>,<timeA#>,<idA>,<assetidA>,<amountA>,note:<noteA>)).
+(<serverid>,@tranfee,(<id>,tranfee,<serverid>,<timeA#>,<tokenid>,<amountAfee>))
+...
+(<serverid>,@spend,(<id>,spend,<serverid>,<timeZ#>,<idZ>,<assetidZ>,<amountZ>,note:<noteZ>)).
+(<serverid>,@tranfee,(<id>,tranfee,<serverid>,<timeZ#>,<tokenid>,<amountZfee>)).
+(<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<timeX#>,<count>,<hash>).
+(<id>,outboxhash,<serverid>,<time#>,<count>,<hash>)
+
+  The "@balance" messages are balances for which the client has a
+  newer transaction time than the server. Some, but not all, of them
+  will have associated "@fraction" messages, possibly with different
+  transaction times. The "@spend"/"@tranfee" pairs are outbox
+  entries. If they are included, ALL the outbox entries must be
+  included, and the time on the "@outboxhash" message must be greater
+  than or equal to the time of the server's existing "@outboxhash"
+  message. Note that the "balancehash" message is new, having the same
+  transaction time as the "resolve" message. This enables mixing
+  server and client balances to arrive at the latest value for
+  each. You can't do that with the outbox. Either the server or the
+  client has the right outbox contents. Mixing can't be done. The
+  server CAN check for corresponding inbox entries, but that gets
+  complicated fast. Note that the outbox hash is sent twice, once
+  countersigned by the server, and once NOT countersigned and with the
+  new "resolve" transaction time. This enables a newly countersigned
+  balancehash.
+
+  The server checks that everything looks hunky-dory, updates its
+  database, and sends back:
+
+(<serverid>,@resolve,(<id>,resolve,<serverid>,<time#>)).
+(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<count>,<hash>)).
+(<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<time#>,<count>,<hash>))
+
+  Or, if things don't look right:
+
+(<serverid>,failed,(<id>,resolve,<serverid>,<time#>),errcode:<errcode>,reason:<reason>)
+
+  This resolution can cause assets to go out of balance. There
+  probably needs to be some sort of inbox entry for the asset issuer
+  allowing him to invoice the server operator for the loss. Probably,
+  asset issuers will want a limit to those losses, which will push the
+  loss back on the customer. This needs more thought.
+
 Backup
 ------
   Customer sends:
