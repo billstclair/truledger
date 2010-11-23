@@ -6,15 +6,27 @@
 ;;;
 
 (cl:defpackage :truledger-openssl
-  (:use :cl :cffi :cl-base64 :truledger)
+  (:use :cl :cffi :cl-base64)
   (:export
+   #:rsa-generate-key
+   #:decode-rsa-private-key
+   #:encode-rsa-private-key
+   #:decode-rsa-public-key
+   #:encode-rsa-public-key
+   #:rsa-free
+   #:sha1
+   #:sign
+   #:verify
+   #:privkey-decrypt
+   #:pubkey-encrypt
+   #:rsa-size
    ))
 
 (in-package :truledger-openssl)
 
 (defvar *openssl-process* nil)
 
-(defvar *openssl-lock* (make-lock "OpenSSL"))
+(defvar *openssl-lock* (truledger:make-lock "OpenSSL"))
 
 (defmacro with-openssl-lock (() &body body)
   (let ((thunk (gensym)))
@@ -23,10 +35,10 @@
        (call-with-openssl-lock #',thunk))))
 
 (defun call-with-openssl-lock (thunk)
-  (let ((process (current-process)))
+  (let ((process (truledger:current-process)))
     (if (eq process *openssl-process*)
       (funcall thunk)
-      (with-lock-grabbed (*openssl-lock* "OpenSSL Lock")
+      (truledger:with-lock-grabbed (*openssl-lock* "OpenSSL Lock")
         (unwind-protect
              (progn
                (setq *openssl-process* process)
@@ -49,7 +61,7 @@
   #+windows (load-foreign-library "LIBEAY32.dll")
   (open-ssl-add-all-algorithms))
 
-(add-startup-function 'startup-openssl)
+(truledger:add-startup-function 'startup-openssl)
 
 (defconstant $pem-string-rsa "RSA PRIVATE KEY")
 
@@ -161,19 +173,6 @@
 (defun mem-set-char (val buf &optional (idx 0))
   (setf (mem-ref buf :char idx) val))
 
-(defun aset (val array idx)
-  (setf (aref array idx) val))
-
-(defun destroy-password (buf &optional
-                         (len (length buf))
-                         (store-fun 'aset))
-  "Overwrite a password string with randomness"
-  (let* ((s-len (max 8 len))
-         (s (urandom-bytes s-len)))
-    (dotimes (i len)
-      (dotimes (j 8)
-        (funcall store-fun (aref s (mod (+ i j) s-len)) buf i)))))
-
 (define-condition bad-rsa-key-or-password (simple-error)
   ())
 
@@ -185,7 +184,8 @@
       (let ((res (if password
                      (with-foreign-strings ((passp password :encoding :latin-1))
                        (prog1 (%pem-read-bio-rsa-private-key bio $null $null passp)
-                         (destroy-password passp (length password) 'mem-set-char)))
+                         (truledger:destroy-password
+                          passp (length password) 'mem-set-char)))
                      (%pem-read-bio-rsa-private-key bio))))
         (when (null-pointer-p res)
           (error 'bad-rsa-key-or-password
@@ -202,7 +202,8 @@
                      (with-foreign-strings ((passp password :encoding :latin-1))
                        (prog1 (%pem-write-bio-rsa-private-key
                                bio rsa (evp-aes-256-cbc) passp (length password))
-                         (destroy-password passp (length password) 'mem-set-char)))
+                         (truledger:destroy-password
+                          passp (length password) 'mem-set-char)))
                      (%pem-write-bio-rsa-private-key bio rsa))))
         (when (eql res 0)
           (error "Can't encode private key."))
@@ -272,9 +273,9 @@
       (with-openssl-lock ()
         (%sha1 d (length string) md)))
     (let* ((byte-array-p (or (eq res-type :hex) (eq res-type :bytes)))
-           (res (copy-memory-to-lisp md 20 byte-array-p)))
+           (res (truledger:copy-memory-to-lisp md 20 byte-array-p)))
       (if (eq res-type :hex)
-          (bin2hex res)
+          (truledger:bin2hex res)
           res))))
 
 ;; Sign and verify
@@ -317,34 +318,6 @@
 (defcfun ("EVP_MD_CTX_cleanup" %evp-md-ctx-cleanup) :int
   (ctx :pointer))
 
-(defmacro with-rsa-public-key ((keyvar key) &body body)
-  (let ((thunk (gensym)))
-    `(flet ((,thunk (,keyvar) ,@body))
-       (declare (dynamic-extent #',thunk))
-       (call-with-rsa-public-key #',thunk ,key))))
-             
-(defun call-with-rsa-public-key (thunk key)
-  (if (stringp key)
-      (let ((key (decode-rsa-public-key key)))
-        (unwind-protect
-             (funcall thunk key)
-          (rsa-free key)))
-      (funcall thunk key)))
-
-(defmacro with-rsa-private-key ((keyvar key) &body body)
-  (let ((thunk (gensym)))
-    `(flet ((,thunk (,keyvar) ,@body))
-       (declare (dynamic-extent #',thunk))
-       (call-with-rsa-private-key #',thunk ,key))))
-             
-(defun call-with-rsa-private-key (thunk key)
-  (if (stringp key)
-      (let ((key (decode-rsa-private-key key)))
-        (unwind-protect
-             (funcall thunk key)
-          (rsa-free key)))
-      (funcall thunk key)))
-
 (defmacro with-evp-pkey ((pkey rsa-key &optional public-p) &body body)
   (let ((thunk (gensym)))
     `(flet ((,thunk (,pkey) ,@body))
@@ -364,19 +337,8 @@
                (unless (null-pointer-p pkey)
                  (with-openssl-lock () (%evp-pkey-free pkey)))))))
     (if public-p
-        (with-rsa-public-key (rsa rsa-key) (doit thunk rsa))
-        (with-rsa-private-key (rsa rsa-key) (doit thunk rsa)))))
-
-(defun public-key-id (pubkey)
-  (sha1 (trim pubkey)))
-
-(defun pubkey-bits (pubkey)
-  (with-rsa-public-key (key pubkey)
-    (* 8 (rsa-size key))))
-
-(defun privkey-bits (privkey)
-  (with-rsa-private-key (key privkey)
-    (* 8 (rsa-size key))))
+        (truledger:with-rsa-public-key (rsa rsa-key) (doit thunk rsa))
+        (truledger:with-rsa-private-key (rsa rsa-key) (doit thunk rsa)))))
 
 (defun sign (data rsa-private-key)
   "Sign the string in DATA with the RSA-PRIVATE-KEY.
@@ -399,8 +361,8 @@
                             (%evp-md-ctx-cleanup ctx)))
                   (error "Error while signing"))
                 ;; Here's the result
-                (base64-encode
-                 (copy-memory-to-lisp
+                (truledger:base64-encode
+                 (truledger:copy-memory-to-lisp
                   sig (mem-ref siglen :unsigned-int) nil))))))))))
 
 (defun verify (data signature rsa-public-key)
@@ -411,7 +373,7 @@
   (with-openssl-lock ()
     (with-evp-pkey (pkey rsa-public-key t)
       (let* ((type (%evp-sha1))
-             (sig (base64-decode signature))
+             (sig (truledger:base64-decode signature))
              (siglen (length sig)))
         (when (null-pointer-p type)
           (error "Can't get SHA1 type structure"))
@@ -470,7 +432,7 @@
   "PUBKEY is an RSA public key. MESSAGE is a message to encrypt.
    Returns encrypted message, base64 encoded."
   (with-openssl-lock ()
-    (with-rsa-public-key (rsa pubkey)
+    (truledger:with-rsa-public-key (rsa pubkey)
       (let* ((size (rsa-size rsa))
              (msglen (length message))
              (chars (- size $RSA-PKCS1-PADDING-SIZE))
@@ -481,21 +443,22 @@
                for i from 0 below msglen by chars
                for flen = (min chars (- msglen i))
                do
-               (copy-lisp-to-memory message from i (+ i flen))
+               (truledger:copy-lisp-to-memory message from i (+ i flen))
                (let ((len (%rsa-public-encrypt flen from to rsa $RSA-PKCS1-PADDING)))
                  (when (< len 0)
                    (error "Errors from %rsa-public-encrypt: ~s"
                           (get-openssl-errors)))
-                 (dotcat res (copy-memory-to-lisp to len nil))))))
-        (base64-encode res)))))
+                 (truledger:dotcat
+                  res (truledger:copy-memory-to-lisp to len nil))))))
+        (truledger:base64-encode res)))))
 
 (defun privkey-decrypt (message privkey)
   "PRIVKEY is an RSA private key. MESSAGE is a message to decrypt,
    base64-encoded. Returns decrypted message."
   (with-openssl-lock ()
-    (with-rsa-private-key (rsa privkey)
+    (truledger:with-rsa-private-key (rsa privkey)
       (let* ((size (rsa-size rsa))
-             (msg (base64-decode message))
+             (msg (truledger:base64-decode message))
              (msglen (length msg))
              (res ""))
         (with-foreign-pointer (from size)
@@ -514,8 +477,61 @@
                  (when (< len 0)
                    (error "Errors from %rsa-public-encrypt: ~s"
                           (get-openssl-errors)))
-                 (dotcat res (copy-memory-to-lisp to len nil))))))
+                 (truledger:dotcat
+                  res (truledger:copy-memory-to-lisp to len nil))))))
         res))))
+
+;;;
+;;; How we get here from crypto-api.lisp
+;;;
+
+(defmethod truledger:rsa-generate-key-gf
+    ((api (eql :openssl-cffi)) keylen &optional (exponent 65537))
+  (rsa-generate-key keylen exponent))
+
+(defmethod truledger:decode-rsa-private-key-gf
+    ((api (eql :openssl-cffi)) string &optional (password ""))
+  (decode-rsa-private-key string password))
+
+(defmethod truledger:encode-rsa-private-key-gf
+    ((api (eql :openssl-cffi)) rsa &optional password)
+  (encode-rsa-private-key rsa password))
+
+(defmethod truledger:decode-rsa-public-key-gf
+    ((api (eql :openssl-cffi)) string)
+  (decode-rsa-public-key string))
+
+(defmethod truledger:encode-rsa-public-key-gf
+    ((api (eql :openssl-cffi)) rsa)
+  (encode-rsa-public-key rsa))
+
+(defmethod truledger:rsa-free-gf ((api (eql :openssl-cffi)) rsa)
+  (rsa-free rsa))
+
+(defmethod truledger:sha1-gf
+    ((api (eql :openssl-cffi)) string &optional (res-type :hex))
+  (sha1 string res-type))
+
+(defmethod truledger:sign-gf
+    ((api (eql :openssl-cffi)) data rsa-private-key)
+  (sign data rsa-private-key))
+
+(defmethod truledger:verify-gf
+    ((api (eql :openssl-cffi)) data signature rsa-public-key)
+  (verify data signature rsa-public-key))
+
+(defmethod truledger:privkey-decrypt-gf
+    ((api (eql :openssl-cffi)) message privkey)
+  (privkey-decrypt message privkey))
+
+(defmethod truledger:pubkey-encrypt-gf
+    ((api (eql :openssl-cffi)) message pubkey)
+  (pubkey-encrypt message pubkey))
+
+(defmethod truledger:rsa-size-gf ((api (eql :openssl-cffi)) key)
+  (rsa-size key))
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

@@ -266,9 +266,6 @@
   (and (stringp acct)
        (every #'is-alphanumeric-p acct)))
 
-(defun pubkey-id (pubkey)
-  (sha1 (trim pubkey)))
-
 (defun privkey-id (privkey)
   (with-rsa-private-key (key privkey)
     (pubkey-id (encode-rsa-public-key key))))

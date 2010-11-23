@@ -159,26 +159,40 @@
    #:timer
    #:cancel-timer
 
-   ;; openssl-cffi.lisp
+   ;; crypto-api.lisp
+   ;; Functions implemented by crypto library
    #:decode-rsa-private-key
+   #:decode-rsa-private-key-gf
    #:encode-rsa-private-key
+   #:encode-rsa-private-key-gf
    #:decode-rsa-public-key
+   #:decode-rsa-public-key-gf
    #:encode-rsa-public-key
+   #:encode-rsa-public-key-gf
    #:rsa-generate-key
-   #:public-key-id
+   #:rsa-generate-key-gf
    #:rsa-free
+   #:rsa-free-gf
    #:sha1
+   #:sha1-gf
    #:sign
+   #:sign-gf
    #:verify
+   #:verify-gf
    #:privkey-decrypt
+   #:privkey-decrypt-gf
    #:pubkey-encrypt
+   #:pubkey-encrypt-gf
+   #:rsa-size
+   #:rsa-size-gf
+
+   ;; Shared functions
    #:pubkey-bits
    #:with-rsa-private-key
+   #:with-rsa-public-key
    #:pubkey-id
    #:id-p
    #:destroy-password
-   #:mem-set-char
-   #:bad-rsa-key-or-password
 
    ;; loomrandom.lisp
    #:urandom-bytes

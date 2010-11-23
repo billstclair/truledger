@@ -3,8 +3,30 @@ Periodic task to assess storage fees for inactive balances.
 ----------------------------------------------------------------------
 
 Expiration times for coupons and keys. Explicit key expiration,
-signing the new key so people can trust it. Proably a good time to
+signing the new key so people can trust it. Probably a good time to
 enable changing the server URL as well. And a key's passphrase.
+
+----------------------------------------------------------------------
+
+Line-level encryption.
+
+  sent: (<id>,newsessionkey,<serverid>,<req#>)
+  rcvd: (<serverid>,@newsessionkey,<serverid>,(<id>,newsessionkey,<serverid>,<req#>),<pubkey encrypted: [<sessionid>,<sessionkey>]>)
+           or
+        (<serverid>,failed,(<id>,newsessionkey,<serverid>,<req#>),errcode:<errcode>,reason:<reason>)
+
+  sent: [<sessionid>,<sessionkey encrypted: message>]
+  rcvd: [<sessionid>,<sessionkey encrypted: response>]
+           or
+        [<sessionid>,unknown] if the <sessionid> isn't registered
+
+  sent: [<sessionid>,
+         <sessionkey encrypted: (<id>,closesession,<serverid>,<sessionid>)>]
+  rcvd: [<sessionid>,
+         <sessionkey encrypted:
+           (<serverid>,@closesession,(<id>,closesession,<serverid>,<sessionid>))>]
+
+Or:
 
 ----------------------------------------------------------------------
 
@@ -26,7 +48,7 @@ for real installations.
 
   Customer sends:
 
-(0,sslinfo,<serverid>,random#>):0
+(0,sslinfo,<serverid>,<random#>):0
 
   Server returns:
 

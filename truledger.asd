@@ -18,6 +18,7 @@
      (:file "sendmail")
      (:file "utilities")
      (:file "timer")
+     (:file "crypto-api")
      #+openssl-cffi
      (:file "openssl-cffi")
      (:file "file-locks")

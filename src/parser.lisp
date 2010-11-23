@@ -192,14 +192,14 @@
             (if (equal dict-1 "register")
                 (gethash 3 dict)
                 (gethash 2 dict)))
-      (let ((pubkeyid (public-key-id pubkey)))
+      (let ((pubkeyid (pubkey-id pubkey)))
         (if (not (equal id pubkeyid))
             (setq pubkey nil)
             (setf (gethash id keydict) pubkey))))
     (unless pubkey
       (setq pubkey (and keydb (db-get keydb id)))
       (when pubkey
-        (unless (equal id (public-key-id pubkey))
+        (unless (equal id (pubkey-id pubkey))
           (error "Pubkey doesn't match id: ~s" id))
         (setf (gethash id keydict) pubkey)))
     pubkey))
