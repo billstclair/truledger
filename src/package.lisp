@@ -179,10 +179,10 @@
    #:sign-gf
    #:verify
    #:verify-gf
-   #:privkey-decrypt
-   #:privkey-decrypt-gf
-   #:pubkey-encrypt
-   #:pubkey-encrypt-gf
+   #:%rsa-privkey-decrypt
+   #:%rsa-privkey-decrypt-gf
+   #:%rsa-pubkey-encrypt
+   #:%rsa-pubkey-encrypt-gf
    #:rsa-size
    #:rsa-size-gf
 
@@ -193,6 +193,8 @@
    #:pubkey-id
    #:id-p
    #:destroy-password
+   #:privkey-decrypt
+   #:pubkey-encrypt
 
    ;; loomrandom.lisp
    #:urandom-bytes

@@ -17,8 +17,8 @@
    #:sha1
    #:sign
    #:verify
-   #:privkey-decrypt
-   #:pubkey-encrypt
+   #:%rsa-privkey-decrypt
+   #:%rsa-pubkey-encrypt
    #:rsa-size
    ))
 
@@ -237,6 +237,7 @@
         (error "Can't encode RSA public key"))
       (bio-get-string bio))))
 
+;; Return the size in bytes
 (defcfun ("RSA_size" rsa-size) :int
   (rsa :pointer))
 
@@ -428,58 +429,42 @@
   (rsa :pointer)
   (padding :int))
 
-(defun pubkey-encrypt (message pubkey)
-  "PUBKEY is an RSA public key. MESSAGE is a message to encrypt.
-   Returns encrypted message, base64 encoded."
+(defun %rsa-pubkey-encrypt (string pubkey &optional
+                           (start 0) (end (length string)))
+  (assert (>= start 0))
+  (assert (<= end (length string)))
   (with-openssl-lock ()
-    (truledger:with-rsa-public-key (rsa pubkey)
-      (let* ((size (rsa-size rsa))
-             (msglen (length message))
-             (chars (- size $RSA-PKCS1-PADDING-SIZE))
-             (res ""))
-        (with-foreign-pointer (from chars)
-          (with-foreign-pointer (to size)
-            (loop
-               for i from 0 below msglen by chars
-               for flen = (min chars (- msglen i))
-               do
-               (truledger:copy-lisp-to-memory message from i (+ i flen))
-               (let ((len (%rsa-public-encrypt flen from to rsa $RSA-PKCS1-PADDING)))
-                 (when (< len 0)
-                   (error "Errors from %rsa-public-encrypt: ~s"
-                          (get-openssl-errors)))
-                 (truledger:dotcat
-                  res (truledger:copy-memory-to-lisp to len nil))))))
-        (truledger:base64-encode res)))))
+    (let ((flen (- end start)))
+      (with-foreign-pointer (from flen)
+        (with-foreign-pointer (to (rsa-size pubkey))
+          (truledger:copy-lisp-to-memory string from start end)
+          (let ((len (%rsa-public-encrypt
+                      flen from to pubkey $RSA-PKCS1-PADDING)))
+            (when (< len 0)
+              (error "Errors from %rsa-public-encrypt: ~s"
+                     (get-openssl-errors)))
+            (truledger:copy-memory-to-lisp to len nil)))))))
 
-(defun privkey-decrypt (message privkey)
-  "PRIVKEY is an RSA private key. MESSAGE is a message to decrypt,
-   base64-encoded. Returns decrypted message."
-  (with-openssl-lock ()
-    (truledger:with-rsa-private-key (rsa privkey)
-      (let* ((size (rsa-size rsa))
-             (msg (truledger:base64-decode message))
-             (msglen (length msg))
-             (res ""))
-        (with-foreign-pointer (from size)
-          (with-foreign-pointer (to size)
-            (loop
-               for i from 0 below msglen by size
-               for flen = (min size (- msglen i))
-               do
-               ;; lisp-string-to-foreign didn't work here,
-               ;; likely due to 0 bytes.
-               (dotimes (j flen)
-                 (setf (mem-ref from :unsigned-char j)
-                       (char-code (aref msg (+ i j)))))
-               (let ((len (%rsa-private-decrypt
-                           flen from to rsa $RSA-PKCS1-PADDING)))
-                 (when (< len 0)
-                   (error "Errors from %rsa-public-encrypt: ~s"
-                          (get-openssl-errors)))
-                 (truledger:dotcat
-                  res (truledger:copy-memory-to-lisp to len nil))))))
-        res))))
+(defun %rsa-privkey-decrypt (string privkey &optional
+                            (start 0) (end (length string)))
+  (let ((size (rsa-size privkey)))
+    (assert (>= start 0))
+    (assert (<= end (length string)))
+    (assert (= end (+ start size)))
+    (with-openssl-lock ()
+      (with-foreign-pointer (from size)
+        (with-foreign-pointer (to size)
+          ;; lisp-string-to-foreign didn't work here,
+          ;; likely due to 0 bytes.
+          (dotimes (j size)
+            (setf (mem-ref from :unsigned-char j)
+                  (char-code (aref string (+ start j)))))
+          (let ((len (%rsa-private-decrypt
+                      size from to privkey $RSA-PKCS1-PADDING)))
+            (when (< len 0)
+              (error "Errors from %rsa-private-decrypt: ~s"
+                     (get-openssl-errors)))
+            (truledger:copy-memory-to-lisp to len nil)))))))
 
 ;;;
 ;;; How we get here from crypto-api.lisp
@@ -520,18 +505,18 @@
     ((api (eql :openssl-cffi)) data signature rsa-public-key)
   (verify data signature rsa-public-key))
 
-(defmethod truledger:privkey-decrypt-gf
-    ((api (eql :openssl-cffi)) message privkey)
-  (privkey-decrypt message privkey))
+(defmethod truledger:%rsa-pubkey-encrypt-gf
+    ((api (eql :openssl-cffi)) string pubkey &optional
+     (start 0) (end (length string)))
+  (%rsa-pubkey-encrypt string pubkey start end))
 
-(defmethod truledger:pubkey-encrypt-gf
-    ((api (eql :openssl-cffi)) message pubkey)
-  (pubkey-encrypt message pubkey))
+(defmethod truledger:%rsa-privkey-decrypt-gf
+    ((api (eql :openssl-cffi)) string pubkey &optional
+     (start 0) (end (length string)))
+  (%rsa-privkey-decrypt string pubkey start end))
 
 (defmethod truledger:rsa-size-gf ((api (eql :openssl-cffi)) key)
   (rsa-size key))
-
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

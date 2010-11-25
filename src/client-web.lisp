@@ -556,6 +556,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
 (defun do-login-internal (cw passphrase passphrase2)
   (bind-parameters (coupon name cacheprivkey keysize login newacct showkey privkey)
+    (when coupon
+      (setf coupon (trim coupon)))
     (let ((client (cw-client cw))
           (err nil)
           (url-p (url-p coupon))
