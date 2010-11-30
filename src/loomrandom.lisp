@@ -3,28 +3,56 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Cryptographically secure random number generation
+;;; Needs cryptographic random number generation for Windows
 ;;;
 
 (in-package :truledger)
 
 (defvar *use-urandom* t)
+(defvar *use-random* t)
 
 (defun urandom-stream ()
   (and *use-urandom*
        (or (ignore-errors (open "/dev/urandom"))
            (setq *use-urandom* nil))))
 
-(defun urandom-bytes (num)
-  "Return $num random bytes from /dev/urandom as a string"
+(defun random-stream ()
+  (and *use-random*
+       (or (ignore-errors (open "/dev/random"))
+           (setq *use-random* nil))))
+
+(defun random-bytes (num &optional (stream (random-stream)))
+  "Return NUM random bytes from /dev/random as a string"
   (when (< num 0)
     (error "Number of bytes must be non-negative"))
-  (let ((stream (urandom-stream)))
-    (unwind-protect
-         (with-output-to-string (s)
-           (if stream
-               (dotimes (i num) (write-char (read-char stream) s))
-               (dotimes (i num) (write-char (code-char (random 256)) s))))
-      (when stream (close stream)))))
+  (unwind-protect
+       (with-output-to-string (s)
+         (if stream
+             (dotimes (i num) (write-char (read-char stream) s))
+             (dotimes (i num) (write-char (code-char (random 256)) s))))
+    (when stream (close stream))))
+
+(defun urandom-bytes (num)
+  "Return $num random bytes from /dev/urandom as a string"
+  (random-bytes num (urandom-stream)))
+
+(defun random-array (num &optional (stream (random-stream)))
+  "Return $num random bytes from /dev/random as a string
+   as an (unsigned-byte 8) array"
+  (when (< num 0)
+    (error "Number of bytes must be non-negative"))
+  (unwind-protect
+       (let ((res (make-array num :element-type '(unsigned-byte 8))))
+         (if stream
+             (dotimes (i num)
+               (setf (aref res i) (char-code (read-char stream))))
+             (dotimes (i num)
+               (setf (aref res i) (random 256))))
+         res)
+    (when stream (close stream))))
+
+(defun urandom-array (num)
+  (random-array num (urandom-stream)))
 
 (defun random-id ()
   "Return a random 128-bit location, as hex"

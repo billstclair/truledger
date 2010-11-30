@@ -270,7 +270,7 @@
    or a string with 8-bit character values if res-type is :string."
   (check-type res-type (member :hex :bytes :string))
   (with-foreign-pointer (md 20)
-    (with-foreign-strings ((d string :encoding :latin-1))
+    (with-foreign-strings ((d string :encoding :utf-8))
       (with-openssl-lock ()
         (%sha1 d (length string) md)))
     (let* ((byte-array-p (or (eq res-type :hex) (eq res-type :bytes)))

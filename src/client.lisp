@@ -2079,7 +2079,7 @@
     (dolist (dir directions)
       (let* ((time (process-inbox-time dir))
              (request (process-inbox-request dir))
-             (note (process-inbox-note dir))
+             (note (or (process-inbox-note dir) ""))
              (acct (or (process-inbox-acct dir) $MAIN))
              (in (or (find time inbox :test #'equal :key #'inbox-time)
                      (error "No inbox entry for time: ~s" time)))

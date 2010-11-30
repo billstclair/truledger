@@ -1368,7 +1368,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
 (defun normalize-note (note)
   (if (or (null note) (equal note ""))
-      "&nbsp;"
+      ""
       (str-replace $nl $brn note)))
 
 (defun namestr-html (cw otherid cnt-thunk idname textname &optional you)
@@ -1591,7 +1591,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                                :name notename
                                :cols "20"
                                :rows "2"
-                               "&nbsp;"))
+                               ""))
                              (str acctcode)
                              (:td (str date))))
                           (incf spendcnt))))))
