@@ -7,8 +7,6 @@
 ;;;; **************************************************************************
 ;;;; **************************************************************************
 ;;;
-;;; Written by: mrbug@rayservers.net
-;;;
 ;;; This is a version of the AES (Rijndael) encryption algorithm coded
 ;;; in pure Common Lisp, and restructured to use 16-bit fixnum arithmetic
 ;;; in order to avoid bignums for 32-bit quantities using more than 29 bits
@@ -41,12 +39,12 @@
 ;;;
 ;;; * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 ;;;
-;;;  13 AUG 2010 File created.  (mrbug)
+;;;  13 AUG 2010 File created. 
 ;;;              TODO: some macro cleanup, packaging, etc.
 ;;;
-;;;  14 AUG 2010 Removed all inlines, converted to macros (mrbug)
+;;;  14 AUG 2010 Removed all inlines, converted to macros 
 ;;;
-;;;  18 OCT 2010 Moved some macros to macros.lisp (mrbug)
+;;;  18 OCT 2010 Moved some macros to macros.lisp 
 ;;;
 ;;; * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 

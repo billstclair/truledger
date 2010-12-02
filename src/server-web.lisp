@@ -40,6 +40,14 @@
       (setf (gethash forwarded-from *ports-to-servers*) server)))
   server)
 
+(defun map-port-servers (f)
+  "Call f with two args for each port server: port and server"
+  (maphash f *ports-to-servers*))
+
+(defmacro do-port-servers ((port server) &body body)
+  `(map-port-servers
+    (lambda (,port ,server) ,@body)))
+
 (defun port-acceptor (port)
   (gethash port *ports-to-acceptors*))
 
@@ -147,25 +155,29 @@
     (bind-parameters (msg debug debugmsgs)
       (setf (hunchentoot:content-type*) "text/html")
       (cond ((and msg server)
-             (let* ((debugstr nil)
-                    (res (with-debug-stream (debugmsgs)
-                           (unwind-protect
-                                (process server msg)
-                             (setq debugstr (get-debug-stream-string))))))
-               (cond (debug
-                      (setq res
-                            (format nil
-                                    "msg: <pre>~a</pre>~%response: <pre>~a</pre>~%"
-                                    msg res))
-                      (unless (blankp debugstr)
-                        (setq res (format nil "~a<pre>~a</pre>" res debugstr)))
-                     res)
-                     ((blankp debugstr) res)
-                     (t (format nil "<<~a>>~%~a" debugstr res)))))
+             (with-server-crypto-session-context (msg)
+               (let* ((debugstr nil)
+                      (res (with-debug-stream (debugmsgs)
+                             (unwind-protect
+                                  (process server msg)
+                               (setq debugstr (get-debug-stream-string))))))
+                 (cond (debug
+                        (setq res
+                              (format
+                               nil
+                               "msg: <pre>~a</pre>~%response: <pre>~a</pre>~%"
+                               msg res))
+                        (unless (blankp debugstr)
+                          (setq res (format nil "~a<pre>~a</pre>" res debugstr)))
+                        res)
+                       ((blankp debugstr) res)
+                       (t (format nil "<<~a>>~%~a" debugstr res))))))
             ((not server)
              (if msg
-                 (let ((downmsg (db-get (make-fsdb (server-db-dir)) $SHUTDOWNMSG)))
-                   (or downmsg "Server is down"))
+                 (with-server-crypto-session-context (msg)
+                   (declare (ignore msg))
+                   (let ((downmsg (db-get (make-fsdb (server-db-dir)) $SHUTDOWNMSG)))
+                     (or downmsg "Server is down")))
                  (hunchentoot:redirect "/client/")))
             (t (do-static-file))))))
 

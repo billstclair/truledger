@@ -2581,8 +2581,7 @@
         (dotcat msg "." totalmsg)
         (when fractionmsg
           (dotcat msg "." fractionmsg))
-        msg))))
-      
+        msg))))      
 
 (defun audit (server id assetid)
   "Audit the given asset. Return three values:
@@ -2676,6 +2675,36 @@
       (normalize-balance total fraction (number-precision fraction)))
     (values total fraction audit-acct-total)))
 
+(defvar *crypto-session-to-remove* nil)
+(defvar *current-crypto-session* nil)
+
+(define-message-handler do-opensession $OPENSESSION (server args reqs)
+  (declare (ignore reqs))
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args)))
+    (checkreq server args)
+    (let* ((crypto-session (new-crypto-session id))
+           (sessionid (crypto-session-id crypto-session))
+           (sessionkey (crypto-session-password-string crypto-session))
+           (msg (get-parsemsg args))
+           (plaintext (make-square-bracket-string sessionid sessionkey))
+           (pubkey (db-get db $PUBKEY id))
+           (ciphertext (pubkey-encrypt plaintext pubkey)))
+      ;; Can't remove session until we've used it to encrypt the return message
+      (setf *crypto-session-to-remove* *current-crypto-session*)
+      (servermsg server $ATOPENSESSION msg ciphertext))))
+
+(define-message-handler do-closesession $CLOSESESSION (server args reqs)
+  (declare (ignore reqs))
+  (let ((id (getarg $CUSTOMER args))
+        (sessionid (getarg $SESSIONID args)))
+    (checkreq server args)
+    (let ((crypto-session (get-crypto-session sessionid)))
+      (unless (equal id (crypto-session-userid crypto-session))
+        (error "Attempt to close a crypto-session for another user"))
+      ;; Can't remove session until we've used it to encrypt the return message
+      (setf *crypto-session-to-remove* crypto-session))))
+
 (define-message-handler do-backup $BACKUP (server args reqs)
   (declare (ignore reqs))
   (let ((db (db server))
@@ -2730,6 +2759,8 @@
                       ,$DENY
                       ,$PERMISSION
                       ,$AUDIT
+                      ,$OPENSESSION
+                      ,$CLOSESESSION
                       ,$BACKUP))
              (commands (make-hash-table :test #'equal)))
       (loop
@@ -2750,18 +2781,69 @@
       (strcat (subseq string (- maxlen 3)) "...")
       string))
 
+(defmacro with-server-crypto-session-context ((msg-var &optional (msg msg-var))
+                                              &body body)
+  (let ((thunk (gensym "THUNK")))
+    `(flet ((,thunk (,msg-var) ,@body))
+       (call-with-server-crypto-session-context #',thunk ,msg))))
+
+(defvar *in-server-crypto-session-context* nil)
+
+(defun call-with-server-crypto-session-context (thunk msg)
+  (if *in-server-crypto-session-context*
+      (funcall thunk msg)
+      (let ((*in-server-crypto-session-context* t)
+            (*current-crypto-session* nil)
+            (*crypto-session-to-remove* nil))
+        (flet ((crypto-session-handler (c)
+                 (when (debug-stream-p)
+                   (debugmsg "Server crypto error: ~a~%~a"
+                             c (backtrace-string)))
+                 (let ((sessionid
+                        (or (and *current-crypto-session*
+                                 (crypto-session-id *current-crypto-session*))
+                            (ignore-errors
+                              (car (parse-square-bracket-string msg)))
+                            "<unknown sessionid>")))
+                   (return-from call-with-server-crypto-session-context
+                     (make-square-bracket-string
+                      sessionid "error" (format nil "~a" c))))))
+          (when (square-bracket-string-p msg)
+            (handler-bind ((error #'crypto-session-handler))
+              (multiple-value-bind (plaintext crypto-session)
+                  (decrypt-for-crypto-session msg)
+                (check-crypto-session-timeout crypto-session)
+                (setf msg plaintext
+                      *current-crypto-session* crypto-session))))
+          (let ((res (funcall thunk msg)))
+            (unwind-protect
+                 (if *current-crypto-session*
+                     ;; Should we just return plaintext if there's
+                     ;; an error encrypting?
+                     ;; Probably won't ever happen.
+                     (handler-bind ((error #'crypto-session-handler))
+                       (values
+                        (encrypt-for-crypto-session
+                         *current-crypto-session* res)))
+                     res)
+              (when *crypto-session-to-remove*
+                ;; Handle delayed session removal
+                (ignore-errors
+                  (remove-crypto-session *crypto-session-to-remove*)))))))))
+
 (defmethod process ((server server) msg)
   "Process a message and return the response.
    This is usually all you'll call from outside."
-  (handler-bind
-      ((error
-        (lambda (c)
-          (when (debug-stream-p)
-            (debugmsg "Server error: ~a~%~a" c (backtrace-string)))
-          (return-from process
-            (failmsg server msg (format nil "~a" c))))))
-    (with-read-locked-fsdb ((db server))
-      (process-internal server msg))))
+  (with-server-crypto-session-context (msg)
+    (block nil
+      (handler-bind
+          ((error
+            (lambda (c)
+              (when (debug-stream-p)
+                (debugmsg "Server error: ~a~%~a" c (backtrace-string)))
+              (return (failmsg server msg (format nil "~a" c))))))
+        (with-read-locked-fsdb ((db server))
+          (process-internal server msg))))))
 
 (defun process-internal (server msg)
   (let* ((parser (parser server))

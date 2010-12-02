@@ -3,7 +3,7 @@
 (defun load-cl-crypto-files ()
   (dolist (file '("packages"
 		  "types"
-		  "macros"
+		  "utility"
 		  "aes16"
 		  "sha1"
                   ;; Need cl-base64 & flexi-streams for this file

@@ -144,6 +144,9 @@
 (defmacro dotcat (place &rest strings)
   `(setf ,place (strcat ,place ,@strings)))
 
+(defun delq (elt list)
+  (delete elt list :test #'eq))
+
 (defun remove-trailing-separator (string &optional (separator #\/))
   (let ((len (length string)))
     (if (and (> len 0) (eql separator (aref string (1- len))))

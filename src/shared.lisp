@@ -97,6 +97,8 @@
                         (,$DENY . (,$SERVERID ,$REQ ,$ID ,$PERMISSION))
                         (,$PERMISSION . (,$SERVERID ,$REQ (,$GRANT)))
                         (,$AUDIT . (,$SERVERID ,$REQ ,$ASSET))
+                        (,$OPENSESSION . (,$SERVERID ,$REQ))
+                        (,$CLOSESESSION . (,$SERVERID ,$REQ ,$SESSIONID))
                         (,$BACKUP . (,$REQ :rest))
 
                         ;; Server signed messages
@@ -137,6 +139,8 @@
                         (,$ATDENY . (,$MSG))
                         (,$ATPERMISSION . (,$MSG))
                         (,$ATAUDIT . (,$MSG))
+                        (,$ATOPENSESSION . (,$MSG ,$CIPHERTEXT))
+                        (,$CLOSESESSION . (,$MSG))
                         (,$ATBACKUP . (,$REQ))
                         ))
             (hash (make-hash-table :test 'equal)))

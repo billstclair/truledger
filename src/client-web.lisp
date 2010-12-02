@@ -566,7 +566,15 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
         (let ((key (ignore-errors (get-privkey client passphrase))))
           (unwind-protect
                (cond (key
-                      (setq privkey (encode-rsa-private-key key passphrase)))
+                      (let ((id (pubkey-id (encode-rsa-public-key key))))
+                        (do-port-servers (port server)
+                          (declare (ignore port))
+                          (when (equal id (serverid server))
+                            (setf
+                             (cw-error cw)
+                             "You may not show the server's private key."))))
+                      (unless (cw-error cw)
+                        (setq privkey (encode-rsa-private-key key passphrase))))
                      (t (setf (cw-error cw) "No key for passphrase")))
             (when key
               (rsa-free key))))

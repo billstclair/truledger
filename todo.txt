@@ -1,3 +1,7 @@
+No access to server's private key through client.
+
+----------------------------------------------------------------------
+
 Periodic task to assess storage fees for inactive balances.
 
 ----------------------------------------------------------------------

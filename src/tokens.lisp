@@ -67,6 +67,8 @@
 (defconstant $DENY "deny")
 (defconstant $PERMISSION "permission")
 (defconstant $AUDIT "audit")
+(defconstant $OPENSESSION "opensession")
+(defconstant $CLOSESESSION "closesession")
 
 ;; Affirmations
 (defconstant $ATREGISTER "@register")
@@ -95,6 +97,8 @@
 (defconstant $ATDENY "@deny")
 (defconstant $ATPERMISSION "@permission")
 (defconstant $ATAUDIT "@audit")
+(defconstant $ATOPENSESSION "@opensession")
+(defconstant $ATCLOSESESSION "@closesession")
 (defconstant $ATBACKUP "@backup")
 
 ;; request parameter names
@@ -123,6 +127,8 @@
 (defconstant $ANONYMOUS "anonymous")
 (defconstant $KEY "key")
 (defconstant $SIZE "size")
+(defconstant $SESSIONID "sessionid")
+(defconstant $CIPHERTEXT "ciphertext")
 
 ;; Client database keys
 (defconstant $SERVER "server")

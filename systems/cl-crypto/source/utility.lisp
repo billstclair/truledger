@@ -98,7 +98,8 @@
   (for (i 0 (1- (array-total-size a)))
     (format t "#x~8,'0X " (aref a i))
     (when (zerop (mod (1+ i) 4))
-      (format t "~%"))))
+      (format t "~%")))
+  (values))
 
 (defun dump-byte-array-lisp (a)
   (for (i 0 (1- (array-total-size a)))
@@ -182,3 +183,4 @@
 ;;; and limitations under the License.
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+

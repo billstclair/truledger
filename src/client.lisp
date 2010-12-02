@@ -497,6 +497,9 @@
 ;; hardly ever use it.
 (defmethod cache-privkey ((client client) sessionid &optional uncache-p)
   (require-current-server client "In cache-privkey: no current server")
+  (when (and (not uncache-p)
+             (equal (id client) (serverid client)))
+    (error "You may not cache the server private key."))
   (flet ((doit (passphrase)
            (let* ((db (db client))
                   (data (if uncache-p
@@ -3543,6 +3546,60 @@
          (key (user-preference-key client pref)))
     (setf (db-get db key) value)))
 
+(defvar *non-encryption-server-hash*
+  (make-equal-hash))
+
+(defun no-server-encryption-p (serverid)
+  (gethash serverid *non-encryption-server-hash*))
+
+(defun (setf no-server-encryption-p) (value serverid)
+  (if value
+      (setf (gethash serverid *non-encryption-server-hash*) value)
+      (remhash serverid *non-encryption-server-hash*)))
+
+(defvar *inside-opensession-p* nil)
+
+(defmethod opensession ((client client) &optional auto-session-p)
+  (unless *inside-opensession-p*
+    (require-current-server client "In opensession(): server not set")
+    (let ((*inside-opensession-p* t))
+      (handler-case
+          (opensession-internal client auto-session-p)
+        (error ()
+          (opensession-internal client auto-session-p t))))))
+
+(defun opensession-internal (client &optional auto-session-p reinit-p)
+  (unless (and auto-session-p (no-server-encryption-p (serverid client)))
+    (let* ((req (getreq client reinit-p))
+           (msg (custmsg client $OPENSESSION (serverid client) req))
+           (servermsg (process (server client) msg))
+           (args (unpack-servermsg client servermsg $ATOPENSESSION))
+           (ciphertext (getarg $CIPHERTEXT args))
+           (plaintext (privkey-decrypt ciphertext (privkey client)))
+           (id&key (parse-square-bracket-string plaintext)))
+      (unless (equal msg (get-parsemsg (getarg $MSG args)))
+        (error "Server didn't wrap request message"))
+      (new-client-crypto-session (first id&key) (id client) (second id&key)))))
+
+(defmethod closesession ((client client))
+  (require-current-server client "In close-session: server not set")
+  (let ((*inside-opensession-p* t))
+    (handler-case
+        (closesession-internal client)
+      (error ()
+        (closesession-internal client t)))))
+
+(defun closesession-internal (client &optional reinit-p)
+  (let* ((id (id client))
+         (session (get-client-userid-crypto-session id)))
+    (when session
+      (let* ((serverid (serverid client))
+             (req (getreq client reinit-p))
+             (sessionid (and session (crypto-session-id session)))
+             (msg (sendmsg client $CLOSESESSION serverid req sessionid)))
+        (unpack-servermsg client msg $ATCLOSESESSION)
+        (remove-client-crypto-session id)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Connection to the server
@@ -3601,6 +3658,13 @@
       (setf (post-stream proxy) stream)
       (values res status headers))))
 
+(defun ensure-client-crypto-session (client)
+  (and (id client)
+       (serverid client)
+       (not (no-server-encryption-p (serverid client)))
+       (or (get-client-userid-crypto-session (id client))
+           (ignore-errors (opensession client t)))))
+
 (defmethod process ((proxy serverproxy) msg)
   (let* ((url (url proxy))
          (client (client proxy))
@@ -3622,18 +3686,54 @@
       (when (debug-stream-p)
         (debugmsg "<b>===SENT</b>: ~a~%" (trimmsg msg)))
 
-      (let ((res (if test-server
-                     (truledger-server:process test-server msg)
+      (let ((text nil)
+            res)
+        (if test-server
+            (setf res (truledger-server:process test-server msg))
+            (let ((session (ensure-client-crypto-session client))
+                  (id (id client)))
+              (flet
+                  ((doit ()
+                     (when session
+                       (when (debug-stream-p)
+                         (debugmsg "<b>Using crypto session: ~s~%"
+                                   (crypto-session-id session)))
+                       (setf (cdr (assoc "msg" vars :test #'equal))
+                             (encrypt-for-crypto-session session msg)))
                      (multiple-value-bind (res status headers)
                          (post proxy url vars)
-                       (cond ((eql status 301)
-                              (let ((location
-                                     (cdr (assoc :location headers :test #'eq))))
-                                (cond (location
-                                       (setf (url proxy) location)
-                                       (post proxy location vars)))))
-                             (t res)))))
-            (text nil))
+                       (when (eql status 301)
+                         (let ((location
+                                (cdr (assoc :location headers
+                                            :test #'eq))))
+                           (when location
+                             (setf (url proxy) location
+                                   res (post proxy location vars)))))
+                       res)))
+                (declare (dynamic-extent #'doit))
+                (setf res (doit))
+                (when session
+                  (cond ((not (square-bracket-string-p res))
+                         ;; Server doesn't do wire encryption
+                         (remove-client-crypto-session id)
+                         (setf (no-server-encryption-p (serverid client)) t
+                               session nil))
+                        (t
+                         (block nil
+                           (when (setf res (ignore-errors
+                                             (decrypt-for-crypto-session res)))
+                             (return))
+                           (remove-client-crypto-session id)
+                           (setf session
+                                 (ensure-client-crypto-session client))
+                           (setf res (doit))
+                           (unless session (return))
+                           (when (setf res (ignore-errors
+                                             (decrypt-for-crypto-session res)))
+                             (return))
+                           (remove-client-crypto-session id)
+                           (error
+                            "Unable to privately communicate with server"))))))))
         (when (and (> (length res) 2)
                    (equal "<<" (subseq res 0 2)))
           (let ((pos (search #.(format nil ">>~%") res)))

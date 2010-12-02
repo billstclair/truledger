@@ -30,7 +30,7 @@
      (:file "shared")
      (:file "loomrandom")
      (:file "timestamp")
-     (:file "session")
+     (:file "crypto-session")
      (:file "server")
      (:file "client")
      (:file "backup")

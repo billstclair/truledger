@@ -60,6 +60,8 @@
    #:$DENY
    #:$PERMISSION
    #:$AUDIT
+   #:$OPENSESSION
+   #:$CLOSESESSION
    #:$ANONYMOUS
    #:$KEY
    #:$DATA
@@ -68,6 +70,8 @@
    #:$WRITEINDEX
    #:$WALKINDEX
    #:$SIZE
+   #:$SESSIONID
+   #:$CIPHERTEXT
    #:$ATREGISTER
    #:$ATOUTBOXHASH
    #:$ATSTORAGE
@@ -94,6 +98,8 @@
    #:$ATDENY
    #:$ATPERMISSION
    #:$ATAUDIT
+   #:$ATOPENSESSION
+   #:$ATCLOSESESSION
    #:$ATBACKUP
    #:$CUSTOMER
    #:$REQUEST
@@ -289,6 +295,7 @@
    #:assocequal
    #:strcat
    #:dotcat
+   #:delq
    #:balancehash
    #:assetid
    #:make-equal-hash
@@ -335,6 +342,25 @@
    #:browse-url
    #:add-startup-function
 
+   ;; session.lisp
+   #:crypto-session-id
+   #:crypto-session-userid
+   #:crypto-session-password-string
+   #:new-crypto-session
+   #:get-crypto-session
+   #:remove-crypto-session
+   #:purge-crypto-sessions
+   #:make-square-bracket-string
+   #:square-bracket-string-p
+   #:parse-square-bracket-string
+   #:encrypt-for-crypto-session
+   #:decrypt-for-crypto-session
+   #:get-client-userid-crypto-session
+   #:get-client-crypto-session
+   #:new-client-crypto-session
+   #:remove-client-crypto-session
+   #:check-crypto-session-timeout
+
    ;; client.lisp & server.lisp
    #:id
    #:privkey
@@ -353,6 +379,7 @@
    #:*last-commit*
    #:last-commit
    #:*save-application-time*
+   #:with-server-crypto-session-context
 
    ;; server-web.lisp
    #:with-debug-stream
@@ -366,6 +393,8 @@
    #:web-server-active-p
    #:stop-web-server
    #:port-server
+   #:map-port-servers
+   #:do-port-servers
    #:port-forwarded-from
    #:acceptor-port
    #:bind-parameters
@@ -553,6 +582,8 @@
    #:deny
    #:audit
    #:user-preference
+   #:opensession
+   #:closesession
    #:userreq
    #:trimmsg
    #:make-server-proxy
