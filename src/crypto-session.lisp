@@ -55,7 +55,7 @@
            :string))))
 
 (defun new-crypto-session-password ()
-  (let ((pass (random-array 16)))
+  (let ((pass (urandom-array 16)))
     (values pass (cl-base64:usb8-array-to-base64-string pass))))
 
 (defvar *max-user-crypto-sessions* 5)
