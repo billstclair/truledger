@@ -671,9 +671,12 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
 (defun do-server (cw)
   "Here to change servers or add a new server"
-  (bind-parameters (newserver selectserver cacheprivkey uncacheprivkey serverurl name server)
-    (let ((client (cw-client cw))
-          (err nil))
+  (bind-parameters (newserver selectserver
+                              cacheprivkey uncacheprivkey
+                              encrypt unencrypt
+                              serverurl name server)
+    (let* ((client (cw-client cw))
+           (err nil))
       (cond (newserver
              (setq serverurl (trim serverurl))
              (handler-case
@@ -694,12 +697,19 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                                  (setserver client server))
                                (cache-privkey
                                 client (get-cookie "session") uncacheprivkey)
-                               (setq err (if cacheprivkey
-                                             "Private key cached on server"
-                                             "Private key removed from server")))
+                               (setq err
+                                     (if cacheprivkey
+                                         "Private key cached on server"
+                                         "Private key removed from server")))
                       (error (c) (setq err (stringify c))))
                  (unless (equal serverid (serverid client))
-                   (setserver client serverid))))))                    
+                   (setserver client serverid)))))
+            ((or unencrypt encrypt)
+             (setf (no-server-encryption-p server) (null encrypt))
+             (setf err
+                   (if encrypt
+                       "Communications will be encrypted, if supported."
+                       "Communications will no longer be encrypted."))))
       (cond (err
              (setf (cw-error cw) err)
              (draw-servers cw serverurl name))
@@ -2193,14 +2203,15 @@ list with that nickname, or change the nickname of the selected
             (:th "URL")
             (:th "ID")
             (:th "Choose")
-            (:th "Private Key"))
+            (:th "Private Key")
+            (:th "Encryption"))
            (dolist (server servers)
              (let ((bid (server-info-id server)))
                (unless (equal (userreq client bid) "-1")
                  (let ((name (server-info-name server))
                        (url (hsc (server-info-url server)))
-                       (cached-p (privkey-cached-p client bid)))
-                   (when (blankp name)
+                       (cached-p (privkey-cached-p client bid))
+                       (encrypted-p (not (no-server-encryption-p bid))))                   (when (blankp name)
                      (setq name "unnamed"))
                    (form (stream "server"
                           :style "margin: 0px;") ; prevent whitespace below button
@@ -2208,14 +2219,18 @@ list with that nickname, or change the nickname of the selected
                      (:tr
                       (:td (esc name))
                       (:td (:a :href url (str url)))
-                      (:td (esc bid))
+                      (:td (:span :class "id" (esc bid)))
                       (:td
                        (:input :type "submit" :name "selectserver"
                                               :value "Choose"))
                       (:td :style "text-align: center;"                        
                        (:input :type "submit"
                                :name (if cached-p "uncacheprivkey" "cacheprivkey")
-                               :value (if cached-p "Uncache" "Cache"))))))))))))))
+                               :value (if cached-p "Uncache" "Cache")))
+                      (:td
+                       (:input :type "submit"
+                               :name (if encrypted-p "unencrypt" "encrypt")
+                               :value (if encrypted-p "Unencrypt" "Encrypt"))))))))))))))
 
 (defun draw-contacts (cw &optional id nickname notes)
   (let* ((client (cw-client cw))
@@ -2394,7 +2409,7 @@ list with that nickname, or change the nickname of the selected
               (:td :align "right" (esc precision))
               (:td :align "right" (str percent))
               (:td (str namestr))
-              (:td (esc assetid)
+              (:td (:span :class "id" (esc assetid))
                    (when balance
                      (htm
                       (:br)
@@ -2459,7 +2474,7 @@ list with that nickname, or change the nickname of the selected
                            (:option :value id :selected (equal assetid id)
                                     (esc name)))))))
                 (htm (esc assetname))))
-       (:td (esc assetid))))))
+       (:td (:span :class "id" (esc assetid)))))))
 
 (defun draw-fees (cw &optional values)
   (let* ((client (cw-client cw))

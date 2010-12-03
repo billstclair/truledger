@@ -584,6 +584,7 @@
    #:user-preference
    #:opensession
    #:closesession
+   #:no-server-encryption-p
    #:userreq
    #:trimmsg
    #:make-server-proxy

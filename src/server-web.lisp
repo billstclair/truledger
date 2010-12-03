@@ -639,6 +639,10 @@ table.prettytable caption {
 table.innertable th, table.innertable td {
   border: 0;
 }
+span.id {
+  font-size: 80%;
+  font-family: monospace;
+}
 a.version:link {
   color: #AAAAAA;
 }
@@ -684,7 +688,7 @@ p.version {
   `(("/little-lambda.png" do-png ,(b642s *little-lambda-base64*))
     ("/truledger-logo-50x49.gif" do-png ,(b642s *truledger-logo-base64*) "image/gif")
     ("/site-icon.ico" do-png ,(b642s *site-icon-base64*) "image/x-icon")
-    ("/css/tables.css" do-text ,*tables-css* "text/text")))
+    ("/css/tables.css" do-text ,*tables-css* "text/css")))
 
 (defun do-static-file ()
   (let* ((acceptor hunchentoot:*acceptor*)

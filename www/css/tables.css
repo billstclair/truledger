@@ -18,6 +18,10 @@ table.prettytable caption {
 table.innertable th, table.innertable td {
   border: 0;
 }
+span.id {
+  font-size: 80%;
+  font-family: monospace;
+}
 a.version:link {
   color: #AAAAAA;
 }
