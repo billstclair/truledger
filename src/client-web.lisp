@@ -2297,7 +2297,7 @@ list with that nickname, or change the nickname of the selected
                       (:td (str nickname))
                       (:td (str name))
                       (:td (str display))
-                      (:td (str id))
+                      (:td (:span :class "id" (str id)))
                       (:td (str note))
                       (:td
                        (:input :type "hidden" :name (stringify idx "id~d")
