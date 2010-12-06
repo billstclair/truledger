@@ -3,7 +3,7 @@ Timeout parameters for opensession command:
 (<id>,opensession,<serverid>,<req#>,timeout=<seconds>,inactivetime=<seconds>)
 
 Email interface. Standard SMTP. Specified port to listen on. Sends
-back standard SMTP.  Need to specify port for sending back.
+back standard SMTP. Need to specify port for sending back.
 
 ----------------------------------------------------------------------
 
