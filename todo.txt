@@ -1,3 +1,7 @@
+When an encryption session times out, getting back in sync tends to
+update everything. It should just retry with updated <req#>
+
+----------------------------------------------------------------------
 Timeout parameters for opensession command:
 
 (<id>,opensession,<serverid>,<req#>,timeout=<seconds>,inactivetime=<seconds>)
