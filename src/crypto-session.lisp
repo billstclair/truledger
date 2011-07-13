@@ -43,7 +43,9 @@
   last-use-time
   password
   password-string
-  aes-key)
+  aes-key
+  timeout
+  inactivetime)
 
 (defun new-crypto-session-id ()
   (with-crypto-session-lock ("new-crypto-session-id")
@@ -77,7 +79,9 @@
                              :key #'crypto-session-last-use-time))
         (mapc #'remove-crypto-session (subseq crypto-sessions 0 delcnt))))))
 
-(defun new-crypto-session (userid)
+(defun new-crypto-session (userid &optional timeout inactivetime)
+  (check-type timeout (or integer null))
+  (check-type inactivetime (or integer null))
   (multiple-value-bind (password password-string)
       (new-crypto-session-password)
     (with-crypto-session-lock ("new-crypto-session")
@@ -142,9 +146,9 @@
                                    (total-age 3600) (inactive-age 300))
   (let ((time (get-universal-time)))
     (or (> (- time (crypto-session-creation-time crypto-session))
-           total-age)
+           (or (crypto-session-timeout crypto-session) total-age))
         (> (- time (crypto-session-last-use-time crypto-session))
-           inactive-age))))
+           (or (crypto-session-inactivetime crypto-session) inactive-age)))))
 
 (defun purge-crypto-sessions (&key (total-age 3600) (inactive-age 300))
   (let ((cnt 0))

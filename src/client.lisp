@@ -3570,19 +3570,29 @@
 
 (defvar *inside-opensession-p* nil)
 
-(defmethod opensession ((client client) &optional auto-session-p)
+(defmethod opensession ((client client) &key
+                        timeout inactivetime auto-session-p)
   (unless *inside-opensession-p*
     (require-current-server client "In opensession(): server not set")
     (let ((*inside-opensession-p* t))
       (handler-case
-          (opensession-internal client auto-session-p)
+          (opensession-internal
+           client timeout inactivetime auto-session-p)
         (error ()
-          (opensession-internal client auto-session-p t))))))
+          (opensession-internal
+           client timeout inactivetime auto-session-p t))))))
 
-(defun opensession-internal (client &optional auto-session-p reinit-p)
+(defun opensession-internal (client timeout inactivetime auto-session-p
+                             &optional reinit-p)
   (unless (and auto-session-p (no-server-encryption-p (serverid client)))
     (let* ((req (getreq client reinit-p))
-           (msg (custmsg client $OPENSESSION (serverid client) req))
+           (msg (cond (inactivetime
+                       (custmsg client $OPENSESSION (serverid client) req
+                                (or timeout "") inactivetime))
+                      (timeout
+                       (custmsg client $OPENSESSION (serverid client) req
+                                timeout))
+                      (t (custmsg client $OPENSESSION (serverid client) req))))
            (*msg* msg)
            (servermsg (process (server client) msg))
            (args (unpack-servermsg client servermsg $ATOPENSESSION))
@@ -3675,7 +3685,7 @@
        (serverid client)
        (not (no-server-encryption-p (serverid client)))
        (or (get-client-userid-crypto-session (id client))
-           (values (ignore-errors (opensession client t))
+           (values (ignore-errors (opensession client :auto-session-p t))
                    t))))
 
 ;; This prevents thrashing after a new crypto-session is created.

@@ -1,10 +1,14 @@
-When an encryption session times out, getting back in sync tends to
-update everything. It should just retry with updated <req#>
+Remove an asset, if it's balance is zero, or maybe just if it hasn't
+been traded.
 
+This could leave behind some 0 balances in the asset, or non-zero if
+it's out of balance. Make sure everything deals gracefully with that.
 ----------------------------------------------------------------------
 Timeout parameters for opensession command:
 
 (<id>,opensession,<serverid>,<req#>,timeout=<seconds>,inactivetime=<seconds>)
+
+Allow use of a timed-out session for establishing a new session.
 
 Email interface. Standard SMTP. Specified port to listen on. Sends
 back standard SMTP. Need to specify port for sending back.

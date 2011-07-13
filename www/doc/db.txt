@@ -1043,13 +1043,13 @@ Session encryption
 
   Customer sends:
 
-(<id>,opensession,<serverid>,<req#>)
+(<id>,opensession,<serverid>,<req#>,timeout=<timeout>,inactivetime=<inactivetime>)
 
   Server checks that <req#> is valid, generates a new sessionid and
   random 128-bit session key, enters the id and key in an in-memory
   table, and returns:
 
-(<serverid>,@opensession,(<id>,opensession,<serverid>,<req#>),<pubkey encrypted: [<sessionid>,<sessionkey>]>)
+(<serverid>,@opensession,(<id>,opensession,<serverid>,<req#>,,timeout=<timeout>,inactivetime=<inactivetime>),<pubkey encrypted: [<sessionid>,<sessionkey>]>)
 
 (<serverid>,failed,(<id>,opensession,<serverid>,<req#>),errcode:<errcode>,reason:<reason>)
 
@@ -1058,9 +1058,10 @@ Session encryption
   does NOT remove old sessions, to allow sessions to remain open on
   multiple client devices for the same user. But a customer is allowed
   a maximum of 5 active sessions. Attempt to create a sixth session
-  will close the one least-recently active. Sessions time out after 5
-  minutes of inactivity or 60 minutes from creation, whichever comes
-  first.
+  will close the one least-recently active. <timeout> is the total time
+  the session is allowed to remain active, in seconds, it defaults to
+  300, 5 minutes. <inactivetime> is the time the session is allowed to
+  remain inactive. It defaults to 3600, 60 minutes.
 
   To send an encrypted message, either direction:
 

@@ -97,7 +97,7 @@
                         (,$DENY . (,$SERVERID ,$REQ ,$ID ,$PERMISSION))
                         (,$PERMISSION . (,$SERVERID ,$REQ (,$GRANT)))
                         (,$AUDIT . (,$SERVERID ,$REQ ,$ASSET))
-                        (,$OPENSESSION . (,$SERVERID ,$REQ))
+                        (,$OPENSESSION . (,$SERVERID ,$REQ (,$TIMEOUT ,$INACTIVETIME)))
                         (,$CLOSESESSION . (,$SERVERID ,$REQ ,$SESSIONID))
                         (,$BACKUP . (,$REQ :rest))
 

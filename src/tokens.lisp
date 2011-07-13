@@ -129,6 +129,8 @@
 (defconstant $SIZE "size")
 (defconstant $SESSIONID "sessionid")
 (defconstant $CIPHERTEXT "ciphertext")
+(defconstant $TIMEOUT "timeout")
+(defconstant $INACTIVETIME "inactivetime")
 
 ;; Client database keys
 (defconstant $SERVER "server")
