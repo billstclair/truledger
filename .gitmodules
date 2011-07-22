@@ -1,0 +1,3 @@
+[submodule "systems/cl-crypto"]
+	path = systems/cl-crypto
+	url = git@github.com:billstclair/cl-crypto.git

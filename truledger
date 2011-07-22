@@ -1,5 +1,10 @@
 #!/bin/bash
 # Usage is: "truledger [slimeport]"
+
+# For submodules in systems/
+git submodule init
+git submodule update
+
 if [ "x$CCL" = 'x' ]; then
   CCL=ccl
 fi
