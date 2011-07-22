@@ -1,3 +1,5 @@
+Client web API for FellowTraveler
+----------------------------------------------------------------------
 Remove an asset, if it's balance is zero, or maybe just if it hasn't
 been traded.
 

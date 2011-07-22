@@ -1,7 +1,6 @@
 #!/bin/bash
 # Load Truledger and save-application
-rm src/*.*fsl                   # Force recompile
-ccl -e '(load "truledger-loader.lisp")' \
+ccl -e '(load "start")' \
     -e '(when (find-package :truledger) (in-package :truledger))' \
     -e '(write-application-name "appname.txt")' \
     -e '(truledger:save-truledger-application)'

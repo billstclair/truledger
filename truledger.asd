@@ -7,8 +7,7 @@
   :version "1.0b1"
   :license "Apache"
   :depends-on (cffi cl-base64 cl-who hunchentoot drakma cybertiggyr-time
-               cl-smtp cl-crypto
-               #+loadswank swank)
+               cl-smtp cl-crypto split-sequence)
   :components
   ((:module src
     :serial t
