@@ -69,105 +69,6 @@
         (format s "~d:~{ ~a~}~%" i b)
         (incf i)))))
 
-;;;
-;;; Locking.
-;;;
-;;; A read-write-lock may NOT be locked recursively.
-;;; A regular lock MAY be locked recursively.
-;;;
-
-(defun make-lock (&optional name)
-  (ccl:make-lock name))
-
-(defun grab-lock (lock)
-  (ccl:grab-lock lock))
-
-(defun release-lock (lock)
-  (ccl:release-lock lock))
-
-(defmacro with-lock-grabbed ((lock &optional (whostate "Lock")) &body body)
-  `(ccl:with-lock-grabbed (,lock ,whostate) ,@body))
-
-#+not
-(progn
-;; This code doesn't work right.
-;; Use the version in read-write-lock.lisp
-;; In this version, an outstanding attempt to grab the write lock
-;; doesn't block read-lock attempts.
-
-(defun make-read-write-lock ()
-  (ccl:make-read-write-lock))
-
-(defun read-lock-rwlock (rwlock)
-  (ccl::read-lock-rwlock rwlock))
-
-(defun read-unlock-rwlock (rwlock)
-  (unlock-rwlock rwlock))
-
-(defun write-lock-rwlock (rwlock &optional reading-p)
-  (when reading-p
-    (unlock-rwlock rwlock))
-  (ccl::write-lock-rwlock rwlock))
-
-(defun write-unlock-rwlock (rwlock &optional reading-p)
-  (unlock-rwlock rwlock)
-  (when reading-p
-    (read-lock-rwlock rwlock)))
-
-(defun unlock-rwlock (rwlock)
-  (ccl::unlock-rwlock rwlock))
-
-(defmacro with-read-lock ((lock) &body body)
-  `(ccl:with-read-lock (,lock) ,@body))
-
-(defmacro with-write-lock ((lock) &body body)
-  `(ccl:with-write-lock (,lock) ,@body))
-
-)  ;end of progn
-
-;;;
-;;; Semaphores
-;;;
-
-(defun make-semaphore ()
-  (ccl:make-semaphore))
-
-(defun signal-semaphore (semaphore)
-  (ccl:signal-semaphore semaphore))
-
-(defun wait-on-semaphore (semaphore)
-  (ccl:wait-on-semaphore semaphore))
-
-;;;
-;;; Processes
-;;;
-
-(defun current-process ()
-  ccl:*current-process*)
-
-(defun all-processes ()
-  (ccl:all-processes))
-
-(defun process-run-function (name function &rest args)
-  (declare (dynamic-extent args))
-  (apply #'ccl:process-run-function name function args))
-
-(defun process-wait (whostate function &rest args)
-  (declare (dynamic-extent args))
-  (apply #'ccl:process-wait whostate function args))
-
-(defun create-directory (dir &key mode)
-  (if mode
-      (ccl:create-directory dir :mode mode)
-      (ccl:create-directory dir)))
-
-(defun recursive-delete-directory (path &rest rest &key if-does-not-exist)
-  (declare (ignore if-does-not-exist))
-  (apply #'ccl::recursive-delete-directory path rest))
-
-(defun ensure-directory-pathname (path)
-  (ccl::ensure-directory-pathname path))
-
 ;; A utility to change all instances of "bank" to "server" in file
 ;; and directory names in an old Trubanc database
 (defun file-name-replace (dir &rest rest &key (from "bank") (to "server") verbose)
@@ -195,7 +96,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009-2010 Bill St. Clair
+;;; Copyright 2009-2011 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

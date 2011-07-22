@@ -145,7 +145,7 @@
    #:$UNPACK-REQS-KEY))
 
 (cl:defpackage :truledger
-  (:use :cl :cffi :cl-base64 :cl-who :truledger-tokens)
+  (:use :cl :cffi :cl-base64 :cl-who :fsdb :truledger-tokens)
   (:export
 
    ;; ccl.lisp

@@ -6,23 +6,22 @@
   :author "Bill St. Clair <bill@billstclair.com>"
   :version "1.0b1"
   :license "Apache"
-  :depends-on (cffi cl-base64 cl-who hunchentoot drakma cybertiggyr-time
-               cl-smtp cl-crypto split-sequence)
+  :depends-on (cffi cl-base64 cl-who hunchentoot drakma cl-smtp split-sequence
+               ;; Systems above here come from quicklisp
+               ;; System below here are in systems/ dir
+               cl-crypto fsdb cybertiggyr-time)
   :components
   ((:module src
     :serial t
     :components
     ((:file "package")
      (:file "ccl")
-     (:file "read-write-lock")
      (:file "sendmail")
      (:file "utilities")
      (:file "timer")
      (:file "crypto-api")
      #+openssl-cffi
      (:file "openssl-cffi")
-     (:file "file-locks")
-     (:file "fsdb")
      (:file "bcmath")
      (:file "tokens")
      (:file "parser")
@@ -42,7 +41,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009-2010 Bill St. Clair
+;;; Copyright 2009-2011 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

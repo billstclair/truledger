@@ -1,3 +1,6 @@
 [submodule "systems/cl-crypto"]
 	path = systems/cl-crypto
 	url = git://github.com/billstclair/cl-crypto.git
+[submodule "systems/fsdb"]
+	path = systems/fsdb
+	url = git://github.com/billstclair/fsdb.git
