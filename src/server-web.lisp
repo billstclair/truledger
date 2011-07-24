@@ -757,6 +757,12 @@ openssl x509 -in cert.pem -text -noout
 
 ) ; #+windows
 
+(defclass acceptor (limited-thread-taskmaster:limited-thread-acceptor)
+  ())
+
+(defclass ssl-acceptor (limited-thread-taskmaster:limited-thread-ssl-acceptor)
+  ())
+
 (defun truledger-web-server (server &key
                            (pathname-defaults nil)
                            (www-dir "www")
@@ -781,18 +787,18 @@ openssl x509 -in cert.pem -text -noout
             (cond ((and acceptor
                         (typep acceptor
                                (if ssl-privatekey-file
-                                   'hunchentoot:ssl-acceptor
-                                   'hunchentoot:acceptor)))
+                                   'ssl-acceptor
+                                   'acceptor)))
                    acceptor)
                   (t (stop-web-server port)
                      nil)))
           (let ((acceptor (if ssl-privatekey-file
                               (make-instance
-                               'hunchentoot:ssl-acceptor
+                               'ssl-acceptor
                                :port port
                                :ssl-certificate-file ssl-certificate-file
                                :ssl-privatekey-file ssl-privatekey-file)
-                              (make-instance 'hunchentoot:acceptor :port port))))
+                              (make-instance 'acceptor :port port))))
             (setf (port-server port) server
                   (port-www-dir port) www-dir
                   (port-pathname-defaults port) pathname-defaults)
@@ -807,7 +813,7 @@ openssl x509 -in cert.pem -text -noout
             acceptor))
     (when (and ssl-certificate-file forwarding-port)
       ;; 
-      (let ((acceptor (make-instance 'hunchentoot:acceptor :port forwarding-port)))
+      (let ((acceptor (make-instance 'acceptor :port forwarding-port)))
         (setf (port-server forwarding-port) server
               (port-www-dir forwarding-port) www-dir
               (port-forwarded-to forwarding-port) port)

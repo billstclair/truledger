@@ -9,7 +9,7 @@
   :depends-on (cffi cl-base64 cl-who hunchentoot drakma cl-smtp split-sequence
                ;; Systems above here come from quicklisp
                ;; System below here are in systems/ dir
-               cl-crypto fsdb cybertiggyr-time)
+               cl-crypto fsdb cybertiggyr-time limited-thread-taskmaster)
   :components
   ((:module src
     :serial t

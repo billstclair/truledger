@@ -15,8 +15,10 @@
 
 (defun add-to-registry (&rest paths)
   (dolist (path paths)
-    (pushnew (truename (merge-pathnames path *source-directory*))
-             asdf:*central-registry*)))
+    (setf asdf:*central-registry*
+          (adjoin (truename (merge-pathnames path *source-directory*))
+                  asdf:*central-registry*
+                  :test #'equal))))
 
 (let ((systems-wildcard
        (merge-pathnames
