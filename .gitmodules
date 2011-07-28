@@ -1,9 +1,9 @@
 [submodule "systems/cl-crypto"]
 	path = systems/cl-crypto
-	url = git://github.com/billstclair/cl-crypto.git
+	url = zippy.rayservers.com:/home/lisp/git/cl-crypto.git
 [submodule "systems/fsdb"]
 	path = systems/fsdb
-	url = git://github.com/billstclair/fsdb.git
+	url = zippy.rayservers.com:/home/lisp/git/fsdb.git
 [submodule "systems/limited-thread-taskmaster"]
 	path = systems/limited-thread-taskmaster
-	url = git://github.com/billstclair/limited-thread-taskmaster.git
+	url = zippy.rayservers.com:/home/lisp/git/limited-thread-taskmaster.git
