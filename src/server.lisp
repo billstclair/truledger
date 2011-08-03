@@ -94,6 +94,7 @@
     (with-db-lock (db $TIME)
       (let ((res (next (timestamp server) (db-get db $TIME))))
         (db-put db $TIME res)
+        (maybe-purge-transactions res)
         res))))
 
 (defun account-dir (id)
@@ -1181,6 +1182,21 @@
    (storage-infos :initarg :storage-infos
                   :accessor transaction-storage-infos)))
 
+(defparameter *transaction-purge-period* 600) ; ten minutes
+(defvar *next-transaction-purge-time*
+  (+ (get-unix-time) *transaction-purge-period*))
+
+(defun maybe-purge-transactions (time)
+  (when (>= (bccomp time *next-transaction-purge-time*) 0)
+    (let ((min-time (bcsub time *transaction-purge-period*)))
+      (with-lock-grabbed (*transactions-lock*)
+        (maphash (lambda (key transaction)
+                   (when (< (bccomp (transaction-time transaction) min-time) 0)
+                     (remhash key *transactions*)))
+                 *transactions*)
+        (setf *next-transaction-purge-time*
+              (bcadd time *transaction-purge-period*))))))
+
 (defun save-transaction (server db id time feesdiffs storage-infos)
   (check-type server server)
   (check-type db fsdb:db-wrapper)
@@ -1491,7 +1507,8 @@
       (cond (transaction
              (cond ((equal time (transaction-time transaction))
                     (fsdb:commit-db-wrapper (transaction-db transaction))
-                    (setf res (servermsg server $ATCOMMIT msg)))
+                    (setf res (servermsg server $ATCOMMIT msg)
+                          (db-get db (last-transaction-key id)) res))
                    (t (setf res (failmsg server msg
                                          (format nil
                                                  "No saved transaction for time: ~d"
@@ -1960,6 +1977,18 @@
                           (equal (getarg $REQUEST feeargs) $TRANFEE))))
       (error "Outbox inner messages corrupted"))
     (cons spendargs feeargs)))
+
+(define-message-handler do-lasttransaction $LASTTRANSACTION (server args reqs)
+  ;; Process a lasttransaction request
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args)))
+    (with-db-lock (db (acct-time-key id))
+      (checkreq server args)
+      (let ((res (db-get db (last-transaction-key id))))
+        (or res
+            (failmsg server
+                     (get-parsemsg (car reqs))
+                     "No two-phase transactions have been made."))))))
 
 (define-message-handler do-storagefees $STORAGEFEES (server args reqs)
   ;; Process a storagefees request
@@ -2844,7 +2873,8 @@
                       ,$CLOSESESSION
                       ,$BACKUP
                       ,$COMMIT
-                      ,$GETFEATURES))
+                      ,$GETFEATURES
+                      ,$LASTTRANSACTION))
              (commands (make-hash-table :test #'equal)))
       (loop
          for name in names
@@ -2872,6 +2902,8 @@
 
 (defvar *in-server-crypto-session-context* nil)
 
+(defvar *enable-debug-backtrace* nil)
+
 (defun call-with-server-crypto-session-context (thunk msg)
   (if *in-server-crypto-session-context*
       (funcall thunk msg)
@@ -2879,7 +2911,7 @@
             (*current-crypto-session* nil)
             (*crypto-session-to-remove* nil))
         (flet ((crypto-session-handler (c)
-                 (when (debug-stream-p)
+                 (when (and *enable-debug-backtrace* (debug-stream-p))
                    (debugmsg "Server crypto error: ~a~%~a"
                              c (backtrace-string)))
                  (let ((sessionid
@@ -2922,7 +2954,7 @@
       (handler-bind
           ((error
             (lambda (c)
-              (when (debug-stream-p)
+              (when (and *enable-debug-backtrace* (debug-stream-p))
                 (debugmsg "Server error: ~a~%~a" c (backtrace-string)))
               (return (failmsg server msg (format nil "~a" c))))))
         (with-read-locked-fsdb ((db server))

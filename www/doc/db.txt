@@ -577,6 +577,23 @@ Process Inbox
   spender. This discourages spam, even in an otherwise free server.
 
 
+Get last transaction
+--------------------
+
+  Customer sends:
+
+(<id>,lasttransaction,<serverid>,<req#>)
+
+  Server compares <req#> to /account/<id>/req. If <req#> is greater,
+  server sets /account/<id>/req to <req#>. Then, if it exists, server
+  returns /account/<id>/lasttransaction:
+
+(<serverid>,@commit,(<id>,commit,<serverid>,<time#>))
+
+  Otherwise, server returns:
+
+(<serverid>,failed,(<id>,getlasttransaction,<serverid>,<req#>),errcode:<errcode>,reason:<reason>)
+
 Accept storage fees
 -------------------
 

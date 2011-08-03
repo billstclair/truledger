@@ -103,6 +103,7 @@
                         (,$COMMIT . (,$SERVERID ,$TIME))
                         (,$GETFEATURES . (,$SERVERID ,$REQ))
                         (,$FEATURES . (,$SERVERID ,$TIME ,$FEATURES))
+                        (,$LASTTRANSACTION . (,$SERVERID ,$REQ))
 
                         ;; Server signed messages
                         (,$FAILED . (,$MSG ,$ERRMSG))

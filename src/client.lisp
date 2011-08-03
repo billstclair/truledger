@@ -2351,6 +2351,25 @@
           (let ((key (userhistorykey client)))
             (setf (db-get db key trans) history)))))))
 
+(defmethod get-last-transaction ((client client) &optional forceserver)
+  "Returns the signed commit message for the last two-phase transaction."
+  (let* ((db (db client))
+         (key (user-last-transaction-key client)))
+    (require-current-server client "In get-last-transaction(): Server not set")
+    (unless (two-phase-commit-p client)
+      (error "Server doesn't support two-phase commit"))
+    (with-db-lock (db (userreqkey client))
+      (let ((msg (unless forceserver (db-get db key))))
+        (unless msg
+          (setf msg (sendmsg
+                     client $LASTTRANSACTION (serverid client) (getreq client))
+                forceserver t))
+        ;; We get an error if there is no last commit
+        (let ((args (ignore-errors (unpack-servermsg client msg $ATCOMMIT))))
+          (when forceserver (setf (db-get db key) (and args msg)))
+          (when args
+            (getarg $TIME (getarg $MSG args))))))))
+
 (defmethod storagefees ((client client))
   "Tell server to move storage fees to inbox
    You need to call getinbox to see the new data (via its call to sync_inbox)."
@@ -3512,7 +3531,8 @@
         ;; update permissions
         (ignore-errors                  ;server may not implement permissions
           (get-permissions client nil t))
-        (getfeatures client t)
+        (when (member $TWOPHASECOMMIT (getfeatures client t) :test #'equal)
+          (get-last-transaction client t))
         nil))))
 
 (defmethod unpacker ((client client))

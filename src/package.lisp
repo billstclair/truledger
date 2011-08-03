@@ -559,6 +559,7 @@
    #:process-inbox-acct
    #:getinboxignored
    #:processinbox
+   #:get-last-transaction
    #:storagefees
    #:assetinfo
    #:assetinfo-percent
