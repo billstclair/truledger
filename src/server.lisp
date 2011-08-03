@@ -1223,6 +1223,16 @@
     (post-fees-and-storage server feesdiffs storage-infos)
     res))
 
+(defun get-two-phase-commit-arg (args whichhash)
+  (let ((twophasecommit (getarg $TWOPHASECOMMIT args)))
+    (when twophasecommit
+      (unless (equal twophasecommit $TWOPHASECOMMIT)
+        (error "~a value for ~a not ~s"
+               $TWOPHASECOMMIT
+               whichhash
+               $TWOPHASECOMMIT))
+      t)))
+
 ;; New implementation, using db-wrapper
 ;; Need to deal with negative spend, moving issuer to different acct or
 ;; different ID.
@@ -1246,6 +1256,8 @@
          (asset (lookup-asset server assetid))
          (operation (if (equal id id2) $TRANSFER $SPEND))
          (fees (and (not (equal id serverid)) (getfees server operation)))
+         (two-phase-outbox-hash-p nil)
+         (two-phase-balance-hash-p nil)
          (two-phase-commit-p nil))
 
     (cond ((equal id2 $COUPON)
@@ -1350,13 +1362,17 @@
                     (error "~s appeared multiple times" $OUTBOXHASH))
                   (setf outboxhash-msg (servermsg server $ATOUTBOXHASH reqmsg))
                   (db-put db (outbox-hash-key id) outboxhash-msg)
-                  (dotcat res "." outboxhash-msg))
+                  (dotcat res "." outboxhash-msg)
+                  (setf two-phase-outbox-hash-p
+                        (get-two-phase-commit-arg reqargs "outboxhash")))
                  ((equal request $BALANCEHASH)
                   (when balancehash-msg
                     (error "~s appeared multiple times" $BALANCEHASH))
                   (setq balancehash-msg (servermsg server $ATBALANCEHASH reqmsg))
                   (db-put db (balance-hash-key id) balancehash-msg)
-                  (dotcat res "." balancehash-msg))
+                  (dotcat res "." balancehash-msg)
+                  (setf two-phase-balance-hash-p
+                        (get-two-phase-commit-arg reqargs "balancehash")))
                  ((equal request $FEE)
                   (let ((feeop (getarg $OPERATION reqargs))
                         (feeasset (getarg $ASSET reqargs))
@@ -1371,10 +1387,6 @@
                     (push (cons feeasset feeamount) feesdiffs)
                     (let ((msg (servermsg server $ATFEE reqmsg)))
                       (dotcat res "." msg))))
-                 ((equal request $FEATURES)
-                  (let ((features (getarg $FEATURES reqargs)))
-                    (when (equal features $TWOPHASECOMMIT)
-                      (setf two-phase-commit-p t))))
                  (t
                   (error "~s not valid for spend. Only ~s, ~s, ~s, ~s, ~s, & ~s"
                          request
@@ -1460,6 +1472,11 @@
                         return nil
                         finally (return t)))
           (error "Storage info mismatch"))
+        (when (or two-phase-balance-hash-p two-phase-outbox-hash-p)
+          (unless (and two-phase-balance-hash-p two-phase-outbox-hash-p)
+            (error "~a value differs between balance hash and outbox hash"
+                   $TWOPHASECOMMIT))
+          (setf two-phase-commit-p t))
         (values res time two-phase-commit-p feesdiffs storage-infos)))))
 
 (defmethod post-storage-fee ((server server) assetid issuer storage-fee digits)
@@ -1740,6 +1757,8 @@
          (outboxhashreq nil)
          (balancehashreq nil)
          (diffs nil)
+         (two-phase-balance-hash-p nil)
+         (two-phase-outbox-hash-p nil)
          (two-phase-commit-p nil))
 
     ;; Burn the transaction, even if balances don't match.
@@ -1871,7 +1890,9 @@
                  (when outboxhashreq
                    (error "~s appeared multiple times" $OUTBOXHASH))
                  (checktime argstime time "outboxhash")
-                 (setq outboxhashreq req)
+                 (setf outboxhashreq req
+                       two-phase-outbox-hash-p
+                       (get-two-phase-commit-arg args "outboxhash"))
                  (let ((item (servermsg server $ATOUTBOXHASH (get-parsemsg req))))
                    (dotcat res "." item)
                    (db-put db (outbox-hash-key id) item))))
@@ -1885,15 +1906,13 @@
                  (when balancehashreq
                    (error "~s appeared multiple times" $BALANCEHASH))
                  (checktime argstime time "balancehash")
-                 (setq balancehashreq req)
+                 (setf balancehashreq req
+                       two-phase-balance-hash-p
+                       (get-two-phase-commit-arg args "balancehash"))
                  (let ((item (servermsg server $ATBALANCEHASH
                                         (get-parsemsg req))))
                    (dotcat res "." item)
                    (db-put db (balance-hash-key id) item))))
-              ((equal request $FEATURES)
-               (let ((features (getarg $FEATURES args)))
-                 (when (equal features $TWOPHASECOMMIT)
-                   (setf two-phase-commit-p t))))
               (t
                (error "~s not valid for ~s, only ~s, ~s, ~s, ~s, ~s, ~s, & ~s"
                       request $PROCESSINBOX
@@ -1943,6 +1962,12 @@
               (t
                (let ((inboxkey (inbox-key otherid)))
                  (setf (db-get db inboxkey inboxtime) inboxmsg))))))
+
+    (when (or two-phase-balance-hash-p two-phase-outbox-hash-p)
+      (unless (and two-phase-balance-hash-p two-phase-outbox-hash-p)
+        (error "~a value differs between balance hash and outbox hash"
+               $TWOPHASECOMMIT))
+      (setf two-phase-commit-p t))
 
     (values res time two-phase-commit-p storage-infos)))
 

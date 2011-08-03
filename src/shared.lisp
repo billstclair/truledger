@@ -66,8 +66,10 @@
                         (,$ID . (,$SERVERID ,$ID))
                         (,$BALANCE .
                          (,$SERVERID ,$TIME ,$ASSET ,$AMOUNT (,$ACCT)))
-                        (,$OUTBOXHASH . (,$SERVERID ,$TIME ,$COUNT ,$HASH))
-                        (,$BALANCEHASH . (,$SERVERID ,$TIME ,$COUNT ,$HASH))
+                        (,$OUTBOXHASH .
+                         (,$SERVERID ,$TIME ,$COUNT ,$HASH (,$TWOPHASECOMMIT)))
+                        (,$BALANCEHASH .
+                         (,$SERVERID ,$TIME ,$COUNT ,$HASH (,$TWOPHASECOMMIT)))
                         (,$GETFEES . (,$SERVERID ,$REQ (,$OPERATION)))
                         (,$SETFEES . (,$TIME ,$COUNT))
                         (,$SPEND .
