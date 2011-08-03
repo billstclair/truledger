@@ -53,11 +53,11 @@ truledger-dbs/serverdb/
       req=<req#>    -- starts at 0. New requests must have a higher number
       fraction/     -- fractional amounts due to storage fees
         <assetid>=(<serverid>,@fraction,(<id>,fraction,<serverid>,<time#>,<assetid>,<amount>))
-      balancehash=(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<count>,<hash>))
+      balancehash=(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<count>,<hash>,twophasecommit:twophasecommit))
       balance/
         <acct>/  -- "main" is the default acct name
           <assetid>=(<serverid>,@balance,(<id>,balance,<serverid>,<time#>,<assetid>,<amount>,acct:<acct>))
-      outboxhash=(<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<time#>,<count>,<hash>))
+      outboxhash=(<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<time#>,<count>,<hash>,twophasecommit:twophasecommit))
       outbox/
         <time2#>=(<serverid>,@spend,(<id>,spend,<serverid>,<time2#>,<id2>,<assetid2>,<amount2>,note:<note2>)).
                  (<serverid>,@tranfee,(<id>,tranfee,<serverid>,<time2#>,<tokenid>,<amount2fee>))
@@ -261,8 +261,7 @@ Get fees
   (<serverid>,fee,<serverid>,<time#>,<operation>,<assetid>,<amount>).
   (<serverid>,fee,<serverid>,<time#>,<operation2>,assetid2>,<amount2>).
   ...
-  (<serverid>,fee,<serverid>,<time#>,<operationN>,<assetidN>,<amountN>).
-  (<serverid>,twophasecommit,<serverid>,<time#>,<true-or-false>)
+  (<serverid>,fee,<serverid>,<time#>,<operationN>,<assetidN>,<amountN>)
 
   Otherwise, server returns:
 
@@ -325,9 +324,8 @@ Spend
   (<id>,balance,<serverid>,<time#>,<assetid2>,<amount2>,acct:<acctN>).
   ...
   (<id>,balance,<serverid>,<time#>,<assetidN>,<amountN>,acct:<acctN>).
-  (<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>).
-  (<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>).
-  (<id>,features,<serverid>,<time#>,twophasecommit)
+  (<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>,twophasecommit:twophasecommit).
+  (<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>,twophasecommit:twophasecommit)
 
   Server checks that the <time#> is equal to /account/<id>/time, that
   the balances match (after subtracting the spend amount & fees), and
@@ -343,17 +341,18 @@ Spend
   (<serverid>,@balance,(<id>,balance,<time#>,<serverid>,assetid2>,<amount2>,acct:<acct2>)).
   ...
   (<serverid>,@balance,(<id>,balance,<time#>,<serverid>,<assetidN>,<amountN>,acct:<acctN>)).
-  (<serverid,@outboxhash,(<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>)).
-  (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))
+  (<serverid,@outboxhash,(<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>,twophasecommit:twophasecommit)).
+  (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>,twophasecommit:twophasecommit))
 
 If they don't match, server returns:
 
 (<serverid>,failed,(<id>,spend,<serverid>,<time#>,<id2>,<assetid>,<amount>,note:<note>),errcode:<errcode>,reason:<reason>)
 
-  If the "twophasecommit" "feature" message is includes, then this is
-  the first phase of a two-phase commit, and nothing will be permanent
-  until a "commit" message is sent to the server. Otherwise,
-  everything is written before this command returns.
+  If the "twophasecommit" paramater is included in the outboxhash and
+  balancehash records, then this is the first phase of a two-phase
+  commit, and nothing will be permanent until a "commit" message is
+  sent to the server. Otherwise, everything is written before this
+  command returns.
 
   Note that there's an outbox hash and a balance hash. The outbox hash
   is the sha1 hash of the customer "spend"."tranfee" items,
@@ -369,8 +368,8 @@ If they don't match, server returns:
   isn't strictly necessary, but it can help to identify problems if
   the client and server disagree on something.
 
-  To commit the transaction, the customer countersigns the
-  balancehash, and sends it back to the server:
+  To commit the transaction, the customer sends a commit request to
+  the server:  
 
 (<id>,commit,<serverid>,<time#>)
 
@@ -501,8 +500,8 @@ Process Inbox
   (<id>,balance,<serverid>,<time12#>,<assetidN>,<amount3>,acct:<acctN>).
   (<id>,storagefee,<serverid>,<time12#>,<assetidN>,<storageamountN>).
   (<id>,fraction,<serverid>,<time12#>,<assetidN>,<fractionamountN>).
-  (<id>,outboxhash,<serverid>,<time12#>,<outboxcount>,<outboxhash>).
-  (<id>,balancehash,<serverid>,<time12#>,<balancecount>,<balancehash>)
+  (<id>,outboxhash,<serverid>,<time12#>,<outboxcount>,<outboxhash>,twophasecommit:twophasecommit).
+  (<id>,balancehash,<serverid>,<time12#>,<balancecount>,<balancehash>,twophasecommit:twophasecommit)
 
   Server compares <time12#> to /account/<id>/time. If it's the
   same, server processes the requested inbox transactions, and compares
@@ -516,21 +515,21 @@ Process Inbox
   (<serverid>,@balance,(<id>,balance,<serverid>,time12#>,assetid2>,<amount2>,acct:<acct2>)).
   ...
   (<serverid>,@balance,(<id>,balance,<serverid>,<time12#>,<assetidN>,<amount3>,acct:<acctN>)).
-  (<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<time12#>,<outboxcount>,<outboxhash>)).
-  (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time12#>,<balancecount>,<balancehash>)).
-  (<id>,features,<serverid>,<time12#>,twophasecommit)
+  (<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<time12#>,<outboxcount>,<outboxhash>,twophasecommit:twophasecommit)).
+  (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time12#>,<balancecount>,<balancehash>,twophasecommit:twophasecommit))
 
   Otherwise, server returns:
 
 (<serverid>,failed,(<id>,processinbox,<serverid>,<time12#>|<time6#>|<time7#>|<time8#>|<time9#>),errcode:<errcode>,reason:<reason>)
 
-  If the "twophasecommit" "feature" message is included, then this is
-  the first phase of a two-phase commit, and nothing will be permanent
-  until a "commit" message is sent to the server. Otherwise,
-  everything is written before this command returns.
+  If the "twophasecommit" parameter is included in the outboxhash and
+  balancehash messages, then this is the first phase of a two-phase
+  commit, and nothing will be permanent until a "commit" message is
+  sent to the server. Otherwise, everything is written before this
+  command returns.
 
-  To commit the transaction, the customer countersigns the
-  balancehash, and sends it back to the server:
+  To commit the transaction, the customer sends a commit request to
+  the server:
 
 (<id>,commit,<serverid>,<time12#>)
 
@@ -694,7 +693,7 @@ Get outbox
   (<serverid>,@spend,(<id>,spend,<time2#>,<id2>,<serverid>,<assetid2>,<amount2>,note:<note2>,acct:<acct2>))
   (<serverid>,@spend,<id>,spend,<time3#>,<id3>,<serverid>,<assetid3>,<amount3>,note:<note3>,acct:<acct3>))
   ...
-  (<serverid>,@outboxhash,(<id>,outboxhash,<time#>,<serverid>,<hash>))
+  (<serverid>,@outboxhash,(<id>,outboxhash,<time#>,<serverid>,<hash>,twophasecommit:twophasecommit))
 
   Otherwise, server returns:
 
@@ -725,7 +724,7 @@ Get balance
 ...
 (<serverid>,@fraction,(<id>,fraction,<serverid>,<timefN#>,<assetid>,<amountfN>).
 (<serverid>,storagefee,<serverid>,<time#>,<assetid>,<amount>).
-(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))
+(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>,twophasecommit:twophasecommit))
 
   Otherwise, server returns:
 
@@ -742,8 +741,8 @@ Coupons
   (<id>,balance,<serverid>,<time#>,<assetid2>,<amount2>,acct:<acct2>).
   ...
   (<id>,balance,<serverid>,<time#>,<assetidN>,<amountN>,acct:<acctN>).
-  (<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>).
-  (<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>)
+  (<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>,twophasecommit:twophasecommit).
+  (<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>,twophasecommit:twophasecommit)
 
   Server checks that the <time#> is equal to /account/<id>/time, that
   the balances match (after subtracting the spend amount fees), and
@@ -757,8 +756,8 @@ Coupons
   (<serverid>,@balance,(<id>,balance,<time#>,<serverid>,<assetid>,<amount>,acct:<acct>)).
   (<serverid>,@balance,(<id>,balance,<time#>,<serverid>,assetid2>,<amount2>,acct:<acct2>)).
   ...
-  (<serverid>,@balance,(<id>,balance,<time#>,<serverid>,<assetidN>,<amountN>,acct:<acctN>)).
-  (<serverid,@outboxhash,(<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>)).
+  (<serverid>,@balance,(<id>,balance,<time#>,<serverid>,<assetidN>,<amountN>,acct:<acctN>,twophasecommit:twophasecommit)).
+  (<serverid,@outboxhash,(<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>,twophasecommit:twophasecommit)).
   (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))
 
   Where <encrypted-coupon> is the following, encrypted with the public
@@ -790,6 +789,11 @@ Coupons
   He can then give it to whomever he pleases, and that person can
   redeem it, with the couponenvelope request below. This is the normal
   way to introduce someone to a Truledger server.
+
+  As with the "spend" command, if the "twophasecommit" parameter is
+  included in the outboxhash and balancehash records, this is only the
+  first phase of a two-phase commit, and the "commit" request must be
+  sent to complete the transaction.
 
 
 Redeeming Coupons
