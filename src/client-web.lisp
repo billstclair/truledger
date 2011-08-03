@@ -1818,7 +1818,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                               "enabled"
                               "disabled")))
              (when (and (cw-fraction-asset cw) (debug-stream-p))
-               (let* ((fraction (car (getfraction client (cw-fraction-asset cw)))))
+               (let* ((fraction (getfraction client (cw-fraction-asset cw))))
                  (when fraction
                    (let ((amt (fraction-amount fraction))
                          (scale (fraction-scale fraction)))

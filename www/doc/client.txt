@@ -24,6 +24,7 @@ truledger-dbs/clientdb/
       tokenid=(<serverid>,tokenid,<tokenid>)
       regfee=(<serverid>,regfee,<time#>,<tokenid>,<amount>)
       tranfee=(<serverid>,tranfee,<serverid>,<time#>,<tokenid>,<amount>)
+      features=(<serverid>,features,<serverid>,<time#>,<f1>|<f2>|...|<fn>)
       fee/
         spend=(<serverid>,fee,<time#>,spend,<assetid>,<amount>)[...]
         transfer=(<serverid>,fee,<time#>,transfer,<assetid>,<amount>)[...]
@@ -54,6 +55,7 @@ truledger-dbs/clientdb/
             <id>=(<serverid>,@register,(<id>,register,<serverid>,<pubkey>,name=<name>))
           fraction/     -- fractional amounts due to storage fees
             <assetid>=(<serverid>,@fraction,(<id>,fraction,<serverid>,<time#>,<assetid>,<amount>))
+          lasttransaction=(<serverid>,@commit,(<id>,commit,<serverid>,<time#>))
           balancehash=(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<count>,<hash>))
           balance/
             <acct>/  -- "main" is the default acct name
@@ -72,10 +74,6 @@ truledger-dbs/clientdb/
           inboxignored=<time#1>,<time#2>,...,<time#N>
           permission/
             <permission>=(<serverid>,@grant,(<id>,grant,<serverid>,<time#>,<toid>,<permission>,grant=grant))...
-          transaction/
-            (<serverid>,@spend,(<id>,spend,<time#>,<id2>,<serverid>,<assetid>,<amount>,note:<note>,acct:<acct>))...
-              or
-            (<serverid,@processinbox,(<id>,processinbox,<serverid>,<time11#>,<time7#>|<time8#>|<time9#>)...
           history/
             -- Needs more work. Likely wants to be indexed multiple ways
             -- and probably organized in directories to keep any one listing

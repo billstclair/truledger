@@ -36,8 +36,6 @@
 
 (reload)
 
-(import 'reload :truledger)
-
 (defun tl ()
   (let ((set-package (ignore-errors (find-symbol "SET-PACKAGE" :swank))))
     (when set-package

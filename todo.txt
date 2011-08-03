@@ -60,10 +60,6 @@ How to help the issuer keep track of where the assets he's storing are held?
 
 ----------------------------------------------------------------------
 
-Two-phase commit.
-
-----------------------------------------------------------------------
-
 Reducing storage fee percent can reduce the number of digits in the
 fraction. This will cause fractional amounts to be truncated, causing
 the server to go out of balance by potentially 1 lsb. Can fix this by

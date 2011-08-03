@@ -62,6 +62,9 @@
    #:$AUDIT
    #:$OPENSESSION
    #:$CLOSESESSION
+   #:$COMMIT
+   #:$GETFEATURES
+   #:$FEATURES
    #:$ANONYMOUS
    #:$KEY
    #:$DATA
@@ -69,6 +72,8 @@
    #:$READINDEX
    #:$WRITEINDEX
    #:$WALKINDEX
+   #:$TWOPHASECOMMIT
+   #:$LASTTRANSACTION
    #:$SIZE
    #:$SESSIONID
    #:$CIPHERTEXT
@@ -103,6 +108,7 @@
    #:$ATOPENSESSION
    #:$ATCLOSESESSION
    #:$ATBACKUP
+   #:$ATCOMMIT
    #:$CUSTOMER
    #:$REQUEST
    #:$NAME
@@ -146,7 +152,11 @@
 
 (cl:defpackage :truledger
   (:use :cl :cffi :cl-base64 :cl-who :fsdb :truledger-tokens)
+  (:import-from :cl-user #:reload)
   (:export
+
+   ;; start.lisp
+   #:reload
 
    ;; ccl.lisp
    #:run-program
@@ -568,6 +578,8 @@
    #:outbox-coupons
    #:getoutbox
    #:redeem
+   #:getfeatures
+   #:two-phase-commit-p
    #:getversion
    #:readdata
    #:writedata

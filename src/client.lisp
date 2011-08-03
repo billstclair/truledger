@@ -1360,6 +1360,24 @@
                        client toid assetid formattedamount acct note)))))
         (spend-internal client toid assetid formattedamount acct note)))))
 
+(defmethod send-commit-msg ((client client) time)
+  (let* ((serverid (serverid client))
+         (server (server client))
+         (parser (parser client))
+         (msg (custmsg client $COMMIT serverid time))
+         (servermsg (process server msg))
+         (reqs (parse parser servermsg t))
+         (args (handler-case (match-serverreq client (car reqs) $ATCOMMIT)
+                 (error ()
+                   (let* ((args (match-serverreq client (car reqs)))
+                          (request (getarg $REQUEST args)))
+                     (error
+                      "Spend commit request returned unknown message type: ~s"
+                      request))))))
+    (unless (equal msg (trim (get-parsemsg (getarg $MSG args))))
+      (error "Returned commit message doesn't match"))
+    msg))
+
 (defmethod spend-internal ((client client) toid assetid formattedamount acct note)
   (let ((db (db client))
         (id (id client))
@@ -1369,6 +1387,8 @@
         (acct (or (if (listp acct) (car acct) acct) $MAIN))
         (toacct (or (and (listp acct) (cadr acct)) $MAIN))
         (amount (unformat-asset-value client formattedamount assetid))
+        (two-phase-commit-p (two-phase-commit-p client))
+        (last-transaction nil)
         oldamount
         oldtime
         time
@@ -1669,6 +1689,11 @@
         (dolist (frac fees-fracmsgs)
           (dotcat msg "." frac)))
 
+      ;; Request two-phase commit, if the server supports it
+      (when two-phase-commit-p
+        (let ((feature (custmsg client $FEATURES serverid time $TWOPHASECOMMIT)))
+          (dotcat msg "." feature)))
+
       (let* ((servermsg (process server msg)) ; *** Here's the server call ***
              (reqs (parse parser servermsg t))
              (msgs (make-equal-hash spend t
@@ -1721,6 +1746,10 @@
            (when (eq msg t)
              (error "Message not returned from spend: ~s" m)))
           
+        ;; Do the second phase of the commit
+        (when two-phase-commit-p
+          (setf last-transaction (send-commit-msg client time)))
+
         ;; All is well. Commit this baby.
         (setf (db-get db (userbalancekey client acct assetid))
               (gethash balance msgs))
@@ -1751,6 +1780,9 @@
           (when percent
             (setf (db-get db (userfractionkey client assetid))
                   (gethash fracmsg msgs)))
+
+          (when last-transaction
+            (setf (db-get db (user-last-transaction-key client)) last-transaction))
 
           (when (keep-history-p client)
             (setf (db-get db (userhistorykey client) time) spend)))))))
@@ -2071,6 +2103,8 @@
         (server (server client))
         (parser (parser client))
         (trans (gettime client))
+        (two-phase-commit-p (two-phase-commit-p client))
+        (last-transaction nil)
         inbox inbox-msgs
         outbox outbox-msgs
         (balance (getbalance-internal client t nil))
@@ -2238,72 +2272,84 @@
                      (gethash assetid fracmsgs) fracmsg)
                (dotcat msg "." storagefeemsg "." fracmsg))))
 
-    (let* ((retmsg (process server msg)) ;send request to server
-           (reqs (parse parser retmsg t)))
-      ;; Validate return from server
-      (handler-case (match-serverreq client (car reqs) $ATPROCESSINBOX)
-        (error ()
-          (let ((args
-                 (handler-case (match-serverreq client (car reqs))
-                   (error (c)
-                     (unless recursive
-                       (with-verify-sigs-p (parser t)
-                         ;; Force reload of balances and outbox
-                         (forceinit client)
-                         ;; Force reload of assets
-                         (when charges
-                           (loop
-                              for assetid being the hash-keys of
-                              charges
-                              do
-                                (reload-asset-p client assetid)))
-                         (return-from processinbox-internal
-                           (processinbox-internal client directions t))))
-                     (error "Error from processinbox request: ~a" c)))))
-            (error "Processinbox request returned unknown message type: ~s"
-                   (getarg $REQUEST args)))))
-      (dolist (req reqs)
-        (let* ((reqmsg (get-parsemsg req))
-               (args (match-serverreq client req))
-               (m (trim (get-parsemsg (getarg $MSG args))))
-               (msgm (gethash m msgs)))
-          (unless msgm (error "Returned message wasn't sent: ~s" m))
-          (when (stringp msgm) (error "Duplicate returned message: ~s" m))
-          (setf (gethash m msgs) reqmsg)))
+      ;; Request two-phase commit, if the server supports it
+      (when two-phase-commit-p
+        (let ((feature (custmsg client $FEATURES serverid trans $TWOPHASECOMMIT)))
+          (dotcat msg "." feature)))
 
-      (loop
-         for m being the hash-key using (hash-value msg) of msgs
-         do
-           (when (eq msg t)
-             (error "Message not returned from processinbox: ~s" m)))
+      (let* ((retmsg (process server msg)) ;send request to server
+             (reqs (parse parser retmsg t)))
+        ;; Validate return from server
+        (handler-case (match-serverreq client (car reqs) $ATPROCESSINBOX)
+          (error ()
+            (let ((args
+                   (handler-case (match-serverreq client (car reqs))
+                     (error (c)
+                       (unless recursive
+                         (with-verify-sigs-p (parser t)
+                           ;; Force reload of balances and outbox
+                           (forceinit client)
+                           ;; Force reload of assets
+                           (when charges
+                             (loop
+                                for assetid being the hash-keys of
+                                charges
+                                do
+                                  (reload-asset-p client assetid)))
+                           (return-from processinbox-internal
+                             (processinbox-internal client directions t))))
+                       (error "Error from processinbox request: ~a" c)))))
+              (error "Processinbox request returned unknown message type: ~s"
+                     (getarg $REQUEST args)))))
+        (dolist (req reqs)
+          (let* ((reqmsg (get-parsemsg req))
+                 (args (match-serverreq client req))
+                 (m (trim (get-parsemsg (getarg $MSG args))))
+                 (msgm (gethash m msgs)))
+            (unless msgm (error "Returned message wasn't sent: ~s" m))
+            (when (stringp msgm) (error "Duplicate returned message: ~s" m))
+            (setf (gethash m msgs) reqmsg)))
 
-      ;; Commit to database
-      (loop
-         for acct being the hash-key using (hash-value bals) of acctbals
-         do
-         (loop
-            for asset being the hash-key using (hash-value balmsg) of bals
-            do
-              (setf (db-get db (userbalancekey client acct asset))
-                    (gethash balmsg msgs))))
-
-      (when fracmsgs
         (loop
-           for assetid being the hash-key using (hash-value fracmsg) of fracmsgs
-           for key = (userfractionkey client assetid)
+           for m being the hash-key using (hash-value msg) of msgs
            do
-           (setf (db-get db key) (gethash fracmsg msgs))))
+             (when (eq msg t)
+               (error "Message not returned from processinbox: ~s" m)))
 
-      (when outboxhash
-        (dolist (outbox-time outbox-deletions)
-          (setf (db-get db (useroutboxkey client outbox-time)) nil))
-        (setf (db-get db (useroutboxhashkey client)) (gethash outboxhash msgs)))
+        ;; Do the second phase of the commit
+        (when two-phase-commit-p
+          (setf last-transaction (send-commit-msg client trans)))
 
-      (setf (db-get db (userbalancehashkey client)) (gethash balancehash msgs))
+        ;; Commit to database
+        (loop
+           for acct being the hash-key using (hash-value bals) of acctbals
+           do
+             (loop
+                for asset being the hash-key using (hash-value balmsg) of bals
+                do
+                  (setf (db-get db (userbalancekey client acct asset))
+                        (gethash balmsg msgs))))
 
-      (when history
-        (let ((key (userhistorykey client)))
-          (setf (db-get db key trans) history)))))))
+        (when fracmsgs
+          (loop
+             for assetid being the hash-key using (hash-value fracmsg) of fracmsgs
+             for key = (userfractionkey client assetid)
+             do
+               (setf (db-get db key) (gethash fracmsg msgs))))
+
+        (when outboxhash
+          (dolist (outbox-time outbox-deletions)
+            (setf (db-get db (useroutboxkey client outbox-time)) nil))
+          (setf (db-get db (useroutboxhashkey client)) (gethash outboxhash msgs)))
+
+        (setf (db-get db (userbalancehashkey client)) (gethash balancehash msgs))
+
+        (when last-transaction
+          (setf (db-get db (user-last-transaction-key client)) last-transaction))
+
+        (when history
+          (let ((key (userhistorykey client)))
+            (setf (db-get db key trans) history)))))))
 
 (defmethod storagefees ((client client))
   "Tell server to move storage fees to inbox
@@ -2490,6 +2536,27 @@
          (msg (sendmsg client $COUPONENVELOPE serverid coupon)))
     (unpack-servermsg client msg $ATCOUPONENVELOPE))
   nil)
+
+(defmethod getfeatures ((client client) &optional forceserver)
+  "Returns a list of server features."
+  (let* ((db (db client))
+         (key (serverkey client $FEATURES)))
+    (require-current-server client "In getfeatures(): Server not set")
+    (with-db-lock (db (userreqkey client))
+      (let ((msg (unless forceserver (db-get db key))))
+        (unless msg
+          (setq msg (sendmsg client $GETFEATURES (serverid client) (getreq client))
+                forceserver t))
+        ;; the "getfeatures" command isn't supported by older servers,
+        ;; so ignore errors.
+        (let ((args (ignore-errors (unpack-servermsg client msg $FEATURES))))
+          (when forceserver (setf (db-get db key) msg))
+          (and args
+               (split-sequence:split-sequence #\| (getarg $FEATURES args))))))))
+
+(defmethod two-phase-commit-p ((client client))
+  "Return true if the current server for CLIENT supports two phase commit."
+  (not (null (member $TWOPHASECOMMIT (getfeatures client) :test #'equal))))
 
 (defmethod getversion ((client client) &optional forceserver)
   "Returns two values: version & time."
@@ -2980,7 +3047,6 @@
 (defmethod serverprop ((client client) prop &optional (serverid (serverid client)))
   (db-get (db client) (serverkey client prop serverid)))
 
-
 (defmethod assetkey ((client client) &optional assetid)
   (let ((key (serverkey client $ASSET)))
     (if assetid
@@ -3052,6 +3118,9 @@
     (if assetid
         (append-db-keys key assetid)
         key)))
+
+(defmethod user-last-transaction-key ((client client))
+  (userserverkey client $LASTTRANSACTION))
 
 (defmethod userbalancekey ((client client)  &optional acct assetid)
   (let ((key (userserverkey client $BALANCE)))
@@ -3443,6 +3512,7 @@
         ;; update permissions
         (ignore-errors                  ;server may not implement permissions
           (get-permissions client nil t))
+        (getfeatures client t)
         nil))))
 
 (defmethod unpacker ((client client))
