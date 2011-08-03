@@ -9,10 +9,7 @@ Items in parens  are signed. Signature omitted here.
 
 truledger-dbs/serverdb/
   time=(<serverid>,time,<time#>)  -- The global timestamp
-  privkey=<privkey>   -- the private key. Maybe this shouldn't be in
-                      -- the database, so it doesn't get backed up,
-                      -- But once we have a stand-alone server, it
-                      -- will need a passphrase to use
+  privkey=<privkey>   -- the server's private key, encrypted.
   tokenid=(<serverid>,tokenid,<tokenid>)  -- The assetid of the usage token asset
   regfee=(<serverid>,regfee,<serverid>,<time#>,<tokenid>,<amount>)
                    -- Usage tokens paid for registration
@@ -91,22 +88,19 @@ truledger-dbs/serverdb/
                (<id>,vendout,<serverid>,<time#>,<vend#>,assetid-oN>,<amount-oN>))
       vendpool/
         <assetid>=(<serverid>,spend,<serverid>,<time#>,<id>,<assetid>,<amount>)
-      transaction/
-        (<serverid>,@spend,(<id>,spend,<time#>,<id2>,<serverid>,<assetid>,<amount>,note:<note>))...
-          or
-        (<serverid,@processinbox,(<id>,processinbox,<serverid>,<time11#>,<time7#>|<time8#>|<time9#>)...
+      lasttransaction=(<serverid>,@commit,(<id>,commit,<serverid>,<time#>))
 
 
 === Transactions ===
 
-Note that <serverid> is sent in almost all transactions. This guarantees
-that the request is actually meant for that server. It also makes it
-easy to notice if somebody steals the machine, but not the server's
-private key passphrase. They will be able to resign all the database
-contents, but since all the customer-signed data contains the original
-serverid, a customer will notice the change, and be able to prove it.
-The server checks, for all request, that the <serverid> sent matches. I
-won't repeat this requirement below.
+Note that <serverid> is sent in almost all transactions. This
+guarantees that the request is actually meant for that server. It also
+makes it easy to notice if somebody steals the machine, but not the
+server's private key passphrase. They will be able to resign all the
+database contents, but since all the customer-signed data contains the
+original serverid, a customer will notice the change, and be able to
+prove it.  The server checks, for all requests, that the <serverid>
+sent matches. I won't repeat this requirement below.
 
 
 Get serverid
@@ -267,7 +261,8 @@ Get fees
   (<serverid>,fee,<serverid>,<time#>,<operation>,<assetid>,<amount>).
   (<serverid>,fee,<serverid>,<time#>,<operation2>,assetid2>,<amount2>).
   ...
-  (<serverid>,fee,<serverid>,<time#>,<operationN>,<assetidN>,<amountN>)
+  (<serverid>,fee,<serverid>,<time#>,<operationN>,<assetidN>,<amountN>).
+  (<serverid>,twophasecommit,<serverid>,<time#>,<true-or-false>)
 
   Otherwise, server returns:
 
@@ -296,6 +291,23 @@ Set Fees
 (<serverid>,failed>,(<serverid>,setfees,<time#>,<cnt#>),errcode:<errcode>,reason:<reason>)
 
 
+Get Features
+------------
+
+  Customer sends:
+
+(<id>,getfeatures,<serverid>,<req#>)
+
+  Server returns:
+
+(<serverid>,features,<serverid>,<time#>,<feature1>|<feature2>|...|<featuren>)
+
+  Currently the only supported feature is "twophasecommit". Since the
+  twophasecommit feature was implemented along with the "getfeatures"
+  command, servers that do NOT support twophasecommit will return an
+  error for this unknown request.
+
+
 Spend
 -----
 
@@ -314,13 +326,13 @@ Spend
   ...
   (<id>,balance,<serverid>,<time#>,<assetidN>,<amountN>,acct:<acctN>).
   (<id>,outboxhash,<serverid>,<time#>,<outboxcount>,<outboxhash>).
-  (<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>)
+  (<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>).
+  (<id>,features,<serverid>,<time#>,twophasecommit)
 
   Server checks that the <time#> is equal to /account/<id>/time, that
   the balances match (after subtracting the spend amount & fees), and
   that the hashes match what the customer sent. If they match, server
-  computes the item list below, stores it in the database in the
-  directory /account/<id>/transaction, and returns:
+  computes the item list below and returns:
 
 (<serverid>,@spend,(<id>,spend,<time#>,<id2>,<serverid>,<assetid>,<amount>,note:<note>)).
   (<serverid>,@storagefee,(<id>,storagefee,<serverid>,<time#>,<assetid>,<storageamount>)).
@@ -338,7 +350,10 @@ If they don't match, server returns:
 
 (<serverid>,failed,(<id>,spend,<serverid>,<time#>,<id2>,<assetid>,<amount>,note:<note>),errcode:<errcode>,reason:<reason>)
 
-  This is the first phase of the two-phase commit for spends.
+  If the "twophasecommit" "feature" message is includes, then this is
+  the first phase of a two-phase commit, and nothing will be permanent
+  until a "commit" message is sent to the server. Otherwise,
+  everything is written before this command returns.
 
   Note that there's an outbox hash and a balance hash. The outbox hash
   is the sha1 hash of the customer "spend"."tranfee" items,
@@ -357,30 +372,31 @@ If they don't match, server returns:
   To commit the transaction, the customer countersigns the
   balancehash, and sends it back to the server:
 
-(<id>,commit,(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>)))
+(<id>,commit,<serverid>,<time#>)
 
   The server checks that <time#> matches the timestamp in the saved
   transaction. If it does the server sets /account/<id>/time to 0,
   stores the spend in /account/<id>/outbox/<time#> and
   /account/<id2>/inbox/<time#>, sets the
   /account/<id>/balance/<acct>/<assetid> to the balances from
-  /account/<id>/transaction, udpates /account/<id>/outboxhash, and
-  /account/<id>/balancehash with the signed hashes, and sends:
+  the saved transaction, udpates /account/<id>/outboxhash, and
+  /account/<id>/balancehash with the signed hashes, and records in
+  /account/<id>/lasttransaction and sends:
 
-(<serverid>,@commit,(<id>,commit,(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))))
+(<serverid>,@commit,(<id>,commit,<serverid>,<time#>))
 
   If the server no longer has a record of the first phase of the
   transaction, it will send:
 
-(<serverid>,failed,(<id>,commit,(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,commit,<serverid>,<time#>),errcode:<errcode>,reason:<reason>)
 
   If the customer disagrees with the server's first response, he can rollback
   the transaction by sending:
 
 (<id>,rollback,<serverid>,<time#>)
 
-  The server removes the /account/<id>/transaction file, and responds
-  with:
+  The server removes the saved transaction from its internal table and
+  returns:
 
 (<serverid>,@rollback,(<id>,rollback,<serverid>,<time#>))
 
@@ -491,8 +507,7 @@ Process Inbox
   Server compares <time12#> to /account/<id>/time. If it's the
   same, server processes the requested inbox transactions, and compares
   the result to the balances and hashes sent by customer. If
-  correct, server computes the response below, stores it in
-  /account/<id>/tranaction, and responds with:
+  correct, server responds with:
 
 (<serverid,@processinbox,(<id>,processinbox,<serverid>,<time12#>,<time7#>|<time8#>|<time9#>).
   (<serverid>,@spend|accept,(<id>,spend|accept,<serverid>,<id4>,<time4#>,note:<note42>)).
@@ -502,41 +517,46 @@ Process Inbox
   ...
   (<serverid>,@balance,(<id>,balance,<serverid>,<time12#>,<assetidN>,<amount3>,acct:<acctN>)).
   (<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<time12#>,<outboxcount>,<outboxhash>)).
-  (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time12#>,<balancecount>,<balancehash>))
+  (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time12#>,<balancecount>,<balancehash>)).
+  (<id>,features,<serverid>,<time12#>,twophasecommit)
 
   Otherwise, server returns:
 
 (<serverid>,failed,(<id>,processinbox,<serverid>,<time12#>|<time6#>|<time7#>|<time8#>|<time9#>),errcode:<errcode>,reason:<reason>)
 
-  Again, that was the first phase of the two phase commit.
+  If the "twophasecommit" "feature" message is included, then this is
+  the first phase of a two-phase commit, and nothing will be permanent
+  until a "commit" message is sent to the server. Otherwise,
+  everything is written before this command returns.
 
   To commit the transaction, the customer countersigns the
   balancehash, and sends it back to the server:
 
-(<id>,commit,(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time12#>,<balancecount>,<balancehash>)))
+(<id>,commit,<serverid>,<time12#>)
 
   The server sets /account/<id>/time to <time12#>, removes the
   transaction from /account/<id>/inbox/, removes completed
   transactions from /account/<id>/outbox/, signs and adds spend|accept
   and spend|reject items to the other customers' inboxes, updates the
   /account/<id>/balance/<acctN>/<assetidN> with the balances from
-  /account/<id>/transaction, updates /account/<id>/outboxhash, and
-  /account/<id>/balancehash with the signed hashes, and sends back:
+  the saved transaction, updates /account/<id>/outboxhash, and
+  /account/<id>/balancehash with the signed hashes, and stores in
+  /account/<id>/lasttransaction and sends back:
 
-(<serverid>,@commit,(<id>,commit,(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time12#>,<balancecount>,<balancehash>))))
+(<serverid>,@commit,(<id>,commit,<serverid>,<time12#>))
 
   If the server no longer has a record of the first phase of the
   transaction, it will send:
 
-(<serverid>,failed,(<id>,commit,(<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<balancecount>,<balancehash>))),errcode:<errcode>,reason:<reason>)
+(<serverid>,failed,(<id>,commit,<serverid>,<time12#>),errcode:<errcode>,reason:<reason>)
 
   If the customer disagrees with the servers first response, he can
   rollback the transaction by sending:
 
 (<id>,rollback,<serverid>,<time12#>)
 
-  The server removes the /account/<id>/transaction file, and responds
-  with:
+  The server removes the saved transaction from its internal table,
+  and responds with:
 
 (<serverid>,@rollback,(<id>,rollback,<serverid>,<time12#>))
 

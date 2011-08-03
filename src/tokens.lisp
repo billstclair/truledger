@@ -1,4 +1,4 @@
-; -*- mode: lisp -*-
+;; -*- mode: lisp -*-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -37,6 +37,7 @@
 (defconstant $READINDEX "readindex")
 (defconstant $WRITEINDEX "writeindex")
 (defconstant $WALKINDEX "walkindex")
+(defconstant $LASTTRANSACTION "lasttransaction")
 
 ;; request names
 (defconstant $ID "id")
@@ -69,6 +70,9 @@
 (defconstant $AUDIT "audit")
 (defconstant $OPENSESSION "opensession")
 (defconstant $CLOSESESSION "closesession")
+(defconstant $COMMIT "commit")
+(defconstant $GETFEATURES "getfeatures")
+(defconstant $FEATURES "features")
 
 ;; Affirmations
 (defconstant $ATREGISTER "@register")
@@ -100,6 +104,7 @@
 (defconstant $ATOPENSESSION "@opensession")
 (defconstant $ATCLOSESESSION "@closesession")
 (defconstant $ATBACKUP "@backup")
+(defconstant $ATCOMMIT "@commit")
 
 ;; request parameter names
 (defconstant $CUSTOMER "customer")
@@ -131,6 +136,7 @@
 (defconstant $CIPHERTEXT "ciphertext")
 (defconstant $TIMEOUT "timeout")
 (defconstant $INACTIVETIME "inactivetime")
+(defconstant $TWOPHASECOMMIT "twophasecommit")
 
 ;; Client database keys
 (defconstant $SERVER "server")

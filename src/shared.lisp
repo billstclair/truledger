@@ -100,6 +100,9 @@
                         (,$OPENSESSION . (,$SERVERID ,$REQ (,$TIMEOUT ,$INACTIVETIME)))
                         (,$CLOSESESSION . (,$SERVERID ,$REQ ,$SESSIONID))
                         (,$BACKUP . (,$REQ :rest))
+                        (,$COMMIT . (,$SERVERID ,$TIME))
+                        (,$GETFEATURES . (,$SERVERID ,$REQ))
+                        (,$FEATURES . (,$SERVERID ,$TIME ,$FEATURES))
 
                         ;; Server signed messages
                         (,$FAILED . (,$MSG ,$ERRMSG))
@@ -142,6 +145,7 @@
                         (,$ATOPENSESSION . (,$MSG ,$CIPHERTEXT))
                         (,$CLOSESESSION . (,$MSG))
                         (,$ATBACKUP . (,$REQ))
+                        (,$ATCOMMIT . (,$MSG))
                         ))
             (hash (make-hash-table :test 'equal)))
         (loop

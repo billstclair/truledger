@@ -188,6 +188,9 @@
         (append-db-keys res assetid)
         res)))
 
+(defun last-transaction-key (id)
+  (append-db-keys (account-dir id) $LASTTRANSACTION))
+
 (defmethod unpacker ((server server))
   #'(lambda (msg) (unpack-servermsg server msg)))
 
@@ -1141,31 +1144,67 @@
         (push (cdr fee) res)))
     (nreverse res)))
 
+(define-message-handler do-getfeatures $GETFEATURES (server args reqs)
+  (declare (ignore reqs))
+  (checkreq server args)
+  (let* ((db (db server))
+         (time (db-get db $TIME)))
+    (servermsg server $FEATURES (serverid server) time $TWOPHASECOMMIT)))
+
+(defun post-fees-and-storage (server feesdiffs storage-infos)
+  ;; Credit the non-refundable fees to the server as storage fees
+  (loop
+     for (assetid . amount) in feesdiffs
+     do
+       (post-storage-fee server assetid (serverid server) amount nil))
+
+  ;; This is outside the customer lock to avoid deadlock with the issuer account.
+  (loop
+     for (assetid . assetinfo) in storage-infos
+     for issuer = (storage-info-issuer assetinfo)
+     for storage-fee = (storage-info-fee assetinfo)
+     for digits = (storage-info-digits assetinfo)
+     when (and issuer storage-fee digits)
+     do
+       (post-storage-fee server assetid issuer storage-fee digits)))
+
+(defvar *transactions* (make-hash-table :test 'equal))
+(defvar *transactions-lock* (make-lock "*transactions-lock*"))
+
+(defclass transaction ()
+  ((db :initarg :db
+       :accessor transaction-db)
+   (time :initarg :time
+         :accessor transaction-time)
+   (feesdiffs :initarg :feesdiffs
+              :accessor transaction-feesdiffs)
+   (storage-infos :initarg :storage-infos
+                  :accessor transaction-storage-infos)))
+
+(defun save-transaction (server db id time feesdiffs storage-infos)
+  (check-type server server)
+  (check-type db fsdb:db-wrapper)
+  (let ((transaction (make-instance 'transaction
+                                    :db (fsdb:copy-db-wrapper db)
+                                    :time time
+                                    :feesdiffs feesdiffs
+                                    :storage-infos storage-infos)))
+    (with-lock-grabbed (*transactions-lock*)
+      (setf (gethash id *transactions*) transaction))))
+
 (define-message-handler do-spend $SPEND (server args reqs)
   "Process a spend message."
   (let ((db (db server))
         (id (getarg $CUSTOMER args))
-        res feesdiffs storage-infos)
+        res time two-phase-commit-p feesdiffs storage-infos)
     (with-db-lock (db (acct-time-key id))
-      (multiple-value-setq (res feesdiffs storage-infos)
-        (with-db-wrapper (db (db server))
-          (do-spend-internal server db args reqs))))
-
-    ;; Credit the non-refundable fees to the server as storage fees
-    (loop
-       for (assetid . amount) in feesdiffs
-       do
-         (post-storage-fee server assetid (serverid server) amount nil))
-
-    ;; This is outside the customer lock to avoid deadlock with the issuer account.
-    (loop for (assetid . info) in storage-infos
-       do
-         (post-storage-fee
-          server
-          assetid
-          (storage-info-issuer info)
-          (storage-info-fee info)
-          (storage-info-digits info)))
+      (with-db-wrapper (db (db server))
+        (multiple-value-setq (res time two-phase-commit-p feesdiffs storage-infos)
+          (do-spend-internal server db args reqs))
+        (when two-phase-commit-p
+          (save-transaction server db id time feesdiffs storage-infos)
+          (return-from do-spend res))))
+    (post-fees-and-storage server feesdiffs storage-infos)
     res))
 
 ;; New implementation, using db-wrapper
@@ -1173,8 +1212,9 @@
 ;; different ID.
 (defmethod do-spend-internal ((server server) db args reqs)
   "Do the work for a spend.
-   Returns three values:
+   Returns four values:
     res: The result message to be returned to the client
+    time: the transaction time
     feediffs: list of (assetid . amount) pairs for server fees
     storage-infos: list of storage-info instances for storage fees"
   (let* ((serverid (serverid server))
@@ -1189,7 +1229,8 @@
          (note (getarg $NOTE args))
          (asset (lookup-asset server assetid))
          (operation (if (equal id id2) $TRANSFER $SPEND))
-         (fees (and (not (equal id serverid)) (getfees server operation))))
+         (fees (and (not (equal id serverid)) (getfees server operation)))
+         (two-phase-commit-p nil))
 
     (cond ((equal id2 $COUPON)
            (ensure-permission server id $MINT-COUPONS)
@@ -1314,6 +1355,10 @@
                     (push (cons feeasset feeamount) feesdiffs)
                     (let ((msg (servermsg server $ATFEE reqmsg)))
                       (dotcat res "." msg))))
+                 ((equal request $FEATURES)
+                  (let ((features (getarg $FEATURES reqargs)))
+                    (when (equal features $TWOPHASECOMMIT)
+                      (setf two-phase-commit-p t))))
                  (t
                   (error "~s not valid for spend. Only ~s, ~s, ~s, ~s, ~s, & ~s"
                          request
@@ -1399,7 +1444,7 @@
                         return nil
                         finally (return t)))
           (error "Storage info mismatch"))
-        (values res feesdiffs storage-infos)))))
+        (values res time two-phase-commit-p feesdiffs storage-infos)))))
 
 (defmethod post-storage-fee ((server server) assetid issuer storage-fee digits)
   "Credit storage fee to an asset issuer.
@@ -1429,6 +1474,35 @@
                (storage-msg (servermsg server $STORAGEFEE
                                      serverid time assetid storage-fee)))
           (db-put db key storage-msg))))))
+
+(define-message-handler do-commit $COMMIT (server args reqs)
+  "Do the second phase of the commit for a spend or processinbox."
+  (let ((db (db server))
+        (id (getarg $CUSTOMER args))
+        (time (getarg $TIME args))
+        (msg (get-parsemsg (car reqs)))
+        (transaction nil)
+        res)
+    (with-db-lock (db (acct-time-key id))
+      (with-lock-grabbed (*transactions-lock*)
+        (setf transaction (gethash id *transactions*))
+        (when transaction
+          (remhash id *transactions*)))
+      (cond (transaction
+             (cond ((equal time (transaction-time transaction))
+                    (fsdb:commit-db-wrapper (transaction-db transaction))
+                    (setf res (servermsg server $ATCOMMIT msg)))
+                   (t (setf res (failmsg server msg
+                                         (format nil
+                                                 "No saved transaction for time: ~d"
+                                                 time))
+                            transaction nil))))
+            (t (setf res (failmsg server msg "No active transaction")))))
+    (when transaction
+      (post-fees-and-storage server
+                             (transaction-feesdiffs transaction)
+                             (transaction-storage-infos transaction)))
+    res))
 
 (define-message-handler do-spendreject $SPENDREJECT (server args reqs)
   "Process a spend|reject"
@@ -1608,21 +1682,17 @@
 (define-message-handler do-processinbox $PROCESSINBOX (server args reqs)
   (let ((db (db server))
         (id (getarg $CUSTOMER args))
-        res storage-infos)
+        res time two-phase-commit-p storage-infos)
 
     (with-db-lock (db (acct-time-key id))
-      (multiple-value-setq (res storage-infos)
-        (with-db-wrapper (db (db server))
-          (do-processinbox-internal server db args reqs))))
+      (with-db-wrapper (db (db server))
+        (multiple-value-setq (res time two-phase-commit-p storage-infos)
+          (do-processinbox-internal server db args reqs))
+        (when two-phase-commit-p
+          (save-transaction server db id time nil storage-infos)
+          (return-from do-processinbox res))))
       
-    (loop
-       for (assetid . assetinfo) in storage-infos
-       for issuer = (storage-info-issuer assetinfo)
-       for storage-fee = (storage-info-fee assetinfo)
-       for digits = (storage-info-digits assetinfo)
-       when (and issuer storage-fee digits)
-       do
-         (post-storage-fee server assetid issuer storage-fee digits))
+    (post-fees-and-storage server nil storage-infos)
 
     res))
 
@@ -1652,7 +1722,8 @@
          (outboxtimes nil)
          (outboxhashreq nil)
          (balancehashreq nil)
-         (diffs nil))
+         (diffs nil)
+         (two-phase-commit-p nil))
 
     ;; Burn the transaction, even if balances don't match.
     (deq-time server id time)
@@ -1759,7 +1830,7 @@
                          (t 
                           (setq inboxtime (gettime server)
                                 inboxmsg (servermsg server $INBOX
-                                                  inboxtime reqmsg))))
+                                                    inboxtime reqmsg))))
                    (push (list otherid inboxtime inboxmsg) inboxmsgs))))
               ((equal request $STORAGEFEE)
                (checktime argstime time "storagefee item")
@@ -1799,9 +1870,13 @@
                  (checktime argstime time "balancehash")
                  (setq balancehashreq req)
                  (let ((item (servermsg server $ATBALANCEHASH
-                                      (get-parsemsg req))))
+                                        (get-parsemsg req))))
                    (dotcat res "." item)
                    (db-put db (balance-hash-key id) item))))
+              ((equal request $FEATURES)
+               (let ((features (getarg $FEATURES args)))
+                 (when (equal features $TWOPHASECOMMIT)
+                   (setf two-phase-commit-p t))))
               (t
                (error "~s not valid for ~s, only ~s, ~s, ~s, ~s, ~s, ~s, & ~s"
                       request $PROCESSINBOX
@@ -1852,7 +1927,7 @@
                (let ((inboxkey (inbox-key otherid)))
                  (setf (db-get db inboxkey inboxtime) inboxmsg))))))
 
-    (values res storage-infos)))
+    (values res time two-phase-commit-p storage-infos)))
 
 (defun get-outbox-args (server id spendtime)
   (check-type server server)
@@ -2767,7 +2842,9 @@
                       ,$AUDIT
                       ,$OPENSESSION
                       ,$CLOSESESSION
-                      ,$BACKUP))
+                      ,$BACKUP
+                      ,$COMMIT
+                      ,$GETFEATURES))
              (commands (make-hash-table :test #'equal)))
       (loop
          for name in names
@@ -2851,6 +2928,13 @@
         (with-read-locked-fsdb ((db server))
           (process-internal server msg))))))
 
+(defun maybe-abort-two-phase-commit (request args)
+  (when (and (not (equal request $COMMIT))
+             (getarg $TIME args))
+    (let ((id (getarg $CUSTOMER args)))
+      (with-lock-grabbed (*transactions-lock*)
+        (remhash id *transactions*)))))
+
 (defun process-internal (server msg)
   (let* ((parser (parser server))
          (reqs (parse parser msg))
@@ -2878,6 +2962,7 @@
         (error "serverid mismatch"))
       (when (> (length note) 4096)
         (error "Note too long. Max: 4096 chars"))
+      (maybe-abort-two-phase-commit request args)
       (funcall handler server args reqs))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
