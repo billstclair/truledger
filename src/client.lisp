@@ -1632,7 +1632,9 @@
                                  assetid newtoamount toacct)))
       (when (and (not (equal id serverid))
                  (not (equal id toid)))
-        (setq outboxhash (outboxhashmsg client time spend)))
+        (setq outboxhash (outboxhashmsg client time
+                                        :newitem spend
+                                        :two-phase-commit-p two-phase-commit-p)))
 
       ;; Create fees messages
       (dolist (cell fees-amounts)
@@ -1663,7 +1665,8 @@
             (let ((hash (get-inited-hash $MAIN acctbals)))
               (dolist (cell fees-balances)
                 (setf (gethash (car cell) hash) (cdr cell)))))
-          (setq balancehash (balancehashmsg client time acctbals))))
+          (setq balancehash
+                (balancehashmsg client time acctbals two-phase-commit-p))))
 
       ;; Prepare storage fee related message components
       (when percent
@@ -1688,11 +1691,6 @@
           (dotcat msg "." fee))
         (dolist (frac fees-fracmsgs)
           (dotcat msg "." frac)))
-
-      ;; Request two-phase commit, if the server supports it
-      (when two-phase-commit-p
-        (let ((feature (custmsg client $FEATURES serverid time $TWOPHASECOMMIT)))
-          (dotcat msg "." feature)))
 
       (let* ((servermsg (process server msg)) ; *** Here's the server call ***
              (reqs (parse parser servermsg t))
@@ -2246,11 +2244,13 @@
 
       (unless (equal serverid (id client))
         (when outbox-deletions
-          (setf outboxhash (outboxhashmsg client trans nil outbox-deletions)
+          (setf outboxhash (outboxhashmsg client trans
+                                          :removed-times outbox-deletions
+                                          :two-phase-commit-p two-phase-commit-p)
                 (gethash outboxhash msgs) t)
           (dotcat msg "." outboxhash))
 
-        (setf balancehash (balancehashmsg client trans acctbals)
+        (setf balancehash (balancehashmsg client trans acctbals two-phase-commit-p)
               (gethash balancehash msgs) t)
         (dotcat msg "." balancehash))
 
@@ -2271,11 +2271,6 @@
                      (gethash fracmsg msgs) t
                      (gethash assetid fracmsgs) fracmsg)
                (dotcat msg "." storagefeemsg "." fracmsg))))
-
-      ;; Request two-phase commit, if the server supports it
-      (when two-phase-commit-p
-        (let ((feature (custmsg client $FEATURES serverid trans $TWOPHASECOMMIT)))
-          (dotcat msg "." feature)))
 
       (let* ((retmsg (process server msg)) ;send request to server
              (reqs (parse parser retmsg t)))
@@ -3538,20 +3533,28 @@
 (defmethod unpacker ((client client))
   #'(lambda (msg) (unpack-servermsg client msg)))
 
-(defmethod balancehashmsg ((client client) time acctbals)
+(defmethod balancehashmsg ((client client) time acctbals &optional
+                           two-phase-commit-p)
   (let* ((db (db client))
          (serverid (serverid client)))
     (multiple-value-bind (hash hashcnt)
         (balancehash db (unpacker client) (userbalancekey client) acctbals)
-      (custmsg client $BALANCEHASH serverid time hashcnt hash))))
+      (if two-phase-commit-p
+          (custmsg client $BALANCEHASH serverid time hashcnt hash $TWOPHASECOMMIT)
+          (custmsg client $BALANCEHASH serverid time hashcnt hash)))))
 
-(defmethod outboxhashmsg ((client client) transtime &optional newitem removed-times)
+(defmethod outboxhashmsg ((client client) transtime &key
+                          newitem removed-times two-phase-commit-p)
   (let ((db (db client))
         (serverid (serverid client))
         (key (useroutboxkey client)))
     (multiple-value-bind (hash hashcnt)
         (dirhash db key (unpacker client) newitem removed-times)
-      (custmsg client $OUTBOXHASH serverid transtime (or hashcnt 0) (or hash "")))))
+      (if two-phase-commit-p
+          (custmsg client $OUTBOXHASH serverid transtime
+                   (or hashcnt 0) (or hash "") $TWOPHASECOMMIT)
+          (custmsg client $OUTBOXHASH serverid transtime
+                   (or hashcnt 0) (or hash ""))))))
 
 ;; Web client session support
 
