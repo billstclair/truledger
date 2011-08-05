@@ -79,8 +79,8 @@ uid & gid are the user id and group id to change to after listening on the port.
                (t (usage-error app))))
     (values (nreverse res) app)))
 
-(defparameter *default-port-string* "8782")
-(defparameter *default-ssl-port-string* "8783")
+(defparameter *default-port-string* "8785")
+(defparameter *default-ssl-port-string* "8786")
 
 (defun toplevel-function-internal ()
   (run-startup-functions)

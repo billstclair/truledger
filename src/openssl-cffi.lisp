@@ -55,13 +55,25 @@
   (with-openssl-lock ()
     (open-ssl-add-all-algorithms)))
 
-(add-all-algorithms)
+;; From cl+ssl
+(cffi:define-foreign-library libssl
+  (:windows "libssl32.dll")
+  (:darwin "libssl.dylib")
+  (:openbsd (:or "libssl3.so" "libssl.so.16.0" "libssl.so.15.1"))
+  (:unix (:or "libssl.so.0.9.8" "libssl.so" "libssl.so.4"))
+  (t (:default "libssl3")))
+
+;; From cl+ssl
+(cffi:define-foreign-library libeay32
+  (:windows "libeay32.dll"))
 
 (defun startup-openssl ()
-  #+windows (load-foreign-library "LIBEAY32.dll")
+  (load-foreign-library 'libssl)
+  (load-foreign-library 'libeay32)
   (open-ssl-add-all-algorithms))
 
 (truledger:add-startup-function 'startup-openssl)
+(startup-openssl)
 
 (defconstant $pem-string-rsa "RSA PRIVATE KEY")
 
