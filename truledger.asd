@@ -4,7 +4,7 @@
 (asdf:defsystem :truledger
   :description "An anoymous digitally-signed general ledger and trading system"
   :author "Bill St. Clair <bill@billstclair.com>"
-  :version "1.0b1"
+  :version "1.0.0"
   :license "Apache"
   :depends-on (cffi cl-base64 cl-who hunchentoot drakma cl-smtp split-sequence
                ;; Systems above here come from quicklisp
