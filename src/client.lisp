@@ -1379,41 +1379,42 @@
     msg))
 
 (defmethod spend-internal ((client client) toid assetid formattedamount acct note)
-  (let ((db (db client))
-        (id (id client))
-        (serverid (serverid client))
-        (server (server client))
-        (parser (parser client))
-        (acct (or (if (listp acct) (car acct) acct) $MAIN))
-        (toacct (or (and (listp acct) (cadr acct)) $MAIN))
-        (amount (unformat-asset-value client formattedamount assetid))
-        (two-phase-commit-p (two-phase-commit-p client))
-        (last-transaction nil)
-        oldamount
-        oldtime
-        time
-        (storagefee 0)
-        (digits 0)
-        percent
-        fraction
-        fractime
-        fracfee
-        baseoldamount
-        newamount
-        oldtoamount
-        newtoamount
-        (tranfee nil)
-        tranfee-asset
-        (tranfee-amt nil)
-        fee-balance
-        (need-fee-balance-p nil)
-        (operation nil)
-        (fees nil)
-        (fees-amounts nil)      ;alist of (assetid . amount) pairs
-        (fees-balances nil)        ;alist of (assetid . balance) pairs
-        (fees-storagefees nil)     ;alist of (assetid . storagefee) pairs
-        (fees-fractions nil)       ;alist of (assetid . fraction) pairs
-        )
+  (let* ((db (db client))
+         (id (id client))
+         (serverid (serverid client))
+         (server (server client))
+         (parser (parser client))
+         (acct (or (if (listp acct) (car acct) acct) $MAIN))
+         (toacct (or (and (listp acct) (cadr acct)) $MAIN))
+         (amount (unformat-asset-value client formattedamount assetid))
+         (two-phase-commit-p (and (not (equal id serverid))
+                                  (two-phase-commit-p client)))
+         (last-transaction nil)
+         oldamount
+         oldtime
+         time
+         (storagefee 0)
+         (digits 0)
+         percent
+         fraction
+         fractime
+         fracfee
+         baseoldamount
+         newamount
+         oldtoamount
+         newtoamount
+         (tranfee nil)
+         tranfee-asset
+         (tranfee-amt nil)
+         fee-balance
+         (need-fee-balance-p nil)
+         (operation nil)
+         (fees nil)
+         (fees-amounts nil)      ;alist of (assetid . amount) pairs
+         (fees-balances nil)        ;alist of (assetid . balance) pairs
+         (fees-storagefees nil)     ;alist of (assetid . storagefee) pairs
+         (fees-fractions nil)       ;alist of (assetid . fraction) pairs
+         )
     (declare (ignorable fees))          ;temporary
 
     (assert (and (stringp acct) (stringp toacct)))
@@ -2096,24 +2097,26 @@
       (when need-init-p (forceinit client)))))
 
 (defmethod processinbox-internal ((client client) directions recursive)
-  (let ((db (db client))
-        (serverid (serverid client))
-        (server (server client))
-        (parser (parser client))
-        (trans (gettime client))
-        (two-phase-commit-p (two-phase-commit-p client))
-        (last-transaction nil)
-        inbox inbox-msgs
-        outbox outbox-msgs
-        (balance (getbalance-internal client t nil))
-        (timelist "")
-        (deltas (make-equal-hash)) ;(acct => (asset => delta, ...), ...) 
-        (outbox-deletions nil)
-        (msg "")
-        (msgs (make-equal-hash))
-        (history "")
-        (hist "")
-        (charges (make-equal-hash)))
+  (let* ((db (db client))
+         (serverid (serverid client))
+         (id (id client))
+         (server (server client))
+         (parser (parser client))
+         (trans (gettime client))
+         (two-phase-commit-p (and (not (equal id serverid))
+                                  (two-phase-commit-p client)))
+         (last-transaction nil)
+         inbox inbox-msgs
+         outbox outbox-msgs
+         (balance (getbalance-internal client t nil))
+         (timelist "")
+         (deltas (make-equal-hash)) ;(acct => (asset => delta, ...), ...) 
+         (outbox-deletions nil)
+         (msg "")
+         (msgs (make-equal-hash))
+         (history "")
+         (hist "")
+         (charges (make-equal-hash)))
     (multiple-value-setq (inbox inbox-msgs)
       (getinbox-internal client (keep-history-p client)))
     (multiple-value-setq (outbox outbox-msgs)
@@ -2242,7 +2245,7 @@
                     (gethash assetid acctbal) balmsg)
               (dotcat msg "." balmsg)))
 
-      (unless (equal serverid (id client))
+      (unless (equal id serverid)
         (when outbox-deletions
           (setf outboxhash (outboxhashmsg client trans
                                           :removed-times outbox-deletions

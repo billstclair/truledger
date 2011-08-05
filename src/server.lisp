@@ -1964,7 +1964,8 @@
                  (setf (db-get db inboxkey inboxtime) inboxmsg))))))
 
     (when (or two-phase-balance-hash-p two-phase-outbox-hash-p)
-      (unless (and two-phase-balance-hash-p two-phase-outbox-hash-p)
+      (unless (or (not balancehashreq) (not outboxhashreq)
+                  (and two-phase-balance-hash-p two-phase-outbox-hash-p))
         (error "~a value differs between balance hash and outbox hash"
                $TWOPHASECOMMIT))
       (setf two-phase-commit-p t))
