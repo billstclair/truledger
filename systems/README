@@ -1,2 +1,3 @@
-This directory contains other people's code, versions that are known
-to work with the Trubanc lisp code, in Clozure Common Lisp.
+This directory contains libraries that are neither available in
+Quicklisp nor reliably accessible to cl-autorepo.
+

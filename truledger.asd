@@ -39,6 +39,25 @@
      (:file "tests")
      ))))
 
+(unless (or (find-package :cl-autorepo)
+            (ignore-errors (ql:quickload "cl-autorepo")))
+  (let* ((dir "~/.local/share/common-lisp/source/")
+         (autorepo-asd (merge-pathnames "cl-autorepo/cl-autorepo.asd" dir))
+         (url "https://github.com/billstclair/cl-autorepo"))
+    (asdf:run-shell-command "mkdir -p ~a;cd ~a;git clone ~a" dir dir url)
+    (load autorepo-asd)
+    (ql:quickload "cl-autorepo")))
+
+(cl-autorepo:add-system
+ "cl-crypto" "git://github.com/billstclair/cl-crypto.git" :git)
+(cl-autorepo:add-system
+ "fsdb" "git://github.com/billstclair/fsdb.git" :git)
+(cl-autorepo:add-system
+ "limited-thread-taskmaster"
+ "git://github.com/billstclair/limited-thread-taskmaster.git"
+ :git)
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Copyright 2009-2011 Bill St. Clair
