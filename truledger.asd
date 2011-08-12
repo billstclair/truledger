@@ -1,6 +1,9 @@
 ; -*- mode: lisp -*-
 (in-package #:cl-user)
 
+;; Remove this to switch to the new all-lisp crypto code
+(pushnew :openssl-cffi *features*)
+
 (asdf:defsystem :truledger
   :description "An anoymous digitally-signed general ledger and trading system"
   :author "Bill St. Clair <bill@billstclair.com>"

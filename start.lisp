@@ -16,9 +16,6 @@
 (defun reload ()
   (ql:quickload "truledger" :verbose t))
 
-;; Remove this to switch to the new all-lisp crypto code
-(pushnew :openssl-cffi *features*)
-
 (reload)
 
 (defun tl ()
