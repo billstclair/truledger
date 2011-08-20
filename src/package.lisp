@@ -142,6 +142,15 @@
    #:$HISTORY
    #:$PRIVKEYCACHEDP
    #:$NEEDPRIVKEYCACHE
+   #:$LOOM
+   #:$SALT
+   #:$PASSPHRASE
+   #:$WALLETNAME
+   #:$WALLET
+   #:$PRIVATE
+   #:$URLHASH
+   #:$NAMEHASH
+
    #:$FORMATTEDAMOUNT
    #:$MSGTIME
    #:$ATREQUEST
@@ -193,6 +202,8 @@
    #:rsa-free-gf
    #:sha1
    #:sha1-gf
+   #:sha256
+   #:sha256-gf
    #:sign
    #:sign-gf
    #:verify
@@ -347,6 +358,7 @@
    #:parm
    #:parms
    #:post-parm
+   #:with-parms
    #:run-startup-functions
    #:xor
    #:xor-salt
@@ -441,6 +453,7 @@
   (:export
    #:client
    #:make-client
+   #:make-client-db
    #:syncedreq-p
    #:showprocess-p
    #:coupon
@@ -604,12 +617,36 @@
    #:trimmsg
    #:make-server-proxy
    #:backup
-   #:backup*))
+   #:backup*
+
+   ;; Loom functions
+   #:loom-login-with-sessionid
+   #:loom-urlhash
+   #:loom-account-hash
+   #:loom-get-server-url
+   #:loom-add-server-url
+   #:loom-account-preference
+   #:loom-server
+   #:loom-server-url
+   #:loom-server-urlhash
+   #:loom-server-wallets
+   #:loom-wallet
+   #:loom-wallet-name
+   #:loom-wallet-namehash
+   #:loom-wallet-encrypted-passphrase
+   #:loom-wallet-private-p
+   #:encrypt
+   #:decrypt
+   #:add-loom-wallet
+   #:loom-account-servers
+   #:loom-account-wallets
+))
 
 (cl:defpackage :truledger-client-web
   (:use :cl :cffi :cl-base64 :cl-who :truledger :truledger-tokens :truledger-client)
   (:export
-   #:web-server))
+   #:web-server
+   #:loom-web-server))
 
 (cl:defpackage :truledger-test
   (:use :cl :truledger :truledger-tokens :truledger-client))

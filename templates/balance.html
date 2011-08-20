@@ -1,0 +1,135 @@
+<html>
+  <head>
+    <title>Balance - Truledger Client</title>
+    <meta name='viewport' content='width=device-width' />
+    <link rel='apple-touch-icon' href=='../site-icon.ico' />
+    <link rel='shortcut icon' href='../site-icon.ico' />
+    <link rel='stylesheet' type='text/css' href='../css/tables.css' />
+  </head>
+  <body onload='document.getElementById("spendamount").focus()'>
+    <p>
+      <a href='../'>
+        <img style='vertical-align: middle;border: 1px white' src='../truledger-logo-50x49.gif' alt='Truledger' width='50' height='49' />
+      </a>
+      <b> Truledger</b>&nbsp;&nbsp;
+      <a href='./?cmd=balance'><b style='font-size: 120%;'>Balance</b></a>&nbsp;&nbsp
+      <a href='./?cmd=contacts'>Contacts</a>&nbsp;&nbsp
+      <a href='./?cmd=servers'>Servers</a>&nbsp;&nbsp
+      <a href='./?cmd=assets'>Assets</a>&nbsp;&nbsp
+      <a href='./?cmd=fees'>Fees</a>&nbsp;&nbsp
+      <a href='./?cmd=permissions'>Permissions</a>&nbsp;&nbsp
+      <a href='./?cmd=admins'>Admin</a>&nbsp;&nbsp
+      <a href='./?cmd=loom'>Loom</a>&nbsp;&nbsp
+      <a href='./?cmd=logout'>Logout</a>
+    </p>
+
+    <b>Server: </b>
+    <span title='6e873f49626c0a819d8b4fb316990466771cbd6d'>Lisp Banc</span>
+    <a href='http://localhost:8080/'>http://localhost:8080/</a><br />
+    <b>Account name: </b>Lisp Banc<br />
+    <b>Your ID: </b>6e873f49626c0a819d8b4fb316990466771cbd6d<br /><br />
+
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='spend' />
+      <input type='hidden' name='postcnt' value='886' />
+      <input type='hidden' name='postsalt' value='c99def4e1863fcb4caea3a5ac2f16dab6f54b45a' />
+      <input type='hidden' name='postmsg' value='d0000b82b91d56f95d037a05013cf74927ef490a' />
+
+      <table>
+        <tr>
+          <td valign='top'>
+            <input type='hidden' name='acct0' value='main' />
+            <input type='hidden' name='assetid0|0' value='a3ac79ff6c22a182c0c950ac9d225a5b94471b8d' />
+            <input type='hidden' name='assetid0|1' value='9870f151babdae7c3eab51365d78337e583521df' />
+            <table class='prettytable'>
+              <caption><b>Balances</b></caption>
+              <tr>
+                <th colspan='3'>main</th>
+              </tr>
+              <tr>
+                <td align='right' style='border-right-width: 0;'>-199,970</td>
+                <td title='a3ac79ff6c22a182c0c950ac9d225a5b94471b8d' style='border-left-width: 0;'>Lisp Banc Usage Tokens</td>
+                <td><input type='submit' name='spentasset0|0' value='Spend' /></td>
+              </tr>
+              <tr>
+                <td align='right' style='border-right-width: 0;'>-0.000</td>
+                <td title='9870f151babdae7c3eab51365d78337e583521df' style='border-left-width: 0;'>Lisp Banc GoldGrams</td>
+                <td><input type='submit' name='spentasset0|1' value='Spend' /></td>
+              </tr>
+            </table>
+
+            <a href='./?cmd=history'>Show history</a> (enabled)<br />
+            <a href='./?cmd=rawbalance'>Show raw balance</a><br />
+          </td>
+          <td valign='top'>
+            <table>
+              <tr>
+                <td><b>Spend amount:</b></td>
+                <td><input type='text' name='amount' size='20' style='text-align: right;' id='spendamount' /></td>
+              </tr>
+              <tr>
+                <td><b>Recipient:</b></td>
+                <td>
+                  <select name='recipient'>
+                    <option value=''>Choose contact...</option>
+                    <option value='bbafbed069c6f4bb3de947f1030a9afd2565f9ef'>Lisp Banc Admin</option>
+                    <option value='16c0060c6c432a5b351b3087b9fd4875160c07a2'>Bill (Bill St. Clair)</option>
+                  </select>
+                  <input type='checkbox' name='mintcoupon' disabled='disabled' />Mint coupon
+                </td>
+              </tr>
+              <tr>
+                <td><b>Note:</b></td><td><textarea name='note' cols='40' rows='5'></textarea></td>
+              </tr>
+              <tr>
+                <td><b>Recipient ID:</b></td>
+                <td>
+                  <input type='text' name='recipientid' size='40' /><br />
+                  <input type='checkbox' name='allowunregistered' />Allow unregistered
+                </td>
+              </tr>
+              <tr>
+                <td><b>Nickname:</b></td><td><input type='text' name='nickname' size='30' /></td>
+              </tr>
+              <tr>
+                <td><b>Transfer to:</b></td><td><input type='text' name='tonewacct' size='30' /></td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </form>
+    <p>
+      <form method='post' action='./' autocomplete='off' style='margin: 0px;'>
+        <input type='hidden' name='cmd' value='togglehistory' />
+        <input type='hidden' name='postcnt' value='886' />
+        <input type='hidden' name='postsalt' value='c99def4e1863fcb4caea3a5ac2f16dab6f54b45a' />
+        <input type='hidden' name='postmsg' value='d0000b82b91d56f95d037a05013cf74927ef490a' />
+        <input type='submit' name='togglehistory' value='Disable history' />
+      </form>
+      <form method='post' action='./' autocomplete='off' style='margin: 0px;'>
+        <input type='hidden' name='cmd' value='sync' />
+        <input type='hidden' name='postcnt' value='886' />
+        <input type='hidden' name='postsalt' value='c99def4e1863fcb4caea3a5ac2f16dab6f54b45a' />
+        <input type='hidden' name='postmsg' value='d0000b82b91d56f95d037a05013cf74927ef490a' />
+        <input type='submit' name='resync' value='Resync with server' />
+      </form>
+      <form method='post' action='./' autocomplete='off' style='margin: 0px;'>
+        <input type='hidden' name='cmd' value='toggledebug' />
+        <input type='hidden' name='postcnt' value='886' />
+        <input type='hidden' name='postsalt' value='c99def4e1863fcb4caea3a5ac2f16dab6f54b45a' />
+        <input type='hidden' name='postmsg' value='d0000b82b91d56f95d037a05013cf74927ef490a' />
+        <input type='submit' name='toggledebug' value='Enable debugging' />
+      </form>
+      <form method='post' action='./' autocomplete='off' style='margin: 0px;'>
+        <input type='hidden' name='cmd' value='toggleinstructions' />
+        <input type='hidden' name='postcnt' value='886' />
+        <input type='hidden' name='postsalt' value='c99def4e1863fcb4caea3a5ac2f16dab6f54b45a' />
+        <input type='hidden' name='postmsg' value='d0000b82b91d56f95d037a05013cf74927ef490a' />
+        <input type='submit' name='toggleinstructions' value='Show Instructions' />
+      </form>
+    </p>
+    <p class='version'>Server: <a class='version' href='http://github.com/billstclair/truledger/commit/eb876fdf2632a083601748e986dae8578ee915da'>eb876fdf2632a083601748e986dae8578ee915da</a> 16-Aug-11 08:12:38PM</p>
+    <p><a href='http://common-lisp.net/'><img style='border: 0;' src='../little-lambda.png' alt='Made with Lisp' title='Made with Lisp' width='16' height='16' /></a></p>
+  </body>
+</html>

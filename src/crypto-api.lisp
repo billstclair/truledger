@@ -50,6 +50,13 @@
    or a string with 8-bit character values if res-type is :string."
   (sha1-gf *crypto-api* string res-type))
 
+(defun sha256 (string &optional (res-type :hex))
+  "Return the sha256 hash of STRING.
+   Return a string of hex chars if res-type is :hex, the default,
+   a byte-array if res-type is :bytes,
+   or a string with 8-bit character values if res-type is :string."
+  (sha256-gf *crypto-api* string res-type))
+
 (defun sign (data rsa-private-key)
   "Sign the string in DATA with the RSA-PRIVATE-KEY.
    Return the signature BASE64-encoded."
@@ -99,6 +106,8 @@
 (defgeneric rsa-free-gf (api rsa))
 
 (defgeneric sha1-gf (api string &optional res-type))
+
+(defgeneric sha256-gf (api string &optional res-type))
 
 (defgeneric sign-gf (api data rsa-private-key))
 

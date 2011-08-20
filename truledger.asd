@@ -10,9 +10,10 @@
   :version "1.0.0"
   :license "Apache"
   :depends-on (cffi cl-base64 cl-who hunchentoot drakma cl-smtp split-sequence
+               html-template
                ;; Systems above here come from quicklisp
                ;; System below here are in systems/ dir
-               cl-crypto fsdb cybertiggyr-time limited-thread-taskmaster)
+               cl-crypto fsdb cybertiggyr-time limited-thread-taskmaster cl-loom)
   :components
   ((:module src
     :serial t
@@ -37,7 +38,9 @@
      (:file "backup")
      (:file "server-web")
      (:file "toplevel")
+     (:file "web-templates")
      (:file "client-web")
+     (:file "loom-client-web")
      (:file "history")
      (:file "tests")
      ))))
@@ -59,6 +62,8 @@
  "limited-thread-taskmaster"
  "git://github.com/billstclair/limited-thread-taskmaster.git"
  :git)
+(cl-autorepo:add-system
+ "cl-loom" "git://github.com/billstclair/cl-loom.git" :git)
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

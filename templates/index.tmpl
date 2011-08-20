@@ -1,0 +1,15 @@
+<html>
+  <head>
+    <title><!-- TMPL_VAR title --></title>
+    <meta name='viewport' content='width=device-width' />
+    <link rel='apple-touch-icon' href=='../site-icon.ico' />
+    <link rel='shortcut icon' href='../site-icon.ico' />
+    <link rel='stylesheet' type='text/css' href='../css/tables.css' />
+  </head>
+  <body<!-- TMPL_IF onload --> onload='<!-- TMPL_VAR onload -->'<!-- /TMPL_IF  -->>
+    <!-- TMPL_VAR menu -->
+    <!-- TMPL_VAR body --><!-- TMPL_IF version -->
+    <p class='version'><!-- TMPL_VAR version --></p><!-- /TMPL_IF -->
+    <p><a href='http://common-lisp.net/'><img style='border: 0;' src='../little-lambda.png' alt='Made with Lisp' title='Made with Lisp' width='16' height='16' /></a></p>
+  </body>
+</html>

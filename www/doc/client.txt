@@ -80,7 +80,25 @@ truledger-dbs/clientdb/
             -- from getting too long to handle
             <time>=<message>...
 
-// Copyright 2008-2009 Bill St. Clair
+  loom/     -- Loom client data
+    salt=<salt>    -- random loom loc to xor with before hashing
+    server/
+      <urlhash>=<url>
+    account/
+      <account-hash>/
+        preference
+          <pref>=<value>
+        server/
+          <urlhash>/
+            walletname/
+              <namehash>=<name>
+            wallet/
+              <namehash>/
+                passphrase=<encrypted-passphrase>
+                private=<true-or-false>
+
+
+// Copyright 2008-2011 Bill St. Clair
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

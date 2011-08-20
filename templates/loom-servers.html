@@ -1,0 +1,96 @@
+<html>
+  <head>
+    <title>Loom Servers - Truledger Client</title>
+    <meta name='viewport' content='width=device-width' />
+    <link rel='apple-touch-icon' href=='../site-icon.ico' />
+    <link rel='shortcut icon' href='../site-icon.ico' />
+    <link rel='stylesheet' type='text/css' href='../css/tables.css' />
+  </head>
+  <body onload='document.forms[0].serverurl.focus()'>
+    <p>
+      <a href='../'><img style='vertical-align: middle;border: 1px white' src='../truledger-logo-50x49.gif' alt='Truledger' width='50' height='49' /></a>
+      <b> Loom</b>&nbsp;&nbsp;
+      <a href='./?cmd=loom-wallet'>Wallet</a>&nbsp;&nbsp
+      <a href='./?cmd=loom-contacts'>Contacts</a>&nbsp;&nbsp
+      <a href='./?cmd=loom-servers'><b style='font-size: 120%;'>Servers</b></a>&nbsp;&nbsp
+      <a href='./?cmd=loom-assets'>Assets</a>&nbsp;&nbsp
+      <a href='./?cmd=truledger'>Truledger</a>&nbsp;&nbsp
+      <a href='./?cmd=logout'>Logout</a>
+    </p>
+    <b>Account Name: </b>Bill St. Clair<br />
+    <b>Loom Server: </b>Loom.cc <a href='https://secure.looom.cc/'>https://secure.loom.cc/</a><br />
+    <span style='color: red;'>&nbsp;</span><br />
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='server' />
+      <input type='hidden' name='postcnt' value='895' />
+      <input type='hidden' name='postsalt' value='d943071d0b77073014f284a056591b143d9f0b6e' />
+      <input type='hidden' name='postmsg' value='77bd88873367953bc0d508e2a419b5593aa3ba09' />
+      <table>
+        <tr>
+          <td><b>Loom Server Name:</b></td>
+          <td><input type='text' name='servername' size='40' /></td>
+        </tr>
+        <tr>
+          <td><b>Loom Server URL:</b></td>
+          <td><input type='text' name='serverurl' size='64' /></td>
+        </tr>
+        <tr>
+          <td><b>Passphrase:</td>
+          <td><input type='text' name='passphrase' size='40' /></td>
+        </tr>
+        <tr>
+          <td><b>Account Name:</td>
+          <td><input type='text' name='name' size='40' /></td>
+        </tr>
+        <tr>
+          <td><b>Private Wallet:</b></td>
+          <td><input type='checkbox' name='private'/></td>
+        </tr>
+        <tr>
+          <td colspan='2'>
+            <i>Fill in Verification and Invitation only for new wallets.</i>
+          </td>
+        </tr>
+        <tr>
+          <td><b>Verification:</td>
+          <td><input type='text' name='passphrase2' size='40' /></td>
+        </tr>
+        <tr>
+          <td><b>Invitation:</b></td>
+          <td><input type='text' name='serverurl' size='32' /></td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>
+            <input type='submit' name='newserver' value='Add Server' />
+            <input type='submit' name='cancel' value='Cancel' />
+          </td>
+        </tr>
+      </table>
+    </form>
+    <table class='prettytable'>
+      <tr>
+        <th>Server</th>
+        <th>URL</th>
+        <th>Default Account</th>
+        <th>Wallets</th>
+        <th>Choose</th>
+      </tr>
+      <form method='post' action='./' autocomplete='off' style='margin: 0px;'>
+        <input type='hidden' name='cmd' value='loom-server' />
+        <input type='hidden' name='postcnt' value='895' />
+        <input type='hidden' name='postsalt' value='d943071d0b77073014f284a056591b143d9f0b6e' />
+        <input type='hidden' name='postmsg' value='77bd88873367953bc0d508e2a419b5593aa3ba09' />
+        <input type='hidden' name='urlhash' value='6e873f49626c0a819d8b4fb316990466771cbd6d' />
+        <tr>
+          <td>Loom.cc</td>
+          <td><a href='https://secure.loom.cc/'>https://secure.loom.cc/</a></td>
+          <td>Bill St. Clair</td>
+          <td>3</td>
+          <td><input type='submit' name='selectserver' value='Choose' /></td>
+        </tr>
+      </form>
+    </table>
+    <p><a href='http://common-lisp.net/'><img style='border: 0;' src='../little-lambda.png' alt='Made with Lisp' title='Made with Lisp' width='16' height='16' /></a></p>
+  </body>
+</html>

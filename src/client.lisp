@@ -3602,9 +3602,11 @@
 
 (defmethod session-passphrase ((client client) sessionid)
   "Return the passphrase corresponding to a session id"
-  (let* ((db (db client))
-         (passcrypt (or (db-get db (sessionkey (sha1 sessionid)))
-                        (error "No passphrase for session"))))
+  (session-passphrase (db client) sessionid))
+
+(defmethod session-passphrase ((db fsdb) sessionid)
+  (let ((passcrypt (or (db-get db (sessionkey (sha1 sessionid)))
+                       (error "No passphrase for session"))))
     (xorcrypt sessionid passcrypt)))
 
 (defmethod make-session ((client client) passphrase)
@@ -3942,9 +3944,147 @@
            (let ((*insidep* t))
              (get-pubkey-from-server (client pubkeydb) id)))))
 
+;;;
+;;; Loom client db access
+;;;
+
+;; Don't go over the wire for hashing
+(setf (loom:sha256-function) #'sha256)
+
+(defmethod loom-login-with-sessionid ((db fsdb) sessionid)
+  (session-passphrase db sessionid))
+
+(defun make-client-db ()
+  (fsdb:make-fsdb (client-db-dir)))
+
+(defun folded-hash (string)
+  (loom:fold-hash (sha256 string)))
+
+(defun random-hash ()
+  (string-downcase (format nil "~64,'0x" (cl-crypto:get-random-bits 256))))
+
+(defun loom-get-salt (db)
+  (or (db-get db $LOOM $SALT)
+      (setf (db-get db $LOOM $SALT)
+            (random-hash))))
+
+(defun format-sha256 (integer)
+  (format nil "~(~64,'0x~)" integer))
+
+(defun salted-hash (db string &optional fold-p)
+  (let* ((salt (parse-integer (loom-get-salt db) :radix 16))
+         (hash (sha256
+                (format-sha256
+                 (logxor salt (parse-integer string :radix 16))))))
+    (if fold-p
+        (loom:fold-hash hash)
+        hash)))
+
+(defun loom-urlhash (url)
+  (loom:fold-hash (sha256 url)))
+
+(defun loom-account-hash (db passphrase)
+  (salted-hash db (sha256 passphrase) t))
+
+(defun loom-get-server-url (db urlhash)
+  (db-get db $LOOM $SERVER urlhash))
+
+(defun (setf loom-get-server-url) (url db urlhash)
+  (setf (db-get db $LOOM $SERVER urlhash) url))
+
+(defun loom-add-server-url (db url)
+  (setf (loom-get-server-url db (loom-urlhash url)) url))
+
+(defun loom-account-key (account-hash)
+  (fsdb:append-db-keys $LOOM $ACCOUNT account-hash))
+
+(defun loom-account-server-key (account-hash &optional urlhash)
+  (let ((res (fsdb:append-db-keys (loom-account-key account-hash) $SERVER)))
+    (if urlhash
+        (fsdb:append-db-keys res urlhash)
+        res)))
+
+(defun loom-account-preference (db account-hash pref)
+  (fsdb:db-get db (loom-account-key account-hash) $PREFERENCE pref))
+
+(defun (setf loom-account-preference) (value db account-hash pref)
+  (setf (fsdb:db-get db (loom-account-key account-hash) $PREFERENCE pref)
+        value))
+
+(defstruct loom-server
+  url
+  urlhash
+  wallets)
+
+(defstruct loom-wallet
+  name
+  namehash
+  encrypted-passphrase
+  private-p)
+
+(defun encrypt (plain-text passphrase)
+  (multiple-value-bind (res iv)
+      (cl-crypto:aes-encrypt-string plain-text passphrase)
+    (concatenate 'string
+                 (cl-base64:usb8-array-to-base64-string iv)
+                 "|"
+                 res)))
+
+(defun decrypt (cipher-text passphrase)
+  (let ((iv-and-res (split-sequence:split-sequence #\| cipher-text)))
+    (cl-crypto:aes-decrypt-to-string
+     (second iv-and-res) passphrase :iv (first iv-and-res))))
+
+;; Adds to the local database only. Doesn't touch the remote server.
+(defun add-loom-wallet (db account-passphrase url name passphrase &optional private-p)
+  (let* ((urlhash (loom-urlhash url))
+         (account-hash (loom-account-hash db account-passphrase))
+         (server-key (loom-account-server-key account-hash urlhash))
+         (namehash (folded-hash name))
+         (wallet-key (fsdb:append-db-keys server-key $WALLET namehash)))
+    (unless (loom-get-server-url db urlhash)
+      (setf (loom-get-server-url db urlhash) url))
+    (setf (fsdb:db-get db server-key $WALLETNAME namehash) name
+          (fsdb:db-get db wallet-key $PASSPHRASE)
+          (encrypt passphrase account-passphrase)
+          (fsdb:db-get db wallet-key $PRIVATE) (and private-p "yes"))
+    name))
+
+(defun loom-account-servers (db account-hash &optional include-wallets-p)
+  (let ((server-key (loom-account-server-key account-hash))
+        (res nil))
+    (dolist (urlhash (fsdb:db-contents db server-key))
+      (let ((url (loom-get-server-url db urlhash))
+            (wallets (and include-wallets-p
+                          (loom-account-wallets db account-hash urlhash))))
+        (push (make-loom-server :url url
+                                :urlhash urlhash
+                                :wallets wallets)
+              res)))
+    res))
+
+(defun loom-account-wallets (db account-hash urlhash)
+  (let* ((server-key (loom-account-server-key account-hash))
+         (walletname-key (fsdb:append-db-keys server-key urlhash $WALLETNAME))
+         (wallet-key (fsdb:append-db-keys server-key urlhash $WALLET))
+         (wallets nil))
+    (dolist (namehash (fsdb:db-contents db walletname-key))
+      (let ((name (fsdb:db-get db walletname-key namehash))
+            (encrypted-passphrase
+             (fsdb:db-get db wallet-key namehash $PASSPHRASE))
+            (private-p
+             (fsdb:db-get db wallet-key namehash $PRIVATE)))
+        (push (make-loom-wallet :name name
+                                :namehash namehash
+                                :encrypted-passphrase encrypted-passphrase
+                                :private-p (not (null private-p)))
+              wallets)))
+    (sort wallets 'string-lessp :key #'loom-wallet-name)))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009-2010 Bill St. Clair
+;;; Copyright 2009-2011 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

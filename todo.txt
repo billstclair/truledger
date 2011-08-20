@@ -1,16 +1,26 @@
+Loom web client.
+
+----------------------------------------------------------------------
+
+Store uploaded files in the Loom archive, private if the wallet is.
+Small set of named files, not a whole file system.
+Reasonable file size limit.
+
+----------------------------------------------------------------------
+
+"Resync with server" button should notice discrepancies, and do
+correction protocol with server. Should server automatically accept,
+or just post to be approved by asset issuer? Probably the latter.
+
+----------------------------------------------------------------------
+
 Client web API for FellowTraveler
+
 ----------------------------------------------------------------------
-Remove an asset, if it's balance is zero, or maybe just if it hasn't
-been traded.
 
-This could leave behind some 0 balances in the asset, or non-zero if
-it's out of balance. Make sure everything deals gracefully with that.
+Allow use of a timed-out session for establishing a new encryption session.
+
 ----------------------------------------------------------------------
-Timeout parameters for opensession command:
-
-(<id>,opensession,<serverid>,<req#>,timeout=<seconds>,inactivetime=<seconds>)
-
-Allow use of a timed-out session for establishing a new session.
 
 Email interface. Standard SMTP. Specified port to listen on. Sends
 back standard SMTP. Need to specify port for sending back.
@@ -107,18 +117,7 @@ http://sourceforge.net/projects/lucrative/  (Java)
 
 ----------------------------------------------------------------------
 
-Something is causing an arithmetic with NIL error. Print a backtrace
-before exiting to help find it.
-
-----------------------------------------------------------------------
-
 "Truledger in Plain English" needs update
-
-Two-phase commit.
-
-"Resync with server" button should notice discrepancies, and do
-correction protocol with server. Should server automatically accept,
-or just post to be approved by asset issuer? Probably the latter.
 
 ======================================================================
 

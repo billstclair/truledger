@@ -21,6 +21,7 @@
     ("fees" . "Fees")
     ("permissions" . "Permissions")
     ("admins" . "Admin")
+    ("loom" . "Loom")
     ("logout" . "Logout")))    
 
 ;; The client-web state
@@ -46,10 +47,11 @@
 ;; Called from do-truledger-client in server-web.lisp
 ;; Returns a string with the contents of the client web page.
 (defun web-server ()
-  (let* ((client (make-client (client-db-dir))))
-    (unwind-protect
-         (web-server-internal client)
-      (finalize client))))
+  (catch 'raw-return
+    (let* ((client (make-client (client-db-dir))))
+      (unwind-protect
+           (web-server-internal client)
+        (finalize client)))))
 
 (defun cookie-name (base &optional (acceptor hunchentoot:*acceptor*))
   (let ((port (acceptor-port acceptor)))
@@ -80,6 +82,7 @@
            "fee" (do-fee)
            "permission" (do-permission)
            "admin" (do-admin)
+           "loom" do-loom
            "spend" (do-spend)
            "sync" (do-sync)
            "canceloutbox" (do-canceloutbox)
@@ -939,6 +942,11 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
 (defun (setf backup-mode-preference) (value server)
   (setf (backup-preference server "backupmode") value))
+
+(defun do-loom (cw)
+  (declare (ignore cw))
+  (throw 'raw-return
+    (hunchentoot:redirect "/client/loom")))
 
 (defun do-admin (cw)
   (bind-parameters (passphrase verification adminpass adminverify)

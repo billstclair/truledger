@@ -1,0 +1,74 @@
+<form method='post' action='./loom' autocomplete='off'>
+      <b>Client Login Name: </b><input type='text' name='login-name' size='40' value='<!-- TMPL_VAR login-name -->'/> <br /<!-- TMPL_IF loom-server -->
+      <b>Loom Server: </b><!-- TMPL_VAR loom-server --><!-- /TMPL_IF --><br />
+      <span style='color: red;'><!-- TMPL_VAR errmsg --></span><br />
+      <input type='hidden' name='cmd' value='new-loom-server' />
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->' />
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
+      <table>
+        <tr>
+          <td><b>Loom Server Name:</b></td>
+          <td><input type='text' name='servername' size='64' value='<!-- TMPL_VAR servername -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Loom Server URL:</b></td>
+          <td><input type='text' name='serverurl' size='64' value='<!-- TMPL_VAR serverurl -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Passphrase:</td>
+          <td><input type='password' name='passphrase' size='40' value='<!-- TMPL_VAR passphrase -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Wallet Name:</td>
+          <td><input type='text' name='walletname' size='40' value='<!-- TMPL_VAR walletname -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Private Wallet:</b></td>
+          <td><input type='checkbox' name='private'<!-- TMPL_IF checked-p --> checked='checked'/<!-- /TMPL_IF -->></td>
+        </tr>
+        <tr>
+          <td colspan='2'>
+            <i>Fill in Verification and Invitation for new wallets.</i>
+          </td>
+        </tr>
+        <tr>
+          <td><b>Verification:</td>
+          <td><input type='password' name='passphrase2' size='40' value='<!-- TMPL_VAR passphrase2 -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Invitation:</b></td>
+          <td><input type='text' name='invitation' size='32' value='<!-- TMPL_VAR invitation -->'/></td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>
+            <input type='submit' name='newserver' value='Add Server' />
+            <input type='submit' name='cancel' value='Cancel' />
+          </td>
+        </tr>
+      </table>
+    </form><!-- TMPL_IF servers -->
+    <table class='prettytable'>
+      <tr>
+        <th>Server</th>
+        <th>URL</th>
+        <th>Default Account</th>
+        <th>Wallets</th>
+        <th>Choose</th>
+      </tr>
+      <form method='post' action='./loom' autocomplete='off' style='margin: 0px;'>
+        <input type='hidden' name='cmd' value='loom-server' />
+        <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->' />
+        <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
+        <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
+        <input type='hidden' name='urlhash' value='<!-- TMPL_VAR urlhash -->' /><!-- TMPL_LOOP servers -->
+        <tr>
+          <td><!-- TMPL_VAR server-name --></td>
+          <td><!-- TMPL_VAR server-url --></td>
+          <td><!-- TMPL_VAR default-account --></td>
+          <td><!-- TMPL_VAR wallet-count --></td>
+          <td><input type='submit' name='selectserver' value='Choose' /></td>
+        </tr><!-- /TMPL_LOOP --><!-- /TMPL_IF -->
+      </form>
+    </table>

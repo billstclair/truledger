@@ -136,6 +136,11 @@
     (append (and post (hunchentoot:post-parameters req))
             (and get (hunchentoot:get-parameters req)))))
 
+(defmacro with-parms ((&rest parms) &body body)
+  (let ((bindings (loop for parm in parms
+                       collect `(,parm (parm ,(string-downcase parm))))))
+    `(let ,bindings ,@body)))
+
 (defun post-parm (name &rest args)
   (hunchentoot:post-parameter
    (if args (apply #'format nil name args) name)))

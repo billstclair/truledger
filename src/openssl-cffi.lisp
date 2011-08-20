@@ -291,6 +291,27 @@
           (truledger:bin2hex res)
           res))))
 
+(defcfun ("SHA256" %sha256) :pointer
+  (d :pointer)
+  (n :long)
+  (md :pointer))
+
+(defun sha256 (string &optional (res-type :hex))
+  "Return the sha256 hash of STRING.
+   Return a string of hex chars if res-type is :hex, the default,
+   a byte-array if res-type is :bytes,
+   or a string with 8-bit character values if res-type is :string."
+  (check-type res-type (member :hex :bytes :string))
+  (with-foreign-pointer (md 32)
+    (with-foreign-strings ((d string :encoding :utf-8))
+      (with-openssl-lock ()
+        (%sha256 d (length string) md)))
+    (let* ((byte-array-p (or (eq res-type :hex) (eq res-type :bytes)))
+           (res (truledger:copy-memory-to-lisp md 32 byte-array-p)))
+      (if (eq res-type :hex)
+          (truledger:bin2hex res)
+          res))))
+
 ;; Sign and verify
 (defcfun ("EVP_PKEY_new" %evp-pkey-new) :pointer)
 (defcfun ("EVP_PKEY_free" %evp-pkey-free) :void
@@ -508,6 +529,10 @@
 (defmethod truledger:sha1-gf
     ((api (eql :openssl-cffi)) string &optional (res-type :hex))
   (sha1 string res-type))
+
+(defmethod truledger:sha256-gf
+    ((api (eql :openssl-cffi)) string &optional (res-type :hex))
+  (sha256 string res-type))
 
 (defmethod truledger:sign-gf
     ((api (eql :openssl-cffi)) data rsa-private-key)

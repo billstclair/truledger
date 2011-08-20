@@ -189,6 +189,12 @@
                                           *default-pathname-defaults*)))
     (truledger-client-web:web-server)))
   
+(defun do-loom-web-client ()
+  (let* ((port (hunchentoot:acceptor-port hunchentoot:*acceptor*))
+         (*default-pathname-defaults* (or (port-pathname-defaults port)
+                                          *default-pathname-defaults*)))
+    (truledger-client-web:loom-web-server)))
+  
 (defvar *web-script-handlers*
   (make-hash-table :test 'equal))
 
@@ -804,10 +810,25 @@ openssl x509 -in cert.pem -text -noout
                   (port-pathname-defaults port) pathname-defaults)
             (setf (get-web-script-handler port "/")
                   'do-truledger-web-server
+                  (get-web-script-handler port "/server")
+                  #'(lambda ()
+                      (if (parm "msg")
+                          (do-truledger-web-server)
+                          (hunchentoot:redirect "/server/")))
+                  (get-web-script-handler port "/server/")
+                  'do-truledger-web-server
                   (get-web-script-handler port "/client")
                   #'(lambda () (hunchentoot:redirect "/client/"))
                   (get-web-script-handler port "/client/")
-                  'do-truledger-web-client)        
+                  'do-truledger-web-client       
+                  (get-web-script-handler port "/server/client")
+                  #'(lambda () (hunchentoot:redirect "/client/"))
+                  (get-web-script-handler port "/server/client/")
+                  #'(lambda () (hunchentoot:redirect "/client/"))
+                  (get-web-script-handler port "/client/")
+                  'do-truledger-web-client       
+                  (get-web-script-handler port "/client/loom")
+                  'do-loom-web-client)
             (setf (port-acceptor port) acceptor)
             (hunchentoot:start acceptor)
             acceptor))
@@ -835,7 +856,7 @@ openssl x509 -in cert.pem -text -noout
 
 (defun maybe-redirect-to-ssl (to-port)
   (let ((script (hunchentoot:script-name*)))
-    (cond ((equal script "/")
+    (cond ((member script '("/" "/server/" "/server") :test #'equal)
            (if (parm "msg")
                (redirect-to-ssl to-port)
                (do-truledger-web-server)))

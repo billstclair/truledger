@@ -150,6 +150,14 @@
 (defconstant $HISTORY "history")
 (defconstant $PRIVKEYCACHEDP "privkeycachedp")
 (defconstant $NEEDPRIVKEYCACHE "needprivkeycache")
+(defconstant $LOOM "loom")
+(defconstant $SALT "salt")
+(defconstant $PASSPHRASE "passphrase")
+(defconstant $WALLETNAME "walletname")
+(defconstant $WALLET "wallet")
+(defconstant $PRIVATE "private")
+(defconstant $URLHASH "urlhash")
+(defconstant $NAMEHASH "namehash")
 
 ;; Other client tokens
 (defconstant $FORMATTEDAMOUNT "formattedamount")
