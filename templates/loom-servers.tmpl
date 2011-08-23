@@ -1,16 +1,14 @@
-<form method='post' action='./loom' autocomplete='off'>
-      <b>Client Login Name: </b><input type='text' name='login-name' size='40' value='<!-- TMPL_VAR login-name -->'/> <br /<!-- TMPL_IF loom-server -->
-      <b>Loom Server: </b><!-- TMPL_VAR loom-server --><!-- /TMPL_IF --><br />
+<form method='post' action='./loom' autocomplete='off'><!-- TMPL_IF current-server-url -->
+      <b>Loom Server:</b>
+      <a href='<!-- TMPL_VAR current-server-url -->'><!-- TMPL_VAR current-server-url --></a>
+      <br /><!-- TMPL_IF current-wallet-name -->
+      <b>Wallet:</b> <!-- TMPL_VAR current-wallet-name --><br/><!-- /TMPL_IF --><!-- /TMPL_IF -->
       <span style='color: red;'><!-- TMPL_VAR errmsg --></span><br />
       <input type='hidden' name='cmd' value='new-loom-server' />
       <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->' />
       <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
       <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
       <table>
-        <tr>
-          <td><b>Loom Server Name:</b></td>
-          <td><input type='text' name='servername' size='64' value='<!-- TMPL_VAR servername -->'/></td>
-        </tr>
         <tr>
           <td><b>Loom Server URL:</b></td>
           <td><input type='text' name='serverurl' size='64' value='<!-- TMPL_VAR serverurl -->'/></td>
@@ -20,16 +18,9 @@
           <td><input type='password' name='passphrase' size='40' value='<!-- TMPL_VAR passphrase -->'/></td>
         </tr>
         <tr>
-          <td><b>Wallet Name:</td>
-          <td><input type='text' name='walletname' size='40' value='<!-- TMPL_VAR walletname -->'/></td>
-        </tr>
-        <tr>
-          <td><b>Private Wallet:</b></td>
-          <td><input type='checkbox' name='private'<!-- TMPL_IF checked-p --> checked='checked'/<!-- /TMPL_IF -->></td>
-        </tr>
-        <tr>
           <td colspan='2'>
-            <i>Fill in Verification and Invitation for new wallets.</i>
+            <i>Fill in "Verification", "Wallet Name", and "Invitation" for new wallets.<br/>
+               Check "Private Wallet" to make the wallet inaccessible to the loom.cc web interface.</i>
           </td>
         </tr>
         <tr>
@@ -37,13 +28,25 @@
           <td><input type='password' name='passphrase2' size='40' value='<!-- TMPL_VAR passphrase2 -->'/></td>
         </tr>
         <tr>
+          <td><b>Wallet Name:</td>
+          <td><input type='text' name='walletname' size='40' value='<!-- TMPL_VAR walletname -->'/></td>
+        </tr>
+        <tr>
           <td><b>Invitation:</b></td>
-          <td><input type='text' name='invitation' size='32' value='<!-- TMPL_VAR invitation -->'/></td>
+          <td><input type='text' name='invitation' size='40' value='<!-- TMPL_VAR invitation -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Sponsor Name:</b></td>
+          <td><input type='text' name='sponsorname' size='40' value='<!-- TMPL_VAR sponsorname -->'/> (default: "My Sponsor")</td>
+        </tr>
+        <tr>
+          <td><b>Private Wallet:</b></td>
+          <td><input type='checkbox' name='private'<!-- TMPL_IF checked-p --> checked='checked'/<!-- /TMPL_IF -->></td>
         </tr>
         <tr>
           <td></td>
           <td>
-            <input type='submit' name='newserver' value='Add Server' />
+            <input type='submit' name='addwallet' value='Add Wallet' />
             <input type='submit' name='cancel' value='Cancel' />
           </td>
         </tr>
@@ -51,24 +54,25 @@
     </form><!-- TMPL_IF servers -->
     <table class='prettytable'>
       <tr>
-        <th>Server</th>
-        <th>URL</th>
-        <th>Default Account</th>
-        <th>Wallets</th>
+        <th>Server URL</th>
+        <th>Wallet</th>
+        <th>Private</th>
         <th>Choose</th>
-      </tr>
+      </tr><!-- TMPL_LOOP servers -->
       <form method='post' action='./loom' autocomplete='off' style='margin: 0px;'>
         <input type='hidden' name='cmd' value='loom-server' />
         <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->' />
         <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
         <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
-        <input type='hidden' name='urlhash' value='<!-- TMPL_VAR urlhash -->' /><!-- TMPL_LOOP servers -->
+        <input type='hidden' name='urlhash' value='<!-- TMPL_VAR urlhash -->' />
+        <input type='hidden' name='namehash' value='<!-- TMPL_VAR namehash -->' />
         <tr>
-          <td><!-- TMPL_VAR server-name --></td>
-          <td><!-- TMPL_VAR server-url --></td>
-          <td><!-- TMPL_VAR default-account --></td>
-          <td><!-- TMPL_VAR wallet-count --></td>
-          <td><input type='submit' name='selectserver' value='Choose' /></td>
-        </tr><!-- /TMPL_LOOP --><!-- /TMPL_IF -->
-      </form>
-    </table>
+          <td><a href='<!-- TMPL_VAR server-url -->'><!-- TMPL_VAR server-url --></a></td>
+          <td><!-- TMPL_IF default --><b><!-- /TMPL_IF --><!-- TMPL_VAR walletname --><!-- TMPL_IF default --></b><!-- /TMPL_IF --></td>
+          <td style="text-align: center;">
+              <input type='checkbox' name='private'<!-- TMPL_IF private --> checked='checked'<!-- /TMPL_IF --> />
+          </td>
+          <td><input type='submit' name='choose' value='Choose' /></td>
+        </tr>
+      </form><!-- /TMPL_LOOP -->
+    </table><!-- /TMPL_IF -->

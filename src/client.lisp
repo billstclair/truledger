@@ -4022,9 +4022,17 @@
   encrypted-passphrase
   private-p)
 
+;; We modify the passphrase a little so that it hashes
+;; differently for encryption.
+;; The loom address of an unencrypted wallet is the sha1 hash of
+;; the passphrase. Don't want to give away the sha1 of the encryption
+;; passphrase.
+(defun loom-passphrase (passphrase)
+  (concatenate 'string passphrase (reverse passphrase)))
+
 (defun encrypt (plain-text passphrase)
   (multiple-value-bind (res iv)
-      (cl-crypto:aes-encrypt-string plain-text passphrase)
+      (cl-crypto:aes-encrypt-string plain-text (loom-passphrase passphrase))
     (concatenate 'string
                  (cl-base64:usb8-array-to-base64-string iv)
                  "|"
@@ -4033,7 +4041,7 @@
 (defun decrypt (cipher-text passphrase)
   (let ((iv-and-res (split-sequence:split-sequence #\| cipher-text)))
     (cl-crypto:aes-decrypt-to-string
-     (second iv-and-res) passphrase :iv (first iv-and-res))))
+     (second iv-and-res) (loom-passphrase passphrase) :iv (first iv-and-res))))
 
 ;; Adds to the local database only. Doesn't touch the remote server.
 (defun add-loom-wallet (db account-passphrase url name passphrase &optional private-p)
@@ -4044,6 +4052,9 @@
          (wallet-key (fsdb:append-db-keys server-key $WALLET namehash)))
     (unless (loom-get-server-url db urlhash)
       (setf (loom-get-server-url db urlhash) url))
+    (when (fsdb:db-get db server-key $WALLETNAME namehash)
+      (error "A wallet named ~s already exists for ~s"
+             name url))
     (setf (fsdb:db-get db server-key $WALLETNAME namehash) name
           (fsdb:db-get db wallet-key $PASSPHRASE)
           (encrypt passphrase account-passphrase)
