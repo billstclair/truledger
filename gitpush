@@ -2,9 +2,15 @@
 # Push the HEAD to the shared repository
 # assumes the following remotes:
 # git remote add truledger git+ssh://$HUBTL/usr/local/www/truledger/repos/truledger.git
-# git remote add github git@github.com:billstclair/truledger.git
-git push --tags truledger master
-git push --tags github master
+# git remote add origin git@github.com:billstclair/truledger.git
 
-# useful for public access
+# get the current branch, "git branch --contains" outputs "* branch"
+branch=`git branch --contains`
+branch=${branch:2}
+
+echo "Pushing branch: $branch"
+git push origin $branch
+git push truledger $branch
+
+# public access:
 # git remote add github git://github.com/billstclair/truledger.git

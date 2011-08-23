@@ -1,5 +1,8 @@
 Loom web client.
 
+Servers page: change wallet name, change "Private", delete wallet
+(merge into current), cache wallet string.
+
 ----------------------------------------------------------------------
 
 Store uploaded files in the Loom archive, private if the wallet is.

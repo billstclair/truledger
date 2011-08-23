@@ -635,6 +635,7 @@
    #:loom-wallet-namehash
    #:loom-wallet-encrypted-passphrase
    #:loom-wallet-private-p
+   #:loom-wallet-passphrase
    #:encrypt
    #:decrypt
    #:add-loom-wallet

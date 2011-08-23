@@ -4043,6 +4043,10 @@
     (cl-crypto:aes-decrypt-to-string
      (second iv-and-res) (loom-passphrase passphrase) :iv (first iv-and-res))))
 
+(defun loom-wallet-passphrase (wallet account-passphrase)
+  (check-type wallet loom-wallet)
+  (decrypt (loom-wallet-encrypted-passphrase wallet) account-passphrase))
+
 ;; Adds to the local database only. Doesn't touch the remote server.
 (defun add-loom-wallet (db account-passphrase url name passphrase &optional private-p)
   (let* ((urlhash (loom-urlhash url))
