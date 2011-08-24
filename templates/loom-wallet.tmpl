@@ -32,7 +32,7 @@
           <td>
             <select name='contact'>
               <option value=''>choose contact...</option><!-- TMPL_LOOP contacts -->
-              <option value='<!-- TMPL_VAR namehash -->'><!-- TMPL_VAR name --></option><!-- /TMPL_LOOP -->
+              <option value='<!-- TMPL_VAR loc -->'><!-- TMPL_VAR name --></option><!-- /TMPL_LOOP -->
             </select>
           </td>
         </tr>
@@ -41,23 +41,23 @@
       <table class='prettytable'>
         <tr>
           <th align='left'>In my wallet</th>
-          <th align='left'><!-- TMPL_VAR wallet-name --></th>
-          <th align='center'><a href='./?cmd=contact&namehash=<!-- TMPL_VAR wallet-namehash -->'>view contact</a></th>
-        </tr><!-- TMPL_LOOP wallet-assets -->
+          <th align='left'><!-- TMPL_VAR contact-name --></th>
+          <th align='center'><a href='./?cmd=contact&loc=<!-- TMPL_VAR contact-loc -->'>view contact</a></th>
+        </tr><!-- TMPL_LOOP assets -->
         <tr>
           <td align='right'><!-- TMPL_VAR asset-amount --></td>
           <td><!-- TMPL_VAR asset-name --></td>
-          <td align='center'><input type='submit' name='<!-- TMPL_VAR payname -->' value='Pay' /></td>
+          <td align='center'><input type='submit' name='pay-<!-- TMPL_VAR asset-loc -->-<!-- TMPL_VAR asset-id -->' value='Pay' /></td>
         </tr><!-- /TMPL_LOOP  --><!-- TMPL_LOOP table-contacts -->
 
         <tr>
           <th align='left'>On the table</th>
           <th align='left'><!-- TMPL_VAR contact-name --></th>
-          <th align='center'><a href='./?cmd=contact&namehash=<!-- TMPL_VAR contact-namehash -->'>view contact</a></th>
+          <th align='center'><a href='./?cmd=contact&loc=<!-- TMPL_VAR contact-loc -->'>view contact</a></th>
         </tr><!-- TMPL_LOOP assets -->
         <tr>
           <td align='right'><!-- TMPL_VAR asset-amount --></td>
           <td><!-- TMPL_VAR asset-name --></td>
-          <td align='center'><input type='submit' name='<!-- TMPL_VAR claimname -->' value='Claim' /></td>
+          <td align='center'><input type='submit' name='claim-<!-- TMPL_VAR asset-loc -->-<!-- TMPL_VAR asset-id -->' value='Claim' /></td>
         </tr><!-- /TMPL_LOOP --><!-- /TMPL_LOOP -->
       </table>

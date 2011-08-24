@@ -346,19 +346,57 @@
          (other-wallets (loop for w in (remove wallet wallets)
                            collect (list :namehash (loom-wallet-namehash w)
                                          :name (loom-wallet-name w))))
-         contacts)
+         contacts
+         wallet-contact
+         table-contacts)
     (let ((loom-server (loom:make-loom-uri-server (loom-server-url server))))
       (loom:with-loom-transaction (:server loom-server)
-        ))
+        (let* ((loom-wallet (loom-cw-get-loom-wallet cw loom-server))
+               (wallet-locations (loom:wallet-locations loom-wallet))
+               (wallet-assets (loom:wallet-assets loom-wallet))
+               (qty-alist (loom:grid-scan-wallet loom-wallet)))
+          (loop for (loc . id.qty) in qty-alist
+             for location = (find loc wallet-locations
+                                  :test #'equal :key #'loom:location-loc)
+             for contact-name = (and location (loom:location-name location))
+             when location
+             do
+               (push (list :loc loc :name contact-name) contacts)
+               (loop for (id . qty) in id.qty
+                  for asset = (find id wallet-assets
+                                    :test #'equal :key #'loom:asset-id)
+                  when asset
+                  collect (list :asset-amount qty
+                                :asset-id id
+                                :asset-loc loc
+                                :asset-name (loom:asset-name asset)) into assets
+                  finally
+                    (let ((contact (list :contact-loc loc
+                                         :contact-name contact-name
+                                         :assets (sort assets #'string-lessp
+                                                       :key (lambda (plist)
+                                                              (getf plist :asset-name))))))
+                      (if (loom:location-wallet-p location)
+                          (setf wallet-contact contact)
+                          (push contact table-contacts))))))))
     (make-cw-loom-menu cw)
     (setf (loom-cw-title cw) "Loom Wallet - Truledger Client"
           (loom-cw-body cw)
           (expand-template
-           (list :current-server-url (loom-server-url server)
-                 :current-wallet-name (loom-wallet-name wallet)
-                 :other-servers other-servers                          
-                 :other-wallets other-wallets
-                 :errmsg errmsg)
+           `(:current-server-url ,(loom-server-url server)
+             :current-wallet-name ,(loom-wallet-name wallet)
+             :other-servers ,other-servers                          
+             :other-wallets ,other-wallets
+             :errmsg ,errmsg
+             :payamt ,payamt
+             :namehash ,namehash
+             :location ,location
+             :contacts ,(sort contacts #'string-lessp
+                              :key (lambda (plist) (getf plist :name)))
+             ,@wallet-contact
+             :table-contacts ,(sort table-contacts #'string-lessp
+                                    :key (lambda (plist)
+                                           (getf plist :contact-name))))
            "loom-wallet.tmpl"))))
     
 
