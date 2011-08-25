@@ -1,38 +1,40 @@
 <b>Loom Server: </b>
     <a href='<!-- TMPL_VAR current-server-url -->'><!-- TMPL_VAR current-server-url --></a><br/>
     <b>Wallet:</b> <!-- TMPL_VAR current-wallet-name --><br/><!-- TMPL_IF other-servers -->
-    <form method='post' action='./'>
+    <form method='post' action='./loom'>
       <input type='hidden' name='cmd' value='change-wallet'/>
-      <select name='server'>
+      <select name='urlhash'>
         <option value=''>Choose a server...</option><!-- TMPL_LOOP other-servers -->
         <option value='<!-- TMPL_VAR urlhash -->'><!-- TMPL_VAR url --></option><!-- /TMPL_LOOP -->        
       </select>
       <input type='submit' name='changeserver' value='Change Server'/><!-- /TMPL_IF --><!-- TMPL_IF other-wallets -->
       <br/>
-      <select name='wallet'>
+      <select name='namehash'>
         <option value=''>Choose a wallet...</option><!-- TMPL_LOOP other-wallets -->
         <option value='<!-- TMPL_VAR namehash -->'><!-- TMPL_VAR name --></option><!-- /TMPL_LOOP -->
       </select>
       <input type='submit' name='changewallet' value='Change Wallet'/><!-- /TMPL_IF -->
     </form><!-- TMPL_IF errmsg -->
     <span style='color: red;'><!-- TMPL_VAR errmsg --></span><br /><!-- /TMPL_IF -->
-    <form method='post' action='./' autocomplete='off'>
-      <input type='hidden' name='cmd' value='loom-wallet' />
+    <form method='post' action='./loom' autocomplete='off'>
+      <input type='hidden' name='cmd' value='pay-or-claim' />
       <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->' />
       <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
-      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' /><!-- TMPL_LOOP hidden-inputs -->
-      <input type='hidden' name='<!-- TMPL_VAR name -->' value='<!-- TMPL_VAR value -->'/><!-- /TMPL_LOOP -->
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
+      <input type='hidden' name='urlhash' value='<!-- TMPL_VAR urlhash -->'/>
+      <input type='hidden' name='namehash' value='<!-- TMPL_VAR namehash -->'/>
+      <input type='hidden' name='wallet-loc' value='<!-- TMPL_VAR wallet-loc -->'/>
       <table>
         <tr>
           <td><b>Pay/Claim Amount:</b></td>
-          <td><input type='text' name='payamt' size='20' /> (blank to claim all)</td>
+          <td><input type='text' name='payamt' size='20' value='<!-- TMPL_VAR payamt -->' /> (blank to claim all)</td>
         </tr>
         <tr>
           <td><b>Contact:</td>
           <td>
             <select name='contact'>
               <option value=''>choose contact...</option><!-- TMPL_LOOP contacts -->
-              <option value='<!-- TMPL_VAR loc -->'><!-- TMPL_VAR name --></option><!-- /TMPL_LOOP -->
+              <option value='<!-- TMPL_VAR loc -->'<!-- TMPL_IF select --> selected='selected'<!-- /TMPL_IF -->><!-- TMPL_VAR name --></option><!-- /TMPL_LOOP -->
             </select>
           </td>
         </tr>
@@ -47,7 +49,7 @@
         <tr>
           <td align='right'><!-- TMPL_VAR asset-amount --></td>
           <td><!-- TMPL_VAR asset-name --></td>
-          <td align='center'><input type='submit' name='pay-<!-- TMPL_VAR asset-loc -->-<!-- TMPL_VAR asset-id -->' value='Pay' /></td>
+          <td align='center'><input type='submit' name='pay-<!-- TMPL_VAR asset-id -->' value='Pay' /></td>
         </tr><!-- /TMPL_LOOP  --><!-- TMPL_LOOP table-contacts -->
 
         <tr>

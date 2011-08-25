@@ -632,10 +632,15 @@
    #:loom-server-wallets
    #:loom-wallet
    #:loom-wallet-name
+   #:loom-wallet-urlhash
    #:loom-wallet-namehash
    #:loom-wallet-encrypted-passphrase
    #:loom-wallet-private-p
    #:loom-wallet-passphrase
+   #:loom-wallet-location
+   #:loom-stored-wallet-string
+   #:loom-stored-wallet
+   #:store-loom-wallet
    #:encrypt
    #:decrypt
    #:add-loom-wallet

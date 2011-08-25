@@ -1,7 +1,13 @@
 Loom web client.
 
+Persist server/wallet list to Loom server in "truledger-loom-servers"
+property of private wallet.
+
 Servers page: change wallet name, change "Private", delete wallet
 (merge into current), cache wallet string.
+
+Eliminate plain-text locations going over the wire from browser
+to server. Use an index into a per-session hash table instead.
 
 ----------------------------------------------------------------------
 

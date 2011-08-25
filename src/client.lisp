@@ -4004,12 +4004,13 @@
         (fsdb:append-db-keys res urlhash)
         res)))
 
-(defun loom-account-preference (db account-hash pref)
-  (fsdb:db-get db (loom-account-key account-hash) $PREFERENCE pref))
+(defun loom-account-preference (db account-hash &rest pref-path)
+  (apply #'fsdb:db-get db (loom-account-key account-hash) $PREFERENCE pref-path))
 
-(defun (setf loom-account-preference) (value db account-hash pref)
-  (setf (fsdb:db-get db (loom-account-key account-hash) $PREFERENCE pref)
-        value))
+(defun (setf loom-account-preference) (value db account-hash &rest pref-path)
+  (let ((key (apply #'fsdb:append-db-keys $PREFERENCE pref-path)))
+    (setf (fsdb:db-get db (loom-account-key account-hash) key)
+          value)))
 
 (defstruct loom-server
   url
@@ -4018,8 +4019,10 @@
 
 (defstruct loom-wallet
   name
+  urlhash
   namehash
   encrypted-passphrase
+  encrypted-wallet-string
   private-p)
 
 ;; We modify the passphrase a little so that it hashes
@@ -4047,6 +4050,20 @@
   (check-type wallet loom-wallet)
   (decrypt (loom-wallet-encrypted-passphrase wallet) account-passphrase))
 
+(defun loom-wallet-location (wallet account-passphrase)
+  (check-type wallet loom-wallet)
+  (let ((passphrase (loom-wallet-passphrase wallet account-passphrase)))
+    (loom:passphrase-location passphrase t (loom-wallet-private-p wallet))))
+
+(defun loom-stored-wallet-string (wallet account-passphrase)
+  (check-type wallet loom-wallet)
+  (let ((str (loom-wallet-encrypted-wallet-string wallet)))
+    (and str (decrypt str account-passphrase))))
+
+(defun loom-stored-wallet (wallet account-passphrase)
+  (let ((str (loom-stored-wallet-string wallet account-passphrase)))
+    (and str (loom:parse-wallet-string str))))
+
 ;; Adds to the local database only. Doesn't touch the remote server.
 (defun add-loom-wallet (db account-passphrase url name passphrase &optional private-p)
   (let* ((urlhash (loom-urlhash url))
@@ -4064,6 +4081,21 @@
           (encrypt passphrase account-passphrase)
           (fsdb:db-get db wallet-key $PRIVATE) (and private-p "yes"))
     name))
+
+(defun store-loom-wallet (db account-passphrase wallet loom-wallet &optional
+                          (account-hash
+                           (loom-account-hash db account-passphrase)))
+  (check-type wallet loom-wallet)
+  (check-type loom-wallet loom:wallet)
+  (let* ((server-key (loom-account-server-key
+                     account-hash (loom-wallet-urlhash wallet)))
+         (wallet-key (fsdb:append-db-keys
+                      server-key $WALLET (loom-wallet-namehash wallet)))
+         (wallet-string (loom:wallet-string loom-wallet))
+         (encrypted-wallet-string (encrypt wallet-string account-passphrase)))
+    (setf (loom-wallet-encrypted-wallet-string wallet)
+          encrypted-wallet-string
+          (fsdb:db-get db wallet-key $WALLET) encrypted-wallet-string)))
 
 (defun loom-account-servers (db account-hash &optional include-wallets-p)
   (let ((server-key (loom-account-server-key account-hash))
@@ -4087,11 +4119,15 @@
       (let ((name (fsdb:db-get db walletname-key namehash))
             (encrypted-passphrase
              (fsdb:db-get db wallet-key namehash $PASSPHRASE))
+            (encrypted-wallet-string
+             (fsdb:db-get db wallet-key namehash $WALLET))
             (private-p
              (fsdb:db-get db wallet-key namehash $PRIVATE)))
         (push (make-loom-wallet :name name
+                                :urlhash urlhash
                                 :namehash namehash
                                 :encrypted-passphrase encrypted-passphrase
+                                :encrypted-wallet-string encrypted-wallet-string
                                 :private-p (not (null private-p)))
               wallets)))
     (sort wallets 'string-lessp :key #'loom-wallet-name)))

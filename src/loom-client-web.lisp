@@ -37,21 +37,22 @@
   (check-type value string)
   (setf (loom-account-preference db account-hash $URLHASH) value))
 
-(defun loom-namehash-preference (db account-hash)
-  (loom-account-preference db account-hash $NAMEHASH))
+(defun loom-namehash-preference (db account-hash urlhash)
+  (loom-account-preference db account-hash $NAMEHASH urlhash))
 
-(defun (setf loom-namehash-preference) (value db account-hash)
+(defun (setf loom-namehash-preference) (value db account-hash urlhash)
   (check-type value string)
-  (setf (loom-account-preference db account-hash $NAMEHASH) value))
+  (setf (loom-account-preference db account-hash $NAMEHASH urlhash) value))
 
 (defparameter *loom-cmd-to-function-alist*
   '(("wallet" . loom-do-wallet-command)
     ("contacts" . loom-do-contacts-command)
     ("assets" . loom-do-assets-command)
     ("servers" . loom-do-servers-command)
-    ("new-loom-server" . loom-do-new-loom-server)
-    ("choose-loom-wallet" . loom-do-choose-loom-wallet)
-    ("wallet" . loom-do-wallet-command)
+    ("new-loom-server" . loom-do-new-loom-server)       ;loom-servers.tmpl
+    ("choose-loom-wallet" . loom-do-choose-loom-wallet) ; loomservers.tmpl
+    ("change-wallet" . loom-do-change-wallet) ;loom-wallet.tmpl
+    ("pay-or-claim" . loom-do-pay-or-claim)   ;loom-wallet.tmpl
     ))
 
 (defun get-cw-servers (cw)
@@ -63,7 +64,7 @@
       (let* ((server (find urlhash servers
                                 :test #'equal
                                 :key #'loom-server-urlhash))
-                  (namehash (loom-namehash-preference db account-hash))
+                  (namehash (loom-namehash-preference db account-hash urlhash))
                   (wallets (and server (loom-server-wallets server)))
                   (wallet (find namehash wallets
                                 :test #'equal
@@ -74,7 +75,7 @@
                 (loom-server-urlhash server)))
         (when (and wallets (not wallet))
           (setf wallet (car wallets)
-                (loom-namehash-preference db account-hash)
+                (loom-namehash-preference db account-hash urlhash)
                 (loom-wallet-namehash wallet)))
         (setf (loom-cw-servers cw) servers
               (loom-cw-server cw) server
@@ -92,17 +93,22 @@
         (setf (loom-cw-passphrase cw) passphrase
               (loom-cw-account-hash cw) (loom-account-hash db passphrase))
         (get-cw-servers cw)
-        (cond ((loom-cw-wallets cw)
-               (let ((fun (or (cdr (assoc cmd *loom-cmd-to-function-alist*
-                                          :test #'equal))
-                              'loom-do-wallet-command)))
-                 (cond (fun (funcall fun cw))
-                       (t
-                        (make-cw-loom-menu cw)
-                        (setf (loom-cw-title cw) "Loom - Truledger Client"
-                              (loom-cw-body cw)
-                              (format nil "Unknown command: ~a" cmd))))))
-              (t (loom-request-initial-server cw cmd)))))
+        (handler-case
+            (cond ((loom-cw-wallets cw)
+                   (let ((fun (or (cdr (assoc cmd *loom-cmd-to-function-alist*
+                                              :test #'equal))
+                                  'loom-do-wallet-command)))
+                     (cond (fun (funcall fun cw))
+                           (t
+                            (make-cw-loom-menu cw nil)
+                            (setf (loom-cw-title cw) "Loom - Truledger Client"
+                                  (loom-cw-body cw)
+                                  (format nil "Unknown command: ~a" cmd))))))
+                  (t (loom-request-initial-server cw cmd)))
+          (error (c)
+            (make-cw-loom-menu cw nil)
+            (setf (loom-cw-title cw) "Loom Error - Truledger Client"
+                  (loom-cw-body cw) (format nil "~a" c))))))
     cw))
                  
 (defparameter *loom-menu-plist*
@@ -255,13 +261,13 @@
        :private private
        :sponsorname sponsorname))))
 
-(defun make-cw-loom-menu (cw)
+(defun make-cw-loom-menu (cw current-page)
   (setf (loom-cw-menu cw)
         (if (loom-cw-wallet cw)
             (make-loom-menu
-             :servers :wallet :contacts :servers :assets :truledger :logout)
+             current-page :wallet :contacts :servers :assets :truledger :logout)
             (make-loom-menu
-             :servers :servers :truledger :logout))))
+             current-page :servers :truledger :logout))))
 
 (defun loom-do-servers-command (cw &key
                                 msg errmsg serverurl passphrase passphrase2
@@ -286,7 +292,7 @@
                     (setf server-url "")))))
     (when (blankp serverurl)
       (setf serverurl (and default-server (loom-server-url default-server))))
-    (make-cw-loom-menu cw)
+    (make-cw-loom-menu cw :servers)
     (setf (loom-cw-title cw) "Loom Servers - Truledger Client"
           (loom-cw-body cw)
           (expand-template
@@ -320,22 +326,26 @@
              (account-hash (loom-cw-account-hash cw)))
         (when wallet
           (setf (loom-urlhash-preference db account-hash) urlhash
-                (loom-namehash-preference db account-hash) namehash))))
+                (loom-namehash-preference db account-hash urlhash) namehash))))
     (get-cw-servers cw)
-    (loom-do-servers-command cw)))
+    (loom-do-wallet-command cw)))
 
-(defun loom-cw-get-loom-wallet (cw &optional server)
+(defun loom-cw-get-loom-wallet (cw &key server force-server-p)
   (let* ((server (or server
                      (loom:make-loom-uri-server
                       (loom-server-url (loom-cw-server cw)))))
          (wallet (loom-cw-wallet cw))
-         (account-passphrase (loom-cw-passphrase cw))
-         (passphrase (loom-wallet-passphrase wallet account-passphrase))
-         (private-p (loom-wallet-private-p wallet)))
-    (loom:with-loom-server (server)
-      (loom:get-wallet passphrase t nil private-p))))
+         (account-passphrase (loom-cw-passphrase cw)))
+    (or (and (not force-server-p)
+             (loom-stored-wallet wallet account-passphrase))
+        (let* ((passphrase (loom-wallet-passphrase wallet account-passphrase))
+               (private-p (loom-wallet-private-p wallet))
+               (loom-wallet (loom:with-loom-server (server)
+                              (loom:get-wallet passphrase t nil private-p))))
+          (store-loom-wallet (loom-cw-db cw) account-passphrase wallet loom-wallet)
+          loom-wallet))))
 
-(defun loom-do-wallet-command (cw &key errmsg payamt namehash location)
+(defun loom-do-wallet-command (cw &key errmsg payamt contact)
   (let* ((servers (loom-cw-servers cw))
          (server (loom-cw-server cw))
          (wallets (loom-cw-wallets cw))
@@ -348,20 +358,31 @@
                                          :name (loom-wallet-name w))))
          contacts
          wallet-contact
-         table-contacts)
+         table-contacts
+         wallet-loc)
     (let ((loom-server (loom:make-loom-uri-server (loom-server-url server))))
       (loom:with-loom-transaction (:server loom-server)
-        (let* ((loom-wallet (loom-cw-get-loom-wallet cw loom-server))
+        (let* ((loom-wallet (loom-cw-get-loom-wallet
+                             cw :server loom-server :force-server-p t))
                (wallet-locations (loom:wallet-locations loom-wallet))
                (wallet-assets (loom:wallet-assets loom-wallet))
-               (qty-alist (loom:grid-scan-wallet loom-wallet)))
+               (qty-alist (loom:grid-scan-wallet loom-wallet))
+               (wallet-location (find-if #'loom:location-wallet-p wallet-locations)))
+          (setf wallet-loc
+                (and wallet-locations (loom:location-loc wallet-location)))
+          (loop for location in (loom:wallet-locations loom-wallet)
+             for loc = (loom:location-loc location)
+             for name = (loom:location-name location)
+             do
+               (unless (equal loc wallet-loc)
+                 (push (list :loc loc :name name :select (equal loc contact))
+                       contacts)))
           (loop for (loc . id.qty) in qty-alist
              for location = (find loc wallet-locations
                                   :test #'equal :key #'loom:location-loc)
              for contact-name = (and location (loom:location-name location))
              when location
              do
-               (push (list :loc loc :name contact-name) contacts)
                (loop for (id . qty) in id.qty
                   for asset = (find id wallet-assets
                                     :test #'equal :key #'loom:asset-id)
@@ -379,18 +400,19 @@
                       (if (loom:location-wallet-p location)
                           (setf wallet-contact contact)
                           (push contact table-contacts))))))))
-    (make-cw-loom-menu cw)
+    (make-cw-loom-menu cw :wallet)
     (setf (loom-cw-title cw) "Loom Wallet - Truledger Client"
           (loom-cw-body cw)
           (expand-template
            `(:current-server-url ,(loom-server-url server)
              :current-wallet-name ,(loom-wallet-name wallet)
+             :wallet-loc ,wallet-loc
+             :urlhash ,(loom-server-urlhash server)
+             :namehash ,(loom-wallet-namehash wallet)
              :other-servers ,other-servers                          
              :other-wallets ,other-wallets
              :errmsg ,errmsg
              :payamt ,payamt
-             :namehash ,namehash
-             :location ,location
              :contacts ,(sort contacts #'string-lessp
                               :key (lambda (plist) (getf plist :name)))
              ,@wallet-contact
@@ -398,7 +420,110 @@
                                     :key (lambda (plist)
                                            (getf plist :contact-name))))
            "loom-wallet.tmpl"))))
+
+(defun loom-do-change-wallet (cw)
+  (with-parms (urlhash namehash changeserver changewallet)
+    (let ((errmsg nil))
+      (cond (changeserver
+             (cond ((find urlhash (loom-cw-servers cw)
+                          :test #'equal :key #'loom-server-urlhash)
+                    (setf (loom-urlhash-preference
+                           (loom-cw-db cw) (loom-cw-account-hash cw))
+                          urlhash))
+                   (t (setf errmsg "Can't find that server."))))
+            (changewallet
+             (let ((wallet (find namehash (loom-cw-wallets cw)
+                                 :test #'equal :key #'loom-wallet-namehash)))
+               (cond (wallet
+                      (setf (loom-namehash-preference
+                             (loom-cw-db cw)
+                             (loom-cw-account-hash cw)
+                             (loom-wallet-urlhash wallet))
+                            namehash))
+                     (t (setf errmsg "Can't find that wallet.")))))
+            (t (setf errmsg "Unknown change-wallet button.")))
+      (unless errmsg
+        (get-cw-servers cw))
+      (loom-do-wallet-command cw :errmsg errmsg))))
     
+(defun loom-do-pay-or-claim (cw)
+  (with-parms (urlhash namehash payamt contact)
+    (let ((errmsg nil))
+      (handler-case (loom-do-pay-or-claim-internal
+                     cw urlhash namehash payamt contact)
+        (error (c)
+          (setf errmsg (format nil "~a" c))
+          (loom-do-wallet-command
+           cw :errmsg errmsg :payamt payamt :contact contact))))))
+
+(defun loom-do-pay-or-claim-internal (cw urlhash namehash payamt contact)
+  (let* ((servers (loom-cw-servers cw))
+         (server (find urlhash servers :test #'equal :key #'loom-server-urlhash))
+         (wallet (and server
+                      (find namehash (loom-server-wallets server)
+                            :test #'equal :key #'loom-wallet-namehash)))
+         (db (loom-cw-db cw))
+         (account-passphrase (loom-cw-passphrase cw))
+         (account-hash (loom-cw-account-hash cw))
+         (wallet-loc (and wallet
+                          (loom-wallet-location wallet account-passphrase)))
+         (errmsg nil)
+         (pay-id nil)
+         (claim-loc nil)
+         (claim-id nil))
+    (cond (wallet
+           (setf (loom-urlhash-preference db account-hash) urlhash
+                 (loom-namehash-preference db account-hash urlhash) namehash)
+           (get-cw-servers cw))
+          (t (setf errmsg "Unknown server or wallet.")))
+    (let ((pay-prefix "pay-")
+          (claim-prefix "claim-"))
+      (unless errmsg
+        (dolist (cell (hunchentoot:post-parameters hunchentoot:*request*))
+          (let ((name (car cell)))
+            (cond ((eql 0 (search pay-prefix name :test #'equal))
+                   (cond ((or (blankp payamt) (blankp contact))
+                          (setf errmsg "Pay/Claim Amount & Contact must be specified."))
+                         (t (setf pay-id (subseq name (length pay-prefix)))))
+                   (return))
+                  ((eql 0 (search claim-prefix name :test #'equal))
+                   (let ((loc-and-id (split-sequence:split-sequence
+                                      #\- (subseq name (length claim-prefix)))))
+                     (cond ((eql 2 (length loc-and-id))
+                            (setf claim-loc (first loc-and-id)
+                                  claim-id (second loc-and-id)))
+                           (t (setf errmsg "Badly formed claim value"))))
+                   (return))))))
+      (unless (or errmsg pay-id claim-id)
+        (setf errmsg "Neither pay nor claim button pressed."))
+      (unless errmsg
+        (let* ((loom-server (loom:make-loom-uri-server (loom-server-url server))))
+          (loom:with-loom-transaction (:server loom-server)
+            (let ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
+                  (id (or pay-id claim-id)))
+              (let* ((asset (loom:find-asset-by-id id loom-wallet))
+                     (scale (and asset (loom:asset-scale asset)))
+                     (qty (and asset
+                               (not (blankp payamt))
+                               (loom:unformat-loom-qty payamt scale))))
+                (cond ((null asset)
+                       (setf errmsg "Can't find asset."))
+                      (pay-id
+                       (loom:grid-buy pay-id contact wallet-loc t)
+                       (loom:grid-move pay-id qty wallet-loc contact))
+                      (claim-id
+                       (let ((real-qty
+                              (or qty (loom:grid-touch claim-id claim-loc))))
+                         (loom:grid-buy claim-id wallet-loc wallet-loc t)
+                         (loom:grid-move
+                          claim-id real-qty claim-loc wallet-loc)
+                         (ignore-errors
+                           (loom:grid-sell claim-id claim-loc wallet-loc))))))))))
+      (if errmsg
+          (loom-do-wallet-command
+           cw :errmsg errmsg :payamt payamt :contact contact)
+          (loom-do-wallet-command cw)))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
