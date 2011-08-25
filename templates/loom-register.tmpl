@@ -1,43 +1,51 @@
-    <form method='post' action='./' autocomplete='off'>
-      <input type='hidden' name='cmd' value='loom-register' />
+<form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='new-registration' />
       <input type='hidden' name='postcnt' />
       <input type='hidden' name='postsalt' />
       <input type='hidden' name='postmsg' />
-      <table>
-        <tr>
-          <td><b>Passphrase:</b></td>
-          <td>
-            <input type='password' name='passphrase' size='50' />
-            <input type='hidden' name='page' value='loom-register' />
-          </td>
-        </tr><!-- TMPL_IF errmsg -->
+      <table><!-- TMPL_IF errmsg -->
         <tr>
           <td></td>
           <td><span style='color: red;'><!-- TMPL_VAR errmsg --></span></td>
         </tr><!-- /TMPL_IF -->
         <tr>
-          <td><b>Verification:</b></td>
-          <td><input type='password' name='passphrase2' size='50' /></td>
+          <td><b>Passphrase:</b></td>
+          <td>
+            <input type='password' name='account-passphrase' size='50' value='<!-- TMPL_VAR account-passphrase -->' />
+          </td>
         </tr>
         <tr>
-          <td>
-            <b>Account Name:</b>
-          </td>
-          <td><input type='text' name='name' size='40' value='<!-- TMPL_VAR name -->'/></td>
+          <td><b>Verification:</b></td>
+          <td><input type='password' name='account-passphrase2' size='50' value='<!-- TMPL_VAR account-passphrase2 -->' /></td>
         </tr>
         <tr>
           <td><b>Loom Server URL:</b></td>
-          <td><input type='text' name='server' size='64' value='<!-- TMPL_VAR server -->/></td>
+          <td><input type='text' name='serverurl' size='64' value='<!-- TMPL_VAR serverurl -->' /></td>
+        </tr>
+        <tr>
+          <td><b>Loom Server Passphrase:</b></td>
+          <td><input type='text' name='passphrase' size='50' value='<!-- TMPL_VAR passphrase -->' /></td>
+        </tr>
+        <tr>
+          <td colspan='2'>
+            <i>Fill in "Verification", "Wallet Name", and "Invitation" for new wallets.<br/>
+               Check "Private Wallet" to make the wallet inaccessible to the loom.cc web interface.</i>
+        </tr>
+        <tr>
+          <td><b>Verification:</b></td>
+          <td><input type='text' name='passphrase2' size='50' <!-- TMPL_VAR passphrase2 -->' /></td>
+        </tr>
+        <tr>
+          <td><b>Loom Account Name:</b></td>
+          <td><input type='text' name='walletname' size='40' value='<!-- TMPL_VAR walletname -->' /></td>
         </tr>
         <tr>
           <td><b>Invitation:</b></td>
           <td><input type='text' name='invitation' size='32' value='<!-- TMPL_VAR invitation -->'/></td>
         </tr>
         <tr>
-          <td></td>
-          <td>
-            <p>This page creates an account in this client to use as a client for one of more Loom servers/wallets. Enter your desired passphrase in both the "Passphrase" and "Verification" fields. Enter a name for your account in the "Acount Name" field. Enter a Loom server URL as the "Loom Server". If this is a new wallet on that server, paste an "Invitation". If you want your wallet to be accessible via the Loom web server, leave the "Private" box unchecked. If you check "Private", your Loom wallet will only be accessible from the Truledger web client, and the Loom server will see the wallet information only as encrypted nonsense. Finally, click the "Create Account" button to create a new account. The "Login" button allows you to log in to an existing account on this client web server with your "Passphrase".</p>
-          </td>
+          <td><b>Private Wallet:</b></td>
+          <td><input type='checkbox' name='private'<!-- TMPL_IF private --> checked='checked'<!-- /TMPL_IF --> /></td>
         </tr>
         <tr>
           <td></td>
@@ -48,3 +56,5 @@
         </tr>
       </table>
     </form>
+
+    <p>This page creates an account in this client to use as a client for one of more Loom servers/wallets. Enter your desired account passphrase in both the "Passphrase" and "Verification" fields. Enter a Loom server URL as the "Loom Server". Enter your passphrase on the Loom server, or leave it blank to use the account passphrase. If this is a new wallet on that server, type the "Loom Server Passphrase" a second time in for the secon "Verification", or leave blank if you're using your account passphrase, enter a "Loom Account Name", and paste an "Invitation". If you want your wallet to be accessible via the Loom web server, leave the "Private Wallet" box unchecked. If you check "Private", your Loom wallet will only be accessible from the Truledger Loom web client, and the Loom server will see the wallet information only as encrypted nonsense. Finally, click the "Create Account" button to create a new account. The "Login" button allows you to log in to an existing account on this client web server with your "Passphrase".</p>

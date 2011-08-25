@@ -371,7 +371,10 @@
         (:td)
         (:td (draw-error cw s))))
       (:a :href "./?cmd=register"
-          "Register a new account"))))
+          "Register a new Truledger account")
+      (:br)
+      (:a :href "./loom?cmd=register"
+          "Register a new Loom account"))))
 
 (defun draw-register (cw &optional key)
   (settitle cw "Register")

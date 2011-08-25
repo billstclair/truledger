@@ -11,6 +11,10 @@ to server. Use an index into a per-session hash table instead.
 
 ----------------------------------------------------------------------
 
+HTTP proxy parameters, for TOR.
+
+----------------------------------------------------------------------
+
 Store uploaded files in the Loom archive, private if the wallet is.
 Small set of named files, not a whole file system.
 Reasonable file size limit.
