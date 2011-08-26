@@ -1008,7 +1008,8 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
             (t (let ((server (handler-case
                                  (make-server (server-db-dir) passphrase
                                               :servername servername
-                                              :serverurl serverurl)
+                                              :serverurl serverurl
+                                              :privkey-size 4096)
                                (error (c)
                                  (setq err (stringify
                                             c "Error initializing server: ~a"))
