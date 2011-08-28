@@ -1193,6 +1193,9 @@ Creating an Automatic Vend
   which they can be transferred to the inbox with the "vendpool"
   message below.
 
+  There needs to be a way to cancel a defvend before the expiration
+  time. And probably the vendacct needs to be per defvend, not
+  global.
 
 Trade with an Automated Vend
 ----------------------------
@@ -1229,7 +1232,7 @@ Trade with an Automated Vend
   the vending machine "vendout" items times <count> match the
   corresponding "balance" and "fraction" messages. It also verifies
   that the passed-in "balancehash" is what it ought to be, given the
-  updates balances. "tranfee" usage tokens are charged only for new
+  updated balances. "tranfee" usage tokens are charged only for new
   balance items; the transaction itself is free to the trader. Next,
   it updates the /vendpool/<id2>/<assetI> and
   /vendpool/<id2>/asset-oI> messages with the "spend" amounts received

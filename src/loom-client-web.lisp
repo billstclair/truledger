@@ -30,20 +30,6 @@
                         :body (loom-cw-body cw))))
       (expand-template plist "index.tmpl"))))
 
-(defun loom-urlhash-preference (db account-hash)
-  (loom-account-preference db account-hash $URLHASH))
-
-(defun (setf loom-urlhash-preference) (value db account-hash)
-  (check-type value string)
-  (setf (loom-account-preference db account-hash $URLHASH) value))
-
-(defun loom-namehash-preference (db account-hash urlhash)
-  (loom-account-preference db account-hash $NAMEHASH urlhash))
-
-(defun (setf loom-namehash-preference) (value db account-hash urlhash)
-  (check-type value string)
-  (setf (loom-account-preference db account-hash $NAMEHASH urlhash) value))
-
 (defparameter *loom-cmd-to-function-alist*
   '(("wallet" . loom-do-wallet-command)
     ("contacts" . loom-do-contacts-command)

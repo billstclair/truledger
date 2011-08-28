@@ -621,11 +621,16 @@
 
    ;; Loom functions
    #:loom-login-with-sessionid
+   #:make-loom-session
+   #:loom-remove-session
+   #:loom-logout
    #:loom-urlhash
    #:loom-account-hash
    #:loom-get-server-url
    #:loom-add-server-url
    #:loom-account-preference
+   #:loom-urlhash-preference
+   #:loom-namehash-preference
    #:loom-server
    #:loom-server-url
    #:loom-server-urlhash

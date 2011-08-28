@@ -86,6 +86,7 @@ truledger-dbs/clientdb/
       <urlhash>=<url>
     account/
       <account-hash>/
+        session=<sessionhash>
         preference
           <pref>=<value>
         server/

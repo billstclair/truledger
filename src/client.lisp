@@ -3951,9 +3951,6 @@
 ;; Don't go over the wire for hashing
 (setf (loom:sha256-function) #'sha256)
 
-(defmethod loom-login-with-sessionid ((db fsdb) sessionid)
-  (session-passphrase db sessionid))
-
 (defun make-client-db ()
   (fsdb:make-fsdb (client-db-dir)))
 
@@ -4011,6 +4008,20 @@
   (let ((key (apply #'fsdb:append-db-keys $PREFERENCE pref-path)))
     (setf (fsdb:db-get db (loom-account-key account-hash) key)
           value)))
+
+(defun loom-urlhash-preference (db account-hash)
+  (loom-account-preference db account-hash $URLHASH))
+
+(defun (setf loom-urlhash-preference) (value db account-hash)
+  (check-type value string)
+  (setf (loom-account-preference db account-hash $URLHASH) value))
+
+(defun loom-namehash-preference (db account-hash urlhash)
+  (loom-account-preference db account-hash $NAMEHASH urlhash))
+
+(defun (setf loom-namehash-preference) (value db account-hash urlhash)
+  (check-type value string)
+  (setf (loom-account-preference db account-hash $NAMEHASH urlhash) value))
 
 (defstruct loom-server
   url
@@ -4131,6 +4142,53 @@
                                 :private-p (not (null private-p)))
               wallets)))
     (sort wallets 'string-lessp :key #'loom-wallet-name)))
+
+;;
+;; Loom session stuff
+;;
+
+(defmethod loom-login-with-sessionid ((db fsdb:fsdb) sessionid)
+  (session-passphrase db sessionid))
+  
+(defmethod loom-login-new-session ((db fsdb:fsdb) passphrase)
+  "Check for existing loom servers for passphrase, create a new session, and return a sessionid."
+  (let ((account-hash (loom-account-hash db passphrase)))
+    (unless (loom-urlhash-preference db account-hash)
+      (error "No loom account for that passphrase.")))
+  (make-loom-session db passphrase))
+
+(defun loom-account-session-key (account-hash)
+  (fsdb:append-db-keys (loom-account-key account-hash) $SESSION))
+
+(defmethod make-loom-session ((db fsdb:fsdb) passphrase)
+  "Create a new loom user session, encoding $passphrase with a new session id.
+   Return the new session id.
+   If the user already has a session stored with another session id,
+   remove that one first."
+  (let* ((sessionid (newsessionid))
+         (passcrypt (xorcrypt sessionid passphrase))
+         (account-hash (loom-account-hash db passphrase))
+         (loom-session-key (loom-account-session-key account-hash)))
+    (with-db-lock (db loom-session-key)
+      (let ((oldhash (db-get db loom-session-key)))
+        (when oldhash
+          (setf (db-get db (sessionkey oldhash)) nil)))
+      (let ((newhash (sha1 sessionid)))
+        (setf (db-get db (sessionkey newhash)) passcrypt
+              (db-get db loom-session-key) newhash)))
+    sessionid))
+
+(defmethod loom-remove-session ((db fsdb:fsdb) account-hash)
+  "Remove the current user's session"
+  (let* ((loom-session-key (loom-account-session-key account-hash)))
+    (with-db-lock (db loom-session-key)
+      (let ((oldhash (db-get db loom-session-key)))
+        (when oldhash
+          (setf (db-get db (sessionkey oldhash)) nil
+                (db-get db loom-session-key) nil))))))
+
+(defmethod loom-logout ((db fsdb:fsdb) account-hash)
+  (loom-remove-session db account-hash))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
