@@ -550,26 +550,51 @@
     (let* ((db (loom-cw-db cw))
            (account-hash (loom-account-hash db passphrase))
            (loom-passphrase (if (blankp passphrase) account-passphrase passphrase))
-           errmsg)
+           (urlhash (and (not (blankp serverurl)) (loom-urlhash serverurl)))
+           wallet unused-invitation-message errmsg)
+      (when (loom-urlhash-preference db account-hash)
+        (setf (loom-cw-session cw) (make-loom-session db account-hash)
+              (loom-cw-passphrase cw) account-passphrase
+              (loom-cw-account-hash cw) account-hash)
+        (get-cw-servers cw)
+        (when urlhash
+          (let ((server (find urlhash (loom-cw-servers cw)
+                              :test #'equal :key #'loom-server-urlhash)))
+            (when server
+              (setf (loom-urlhash-preference db account-hash) urlhash)
+              (unless (blankp loom-passphrase)
+                (setf wallet (find loom-passphrase (loom-server-wallets server)
+                                   :test #'equal
+                                   :key (lambda (wallet)
+                                          (loom-wallet-passphrase
+                                           wallet account-passphrase))))
+                (when wallet
+                  (setf (loom-namehash-preference db account-hash urlhash)
+                        (loom-wallet-namehash wallet)
+                        unused-invitation-message
+                        (unless (blankp invitation)
+                          (format nil "Unused invitation: ~s" invitation)))))
+              (get-cw-servers cw)))))
       (cond (login
-             (when (loom-urlhash-preference db account-hash)
-               (setf (loom-cw-session cw) (make-loom-session db account-hash)
-                     (loom-cw-passphrase cw) account-passphrase
-                     (loom-cw-account-hash cw) account-hash)
-               (get-cw-servers cw)
+             (when (loom-cw-session cw)
                (return-from loom-do-new-registration
-                 (loom-do-wallet-command cw)))
+                 (loom-do-wallet-command
+                  cw
+                  :errmsg unused-invitation-message)))
              ;; Should try logging in to Truledger here
              ;; And the Truledger login code needs to look for a Loom account.
              (setf errmsg "No loom account with that passphrase."))
+            (wallet
+             (return-from loom-do-new-registration
+               (loom-do-wallet-command cw :errmsg unused-invitation-message)))
             ((not newacct)
              (setf errmsg "No button pressed."))
             ((or (blankp account-passphrase) (blankp serverurl))
              (setf errmsg "Passphrase and Loom Server URL must be supplied."))
-            ((not (equal account-passphrase account-passphrase2))
+            ((not (or urlhash (equal account-passphrase account-passphrase2)))
              (setf errmsg "Passphrase doesn't match verification."))
-            ((and (not (blankp passphrase))
-                  (not (equal passphrase passphrase2)))
+            ((not (or (blankp passphrase)
+                      (equal passphrase passphrase2)))
              (setf errmsg "Loom Server Passphrase doesn't match Verification.")))
       (unless errmsg
         (let* ((server (loom:make-loom-uri-server serverurl))
@@ -578,12 +603,14 @@
           (multiple-value-setq (errmsg loom-walletname private-p)
             (load-loom-walletname server loom-passphrase))
           (cond ((or errmsg walletname)
+                 ;; Either the server is invalid or the wallet already exists
                  (unless errmsg
                    (setf walletname loom-walletname
                          private private-p)))
+                (t
+                 ;; The wallet needs to be created
+                 )
                 ))))))
-        
-
 
       
 
