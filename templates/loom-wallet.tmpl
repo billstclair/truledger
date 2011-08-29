@@ -1,8 +1,8 @@
 <b>Loom Server: </b>
     <a href='<!-- TMPL_VAR current-server-url -->'><!-- TMPL_VAR current-server-url --></a><br/>
-    <b>Wallet:</b> <!-- TMPL_VAR current-wallet-name --><br/><!-- TMPL_IF other-servers -->
     <form method='post' action='./loom'>
       <input type='hidden' name='cmd' value='change-wallet'/>
+    <b>Wallet:</b> <!-- TMPL_VAR current-wallet-name --><br/><!-- TMPL_IF other-servers -->
       <select name='urlhash'>
         <option value=''>Choose a server...</option><!-- TMPL_LOOP other-servers -->
         <option value='<!-- TMPL_VAR urlhash -->'><!-- TMPL_VAR url --></option><!-- /TMPL_LOOP -->        

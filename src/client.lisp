@@ -4091,7 +4091,7 @@
           (fsdb:db-get db wallet-key $PASSPHRASE)
           (encrypt passphrase account-passphrase)
           (fsdb:db-get db wallet-key $PRIVATE) (and private-p "yes"))
-    name))
+    namehash))
 
 (defun store-loom-wallet (db account-passphrase wallet loom-wallet &optional
                           (account-hash
@@ -4160,7 +4160,7 @@
 (defun loom-account-session-key (account-hash)
   (fsdb:append-db-keys (loom-account-key account-hash) $SESSION))
 
-(defmethod make-loom-session ((db fsdb:fsdb) passphrase)
+(defmethod loom-make-session ((db fsdb:fsdb) passphrase)
   "Create a new loom user session, encoding $passphrase with a new session id.
    Return the new session id.
    If the user already has a session stored with another session id,

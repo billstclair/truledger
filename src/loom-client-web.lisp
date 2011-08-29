@@ -78,7 +78,9 @@
          (cmd (parm "cmd")))
     (handler-case
         (cond ((blankp session)
-               (loom-do-register-command cw))
+               (if (equal cmd "new-registration")
+                   (loom-do-new-registration cw)
+                   (loom-do-register-command cw)))
               (t (let* ((passphrase (loom-login-with-sessionid db session)))
                    (setf (loom-cw-passphrase cw) passphrase
                          (loom-cw-account-hash cw) (loom-account-hash db passphrase))
@@ -166,6 +168,29 @@
               (t (setf errmsg "Can't find wallet location.")))))
     (values errmsg walletname private)))
 
+(defun create-loom-wallet (server passphrase invitation walletname
+                           sponsorname private-p)
+  "Create a new loom wallet on server.
+Return two values: wallet and errmsg"
+  (handler-case
+      (loom:with-loom-transaction (:server server)
+        (loom:create-wallet passphrase invitation
+                            :name walletname
+                            :sponsor-name sponsorname
+                            :private-p private-p))
+    (error (c)
+       (values nil (format nil "~a" c)))))
+
+(defun find-unique-walletname (wallets walletname)
+  (loop with original = walletname
+     with idx = 1
+     while (find walletname wallets
+                 :test #'equal :key #'loom-wallet-name)
+     do
+       (setf walletname
+             (format nil "~a ~a" original (incf idx))))
+  walletname)
+
 (defun loom-do-new-loom-server (cw)
   (with-parms (serverurl passphrase walletname private
                          passphrase2 invitation sponsorname
@@ -223,28 +248,14 @@
                      (t
                       (when (blankp sponsorname)
                         (setf sponsorname "My Sponsor"))
-                      (handler-case
-                          (setf wallet
-                                (loom:with-loom-transaction (:server server)
-                                  (loom:create-wallet passphrase invitation
-                                                      :name walletname
-                                                      :sponsor-name sponsorname
-                                                      :private-p private))
-                                msg (format nil "New wallet, ~s, created."
-                                            walletname))
-                        (error (c)
-                          (setf errmsg (hsc (format nil "~a" c)))))))
+                      (multiple-value-setq (wallet errmsg)
+                        (create-loom-wallet server passphrase invitation
+                                            walletname sponsorname private))))
                (unless errmsg
                  ;; We can get a duplicate when bringing in an existing
                  ;; wallet. Code above errors for a new wallet with
                  ;; a known name.
-                 (loop with original = walletname
-                    with idx = 1
-                    while (find walletname wallets
-                                :test #'equal :key #'loom-wallet-name)
-                    do
-                      (setf walletname
-                            (format nil "~a ~a" original (incf idx))))
+                 (setf walletname (find-unique-walletname wallets walletname))
                  (add-loom-wallet
                   db account-passphrase
                   serverurl walletname passphrase private)
@@ -258,14 +269,14 @@
       (loom-do-servers-command
        cw
        :msg msg
-       :errmsg errmsg
-       :serverurl serverurl
-       :passphrase passphrase
-       :passphrase2 passphrase2
-       :walletname walletname
-       :invitation invitation
+       :errmsg (hsc errmsg)
+       :serverurl (hsc serverurl)
+       :passphrase (hsc passphrase)
+       :passphrase2 (hsc passphrase2)
+       :walletname (hsc walletname)
+       :invitation (hsc invitation)
        :private private
-       :sponsorname sponsorname))))
+       :sponsorname (hsc sponsorname)))))
 
 (defun make-cw-loom-menu (cw current-page)
   (setf (loom-cw-menu cw)
@@ -540,22 +551,24 @@
   (setf (loom-cw-title cw) "Loom Register - Truledger Client"
         (loom-cw-body cw)
         (expand-template
-         (list :serverurl (hsc *default-loom-server-url*))
+         (list :serverurl (hsc *default-loom-server-url*)
+               :sponsorname "My Sponsor")
          "loom-register.tmpl")))  
 
 (defun loom-do-new-registration (cw)
   (with-parms (account-passphrase account-passphrase2 serverurl
-               passphrase passphrase2 walletname invitation private
+               passphrase passphrase2 walletname invitation sponsorname private
                newacct login)
     (let* ((db (loom-cw-db cw))
-           (account-hash (loom-account-hash db passphrase))
+           (account-hash (loom-account-hash db account-passphrase))
            (loom-passphrase (if (blankp passphrase) account-passphrase passphrase))
            (urlhash (and (not (blankp serverurl)) (loom-urlhash serverurl)))
            wallet unused-invitation-message errmsg)
+      (setf (loom-cw-passphrase cw) account-passphrase
+            (loom-cw-account-hash cw) account-hash)
       (when (loom-urlhash-preference db account-hash)
-        (setf (loom-cw-session cw) (make-loom-session db account-hash)
-              (loom-cw-passphrase cw) account-passphrase
-              (loom-cw-account-hash cw) account-hash)
+        (setf (loom-cw-session cw) (loom-make-session db account-passphrase))
+        (set-cookie "session" (loom-cw-session cw))
         (get-cw-servers cw)
         (when urlhash
           (let ((server (find urlhash (loom-cw-servers cw)
@@ -597,21 +610,55 @@
                       (equal passphrase passphrase2)))
              (setf errmsg "Loom Server Passphrase doesn't match Verification.")))
       (unless errmsg
-        (let* ((server (loom:make-loom-uri-server serverurl))
+        (let* ((loom-server (loom:make-loom-uri-server serverurl))
                loom-walletname
                private-p)
           (multiple-value-setq (errmsg loom-walletname private-p)
-            (load-loom-walletname server loom-passphrase))
-          (cond ((or errmsg walletname)
+            (load-loom-walletname loom-server loom-passphrase))
+          (cond ((or errmsg loom-walletname)
                  ;; Either the server is invalid or the wallet already exists
                  (unless errmsg
-                   (setf walletname loom-walletname
-                         private private-p)))
+                   (let* ((server (loom-cw-server cw))
+                          (wallets (and server
+                                        (equal urlhash (loom-server-urlhash server))
+                                        (loom-server-wallets server))))
+                     (setf walletname
+                           (find-unique-walletname wallets loom-walletname)
+                           private private-p))))
                 (t
-                 ;; The wallet needs to be created
-                 )
-                ))))))
-
+                 (when (blankp sponsorname)
+                   (setf sponsorname "My Sponsor"))
+                 (setf errmsg (nth-value 1 (create-loom-wallet
+                                            loom-server loom-passphrase invitation
+                                            walletname sponsorname private)))))))
+      (unless errmsg
+        (setf (loom-urlhash-preference db account-hash) urlhash)
+        (let ((namehash (add-loom-wallet
+                         db account-passphrase serverurl walletname
+                         loom-passphrase private)))
+          (setf (loom-namehash-preference db account-hash urlhash) namehash))
+        (get-cw-servers cw))
+      (make-cw-loom-menu cw nil)
+      (cond (errmsg
+             (setf (loom-cw-title cw) "Loom Register - Truledger Client"
+                   (loom-cw-body cw)
+                   (expand-template
+                    (list :errmsg errmsg
+                          :account-passphrase (hsc account-passphrase)
+                          :account-passphrase2 (hsc account-passphrase2)
+                          :serverurl (hsc serverurl)
+                          :passphrase (hsc passphrase)
+                          :passphrase2 (hsc passphrase2)
+                          :walletname (hsc walletname)
+                          :invitation (hsc invitation)
+                          :sponsorname (hsc sponsorname)
+                          :private private)
+                    "loom-register.tmpl"))
+             cw)
+            (t
+             (setf (loom-cw-session cw) (loom-make-session db account-passphrase))
+             (set-cookie "session" (loom-cw-session cw))
+             (loom-do-wallet-command cw))))))
       
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -621,7 +621,7 @@
 
    ;; Loom functions
    #:loom-login-with-sessionid
-   #:make-loom-session
+   #:loom-make-session
    #:loom-remove-session
    #:loom-logout
    #:loom-urlhash

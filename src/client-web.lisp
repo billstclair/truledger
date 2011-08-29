@@ -169,9 +169,14 @@
             (init-post-salt-and-msg cw session)
             (when (null cmd) (setq cmd "balance")))
         (error ()
-          (delete-cookie "session")
-          (setf cmd "logout"
-                session nil)))
+          (let ((passphrase (loom-login-with-sessionid (db client) session)))
+            (cond (passphrase
+                   ;;; *** Continue here ***
+                   (error "Not done yet")
+                   )
+                  (t (delete-cookie "session")
+                     (setf cmd "logout"
+                           session nil))))))
       (setf (cw-session cw) session))
 
     (cond ((id client)
@@ -510,7 +515,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
            (setq menu (menuitem "logout" "Logout"  nil))))
     (setf (cw-menu cw) menu)))
 
-(defun do-logout (cw &optional no-draw)
+(defmethod do-logout ((cw cw) &optional no-draw)
   (when (cw-session cw)
     (logout (cw-client cw)))
   (delete-cookie "session")

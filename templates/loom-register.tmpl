@@ -1,4 +1,4 @@
-<form method='post' action='./' autocomplete='off'>
+<form method='post' action='./loom' autocomplete='off'>
       <input type='hidden' name='cmd' value='new-registration' />
       <input type='hidden' name='postcnt' />
       <input type='hidden' name='postsalt' />
@@ -42,6 +42,10 @@
         <tr>
           <td><b>Invitation:</b></td>
           <td><input type='text' name='invitation' size='32' value='<!-- TMPL_VAR invitation -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Sponsor Name:</b></td>
+          <td><input type='text' name='sponsorname' size='40' value='<!-- TMPL_VAR sponsorname -->'/></td>
         </tr>
         <tr>
           <td><b>Private Wallet:</b></td>
