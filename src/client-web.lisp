@@ -59,8 +59,11 @@
         base
         (format nil "~a-~d" base port))))
 
+(defvar *blank-cookies-p* nil)
+
 (defun get-cookie (name)
-  (hunchentoot:cookie-in (cookie-name name)))
+  (unless *blank-cookies-p*
+    (hunchentoot:cookie-in (cookie-name name))))
 
 (defun set-cookie (name value)
   (hunchentoot:set-cookie (cookie-name name) :value value))
@@ -138,7 +141,7 @@
 (defun mix-verify-values (postcnt sessionid salt)
   (sha1 (xorcrypt (stringify postcnt) (xorcrypt sessionid salt))))
 
-;; Values for forms, so that another site can't
+;; Make it hard to replay a form submission.
 (defun form-compute-verify-values (postcnt &optional (sessionid (get-cookie "session")))
   (when sessionid
     (let* ((salt (newsessionid))
@@ -171,9 +174,7 @@
         (error ()
           (let ((passphrase (loom-login-with-sessionid (db client) session)))
             (cond (passphrase
-                   ;;; *** Continue here ***
-                   (error "Not done yet")
-                   )
+                   (throw 'raw-return (loom-web-server)))
                   (t (delete-cookie "session")
                      (setf cmd "logout"
                            session nil))))))
@@ -675,6 +676,10 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                     (draw-balance cw)
                     (draw-servers cw))))
           (error (c)
+            (let ((session (loom-login-for-client client passphrase)))
+              (when session
+                (set-cookie "session" session)
+                (do-loom cw)))
             (setq err (stringify c "Login error: ~a")))))
 
       (setf (cw-error cw) err)

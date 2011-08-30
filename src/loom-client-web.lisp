@@ -41,6 +41,7 @@
     ("pay-or-claim" . loom-do-pay-or-claim)   ;loom-wallet.tmpl
     ("register" . loom-do-register-command)
     ("new-registration" . loom-do-new-registration)
+    ("logout" . do-logout)
     ))
 
 (defun get-cw-servers (cw)
@@ -555,6 +556,12 @@ Return two values: wallet and errmsg"
                :sponsorname "My Sponsor")
          "loom-register.tmpl")))  
 
+(defun loom-login-for-client (client passphrase)
+  (let* ((db (db client))
+         (account-hash (loom-account-hash db passphrase)))
+    (when (loom-urlhash-preference db account-hash)
+      (loom-make-session db passphrase))))
+
 (defun loom-do-new-registration (cw)
   (with-parms (account-passphrase account-passphrase2 serverurl
                passphrase passphrase2 walletname invitation sponsorname private
@@ -659,6 +666,13 @@ Return two values: wallet and errmsg"
              (setf (loom-cw-session cw) (loom-make-session db account-passphrase))
              (set-cookie "session" (loom-cw-session cw))
              (loom-do-wallet-command cw))))))
+
+(defmethod do-logout ((cw loom-cw) &optional no-draw)
+  (delete-cookie "session")
+  (unless no-draw
+    (throw 'raw-return
+      (let ((*blank-cookies-p* t))
+        (web-server)))))
       
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
