@@ -454,6 +454,7 @@
    #:client
    #:make-client
    #:make-client-db
+   #:folded-hash
    #:syncedreq-p
    #:showprocess-p
    #:coupon

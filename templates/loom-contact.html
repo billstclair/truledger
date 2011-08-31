@@ -1,0 +1,67 @@
+<html>
+  <head>
+    <title>Loom Contact - Truledger Client</title>
+    <meta name='viewport' content='width=device-width' />
+    <link rel='apple-touch-icon' href=='../site-icon.ico' />
+    <link rel='shortcut icon' href='../site-icon.ico' />
+    <link rel='stylesheet' type='text/css' href='../css/tables.css' />
+  </head>
+  <body>
+    <p>
+      <a href='../'><img style='vertical-align: middle;border: 1px white' src='../truledger-logo-50x49.gif' alt='Truledger' width='50' height='49' /></a>
+      <b> Loom</b>&nbsp;&nbsp;
+      <a href='./?cmd=loom-wallet'>Wallet</a>&nbsp;&nbsp
+      <a href='./?cmd=loom-contacts'><b style='font-size: 120%;'>Contacts</b></a>&nbsp;&nbsp
+      <a href='./?cmd=loom-servers'>Servers</a>&nbsp;&nbsp
+      <a href='./?cmd=loom-assets'>Assets</a>&nbsp;&nbsp
+      <a href='./?cmd=truledger'>Truledger</a>&nbsp;&nbsp
+      <a href='./?cmd=logout'>Logout</a>
+    </p>
+    <b>Loom Server: </b>Loom.cc <a href='https://secure.looom.cc/'>https://secure.loom.cc/</a><br />
+    <b>Account Name: </b>Bill St. Clair<br />
+    <br/>
+    <b>Contact: </b>johnjohn<br />
+    <b>Location:</b> 8f35fad53a61248d537ecc22f25edae1<br />
+    <b>Options:</b>&nbsp;&nbsp;
+    <a href='./loom?cmd=contact&name=johnjohn'>Refresh</a>&nbsp;&nbsp;
+    <a href='./loom?cmd=wallet&name=johnjohn'>Pay</a>&nbsp;&nbsp;
+    <a href='./loom?cmd=contact&name=johnjohn&operation=rename'>Rename</a>&nbsp;&nbsp;
+    <a href='./loom?cmd=contact&name=johnjohn&operation=delete'>Delete</a><br />
+    <br />
+    <table class='prettytable'>
+        <tr>
+          <th align='left'>On the table</th>
+          <th align='left'>johnjohn</th>
+          <th align='center'>&nbsp;</th>
+        </tr>
+        <tr>
+          <td align='right'>50</td>
+          <td>usage tokens</td>
+          <td align='right'><a href='./loom?cmd=asset&name=usage+tokens'>view asset</a></td>
+        </tr>
+    </table>
+
+    <p>Enter the new name you would like to use for this contact:</p>
+    <form method='post' action='./loom' autocomplete='off'>
+      <input type='hidden' name='cmd' value='rename-contact'/>
+      <input type='text' size='40' value='jakejake'/>
+      <input type='submit' name='save' value='Save'/>
+      <a href='./loom?cmd=contact&name=jakejake'>Cancel</a>
+    </form>
+
+    <p style="color: red;">Confirm deletion</p>
+    <p>If you insist on deleting this contact, you
+    risk <span style="color: red;">losing</span> all of the assets
+    below. We advise you to click Home and reclaim the assets first,
+    then come back here and delete the contact when it's empty.</p>
+    <form method='post' action='./loom' autocomplete='off'>
+      <input type='hidden' name='cmd' value='delete-contact'/>
+      <input type='checkbox' name='confirm'/>
+      Check the box to confirm, then press
+      <input type='submit' name='delete' value="Delete Now!"/>
+      <a href='./loom?cmd=contacts&name=jackjack'>Cancel</a>
+    </form>
+
+    <p><a href='http://common-lisp.net/'><img style='border: 0;' src='../little-lambda.png' alt='Made with Lisp' title='Made with Lisp' width='16' height='16' /></a></p>
+  </body>
+</html>

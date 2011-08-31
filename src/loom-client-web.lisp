@@ -12,6 +12,7 @@
   title
   menu
   body
+  onload
   session
   passphrase
   account-hash
@@ -27,12 +28,18 @@
            (cw (loom-web-server-internal db))
            (plist (list :title (loom-cw-title cw)
                         :menu (loom-cw-menu cw)
+                        :onload (loom-cw-onload cw)
                         :body (loom-cw-body cw))))
       (expand-template plist "index.tmpl"))))
 
 (defparameter *loom-cmd-to-function-alist*
   '(("wallet" . loom-do-wallet-command)
     ("contacts" . loom-do-contacts-command)
+    ("new-contact" . loom-do-new-contact) ;loom-contacts.tmpl
+    ("enabled-contacts" . loom-do-enabled-contacts) ;loom-contacts.tmpl
+    ("contact" . loom-do-contact)
+    ("delete-contact" . loom-delete-contact) ;loom-contact.tmpl
+    ("rename-contact" . loom-rename-contact) ;loom-contact.tmpl
     ("assets" . loom-do-assets-command)
     ("servers" . loom-do-servers-command)
     ("new-loom-server" . loom-do-new-loom-server)       ;loom-servers.tmpl
@@ -146,6 +153,8 @@
              (setf (loom-cw-title cw) "Loom Servers - Truledger Client"
                    (loom-cw-menu cw)
                    (make-loom-menu :servers :servers :truledger :logout)
+                   (loom-cw-onload cw)
+                   "document.getElementById(\"serverurl\").focus()"
                    (loom-cw-body cw)
                    (expand-template (list :serverurl url)
                                     "loom-servers.tmpl"))))))
@@ -313,6 +322,8 @@ Return two values: wallet and errmsg"
       (setf serverurl (and default-server (loom-server-url default-server))))
     (make-cw-loom-menu cw :servers)
     (setf (loom-cw-title cw) "Loom Servers - Truledger Client"
+          (loom-cw-onload cw)
+          "document.getElementById(\"serverurl\").focus()"
           (loom-cw-body cw)
           (expand-template
            `(:current-server-url ,(and default-server
@@ -401,7 +412,7 @@ Return two values: wallet and errmsg"
              for location = (find loc wallet-locations
                                   :test #'equal :key #'loom:location-loc)
              for contact-name = (and location (loom:location-name location))
-             for loc-hash = (nth-value 1 (loom:sha256 loc))
+             for loc-hash = (folded-hash loc)
              when location
              do
                (loop for (id . qty) in id.qty
@@ -426,6 +437,7 @@ Return two values: wallet and errmsg"
                           (push contact table-contacts))))))))
     (make-cw-loom-menu cw :wallet)
     (setf (loom-cw-title cw) "Loom Wallet - Truledger Client"
+          (loom-cw-onload cw) "document.getElementById(\"payamt\").focus()"
           (loom-cw-body cw)
           (expand-template
            `(:current-server-url ,(hsc (loom-server-url server))
@@ -550,9 +562,8 @@ Return two values: wallet and errmsg"
                                (find claim-loc-hash wallet-locations
                                      :test #'equal
                                      :key (lambda (location)
-                                            (nth-value
-                                             1 (loom:sha256
-                                                (loom:location-loc location))))))
+                                            (folded-hash
+                                             (loom:location-loc location)))))
                               (claim-loc (and claim-location
                                               (loom:location-loc claim-location)))
                               (real-qty
@@ -706,7 +717,39 @@ Return two values: wallet and errmsg"
     (throw 'raw-return
       (let ((*blank-cookies-p* t))
         (web-server)))))
-      
+
+(defun loom-do-contacts-command (cw &key errmsg (assetid (loom:random-loc)) name)
+  (let* ((server (loom-cw-server cw))
+         (wallet (loom-cw-wallet cw))
+         (loom-wallet (loom-cw-get-loom-wallet cw))
+         (first-p t)
+         (contacts (loop for location in (loom:wallet-locations loom-wallet)
+                      for name = (loom:location-name location)
+                      for loc = (loom:location-loc location)
+                      for loc-hash = (folded-hash loc)
+                      collect (list :enabled-name (unless first-p
+                                                    (strcat "enabled-" loc-hash))
+                                    :enabled (not (loom:location-disabled-p
+                                                   location))
+                                    :url-encoded-name (url-rewrite:url-encode name)
+                                    :name (hsc name))
+                      do (setf first-p nil))))
+    (make-cw-loom-menu cw :contacts)
+    (setf (loom-cw-title cw) "Loom Contacts - Truledger Client"
+          (loom-cw-onload cw) "document.getElementById(\"assetid\").focus()"
+          (loom-cw-body cw) 
+          (expand-template
+           (list :errmsg errmsg
+                 :server-url (hsc (loom-server-url server))
+                 :wallet-name (hsc (loom-wallet-name wallet))
+                 :assetid assetid
+                 :name name
+                 :contacts contacts)
+           "loom-contacts.tmpl"))
+    cw))
+
+(defun loom-do-contact (cw)
+  )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

@@ -6,7 +6,7 @@
     <link rel='shortcut icon' href='../site-icon.ico' />
     <link rel='stylesheet' type='text/css' href='../css/tables.css' />
   </head>
-  <body onload='document.forms[1].payamt.focus()'>
+  <body onload='document.getElementById("assetid").focus()'>
     <p>
       <a href='../'><img style='vertical-align: middle;border: 1px white' src='../truledger-logo-50x49.gif' alt='Truledger' width='50' height='49' /></a>
       <b> Loom</b>&nbsp;&nbsp;
@@ -19,90 +19,56 @@
     </p>
     <b>Loom Server: </b>Loom.cc <a href='https://secure.looom.cc/'>https://secure.loom.cc/</a><br />
     <b>Account Name: </b>Bill St. Clair<br />
-<!-- TMPL_IF other-servers -->
-      <select name='server'>
-        <option value=''>Choose a server...</option><!-- TMPL_LOOP other-servers -->
-        <option value='<!-- TMPL_VAR urlhash -->'><!-- TMPL_VAR name -->gsfs.ch</option><!-- /TMPL_LOOP -->        
-      </select>
-      <input type='submit' name='changeserver' value='Change Server'/><!-- /TMPL_IF --><!-- TMPL_IF other-wallets -->
-      <br/>
-      <select name='wallet'>
-        <option value=''>Choose a wallet...</option><!-- TMPL_LOOP other-wallets -->
-        <option value='<!-- TMPL_VAR namehash -->namehash2'><!-- TMPL_VAR name -->Savings</option><!-- /TMPL_LOOP -->
-        <option value='namehash3'>Mom</option>
-      </select>
-      <input type='submit' name='changewallet' value='Change Wallet'/><!-- /TMPL_IF -->
-    </form>
-    <span style='color: red;'>Error message.</span><br />
-    <form method='post' action='./' autocomplete='off'>
-      <input type='hidden' name='cmd' value='loom-wallet' />
-      <input type='hidden' name='postcnt' value='895' />
-      <input type='hidden' name='postsalt' value='d943071d0b77073014f284a056591b143d9f0b6e' />
-      <input type='hidden' name='postmsg' value='77bd88873367953bc0d508e2a419b5593aa3ba09' />
-      <input type='hidden' name='wallet1' value='asset-location-1'/>
-      <input type='hidden' name='wallet2' value='asset-location-2'/>
-      <input type='hidden' name='wallet3' value='asset-location-3'/>
-      <input type='hidden' name='wallet4' value='asset-location-4'/>
-      <input type='hidden' name='wallet4' value='asset-location-4'/>
-      <input type='hidden' name='lochash1' value='lochash1'/>
-      <input type='hidden' name='locasset1' value='asset-location-5'/>
+    <br/>
+    <form method='post' action='./loom' autocomplete='off'>
+      <input type='hidden' name='cmd' value='new-contact'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->' />
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
       <table>
         <tr>
-          <td><b>Pay/Claim Amount:</b></td>
-          <td><input type='text' name='payamt' size='20' /> (blank to claim all)</td>
+          <td><b>ID:</b></td>
+          <td><input type='text' name='assetid' id='assetid' size='40' value='<!-- TMPL_VAR assetid -->'/></td>
+        </tr><tr>
+          <td><b>Name:</b></td>
+          <td><input type='text' name='name' size='40' value='<!-- TMPL_VAR name -->'/></td>
         </tr>
         <tr>
-          <td><b>Contact:</td>
-          <td>
-            <select name='contact'>
-              <option value=''>choose contact...</option>
-              <option value='01234567012345670123456701234567'>Joe</option>
-              <option value='01234567012345670123456701234567'>Bob</option>
-              <option value='01234567012345670123456701234567'>Bill</option>
-            </select>
-          </td>
-        </tr>
-      </table>
-      <br/>
-      <table class='prettytable'>
-        <tr>
-          <th align='left'>In my wallet</th>
-          <th align='left'>Bill St. Clair</th>
-          <th align='center'><a href='./?cmd=contact&namehash=...hash...'>view contact</a></th>
+          <td>&nbsp;</td>
+          <td><input type='checkbox' name='fund' checked='checked'/> Move 100 usage tokens here</td>
         </tr>
         <tr>
-          <td align='right'>0.77</td>
-          <td>Capulin Coffee Units</td>
-          <td align='center'><input type='submit' name='pay1' value='Pay' /></td>
-        </tr>
-        <tr>
-          <td align='right'>1.085</td>
-          <td>GoldNowBanc GoldGrams</td>
-          <td align='center'><input type='submit' name='pay2' value='Pay' /></td>
-        </tr>
-        <tr>
-          <td align='right'>1.051</td>
-          <td>Patrick GoldGrams</td>
-          <td align='center'><input type='submit' name='pay3' value='Pay' /></td>
-        </tr>
-        <tr>
-          <td align='right'>1479</td>
-          <td>usage tokens</td>
-          <td align='center'><input type='submit' name='pay4' value='Pay' /></td>
-        </tr>
-
-        <tr>
-          <th align='left'>On the table</th>
-          <th align='left'>Safe</th>
-          <th align='center'><a href='./?cmd=contact&namehash=...hash...'>view contact</a></th>
-        </tr>
-        <tr>
-          <td align='right'>100</td>
-          <td>usage tokens</td>
-          <td align='center'><input type='submit' name='claim1' value='Claim' /></td>
+          <td>&nbsp;</td>
+          <td><input type="submit" name="create" value="Create Contact"/></td>
         </tr>
       </table>
     </form>
+
+    <form method='post' action='./loom' autocomplete='off'>
+      <input type='hidden' name='cmd' value='enabled-contacts'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->' />
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
+
+      <input type='submit' name='save' value="Save Enabled"/>
+      <table class='prettytable'>
+        <tr><th>Enabled</th><th>Name</th></tr>
+        <tr>
+          <td>&nbsp;</td>
+          <td><a href='./loom?cmd=contact&name=Server+Admin'><b>Server Admin</b></a></td>
+        </tr>
+        <tr>
+          <td align='center'><input type="checkbox" name="enable-1" checked='checked'/></td>
+          <td><a href='./loom?cmd=contact&name=billbill'>billbill</a></td>
+        </tr>
+        <tr>
+          <td align='center'><input type="checkbox" name="enable-2" checked='checked'/></td>
+          <td><a href='./loom?cmd=contact&name=Issuer'>Issuer</a></td>
+        </tr>
+      </table>
+      <input type='submit' name='save' value="Save Enabled "/>
+    </form>
+
     <p><a href='http://common-lisp.net/'><img style='border: 0;' src='../little-lambda.png' alt='Made with Lisp' title='Made with Lisp' width='16' height='16' /></a></p>
   </body>
 </html>

@@ -1,0 +1,43 @@
+<b>Loom Server:</b> <a href='<!-- TMPL_VAR server-url -->'><!-- TMPL_VAR server-url --></a><br/>
+    <b>Wallet:</b> <!-- TMPL_VAR wallet-name --><br/>
+    <br/>
+    <form method='post' action='./loom' autocomplete='off'>
+      <input type='hidden' name='cmd' value='new-contact'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->' />
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
+      <table>
+        <tr>
+          <td><b>ID:</b></td>
+          <td><input type='text' name='assetid' id='assetid' size='40' value='<!-- TMPL_VAR assetid -->'/></td>
+        </tr><tr>
+          <td><b>Name:</b></td>
+          <td><input type='text' name='name' size='40' value='<!-- TMPL_VAR name -->'/></td>
+        </tr>
+        <tr>
+          <td>&nbsp;</td>
+          <td><input type='checkbox' name='fund'<!-- TMPL_IF fund --> checked='checked'<!-- /TMPL_IF -->/> Move 100 usage tokens here</td>
+        </tr>
+        <tr>
+          <td>&nbsp;</td>
+          <td><input type="submit" name="create" value="Create Contact"/></td>
+        </tr>
+      </table>
+    </form>
+
+    <form method='post' action='./loom' autocomplete='off'>
+      <input type='hidden' name='cmd' value='enabled-contacts'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->' />
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
+
+      <input type='submit' name='save' value="Save Enabled"/>
+      <table class='prettytable'>
+        <tr><th>Enabled</th><th>Name</th></tr><!-- TMPL_LOOP contacts -->
+        <tr>
+          <td><!-- TMPL_IF enabled-name --><input type='checkbox' name='<!-- TMPL_VAR enabled-name -->'<!-- TMPL_IF enabled --> checked='checked'<!-- /TMPL_IF -->/><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></td>
+          <td><a href='./loom?cmd=contact&name=<!-- TMPL_VAR url-encoded-name -->'><b><!-- TMPL_VAR name --></b></a></td>
+        </tr><!-- /TMPL_LOOP -->
+      </table>
+      <input type='submit' name='save' value="Save Enabled "/>
+    </form>

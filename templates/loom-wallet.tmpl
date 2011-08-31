@@ -27,7 +27,7 @@
         <tr>
           <td><b>Pay/Claim Amount:</b></td>
           <td>
-            <input type='text' name='payamt' size='20' value='<!-- TMPL_VAR payamt -->' />
+            <input type='text' name='payamt' id='payamt' size='20' value='<!-- TMPL_VAR payamt -->' />
             <input type="checkbox" name="claimall"<!-- TMPL_IF claimall --> checked='checked'<!-- /TMPL_IF -->/> claim all
           </td>
         </tr>
@@ -52,7 +52,10 @@
           <td align='right'><!-- TMPL_VAR asset-amount --></td>
           <td><!-- TMPL_VAR asset-name --></td>
           <td align='center'><input type='submit' name='pay-<!-- TMPL_VAR asset-id -->' value='Pay' /></td>
-        </tr><!-- /TMPL_LOOP  --><!-- TMPL_LOOP table-contacts -->
+        </tr><!-- /TMPL_LOOP  -->
+        <tr>
+          <td colspan='3' style='border: none; background-color: white;'>&nbsp;</td>
+        </tr><!-- TMPL_LOOP table-contacts -->
         <tr>
           <th align='left'>On the table</th>
           <th align='left'><!-- TMPL_VAR contact-name --></th>
