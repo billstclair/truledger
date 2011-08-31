@@ -364,7 +364,7 @@ Return two values: wallet and errmsg"
           (store-loom-wallet (loom-cw-db cw) account-passphrase wallet loom-wallet)
           loom-wallet))))
 
-(defun loom-do-wallet-command (cw &key errmsg payamt contact)
+(defun loom-do-wallet-command (cw &key errmsg payamt (claimall t) contact-name)
   (let* ((servers (loom-cw-servers cw))
          (server (loom-cw-server cw))
          (wallets (loom-cw-wallets cw))
@@ -390,29 +390,33 @@ Return two values: wallet and errmsg"
           (setf wallet-loc
                 (and wallet-locations (loom:location-loc wallet-location)))
           (loop for location in (loom:wallet-locations loom-wallet)
-             for loc = (loom:location-loc location)
              for name = (loom:location-name location)
+             for loc = (loom:location-loc location)
              do
                (unless (equal loc wallet-loc)
-                 (push (list :loc loc :name (hsc name) :select (equal loc contact))
+                 (push (list :name (hsc name)
+                             :select (equal name contact-name))
                        contacts)))
           (loop for (loc . id.qty) in qty-alist
              for location = (find loc wallet-locations
                                   :test #'equal :key #'loom:location-loc)
              for contact-name = (and location (loom:location-name location))
+             for loc-hash = (nth-value 1 (loom:sha256 loc))
              when location
              do
                (loop for (id . qty) in id.qty
                   for asset = (find id wallet-assets
                                     :test #'equal :key #'loom:asset-id)
+                  for asset-name = (loom:asset-name asset)
                   when asset
                   collect (list :asset-amount qty
                                 :asset-id id
-                                :asset-loc loc
-                                :asset-name (hsc (loom:asset-name asset)))
+                                :asset-loc-hash (hsc loc-hash)
+                                :asset-name (hsc asset-name))
                   into assets
                   finally
-                    (let ((contact (list :contact-loc loc
+                    (let ((contact (list :contact-url-name (url-rewrite:url-encode
+                                                            contact-name)
                                          :contact-name (hsc contact-name)
                                          :assets (sort assets #'string-lessp
                                                        :key (lambda (plist)
@@ -426,13 +430,13 @@ Return two values: wallet and errmsg"
           (expand-template
            `(:current-server-url ,(hsc (loom-server-url server))
              :current-wallet-name ,(hsc (loom-wallet-name wallet))
-             :wallet-loc ,wallet-loc
              :urlhash ,(loom-server-urlhash server)
              :namehash ,(loom-wallet-namehash wallet)
              :other-servers ,other-servers                          
              :other-wallets ,other-wallets
              :errmsg ,errmsg
              :payamt ,payamt
+             :claimall ,claimall
              :contacts ,(sort contacts #'string-lessp
                               :key (lambda (plist) (getf plist :name)))
              ,@wallet-contact
@@ -467,16 +471,17 @@ Return two values: wallet and errmsg"
       (loom-do-wallet-command cw :errmsg errmsg))))
     
 (defun loom-do-pay-or-claim (cw)
-  (with-parms (urlhash namehash payamt contact)
+  (with-parms (urlhash namehash payamt claimall contact-name)
     (let ((errmsg nil))
       (handler-case (loom-do-pay-or-claim-internal
-                     cw urlhash namehash payamt contact)
+                     cw urlhash namehash payamt claimall contact-name)
         (error (c)
           (setf errmsg (hsc (format nil "~a" c)))
           (loom-do-wallet-command
-           cw :errmsg errmsg :payamt payamt :contact contact))))))
+           cw :errmsg errmsg :payamt payamt :contact-name contact-name))))))
 
-(defun loom-do-pay-or-claim-internal (cw urlhash namehash payamt contact)
+(defun loom-do-pay-or-claim-internal (cw urlhash namehash
+                                      payamt claimall contact-name)
   (let* ((servers (loom-cw-servers cw))
          (server (find urlhash servers :test #'equal :key #'loom-server-urlhash))
          (wallet (and server
@@ -485,11 +490,10 @@ Return two values: wallet and errmsg"
          (db (loom-cw-db cw))
          (account-passphrase (loom-cw-passphrase cw))
          (account-hash (loom-cw-account-hash cw))
-         (wallet-loc (and wallet
-                          (loom-wallet-location wallet account-passphrase)))
+         (wallet-loc (and wallet (loom-wallet-location wallet account-passphrase)))
          (errmsg nil)
          (pay-id nil)
-         (claim-loc nil)
+         (claim-loc-hash nil)
          (claim-id nil))
     (cond (wallet
            (setf (loom-urlhash-preference db account-hash) urlhash
@@ -502,7 +506,7 @@ Return two values: wallet and errmsg"
         (dolist (cell (hunchentoot:post-parameters hunchentoot:*request*))
           (let ((name (car cell)))
             (cond ((eql 0 (search pay-prefix name :test #'equal))
-                   (cond ((or (blankp payamt) (blankp contact))
+                   (cond ((or (blankp payamt) (blankp contact-name))
                           (setf errmsg "Pay/Claim Amount & Contact must be specified."))
                          (t (setf pay-id (subseq name (length pay-prefix)))))
                    (return))
@@ -510,7 +514,7 @@ Return two values: wallet and errmsg"
                    (let ((loc-and-id (split-sequence:split-sequence
                                       #\- (subseq name (length claim-prefix)))))
                      (cond ((eql 2 (length loc-and-id))
-                            (setf claim-loc (first loc-and-id)
+                            (setf claim-loc-hash (first loc-and-id)
                                   claim-id (second loc-and-id)))
                            (t (setf errmsg "Badly formed claim value"))))
                    (return))))))
@@ -519,30 +523,59 @@ Return two values: wallet and errmsg"
       (unless errmsg
         (let* ((loom-server (loom:make-loom-uri-server (loom-server-url server))))
           (loom:with-loom-transaction (:server loom-server)
-            (let ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
-                  (id (or pay-id claim-id)))
+            (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
+                   (wallet-locations
+                    (and loom-wallet (loom:wallet-locations loom-wallet)))
+                   (id (or pay-id claim-id)))
               (let* ((asset (loom:find-asset-by-id id loom-wallet))
                      (scale (and asset (loom:asset-scale asset)))
+                     (precision (and asset (loom:asset-precision asset)))
                      (qty (and asset
                                (not (blankp payamt))
                                (loom:unformat-loom-qty payamt scale))))
                 (cond ((null asset)
                        (setf errmsg "Can't find asset."))
                       (pay-id
-                       (loom:grid-buy pay-id contact wallet-loc t)
-                       (loom:grid-move pay-id qty wallet-loc contact))
+                       (let ((contact-loc
+                              (loom:find-location
+                               contact-name wallet-locations t)))
+                         (cond (contact-loc
+                                (loom:grid-buy pay-id contact-loc wallet-loc t)
+                                (loom:grid-move pay-id qty wallet-loc contact-loc))
+                               (t (setf errmsg
+                                        (format nil "Can't find contact: ~s"
+                                                contact-name))))))
                       (claim-id
-                       (let ((real-qty
-                              (or qty (loom:grid-touch claim-id claim-loc))))
-                         (loom:grid-buy claim-id wallet-loc wallet-loc t)
-                         (loom:grid-move
-                          claim-id real-qty claim-loc wallet-loc)
-                         (ignore-errors
-                           (loom:grid-sell claim-id claim-loc wallet-loc))))))))))
-      (if errmsg
-          (loom-do-wallet-command
-           cw :errmsg errmsg :payamt payamt :contact contact)
-          (loom-do-wallet-command cw)))))
+                       (let* ((claim-location
+                               (find claim-loc-hash wallet-locations
+                                     :test #'equal
+                                     :key (lambda (location)
+                                            (nth-value
+                                             1 (loom:sha256
+                                                (loom:location-loc location))))))
+                              (claim-loc (and claim-location
+                                              (loom:location-loc claim-location)))
+                              (real-qty
+                               (or (and (not claimall) qty)
+                                   (loom:grid-touch claim-id claim-loc))))
+                         (cond (claim-loc
+                                (loom:grid-buy claim-id wallet-loc wallet-loc t)
+                                (loom:grid-move
+                                 claim-id real-qty claim-loc wallet-loc)
+                                (ignore-errors
+                                  (loom:grid-sell claim-id claim-loc wallet-loc))
+                                (setf payamt (loom:format-loom-qty
+                                              real-qty scale precision)
+                                      contact-name
+                                      (loom:location-name claim-location)))
+                               (t (setf errmsg
+                                        "Can't find claim location.")))))))))))
+      (loom-do-wallet-command
+       cw
+       :errmsg errmsg
+       :payamt payamt
+       :claimall claimall
+       :contact-name contact-name))))
 
 (defun loom-do-register-command (cw)
   (when (loom-cw-session cw)

@@ -17,9 +17,9 @@
       <a href='./?cmd=truledger'>Truledger</a>&nbsp;&nbsp
       <a href='./?cmd=logout'>Logout</a>
     </p>
+    <b>Loom Server: </b>Loom.cc <a href='https://secure.looom.cc/'>https://secure.loom.cc/</a><br />
     <b>Account Name: </b>Bill St. Clair<br />
-    <form method='post' action='./'>
-      <b>Loom Server: </b>Loom.cc <a href='https://secure.looom.cc/'>https://secure.loom.cc/</a><br /><!-- TMPL_IF other-servers -->
+<!-- TMPL_IF other-servers -->
       <select name='server'>
         <option value=''>Choose a server...</option><!-- TMPL_LOOP other-servers -->
         <option value='<!-- TMPL_VAR urlhash -->'><!-- TMPL_VAR name -->gsfs.ch</option><!-- /TMPL_LOOP -->        

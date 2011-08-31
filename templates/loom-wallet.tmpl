@@ -23,18 +23,20 @@
       <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
       <input type='hidden' name='urlhash' value='<!-- TMPL_VAR urlhash -->'/>
       <input type='hidden' name='namehash' value='<!-- TMPL_VAR namehash -->'/>
-      <input type='hidden' name='wallet-loc' value='<!-- TMPL_VAR wallet-loc -->'/>
       <table>
         <tr>
           <td><b>Pay/Claim Amount:</b></td>
-          <td><input type='text' name='payamt' size='20' value='<!-- TMPL_VAR payamt -->' /> (blank to claim all)</td>
+          <td>
+            <input type='text' name='payamt' size='20' value='<!-- TMPL_VAR payamt -->' />
+            <input type="checkbox" name="claimall"<!-- TMPL_IF claimall --> checked='checked'<!-- /TMPL_IF -->/> claim all
+          </td>
         </tr>
         <tr>
           <td><b>Contact:</td>
           <td>
-            <select name='contact'>
+            <select name='contact-name'>
               <option value=''>choose contact...</option><!-- TMPL_LOOP contacts -->
-              <option value='<!-- TMPL_VAR loc -->'<!-- TMPL_IF select --> selected='selected'<!-- /TMPL_IF -->><!-- TMPL_VAR name --></option><!-- /TMPL_LOOP -->
+              <option value='<!-- TMPL_VAR name -->'<!-- TMPL_IF select --> selected='selected'<!-- /TMPL_IF -->><!-- TMPL_VAR name --></option><!-- /TMPL_LOOP -->
             </select>
           </td>
         </tr>
@@ -44,22 +46,21 @@
         <tr>
           <th align='left'>In my wallet</th>
           <th align='left'><!-- TMPL_VAR contact-name --></th>
-          <th align='center'><a href='./?cmd=contact&loc=<!-- TMPL_VAR contact-loc -->'>view contact</a></th>
+          <th align='center'><a href='./loom?cmd=contact&name=<!-- TMPL_VAR contact-url-name -->'>view contact</a></th>
         </tr><!-- TMPL_LOOP assets -->
         <tr>
           <td align='right'><!-- TMPL_VAR asset-amount --></td>
           <td><!-- TMPL_VAR asset-name --></td>
           <td align='center'><input type='submit' name='pay-<!-- TMPL_VAR asset-id -->' value='Pay' /></td>
         </tr><!-- /TMPL_LOOP  --><!-- TMPL_LOOP table-contacts -->
-
         <tr>
           <th align='left'>On the table</th>
           <th align='left'><!-- TMPL_VAR contact-name --></th>
-          <th align='center'><a href='./?cmd=contact&loc=<!-- TMPL_VAR contact-loc -->'>view contact</a></th>
+          <th align='center'><a href='./loom?cmd=contact&name=<!-- TMPL_VAR contact-url-name -->'>view contact</a></th>
         </tr><!-- TMPL_LOOP assets -->
         <tr>
           <td align='right'><!-- TMPL_VAR asset-amount --></td>
           <td><!-- TMPL_VAR asset-name --></td>
-          <td align='center'><input type='submit' name='claim-<!-- TMPL_VAR asset-loc -->-<!-- TMPL_VAR asset-id -->' value='Claim' /></td>
+          <td align='center'><input type='submit' name='claim-<!-- TMPL_VAR asset-loc-hash -->-<!-- TMPL_VAR asset-id -->' value='Claim' /></td>
         </tr><!-- /TMPL_LOOP --><!-- /TMPL_LOOP -->
       </table>
