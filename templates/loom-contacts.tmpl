@@ -1,7 +1,7 @@
 <b>Loom Server:</b> <a href='<!-- TMPL_VAR server-url -->'><!-- TMPL_VAR server-url --></a><br/>
     <b>Wallet:</b> <!-- TMPL_VAR wallet-name --><br/>
-    <br/>
-    <form method='post' action='./loom' autocomplete='off'>
+    <br/><!-- TMPL_IF errmsg -->
+    <span style='color: red;'><!-- TMPL_VAR errmsg --></span><br /><!-- /TMPL_IF -->    <form method='post' action='./loom' autocomplete='off'>
       <input type='hidden' name='cmd' value='new-contact'/>
       <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->' />
       <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
@@ -31,7 +31,7 @@
       <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
       <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
 
-      <input type='submit' name='save' value="Save Enabled"/>
+      <input type='submit' name='save' value="Save Enabled Changes"/>
       <table class='prettytable'>
         <tr><th>Enabled</th><th>Name</th></tr><!-- TMPL_LOOP contacts -->
         <tr>
@@ -39,5 +39,5 @@
           <td><a href='./loom?cmd=contact&name=<!-- TMPL_VAR url-encoded-name -->'><b><!-- TMPL_VAR name --></b></a></td>
         </tr><!-- /TMPL_LOOP -->
       </table>
-      <input type='submit' name='save' value="Save Enabled "/>
+      <input type='submit' name='save' value="Save Enabled Changes"/>
     </form>

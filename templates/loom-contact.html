@@ -50,10 +50,14 @@
     </form>
 
     <p style="color: red;">Confirm deletion</p>
+
     <p>If you insist on deleting this contact, you
     risk <span style="color: red;">losing</span> all of the assets
-    below. We advise you to click Home and reclaim the assets first,
-    then come back here and delete the contact when it's empty.</p>
+    below. We advise you to
+    click <a href='../loom?cmd=wallet'>Wallet</a> and reclaim the
+    assets first, then come back here and delete the contact when it's
+    empty.</p>
+
     <form method='post' action='./loom' autocomplete='off'>
       <input type='hidden' name='cmd' value='delete-contact'/>
       <input type='checkbox' name='confirm'/>

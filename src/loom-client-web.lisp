@@ -390,6 +390,8 @@ Return two values: wallet and errmsg"
          wallet-contact
          table-contacts
          wallet-loc)
+    (unless contact-name
+      (setf contact-name (with-parms (contact-name) contact-name)))
     (let ((loom-server (loom:make-loom-uri-server (loom-server-url server))))
       (loom:with-loom-transaction (:server loom-server)
         (let* ((loom-wallet (loom-cw-get-loom-wallet
@@ -416,11 +418,11 @@ Return two values: wallet and errmsg"
              when location
              do
                (loop for (id . qty) in id.qty
-                  for asset = (find id wallet-assets
-                                    :test #'equal :key #'loom:asset-id)
-                  for asset-name = (loom:asset-name asset)
+                  for asset = (loom:find-asset-by-id id wallet-assets)
+                  for asset-name = (and asset (loom:asset-name asset))
                   when asset
-                  collect (list :asset-amount qty
+                  collect (list :asset-amount (loom:format-loom-qty-from-asset
+                                               qty asset)
                                 :asset-id id
                                 :asset-loc-hash (hsc loc-hash)
                                 :asset-name (hsc asset-name))
@@ -748,8 +750,66 @@ Return two values: wallet and errmsg"
            "loom-contacts.tmpl"))
     cw))
 
-(defun loom-do-contact (cw)
-  )
+(defun loom-do-contact (cw &key errmsg name deleting-p include-rename-p new-name)
+  (unless name
+    (multiple-value-setq (name deleting-p include-rename-p)
+      (with-parms (name operation)
+        (values name (equal operation "delete") (equal operation "rename")))))
+  (let* ((server (loom-cw-server cw))
+         (wallet (loom-cw-wallet cw))
+         (loom-server (loom:make-loom-uri-server (loom-server-url server)))
+         loom-wallet location loc wallet-assets qty-alist assets)
+
+    (loom:with-loom-transaction (:server loom-server)
+      (setf loom-wallet (loom-cw-get-loom-wallet cw :server loom-server)
+            location (loom:find-location name (loom:wallet-locations loom-wallet)))
+      (when location
+        (setf loc (loom:location-loc location)
+              wallet-assets (loom:wallet-assets loom-wallet)
+              qty-alist (loom:grid-scan-wallet loom-wallet
+                                               :locations (list location)))))
+
+    (unless location
+      (return-from loom-do-contact
+        (loom-do-contacts-command
+         cw :errmsg (format nil "No such contact: ~s" name))))
+
+    (loop for (id . qty) in (cdar qty-alist)
+       for asset = (loom:find-asset-by-id id wallet-assets)
+       for asset-name = (and asset (loom:asset-name asset))
+       when asset do
+         (push (list :asset-amount (loom:format-loom-qty-from-asset
+                                    qty asset)
+                     :asset-id id
+                     :asset-name (hsc asset-name)
+                     :url-encoded-asset-name (url-rewrite:url-encode asset-name))
+               assets))
+    (setf assets (sort assets #'string-lessp
+                       :key #'(lambda (plist) (getf plist :asset-name))))
+    (make-cw-loom-menu cw :contacts)
+        (setf (loom-cw-title cw) "Loom Contact - Truledger Client"
+              (loom-cw-onload cw)
+              (and include-rename-p "document.getElementById(\"new-name\").focus()")
+              (loom-cw-body cw)
+              (expand-template
+               (list :errmsg errmsg
+                     :server-url (hsc (loom-server-url server))
+                     :wallet-name (hsc (loom-wallet-name wallet))
+                     :name (hsc name)
+                     :loc (if (loom:location-wallet-p location)
+                              "&lt;secret>"
+                              loc)
+                     :non-wallet-p (not (loom:location-wallet-p location))
+                     :url-encoded-name (url-rewrite:url-encode name)
+                     :include-options-p (not (or deleting-p include-rename-p))
+                     :include-assets-p (and assets (not include-rename-p))
+                     :include-rename-p include-rename-p
+                     :deleting-p deleting-p
+                     :assets assets
+                     :new-name new-name
+                     )
+               "loom-contact.tmpl"))
+        cw))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

@@ -1,31 +1,37 @@
 <b>Server URL: </b>Loom.cc <a href='<!-- TMPL_VAR server-url -->'><!-- TMPL_VAR server-url --></a><br />
     <b>Account Name: </b><!-- TMPL_VAR wallet-name --><br />
-    <br/>
+    <p>
     <b>Contact: </b><!-- TMPL_VAR name --><br />
     <b>Location:</b> <!-- TMPL_VAR loc --><br /><!-- TMPL_IF include-options-p -->
     <b>Options:</b>&nbsp;&nbsp;
     <a href='./loom?cmd=contact&name=<!-- TMPL_VAR url-encoded-name -->'>Refresh</a>&nbsp;&nbsp;<!-- TMPL_IF non-wallet-p -->
-    <a href='./loom?cmd=wallet&name=<!-- TMPL_VAR url-encoded-name -->>Pay</a>&nbsp;&nbsp;<!-- /TMPL_IF -->
+    <a href='./loom?cmd=wallet&contact-name=<!-- TMPL_VAR url-encoded-name -->'>Pay</a>&nbsp;&nbsp;<!-- /TMPL_IF -->
     <a href='./loom?cmd=contact&name=<!-- TMPL_VAR url-encoded-name -->&operation=rename'>Rename</a><!-- TMPL_IF non-wallet-p -->&nbsp;&nbsp;
-    <a href='./loom?cmd=contact&name=<!-- TMPL_VAR url-encoded-name -->&operation=delete'>Delete</a><br /><!-- /TMPL_IF --><!-- /TMPL_IF -->
-    <br /><!-- TMPL_IF deleting-p -->
+    <a href='./loom?cmd=contact&name=<!-- TMPL_VAR url-encoded-name -->&operation=delete'>Delete</a><!-- /TMPL_IF -->
+    </p><!-- /TMPL_IF --><!-- TMPL_IF deleting-p -->
+
     <p style="color: red;">Confirm deletion</p>
+<!-- TMPL_IF include-assets-p -->
     <p>If you insist on deleting this contact, you
     risk <span style="color: red;">losing</span> all of the assets
-    below. We advise you to click Home and reclaim the assets first,
-    then come back here and delete the contact when it's empty.</p>
+    below.</p>
+    <p>We advise you to click
+    <a href='./loom?cmd=wallet'>Wallet</a> and reclaim the assets
+    first, then come back here and delete the contact when it's
+    empty.</p><!-- /TMPL_IF -->
+
     <form method='post' action='./loom' autocomplete='off'>
       <input type='hidden' name='cmd' value='delete-contact'/>
+      <input type='hidden' name='name' value='<!-- TMPL_VAR name -->'/>
       <input type='checkbox' name='confirm'/>
       Check the box to confirm, then press
       <input type='submit' name='delete' value="Delete Now!"/>
-      <a href='./loom?cmd=contacts&name=jackjack'>Cancel</a>
-    </form>
-<!-- /TMPL_IF --><!-- TMPL_IF include-assets-p -->
+      <a href='./loom?cmd=contact&name=<!-- TMPL_VAR url-encoded-name -->'>Cancel</a>
+    </form><!-- /TMPL_IF --><!-- TMPL_IF include-assets-p -->
     <table class='prettytable'>
         <tr>
-          <th align='left'>On the table</th>
-          <th align='left'>johnjohn</th>
+          <th align='left'><!-- TMPL_IF non-wallet-p -->On the table<!-- TMPL_ELSE -->In my wallet<!-- /TMPL_IF --></th>
+          <th align='left'><!-- TMPL_VAR name --></th>
           <th align='center'>&nbsp;</th>
         </tr><!-- TMPL_LOOP assets -->
         <tr>
@@ -37,7 +43,8 @@
     <p>Enter the new name you would like to use for this contact:</p>
     <form method='post' action='./loom' autocomplete='off'>
       <input type='hidden' name='cmd' value='rename-contact'/>
-      <input type='text' size='40' value='<!-- TMPL_VAR name -->'/>
+      <input type='hidden' name='name' value='<!-- TMPL_VAR name -->'/>
+      <input type='text' name='new-name' id='new-name' size='40' value='<!-- TMPL_VAR new-name -->'/>
       <input type='submit' name='save' value='Save'/>
       <a href='./loom?cmd=contact&name=<!-- TMPL_VAR url-encoded-name -->'>Cancel</a>
-    </form>
+    </form><!-- /TMPL_IF -->
