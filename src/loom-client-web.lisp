@@ -723,7 +723,7 @@ Return two values: wallet and errmsg"
 (defun loom-do-contacts-command (cw &key errmsg (assetid (loom:random-loc)) name)
   (let* ((server (loom-cw-server cw))
          (wallet (loom-cw-wallet cw))
-         (loom-wallet (loom-cw-get-loom-wallet cw))
+         (loom-wallet (loom-cw-get-loom-wallet cw :force-server-p t))
          (first-p t)
          (contacts (loop for location in (loom:wallet-locations loom-wallet)
                       for name = (loom:location-name location)
@@ -736,6 +736,9 @@ Return two values: wallet and errmsg"
                                     :url-encoded-name (url-rewrite:url-encode name)
                                     :name (hsc name))
                       do (setf first-p nil))))
+    (setf contacts (cons (car contacts)
+                         (sort (cdr contacts) #'string-lessp
+                               :key (lambda (plist) (getf plist :name)))))
     (make-cw-loom-menu cw :contacts)
     (setf (loom-cw-title cw) "Loom Contacts - Truledger Client"
           (loom-cw-onload cw) "document.getElementById(\"assetid\").focus()"
@@ -810,6 +813,41 @@ Return two values: wallet and errmsg"
                      )
                "loom-contact.tmpl"))
         cw))
+
+(defun loom-delete-contact (cw)
+  (with-parms (name confirm)
+    (unless confirm
+      (return-from loom-delete-contact
+        (loom-do-contact cw
+                         :errmsg "You must check the box to delete the contact."
+                         :name name
+                         :deleting-p t)))
+    (let* ((server (loom-cw-server cw))
+           (loom-server (loom:make-loom-uri-server (loom-server-url server)))
+           errmsg)
+      (loom:with-loom-transaction (:server loom-server)
+        (let* ((loom-wallet (loom-cw-get-loom-wallet
+                             cw
+                             :server loom-server
+                             :force-server-p t))
+               (locations (loom:wallet-locations loom-wallet))
+               (wallet-location (find-if #'loom:location-wallet-p locations))
+               (location (loom:find-location name locations)))
+          (cond ((not wallet-location)
+                 (setf errmsg "Can't find wallet location."))
+                ((eq location wallet-location)
+                 (setf errmsg "You may not delete your wallet."))
+                (location
+                 (setf (loom:wallet-locations loom-wallet)
+                       (delete location locations :test #'eq)
+                       (loom:get-wallet (loom:location-loc wallet-location))
+                       loom-wallet))
+                (t (setf errmsg (format nil "There is no contact named ~s" name))))))
+      (if errmsg
+          (loom-do-contact cw :errmsg errmsg :name name :deleting-p t)
+          (loom-do-contacts-command
+           cw
+           :errmsg (format nil "Contact ~s deleted." name))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

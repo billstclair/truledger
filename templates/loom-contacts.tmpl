@@ -1,7 +1,8 @@
 <b>Loom Server:</b> <a href='<!-- TMPL_VAR server-url -->'><!-- TMPL_VAR server-url --></a><br/>
     <b>Wallet:</b> <!-- TMPL_VAR wallet-name --><br/>
     <br/><!-- TMPL_IF errmsg -->
-    <span style='color: red;'><!-- TMPL_VAR errmsg --></span><br /><!-- /TMPL_IF -->    <form method='post' action='./loom' autocomplete='off'>
+    <span style='color: red;'><!-- TMPL_VAR errmsg --></span><br /><!-- /TMPL_IF -->
+    <form method='post' action='./loom' autocomplete='off'>
       <input type='hidden' name='cmd' value='new-contact'/>
       <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->' />
       <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />

@@ -1,6 +1,7 @@
 <b>Server URL: </b>Loom.cc <a href='<!-- TMPL_VAR server-url -->'><!-- TMPL_VAR server-url --></a><br />
     <b>Account Name: </b><!-- TMPL_VAR wallet-name --><br />
-    <p>
+    <p><!-- TMPL_IF errmsg -->
+    <span style='color: red;'><!-- TMPL_VAR errmsg --></span><br /><!-- /TMPL_IF -->
     <b>Contact: </b><!-- TMPL_VAR name --><br />
     <b>Location:</b> <!-- TMPL_VAR loc --><br /><!-- TMPL_IF include-options-p -->
     <b>Options:</b>&nbsp;&nbsp;
