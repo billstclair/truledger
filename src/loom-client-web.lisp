@@ -360,7 +360,7 @@ Return two values: wallet and errmsg"
     (get-cw-servers cw)
     (loom-do-wallet-command cw)))
 
-(defun loom-cw-get-loom-wallet (cw &key server force-server-p)
+(defun loom-cw-get-loom-wallet (cw &key server (force-server-p t))
   (let* ((server (or server
                      (loom:make-loom-uri-server
                       (loom-server-url (loom-cw-server cw)))))
@@ -395,7 +395,7 @@ Return two values: wallet and errmsg"
     (let ((loom-server (loom:make-loom-uri-server (loom-server-url server))))
       (loom:with-loom-transaction (:server loom-server)
         (let* ((loom-wallet (loom-cw-get-loom-wallet
-                             cw :server loom-server :force-server-p t))
+                             cw :server loom-server))
                (wallet-locations (loom:wallet-locations loom-wallet))
                (wallet-assets (loom:wallet-assets loom-wallet))
                (qty-alist (loom:grid-scan-wallet loom-wallet))
@@ -537,7 +537,8 @@ Return two values: wallet and errmsg"
       (unless errmsg
         (let* ((loom-server (loom:make-loom-uri-server (loom-server-url server))))
           (loom:with-loom-transaction (:server loom-server)
-            (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
+            (let* ((loom-wallet (loom-cw-get-loom-wallet
+                                 cw :server loom-server :force-server-p nil))
                    (wallet-locations
                     (and loom-wallet (loom:wallet-locations loom-wallet)))
                    (id (or pay-id claim-id)))
@@ -720,10 +721,10 @@ Return two values: wallet and errmsg"
       (let ((*blank-cookies-p* t))
         (web-server)))))
 
-(defun loom-do-contacts-command (cw &key errmsg (assetid (loom:random-loc)) name)
+(defun loom-do-contacts-command (cw &key errmsg (id (loom:random-loc)) name)
   (let* ((server (loom-cw-server cw))
          (wallet (loom-cw-wallet cw))
-         (loom-wallet (loom-cw-get-loom-wallet cw :force-server-p t))
+         (loom-wallet (loom-cw-get-loom-wallet cw))
          (first-p t)
          (contacts (loop for location in (loom:wallet-locations loom-wallet)
                       for name = (loom:location-name location)
@@ -741,17 +742,92 @@ Return two values: wallet and errmsg"
                                :key (lambda (plist) (getf plist :name)))))
     (make-cw-loom-menu cw :contacts)
     (setf (loom-cw-title cw) "Loom Contacts - Truledger Client"
-          (loom-cw-onload cw) "document.getElementById(\"assetid\").focus()"
+          (loom-cw-onload cw) "document.getElementById(\"id\").focus()"
           (loom-cw-body cw) 
           (expand-template
            (list :errmsg errmsg
                  :server-url (hsc (loom-server-url server))
                  :wallet-name (hsc (loom-wallet-name wallet))
-                 :assetid assetid
+                 :id id
                  :name name
                  :contacts contacts)
            "loom-contacts.tmpl"))
     cw))
+
+(defun loom-do-new-contact (cw)
+  (with-parms (id name fund)
+    (let* ((server (loom-cw-server cw))
+           (loom-server (loom:make-loom-uri-server (loom-server-url server)))
+           errmsg)
+      (loom:with-loom-transaction (:server loom-server)
+        (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
+               (locations (loom:wallet-locations loom-wallet))
+               (id-location (find id locations
+                                  :test #'equal
+                                  :key #'loom:location-loc))
+               (wallet-location (find-if #'loom:location-wallet-p locations))
+               (wallet-loc (and wallet-location
+                                (loom:location-loc wallet-location))))
+          (cond ((loom:find-location name locations)
+                 (setf errmsg (format nil
+                                      "You already have a contact named ~s"
+                                      name)))
+                (id-location
+                 (setf errmsg (format nil "Contact ~s is at that location."
+                                      (loom:location-name id-location))))
+                ((not wallet-location)
+                 (setf errmsg "Can't find wallet location."))
+                (t
+                 (when fund
+                   (let ((bal (loom:grid-touch loom:*zero* wallet-loc t t)))
+                     (unless (or (< bal 0) (>= bal 101))
+                       (setf errmsg "You don't have 101 usage tokens."))))
+                 (unless errmsg
+                   (setf (loom:wallet-locations loom-wallet)
+                         `(,@locations ,(loom:make-location :name name :loc id))
+                         (loom:get-wallet wallet-loc)
+                         loom-wallet)
+                   (when fund
+                     (loom:grid-buy loom:*zero* id wallet-loc t)
+                     (loom:grid-move loom:*zero* 100 wallet-loc id)))))))
+      (if errmsg
+          (loom-do-contacts-command
+           cw
+           :errmsg errmsg
+           :id id
+           :name name)
+          (loom-do-contact cw :errmsg  "Added new contact." :name name)))))
+
+(defun loom-do-enabled-contacts (cw)
+  (let* ((prefix "enabled-")
+         (prefix-len (length prefix))
+         (hashes (loop for cell in (hunchentoot:post-parameters
+                                    hunchentoot:*request*)
+                    for name = (car cell)
+                    when (eql 0 (search prefix name :test #'equal))
+                    collect (subseq name prefix-len)))
+         (server (loom-cw-server cw))
+         (loom-server (loom:make-loom-uri-server (loom-server-url server)))
+         errmsg)
+    (loom:with-loom-transaction (:server loom-server)
+      (let* ((wallet (loom-cw-get-loom-wallet cw :server loom-server))
+             (locations (loom:wallet-locations wallet))
+             (wallet-location (find-if #'loom:location-wallet-p locations))
+             (wallet-loc (and wallet-location (loom:location-loc wallet-location)))
+             (changed-p nil))
+        (unless wallet-loc
+          (setf errmsg "Can't find wallet location."))
+        (unless errmsg
+          (dolist (location locations)
+            (let ((enabled-p (member (folded-hash (loom:location-loc location))
+                                     hashes
+                                     :test #'equal)))
+              (unless (xor enabled-p (loom:location-disabled-p location))
+                (setf changed-p t
+                      (loom:location-disabled-p location) (not enabled-p)))))
+          (when changed-p
+            (setf (loom:get-wallet wallet-loc) wallet)))))
+    (loom-do-contacts-command cw :errmsg errmsg)))
 
 (defun loom-do-contact (cw &key errmsg name deleting-p include-rename-p new-name)
   (unless name
@@ -762,7 +838,6 @@ Return two values: wallet and errmsg"
          (wallet (loom-cw-wallet cw))
          (loom-server (loom:make-loom-uri-server (loom-server-url server)))
          loom-wallet location loc wallet-assets qty-alist assets)
-
     (loom:with-loom-transaction (:server loom-server)
       (setf loom-wallet (loom-cw-get-loom-wallet cw :server loom-server)
             location (loom:find-location name (loom:wallet-locations loom-wallet)))
@@ -809,7 +884,7 @@ Return two values: wallet and errmsg"
                      :include-rename-p include-rename-p
                      :deleting-p deleting-p
                      :assets assets
-                     :new-name new-name
+                     :new-name (if (blankp new-name) name (hsc new-name))
                      )
                "loom-contact.tmpl"))
         cw))
@@ -826,10 +901,7 @@ Return two values: wallet and errmsg"
            (loom-server (loom:make-loom-uri-server (loom-server-url server)))
            errmsg)
       (loom:with-loom-transaction (:server loom-server)
-        (let* ((loom-wallet (loom-cw-get-loom-wallet
-                             cw
-                             :server loom-server
-                             :force-server-p t))
+        (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
                (locations (loom:wallet-locations loom-wallet))
                (wallet-location (find-if #'loom:location-wallet-p locations))
                (location (loom:find-location name locations)))
@@ -848,6 +920,42 @@ Return two values: wallet and errmsg"
           (loom-do-contacts-command
            cw
            :errmsg (format nil "Contact ~s deleted." name))))))
+
+(defun loom-rename-contact (cw)
+  (with-parms (name new-name)
+    (let (errmsg)
+      (if (blankp new-name)
+          (setf errmsg "New name may not be blank.")
+          (let* ((server (loom-cw-server cw))
+                 (loom-server
+                  (loom:make-loom-uri-server (loom-server-url server))))
+            (loom:with-loom-transaction (:server loom-server)
+              (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
+                     (locations (loom:wallet-locations loom-wallet))
+                     (wallet-location (find-if #'loom:location-wallet-p locations))
+                     (location (loom:find-location name locations)))
+                (cond ((loom:find-location new-name locations)
+                       (setf errmsg
+                             (format nil
+                                     "There is already a contact named ~s"
+                                     new-name)))
+                      ((not location)
+                       (return-from loom-rename-contact
+                         (loom-do-contacts-command
+                          cw
+                          :errmsg (format
+                                   nil "Can't find contact named ~s" name))))
+                      ((not wallet-location)
+                       (setf errmsg "Can't find wallet location."))
+                      (t (setf (loom:location-name location) new-name
+                               (loom:get-wallet
+                                (loom:location-loc wallet-location))
+                               loom-wallet)))))))
+        (loom-do-contact cw
+                         :errmsg errmsg
+                         :name (if errmsg name new-name)
+                         :new-name (and errmsg new-name)
+                         :include-rename-p (not (null errmsg))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
