@@ -6,6 +6,8 @@ time. You need to click "Balance" again. Fix it.
 ----------------------------------------------------------------------
 Loom web client.
 
+Properly display -0.
+
 Persist server/wallet list to Loom server in "truledger-loom-servers"
 property of private wallet.
 

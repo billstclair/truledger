@@ -247,7 +247,7 @@
         (:p
          (:a :href "../"
              (:img :style "vertical-align: middle;border: 1px white"
-                   :src "../truledger-logo-50x49.gif"
+                   :src "../truledger-logo-50x49.png"
                    :alt "Truledger" :width "50" :height "49"))
          (:b " " (str servername))
          (when menu
