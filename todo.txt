@@ -1,12 +1,10 @@
-Remove the "Encryption" column from the "Servers" screen.
-
 When you add a server, the wire encryption doesn't work the first
 time. You need to click "Balance" again. Fix it.
 
+Can't mint a coupon until you visit the "Permissions" page.
+
 ----------------------------------------------------------------------
 Loom web client.
-
-Properly display -0.
 
 Persist server/wallet list to Loom server in "truledger-loom-servers"
 property of private wallet.

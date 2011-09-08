@@ -421,8 +421,7 @@ Return two values: wallet and errmsg"
                   for asset = (loom:find-asset-by-id id wallet-assets)
                   for asset-name = (and asset (loom:asset-name asset))
                   when asset
-                  collect (list :asset-amount (loom:format-loom-qty-from-asset
-                                               qty asset)
+                  collect (list :asset-amount qty
                                 :asset-id id
                                 :asset-loc-hash (hsc loc-hash)
                                 :asset-name (hsc asset-name))
@@ -572,7 +571,9 @@ Return two values: wallet and errmsg"
                               (real-qty
                                (or (and (not claimall) qty)
                                    (loom:grid-touch claim-id claim-loc))))
-                         (cond (claim-loc
+                         (cond ((< real-qty 0)
+                                (setf errmsg "Can't claim all from issuer."))
+                               (claim-loc
                                 (loom:grid-buy claim-id wallet-loc wallet-loc t)
                                 (loom:grid-move
                                  claim-id real-qty claim-loc wallet-loc)
@@ -856,8 +857,7 @@ Return two values: wallet and errmsg"
        for asset = (loom:find-asset-by-id id wallet-assets)
        for asset-name = (and asset (loom:asset-name asset))
        when asset do
-         (push (list :asset-amount (loom:format-loom-qty-from-asset
-                                    qty asset)
+         (push (list :asset-amount qty
                      :asset-id id
                      :asset-name (hsc asset-name)
                      :url-encoded-asset-name (url-rewrite:url-encode asset-name))

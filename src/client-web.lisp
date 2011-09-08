@@ -2226,6 +2226,7 @@ list with that nickname, or change the nickname of the selected
             (:th "ID")
             (:th "Choose")
             (:th "Private Key")
+            #+allow-disable-wire-encryption
             (:th "Encryption"))
            (dolist (server servers)
              (let ((bid (server-info-id server)))
@@ -2233,6 +2234,7 @@ list with that nickname, or change the nickname of the selected
                  (let ((name (server-info-name server))
                        (url (hsc (server-info-url server)))
                        (cached-p (privkey-cached-p client bid))
+                       #+allow-disable-wire-encryption
                        (encrypted-p (not (no-server-encryption-p bid))))                   (when (blankp name)
                      (setq name "unnamed"))
                    (form (stream "server"
@@ -2249,6 +2251,7 @@ list with that nickname, or change the nickname of the selected
                        (:input :type "submit"
                                :name (if cached-p "uncacheprivkey" "cacheprivkey")
                                :value (if cached-p "Uncache" "Cache")))
+                      #+allow-disable-wire-encryption
                       (:td
                        (:input :type "submit"
                                :name (if encrypted-p "unencrypt" "encrypt")
