@@ -178,7 +178,7 @@
                    (declare (ignore msg))
                    (let ((downmsg (db-get (make-fsdb (server-db-dir)) $SHUTDOWNMSG)))
                      (or downmsg "Server is down")))
-                 (hunchentoot:redirect "/client/")))
+                 (redirect "/client/")))
             (t (do-static-file))))))
 
 (defvar *last-uri* nil)
@@ -195,14 +195,37 @@
                                           *default-pathname-defaults*)))
     (truledger-client-web:loom-web-server)))
   
+;; Maybe this should be per-server, but it's rare to run more than
+;; one in a single lisp image.
+(defvar *url-prefix*
+  (asdf:getenv "TRULEDGER_URL_PREFIX"))
+
+(defun prepend-url-prefix (path)
+  (if *url-prefix*
+      (strcat *url-prefix* path)
+      path))
+
+(defun remove-url-prefix (path)
+  (if *url-prefix*
+      (and (eql 0 (search *url-prefix* path :test #'string=))
+           (subseq path (length *url-prefix*)))
+      path))
+
+(defun redirect (path)
+  (hunchentoot:redirect (prepend-url-prefix path)))
+
 (defvar *web-script-handlers*
   (make-hash-table :test 'equal))
 
+;; note that we expect the prefixed script-name when getting,
+;; but we append the prefix when setting.
 (defun get-web-script-handler (port script-name)
-  (gethash (list port script-name) *web-script-handlers*))
+  (gethash (list port script-name)
+           *web-script-handlers*))
 
 (defun (setf get-web-script-handler) (handler port script-name)
-  (setf (gethash (list port script-name) *web-script-handlers*)
+  (setf (gethash (list port (prepend-url-prefix script-name))
+                 *web-script-handlers*)
         handler))
 
 (defun remove-web-script-handlers (port)
@@ -703,11 +726,13 @@ p.version {
     (cond ((not dir)
            (abort-request))
           (t
-           (let* ((uri (hunchentoot:request-uri hunchentoot:*request*))
+           (let* ((uri (remove-url-prefix
+                        (hunchentoot:request-uri hunchentoot:*request*)))
                   (coded-file (cdr (assoc uri *coded-files* :test 'string-equal))))
              ;; Change this to look for the coded file in the file system first,
              ;; and use that if it's there.
-             (cond (coded-file (apply (car coded-file) (cdr coded-file)))
+             (cond ((null uri) nil)
+                   (coded-file (apply (car coded-file) (cdr coded-file)))
                    (t (let ((file (merge-pathnames (strcat dir "/." uri))))
                         (hunchentoot:handle-static-file
                          (if (cl-fad:directory-pathname-p file)
@@ -770,16 +795,17 @@ openssl x509 -in cert.pem -text -noout
   ())
 
 (defun truledger-web-server (server &key
-                           (pathname-defaults nil)
-                           (www-dir "www")
-                           ssl-certificate-file
-                           ssl-privatekey-file
-                           (port (if ssl-privatekey-file
-                                     *default-server-ssl-port*
-                                     *default-server-port*))
-                           forwarding-port
-                           uid
-                           gid)
+                             (pathname-defaults nil)
+                             (www-dir "www")
+                             ssl-certificate-file
+                             ssl-privatekey-file
+                             (port (if ssl-privatekey-file
+                                       *default-server-ssl-port*
+                                       *default-server-port*))
+                             forwarding-port
+                             uid
+                             gid
+                             )
   "Start the client, and, if SERVER is non-NIL, server web servers.
    Use 'dbs/clientdb/' and 'dbs/serverdb/' as the database directories,
    relative to the default directory."
@@ -814,21 +840,24 @@ openssl x509 -in cert.pem -text -noout
                   #'(lambda ()
                       (if (parm "msg")
                           (do-truledger-web-server)
-                          (hunchentoot:redirect "/server/")))
+                          (redirect "/server/")))
                   (get-web-script-handler port "/server/")
                   'do-truledger-web-server
                   (get-web-script-handler port "/client")
-                  #'(lambda () (hunchentoot:redirect "/client/"))
+                  #'(lambda () (redirect "/client/"))
                   (get-web-script-handler port "/client/")
                   'do-truledger-web-client       
                   (get-web-script-handler port "/server/client")
-                  #'(lambda () (hunchentoot:redirect "/client/"))
+                  #'(lambda () (redirect "/client/"))
                   (get-web-script-handler port "/server/client/")
-                  #'(lambda () (hunchentoot:redirect "/client/"))
+                  #'(lambda () (redirect "/client/"))
                   (get-web-script-handler port "/client/")
                   'do-truledger-web-client       
                   (get-web-script-handler port "/client/loom")
                   'do-loom-web-client)
+            (when *url-prefix*
+              (setf (get-web-script-handler port "")
+                    (lambda () (redirect "/"))))
             (setf (port-acceptor port) acceptor)
             (hunchentoot:start acceptor)
             acceptor))
@@ -841,7 +870,7 @@ openssl x509 -in cert.pem -text -noout
         (setf (get-web-script-handler forwarding-port "/")
               (lambda () (maybe-redirect-to-ssl port))
               (get-web-script-handler forwarding-port "/client")
-              (lambda () (hunchentoot:redirect "/client/"))
+              (lambda () (redirect "/client/"))
               (get-web-script-handler forwarding-port "/client/")
               (lambda () (maybe-redirect-to-ssl port))
               (port-acceptor forwarding-port) acceptor)

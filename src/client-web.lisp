@@ -959,7 +959,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 (defun do-loom (cw)
   (declare (ignore cw))
   (throw 'raw-return
-    (hunchentoot:redirect "/client/loom")))
+    (redirect "/client/loom")))
 
 (defun do-admin (cw)
   (bind-parameters (passphrase verification adminpass adminverify)

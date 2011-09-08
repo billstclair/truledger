@@ -4155,7 +4155,7 @@
   (let ((account-hash (loom-account-hash db passphrase)))
     (unless (loom-urlhash-preference db account-hash)
       (error "No loom account for that passphrase.")))
-  (make-loom-session db passphrase))
+  (loom-make-session db passphrase))
 
 (defun loom-account-session-key (account-hash)
   (fsdb:append-db-keys (loom-account-key account-hash) $SESSION))

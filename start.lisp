@@ -31,6 +31,6 @@
 
 (tl)
 
-(let ((port (ignore-errors (parse-integer (ccl:getenv "TRULEDGER_PORT")))))
+(let ((port (ignore-errors (parse-integer (asdf:getenv "TRULEDGER_PORT")))))
   (when port
     (truledger:truledger-web-server nil :port port)))

@@ -34,6 +34,7 @@
     ("--nonsslport" :nonsslport . t)
     ("--uid" :uid . t)
     ("--gid" :gid . t)
+    ("--url-prefix" :url-prefix . t)
     #+loadswank
     ("--slimeport" :slimeport . t)))
 
@@ -43,13 +44,14 @@
 (defun usage-error (app)
   (error 'usage-error
          :format-control
-         "Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid]~a
+         "Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid] [-- url-prefix url-prefix]~a
 port defaults to 8785, unless keyfile & certfile are included, then 8786.
 If port defaults to 8786, then nonsslport defaults to 8785,
 otherwise the application doesn't listen on a non-ssl port.
 keyfile is the path to an SSL private key file.
 certfile is the path to an SSL certificate file.
-uid & gid are the user id and group id to change to after listening on the port.~a
+uid & gid are the user id and group id to change to after listening on the port.
+url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
 "
          :format-arguments
          (list app
@@ -99,6 +101,8 @@ uid & gid are the user id and group id to change to after listening on the port.
                                 (if (assoc :port args) "0" *default-port-string*)))
                 uid (cdr (assoc :uid args))
                 gid (cdr (assoc :gid args))
+                truledger:*url-prefix* (or (cdr (assoc :http-port args))
+                                            (asdf:getenv "TRULEDGER_URL_PREFIX"))
                 slimeport (let ((str (cdr (assoc :slimeport args))))
                             (and str (parse-integer str))))
         (error () (usage-error app))))

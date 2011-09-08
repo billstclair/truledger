@@ -413,6 +413,8 @@
    #:debugmsg
    #:debug-stream-p
    #:server-db-dir
+   #:*url-prefix*
+   #:redirect
    #:truledger-web-server
    #:web-server-active-p
    #:stop-web-server

@@ -1,3 +1,9 @@
+Remove the "Encryption" column from the "Servers" screen.
+
+When you add a server, the wire encryption doesn't work the first
+time. You need to click "Balance" again. Fix it.
+
+----------------------------------------------------------------------
 Loom web client.
 
 Persist server/wallet list to Loom server in "truledger-loom-servers"
