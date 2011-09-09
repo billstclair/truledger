@@ -2,15 +2,16 @@ No way to redeem a coupon for other than usage tokens.
   Server complains that the coupon isn't for usage tokens.
 
 ----------------------------------------------------------------------
-Loom web client.
 
-Don't say "Private" wallet. Use a different term.
+Loom web client
+
+Assets page
 
 Persist server/wallet list to Loom server in "truledger-loom-servers"
 property of private wallet.
 
-Servers page: change wallet name, change "Private", delete wallet
-(merge into current).
+Servers page: change wallet name, change "Loom.cc compatible", delete
+wallet (merge into current).
 
 ----------------------------------------------------------------------
 

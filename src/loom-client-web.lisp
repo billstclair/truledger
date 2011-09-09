@@ -410,7 +410,8 @@ Return two values: wallet and errmsg"
              for name = (loom:location-name location)
              for loc = (loom:location-loc location)
              do
-               (unless (equal loc wallet-loc)
+               (unless (or (equal loc wallet-loc)
+                           (loom:location-disabled-p location))
                  (push (list :name (hsc name)
                              :select (equal name contact-name))
                        contacts)))
@@ -865,8 +866,7 @@ Return two values: wallet and errmsg"
        when asset do
          (push (list :asset-amount qty
                      :asset-id id
-                     :asset-name (hsc asset-name)
-                     :url-encoded-asset-name (url-rewrite:url-encode asset-name))
+                     :asset-name (hsc asset-name))
                assets))
     (setf assets (sort assets #'string-lessp
                        :key #'(lambda (plist) (getf plist :asset-name))))
@@ -962,6 +962,24 @@ Return two values: wallet and errmsg"
                          :name (if errmsg name new-name)
                          :new-name (and errmsg new-name)
                          :include-rename-p (not (null errmsg))))))
+
+(defun loom-do-assets-command (cw &key errmsg)
+  (make-cw-loom-menu cw :assets)
+  (setf (loom-cw-title cw) "Loom Assets - Truledger Client"
+        (loom-cw-onload cw)
+        "document.getElementsById(\"\").focus()"
+        (loom-cw-body cw)
+        (expand-template
+         (list :errmsg errmsg
+               :server-url (hsc "server-url")
+               :wallet-name (hsc "wallet-name")
+               :description (hsc "description")
+               :id (hsc "id")
+               :name (hsc "name")
+               :scale (hsc "scale")
+               :precision (hsc "precision"))
+         "loom-assets.tmpl"))
+  cw)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

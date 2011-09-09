@@ -21,7 +21,7 @@
         </tr>
         <tr>
           <td>&nbsp;</td>
-          <td><input type="submit" name="create" value="Create Contact"/></td>
+          <td><input type='submit' name='create' value='Create Contact'/></td>
         </tr>
       </table>
     </form>
@@ -32,7 +32,7 @@
       <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
       <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
 
-      <input type='submit' name='save' value="Save Enabled Changes"/>
+      <input type='submit' name='save' value='Save Enabled Changes'/>
       <table class='prettytable'>
         <tr><th>Enabled</th><th>Name</th></tr><!-- TMPL_LOOP contacts -->
         <tr>
@@ -40,5 +40,5 @@
           <td><a href='./loom?cmd=contact&name=<!-- TMPL_VAR url-encoded-name -->'><b><!-- TMPL_VAR name --></b></a></td>
         </tr><!-- /TMPL_LOOP -->
       </table>
-      <input type='submit' name='save' value="Save Enabled Changes"/>
+      <input type='submit' name='save' value='Save Enabled Changes'/>
     </form>
