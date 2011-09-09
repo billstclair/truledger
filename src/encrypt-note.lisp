@@ -4,6 +4,15 @@
 ;;;
 ;;; Encrypted notes
 ;;;
+;;; The format of an encrypted note is:
+;;;
+;;;  [<id1>:<key1>|<id2>:<key2>,<iv>,<ciphertext>]
+;;;
+;;; Where the <idN> are the sender and recipient account IDs, the
+;;; <keyN> are private-key encrypted password, <iv> is an
+;;; initialization vector, and <ciphertext> is the mesage, encrypted
+;;; with the passphrase and <iv>.
+;;;
 
 (in-package :truledger)
 
