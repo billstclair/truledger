@@ -205,7 +205,7 @@ Return two values: wallet and errmsg"
   walletname)
 
 (defun loom-do-new-loom-server (cw)
-  (with-parms (serverurl passphrase walletname private
+  (with-parms (serverurl passphrase walletname loom-compatible
                          passphrase2 invitation sponsorname
                          addwallet cancel)
     (declare (ignore cancel))
@@ -214,6 +214,7 @@ Return two values: wallet and errmsg"
         ;; To do: go to the balance page, when that makes sense
         (loom-do-servers-command cw)))
     (let* ((errmsg nil)
+           (private (not loom-compatible))
            (msg nil)
            (db (loom-cw-db cw))
            (account-passphrase (loom-cw-passphrase cw))
@@ -317,7 +318,7 @@ Return two values: wallet and errmsg"
                           :namehash (loom-wallet-namehash wallet)
                           :server-url server-url
                           :walletname (loom-wallet-name wallet)
-                          :private (loom-wallet-private-p wallet)
+                          :loom-compatible (not (loom-wallet-private-p wallet))
                           :default (eq wallet default-wallet))
                   do
                     (setf server-url "")))))
@@ -336,19 +337,19 @@ Return two values: wallet and errmsg"
              :errmsg ,(or errmsg msg)
              :serverurl ,serverurl
              :servers ,servers-plist
+             :loom-compatible ,(not private)
              ,@(when errmsg
                      (list ;; Most web forms forget the password, but why?
                       :passphrase passphrase
                       :walletname walletname
                       :passphrase2 passphrase2
                       :invitation invitation
-                      :private private
                       :sponsorname sponsorname)))
            "loom-servers.tmpl"))))
 
 (defun loom-do-choose-loom-wallet (cw)
-  (with-parms (urlhash namehash private choose)
-    (declare (ignore private))
+  (with-parms (urlhash namehash loom-compatible choose)
+    (declare (ignore loom-compatible))
     (when choose
       (let* ((db (loom-cw-db cw))
              (server (find urlhash (loom-cw-servers cw)
@@ -601,10 +602,12 @@ Return two values: wallet and errmsg"
       (loom-do-servers-command cw)))
   (make-cw-loom-menu cw nil)
   (setf (loom-cw-title cw) "Loom Register - Truledger Client"
+        (loom-cw-onload cw) "document.getElementById(\"account-passphrase\").focus()"
         (loom-cw-body cw)
         (expand-template
          (list :serverurl (hsc *default-loom-server-url*)
-               :sponsorname "My Sponsor")
+               :sponsorname "My Sponsor"
+               :loom-compatible t)
          "loom-register.tmpl")))  
 
 (defun loom-login-for-client (client passphrase)
@@ -615,12 +618,13 @@ Return two values: wallet and errmsg"
 
 (defun loom-do-new-registration (cw)
   (with-parms (account-passphrase account-passphrase2 serverurl
-               passphrase passphrase2 walletname invitation sponsorname private
-               newacct login)
+               passphrase passphrase2 walletname invitation sponsorname
+               loom-compatible newacct login)
     (let* ((db (loom-cw-db cw))
            (account-hash (loom-account-hash db account-passphrase))
            (loom-passphrase (if (blankp passphrase) account-passphrase passphrase))
            (urlhash (and (not (blankp serverurl)) (loom-urlhash serverurl)))
+           (private (not loom-compatible))
            wallet unused-invitation-message errmsg)
       (setf (loom-cw-passphrase cw) account-passphrase
             (loom-cw-account-hash cw) account-hash)
@@ -628,7 +632,10 @@ Return two values: wallet and errmsg"
         (setf (loom-cw-session cw) (loom-make-session db account-passphrase))
         (set-cookie "session" (loom-cw-session cw))
         (get-cw-servers cw)
-        (when urlhash
+        (setf unused-invitation-message
+              (unless (blankp invitation)
+                (format nil "Unused invitation: ~a" invitation)))
+        (when (and urlhash (not login))
           (let ((server (find urlhash (loom-cw-servers cw)
                               :test #'equal :key #'loom-server-urlhash)))
             (when server
@@ -641,10 +648,7 @@ Return two values: wallet and errmsg"
                                            wallet account-passphrase))))
                 (when wallet
                   (setf (loom-namehash-preference db account-hash urlhash)
-                        (loom-wallet-namehash wallet)
-                        unused-invitation-message
-                        (unless (blankp invitation)
-                          (format nil "Unused invitation: ~s" invitation)))))
+                        (loom-wallet-namehash wallet))))
               (get-cw-servers cw)))))
       (cond (login
              (when (loom-cw-session cw)
@@ -653,7 +657,6 @@ Return two values: wallet and errmsg"
                   cw
                   :errmsg unused-invitation-message)))
              ;; Should try logging in to Truledger here
-             ;; And the Truledger login code needs to look for a Loom account.
              (setf errmsg "No loom account with that passphrase."))
             (wallet
              (return-from loom-do-new-registration
@@ -710,7 +713,7 @@ Return two values: wallet and errmsg"
                           :walletname (hsc walletname)
                           :invitation (hsc invitation)
                           :sponsorname (hsc sponsorname)
-                          :private private)
+                          :loom-compatible (not private))
                     "loom-register.tmpl"))
              cw)
             (t

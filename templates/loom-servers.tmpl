@@ -20,7 +20,7 @@
         <tr>
           <td colspan='2'>
             <i>Fill in "Verification", "Wallet Name", and "Invitation" for new wallets.<br/>
-               Check "Private Wallet" to make the wallet inaccessible to the loom.cc web interface.</i>
+               Check "Loom.cc compatible" to make the wallet accessible to the regular loom.cc web interface.</i>
           </td>
         </tr>
         <tr>
@@ -40,8 +40,8 @@
           <td><input type='text' name='sponsorname' size='40' value='<!-- TMPL_VAR sponsorname -->'/> (default: "My Sponsor")</td>
         </tr>
         <tr>
-          <td><b>Private Wallet:</b></td>
-          <td><input type='checkbox' name='private'<!-- TMPL_IF checked-p --> checked='checked'/<!-- /TMPL_IF -->></td>
+          <td><b>Loom.cc compatible:</b></td>
+          <td><input type='checkbox' name='loom-compatible'<!-- TMPL_IF loom-compatible --> checked='checked'<!-- /TMPL_IF -->/></td>
         </tr>
         <tr>
           <td></td>
@@ -56,7 +56,7 @@
       <tr>
         <th>Server URL</th>
         <th>Wallet</th>
-        <th>Private</th>
+        <th>Loom.cc<br/>compatible</th>
         <th>Choose</th>
       </tr><!-- TMPL_LOOP servers -->
       <form method='post' action='./loom' autocomplete='off' style='margin: 0px;'>
@@ -70,7 +70,7 @@
           <td><a href='<!-- TMPL_VAR server-url -->'><!-- TMPL_VAR server-url --></a></td>
           <td><!-- TMPL_IF default --><b><!-- /TMPL_IF --><!-- TMPL_VAR walletname --><!-- TMPL_IF default --></b><!-- /TMPL_IF --></td>
           <td style="text-align: center;">
-              <input type='checkbox' name='private'<!-- TMPL_IF private --> checked='checked'<!-- /TMPL_IF --> />
+              <input type='checkbox' name='loom-compatible'<!-- TMPL_IF loom-compatible --> checked='checked'<!-- /TMPL_IF --> />
           </td>
           <td><input type='submit' name='choose' value='Choose' /></td>
         </tr>

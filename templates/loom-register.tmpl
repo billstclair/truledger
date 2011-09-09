@@ -11,7 +11,7 @@
         <tr>
           <td><b>Passphrase:</b></td>
           <td>
-            <input type='password' name='account-passphrase' size='50' value='<!-- TMPL_VAR account-passphrase -->' />
+            <input type='password' name='account-passphrase' id='account-passphrase' size='50' value='<!-- TMPL_VAR account-passphrase -->' />
           </td>
         </tr>
         <tr>
@@ -29,7 +29,7 @@
         <tr>
           <td colspan='2'>
             <i>Fill in "Verification", "Wallet Name", and "Invitation" for new wallets.<br/>
-               Check "Private Wallet" to make the wallet inaccessible to the loom.cc web interface.</i>
+               Check "Loom.cc compatible" to make the wallet accessible to the regular loom.cc web interface.</i>
         </tr>
         <tr>
           <td><b>Verification:</b></td>
@@ -48,8 +48,8 @@
           <td><input type='text' name='sponsorname' size='40' value='<!-- TMPL_VAR sponsorname -->'/></td>
         </tr>
         <tr>
-          <td><b>Private Wallet:</b></td>
-          <td><input type='checkbox' name='private'<!-- TMPL_IF private --> checked='checked'<!-- /TMPL_IF --> /></td>
+          <td><b>Loom.cc compatible:</b></td>
+          <td><input type='checkbox' name='loom-compatible'<!-- TMPL_IF loom-compatible --> checked='checked'<!-- /TMPL_IF --> /></td>
         </tr>
         <tr>
           <td></td>
@@ -61,4 +61,4 @@
       </table>
     </form>
 
-    <p>This page creates an account in this client to use as a client for one of more Loom servers/wallets. Enter your desired account passphrase in both the "Passphrase" and "Verification" fields. Enter a Loom server URL as the "Loom Server". Enter your passphrase on the Loom server, or leave it blank to use the account passphrase. If this is a new wallet on that server, type the "Loom Server Passphrase" a second time in for the secon "Verification", or leave blank if you're using your account passphrase, enter a "Loom Account Name", and paste an "Invitation". If you want your wallet to be accessible via the Loom web server, leave the "Private Wallet" box unchecked. If you check "Private", your Loom wallet will only be accessible from the Truledger Loom web client, and the Loom server will see the wallet information only as encrypted nonsense. Finally, click the "Create Account" button to create a new account. The "Login" button allows you to log in to an existing account on this client web server with your "Passphrase".</p>
+    <p>This page creates an account in this client to use as a client for one of more Loom servers/wallets. Enter your desired account passphrase in both the "Passphrase" and "Verification" fields. Enter a Loom server URL as the "Loom Server". Enter your passphrase on the Loom server, or leave it blank to use the account passphrase. If this is a new wallet on that server, type the "Loom Server Passphrase" a second time in for the second "Verification", or leave blank if you're using your account passphrase, enter a "Loom Account Name", and paste an "Invitation". If you want your wallet to be accessible via the Loom web server, leave the "Loom.cc compatible" box checked. If you uncheck it, your Loom wallet will only be accessible from the Truledger Loom web client, and the Loom server will see the wallet information only as encrypted nonsense. Finally, click the "Create Account" button to create a new account. The "Login" button allows you to log in to an existing account on this client web server with your "Passphrase".</p>
