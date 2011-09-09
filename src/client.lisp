@@ -360,6 +360,7 @@
                         (error "URL not stored for verified server: ~s" serverid))
                       (setf (server client) (make-server-proxy client url))
                       (register client name coupon serverid)
+                      (forceinit client)
                       (setq ok t))
                  (unless ok
                    (setf (db-get db (userreqkey client serverid)) nil
@@ -1613,6 +1614,10 @@
           (storagefeemsg nil)
           (fracmsg nil)
           msg)
+      (when (and note (not (equal toid $COUPON)))
+        (setf note (encrypt-note (pubkeydb client)
+                                 (if (equal id toid) (list id) (list id toid))
+                                 note)))
       (setq spend (apply #'custmsg client $SPEND serverid time
                          toid assetid amount (and note (list note))))
       (when (and tranfee-amt (not (equal id toid)))
@@ -1811,19 +1816,26 @@
   (let* ((db (db client))
          (serverid (serverid client))
          (id (id client))
+         toid
          (server (server client))
          (parser (parser client))
          (msg (or (ignore-errors (useroutbox client time))
                   (error "No outbox entry at time: ~s" time)))
          (reqs (parse parser msg)))
     (dolist (req reqs)
-      (let ((args (match-serverreq client req)))
-        (when (equal (getarg $REQUEST args) $COUPONENVELOPE)
-          (let ((coupon (getarg $ENCRYPTEDCOUPON args)))
-            (when coupon
-              (setq coupon (privkey-decrypt coupon (privkey client)))
-              (return-from spendreject-internal
-                (redeem client coupon)))))))
+      (let* ((args (match-serverreq client req))
+             (request (getarg $REQUEST args)))
+        (cond ((equal request $ATSPEND)
+               (let ((msg (getarg $MSG args)))
+                 (setf toid (getarg $ID msg))))
+              ((equal request $COUPONENVELOPE)
+               (let ((coupon (getarg $ENCRYPTEDCOUPON args)))
+                 (when coupon
+                   (setq coupon (privkey-decrypt coupon (privkey client)))
+                   (return-from spendreject-internal
+                     (redeem client coupon))))))))
+    (when note
+      (setf note (encrypt-note (pubkeydb client) (list id toid) note)))
     (setq msg (apply #'custmsg client $SPENDREJECT serverid time id
                      (and note (list note))))
     (let* ((servermsg (process server msg))
@@ -1962,6 +1974,8 @@
                      ;; To do: Pull in data from outbox to get amounts
                      )
                     (t (error "Bad request in inbox: ~s" request)))
+              (ignore-errors
+                (setf note (decrypt-note (id client) (privkey client) note)))
               (let ((item (make-inbox :request request
                                       :id id
                                       :time time
@@ -2141,6 +2155,8 @@
                      (assetid (inbox-assetid in))
                      (msgtime (inbox-msgtime in))
                      (amount (inbox-amount in)))
+                 (setf note
+                       (encrypt-note (pubkeydb client) (list (id client) id) note))
                  (unless (equal msg "") (dotcat msg "."))
                  (cond ((equal request $SPENDACCEPT)
                         (setq amount
@@ -2513,8 +2529,13 @@
             (cond ((equal request $SPEND)
                    (when item
                      (error "More than one spend message in an outbox item"))
-                   (setf item outbox
-                         (outbox-note item) (getarg $NOTE args)))
+                   (setf item outbox)
+                   (let ((note (getarg $NOTE args)))
+                     (when note
+                       (ignore-errors
+                         (setf note
+                           (decrypt-note (id client) (privkey client) note)))
+                       (setf (outbox-note item) note))))                           
                   ((equal request $TRANFEE)
                    (push outbox items))
                   ((equal request $COUPONENVELOPE)

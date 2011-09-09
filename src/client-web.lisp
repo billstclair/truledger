@@ -172,7 +172,9 @@
             (init-post-salt-and-msg cw session)
             (when (null cmd) (setq cmd "balance")))
         (error ()
-          (let ((passphrase (loom-login-with-sessionid (db client) session)))
+          (let ((passphrase
+                 (ignore-errors
+                   (loom-login-with-sessionid (db client) session))))
             (cond (passphrase
                    (throw 'raw-return (loom-web-server)))
                   (t (delete-cookie "session")

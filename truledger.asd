@@ -33,6 +33,7 @@
      (:file "loomrandom")
      (:file "timestamp")
      (:file "crypto-session")
+     (:file "encrypt-note")
      (:file "server")
      (:file "client")
      (:file "backup")

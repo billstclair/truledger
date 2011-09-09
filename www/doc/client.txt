@@ -98,6 +98,16 @@ truledger-dbs/clientdb/
                 passphrase=<encrypted-passphrase>
                 private=<true-or-false>
 
+The client API encrypts the note field of a "spend" message, so that
+it is readable only by the two parties to the spend. The format of the
+encrypted messages is:
+
+  [<id1>:<key1>|<id2>:<key2>,<iv>,<ciphertext>]
+
+Where the IDs are the sender and recipient account IDs, the KEYs are
+private-key encrypted password, <iv> is an initialization vector, and
+<ciphertext> is the mesage, encrypted with the passphrase and <iv>.
+
 
 // Copyright 2008-2011 Bill St. Clair
 //

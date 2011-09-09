@@ -83,29 +83,32 @@
   (let* ((title "Loom Client")
          (session (get-cookie "session"))
          (cw (make-loom-cw :db db :title title :session session))
-         (cmd (parm "cmd")))
+         (cmd (parm "cmd"))
+         passphrase)
     (handler-case
-        (cond ((blankp session)
+        (cond ((or (blankp session)
+                   (null (ignore-errors
+                           (setf passphrase
+                                 (loom-login-with-sessionid db session)))))
                (if (equal cmd "new-registration")
                    (loom-do-new-registration cw)
                    (loom-do-register-command cw)))
-              (t (let* ((passphrase (loom-login-with-sessionid db session)))
-                   (setf (loom-cw-passphrase cw) passphrase
-                         (loom-cw-account-hash cw) (loom-account-hash db passphrase))
-                   (get-cw-servers cw)
-                   (cond ((loom-cw-wallets cw)
-                          (let ((fun (or (cdr (assoc cmd
-                                                     *loom-cmd-to-function-alist*
-                                                     :test #'equal))
-                                         'loom-do-wallet-command)))
-                            (cond (fun (funcall fun cw))
-                                  (t
-                                   (make-cw-loom-menu cw nil)
-                                   (setf (loom-cw-title cw)
-                                         "Loom - Truledger Client"
-                                         (loom-cw-body cw)
-                                         (format nil "Unknown command: ~a" cmd))))))
-                         (t (loom-request-initial-server cw cmd))))))
+              (t (setf (loom-cw-passphrase cw) passphrase
+                       (loom-cw-account-hash cw) (loom-account-hash db passphrase))
+                 (get-cw-servers cw)
+                 (cond ((loom-cw-wallets cw)
+                        (let ((fun (or (cdr (assoc cmd
+                                                   *loom-cmd-to-function-alist*
+                                                   :test #'equal))
+                                       'loom-do-wallet-command)))
+                          (cond (fun (funcall fun cw))
+                                (t
+                                 (make-cw-loom-menu cw nil)
+                                 (setf (loom-cw-title cw)
+                                       "Loom - Truledger Client"
+                                       (loom-cw-body cw)
+                                       (format nil "Unknown command: ~a" cmd))))))
+                       (t (loom-request-initial-server cw cmd)))))
       (error (c)
         (make-cw-loom-menu cw nil)
         (setf (loom-cw-title cw) "Loom Error - Truledger Client"

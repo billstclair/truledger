@@ -1,19 +1,16 @@
-When you add a server, the wire encryption doesn't work the first
-time. You need to click "Balance" again. Fix it.
-
-Can't mint a coupon until you visit the "Permissions" page.
+No way to redeem a coupon for other than usage tokens.
+  Server complains that the coupon isn't for usage tokens.
 
 ----------------------------------------------------------------------
 Loom web client.
+
+Don't say "Private" wallet. Use a different term.
 
 Persist server/wallet list to Loom server in "truledger-loom-servers"
 property of private wallet.
 
 Servers page: change wallet name, change "Private", delete wallet
-(merge into current), cache wallet string.
-
-Eliminate plain-text locations going over the wire from browser
-to server. Use an index into a per-session hash table instead.
+(merge into current).
 
 ----------------------------------------------------------------------
 

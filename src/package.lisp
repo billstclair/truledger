@@ -385,6 +385,10 @@
    #:remove-client-crypto-session
    #:check-crypto-session-timeout
 
+   ;; encrypt-note.lisp
+   #:encrypt-note
+   #:decrypt-note
+
    ;; client.lisp & server.lisp
    #:id
    #:privkey
