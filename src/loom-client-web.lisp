@@ -831,12 +831,13 @@ Return two values: wallet and errmsg"
           (setf errmsg "Can't find wallet location."))
         (unless errmsg
           (dolist (location locations)
-            (let ((enabled-p (member (folded-hash (loom:location-loc location))
-                                     hashes
-                                     :test #'equal)))
-              (unless (xor enabled-p (loom:location-disabled-p location))
-                (setf changed-p t
-                      (loom:location-disabled-p location) (not enabled-p)))))
+            (unless (loom:location-wallet-p location)
+              (let ((enabled-p (member (folded-hash (loom:location-loc location))
+                                       hashes
+                                       :test #'equal)))
+                (unless (xor enabled-p (loom:location-disabled-p location))
+                  (setf changed-p t
+                        (loom:location-disabled-p location) (not enabled-p))))))
           (when changed-p
             (setf (loom:get-wallet wallet-loc) wallet)))))
     (loom-do-contacts-command cw :errmsg errmsg)))
@@ -981,6 +982,8 @@ Return two values: wallet and errmsg"
                                   :asset-id id
                                   :name name))))
     (make-cw-loom-menu cw :assets)
+    (unless id
+      (setf id (loom:random-loc)))
     (setf (loom-cw-title cw) "Loom Assets - Truledger Client"
           (loom-cw-onload cw)
           "document.getElementsById(\"description\").focus()"
@@ -1022,15 +1025,15 @@ Return two values: wallet and errmsg"
                                           (loom:wallet-locations wallet))
                                  (setf errmsg "Can't find wallet location.")))
                    (assets (loom:wallet-assets wallet)))
-              (cond (errmsg)
-                    ((find id assets :test #'equal :key #'loom:asset-id)
-                     (setf errmsg "You already have an asset with that ID."))
-                    ((ignore-errors
-                       (setf (loom:wallet-assets wallet)
-                             (nconc assets (list new-asset))
-                             (loom:get-wallet (loom:location-loc location))
-                             wallet)))
-                    (t (setf errmsg "Failed to save wallet."))))
+              (unless errmsg
+                (cond ((find id assets :test #'equal :key #'loom:asset-id)
+                       (setf errmsg "You already have an asset with that ID."))
+                      ((ignore-errors
+                         (setf (loom:wallet-assets wallet)
+                               (nconc assets (list new-asset))
+                               (loom:get-wallet (loom:location-loc location))
+                               wallet)))
+                      (t (setf errmsg "Failed to save wallet.")))))
             (when errmsg
               ;; Return-from forces the transaction to be rolled back
               (return-from loom-do-accept-asset
@@ -1038,7 +1041,63 @@ Return two values: wallet and errmsg"
                  cw :errmsg errmsg :description description)))))
         (loom-do-assets-command cw :errmsg "Asset accepted.")))))
                  
-          
+(defun loom-do-new-asset (cw)
+  (with-parms (id name scale precision)
+    (let (errmsg)
+      (and (or (typep id 'loom:loom-loc)
+               (progn (setf errmsg "Malformed ID.") nil))
+           (or (not (blankp name))
+               (progn (setf errmsg "Name must be included.") nil))
+           (or (blankp scale)
+               (setf scale (ignore-errors (parse-integer scale)))
+               (progn (setf errmsg "Malformed scale.") nil))
+           (or (blankp precision)
+               (setf precision (ignore-errors (parse-integer precision)))
+               (progn (setf errmsg "Malformed precision.") nil)))
+      (cond ((integerp scale)
+             (cond ((< scale 0) (setf errmsg "Scale must be >= 0."))
+                   ((> scale 20) (setf errmsg "Scale must be <= 20."))
+                   ((integerp precision)
+                    (when (> precision scale)
+                      (setf errmsg "Precision must be <= scale.")))))
+            ((integerp precision)
+             (cond ((< precision 0) (setf errmsg "Precision must be >= 0."))
+                   ((> precision 0) (setf errmsg "Precision must be <= scale.")))))
+      (unless errmsg
+        (let* ((new-asset (loom:make-asset :name name
+                                           :scale scale
+                                           :precision precision
+                                           :id id))
+               (server (loom-cw-server cw))
+               (loom-server (loom:make-loom-uri-server (loom-server-url server))))
+          (loom:with-loom-transaction (:server loom-server)
+            (let* ((wallet (loom-cw-get-loom-wallet
+                            cw :server loom-server :force-server-p t))
+                   (location (or (find-if #'loom:location-wallet-p
+                                          (loom:wallet-locations wallet))
+                                 (setf errmsg "Can't find wallet location.")))
+                   (assets (loom:wallet-assets wallet))
+                   loc)
+              (unless errmsg
+                (setf loc (loom:location-loc location))
+                (handler-case (loom:create-asset id loc)
+                  (error (c)
+                    (setf errmsg (princ-to-string c)))))
+              (unless errmsg
+                (setf (loom:wallet-assets wallet) (nconc assets (list new-asset)))
+                (handler-case (setf (loom:get-wallet loc) wallet)
+                  (error (c)
+                    (setf errmsg (princ-to-string c)))))
+              (unless errmsg
+                (setf errmsg "Asset created."
+                      id nil name nil scale nil precision nil))))))
+      (loom-do-assets-command
+       cw
+       :errmsg errmsg
+       :id id
+       :name name
+       :scale (and scale (princ-to-string scale))
+       :precision (and precision (princ-to-string precision))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
