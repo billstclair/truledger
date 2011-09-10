@@ -58,7 +58,7 @@
       <table class='prettytable'>
         <tr><th>Enabled</th><th>Name</th></tr><!-- TMPL_LOOP assets -->
         <tr>
-          <td><input type='checkbox' name='<!-- TMPL_VAR enabled-name -->'<!-- TMPL_IF enabled --> checked='checked'<!-- /TMPL_IF -->/></td>
+          <td align='center'><input type='checkbox' name='<!-- TMPL_VAR enabled-name -->'<!-- TMPL_IF enabled --> checked='checked'<!-- /TMPL_IF -->/></td>
           <td><a href='./loom?cmd=asset&id=<!-- TMPL_VAR asset-id -->'><b><!-- TMPL_VAR name --></b></a></td>
         </tr><!-- /TMPL_LOOP -->
       </table>

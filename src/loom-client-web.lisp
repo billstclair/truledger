@@ -41,6 +41,10 @@
     ("delete-contact" . loom-delete-contact) ;loom-contact.tmpl
     ("rename-contact" . loom-rename-contact) ;loom-contact.tmpl
     ("assets" . loom-do-assets-command)
+    ("accept-asset" . loom-do-accept-asset) ;loom-assets.tmpl
+    ("new-asset" . loom-do-new-asset)       ;loom-assets.tmpl
+    ("enabled-assets" . loom-do-enabled-assets) ;loom-assets.tmpl
+    ("asset" . loom-do-asset)
     ("servers" . loom-do-servers-command)
     ("new-loom-server" . loom-do-new-loom-server)       ;loom-servers.tmpl
     ("choose-loom-wallet" . loom-do-choose-loom-wallet) ; loomservers.tmpl
@@ -732,7 +736,7 @@ Return two values: wallet and errmsg"
 (defun loom-do-contacts-command (cw &key errmsg (id (loom:random-loc)) name)
   (let* ((server (loom-cw-server cw))
          (wallet (loom-cw-wallet cw))
-         (loom-wallet (loom-cw-get-loom-wallet cw))
+         (loom-wallet (loom-cw-get-loom-wallet cw :force-server-p t))
          (first-p t)
          (contacts (loop for location in (loom:wallet-locations loom-wallet)
                       for name = (loom:location-name location)
@@ -963,23 +967,78 @@ Return two values: wallet and errmsg"
                          :new-name (and errmsg new-name)
                          :include-rename-p (not (null errmsg))))))
 
-(defun loom-do-assets-command (cw &key errmsg)
-  (make-cw-loom-menu cw :assets)
-  (setf (loom-cw-title cw) "Loom Assets - Truledger Client"
-        (loom-cw-onload cw)
-        "document.getElementsById(\"\").focus()"
-        (loom-cw-body cw)
-        (expand-template
-         (list :errmsg errmsg
-               :server-url (hsc "server-url")
-               :wallet-name (hsc "wallet-name")
-               :description (hsc "description")
-               :id (hsc "id")
-               :name (hsc "name")
-               :scale (hsc "scale")
-               :precision (hsc "precision"))
-         "loom-assets.tmpl"))
+(defun loom-do-assets-command (cw &key errmsg description id name scale precision)
+  (let* ((server (loom-cw-server cw))
+         (wallet (loom-cw-wallet cw))
+         (loom-wallet (loom-cw-get-loom-wallet cw :force-server-p t))
+         (assets (loop for asset in (loom:wallet-assets loom-wallet)
+                    for name = (loom:asset-name asset)
+                    for id = (loom:asset-id asset)
+                    for enabled-name = (format nil "enabled-~a" id)
+                    for enabled = (not (loom:asset-disabled-p asset))
+                    collect (list :enabled-name enabled-name
+                                  :enabled enabled
+                                  :asset-id id
+                                  :name name))))
+    (make-cw-loom-menu cw :assets)
+    (setf (loom-cw-title cw) "Loom Assets - Truledger Client"
+          (loom-cw-onload cw)
+          "document.getElementsById(\"description\").focus()"
+          (loom-cw-body cw)
+          (expand-template
+           (list :errmsg errmsg
+                 :server-url (hsc (loom-server-url server))
+                 :wallet-name (hsc (loom-wallet-name wallet))
+                 :description (hsc description)
+                 :id (hsc id)
+                 :name (hsc name)
+                 :scale (hsc scale)
+                 :precision (hsc precision)
+                 :assets assets)
+           "loom-assets.tmpl")))
   cw)
+
+(defun loom-do-accept-asset (cw)
+  (with-parms (description)
+    (let (errmsg)
+      (multiple-value-bind (name id scale precision)
+          (ignore-errors (loom:parse-asset-description description))
+        (unless name
+          (return-from loom-do-accept-asset
+            (progn
+              (setf errmsg "Bad description. Copy and paste, please.")
+              (loom-do-assets-command
+               cw :errmsg errmsg :description description))))
+        (let* ((new-asset (loom:make-asset :name name
+                                           :scale scale
+                                           :precision precision
+                                           :id id))
+               (server (loom-cw-server cw))
+               (loom-server (loom:make-loom-uri-server (loom-server-url server))))
+          (loom:with-loom-transaction (:server loom-server)
+            (let* ((wallet (loom-cw-get-loom-wallet
+                            cw :server loom-server :force-server-p t))
+                   (location (or (find-if #'loom:location-wallet-p
+                                          (loom:wallet-locations wallet))
+                                 (setf errmsg "Can't find wallet location.")))
+                   (assets (loom:wallet-assets wallet)))
+              (cond (errmsg)
+                    ((find id assets :test #'equal :key #'loom:asset-id)
+                     (setf errmsg "You already have an asset with that ID."))
+                    ((ignore-errors
+                       (setf (loom:wallet-assets wallet)
+                             (nconc assets (list new-asset))
+                             (loom:get-wallet (loom:location-loc location))
+                             wallet)))
+                    (t (setf errmsg "Failed to save wallet."))))
+            (when errmsg
+              ;; Return-from forces the transaction to be rolled back
+              (return-from loom-do-accept-asset
+                (loom-do-assets-command
+                 cw :errmsg errmsg :description description)))))
+        (loom-do-assets-command cw :errmsg "Asset accepted.")))))
+                 
+          
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
