@@ -45,6 +45,9 @@
     ("new-asset" . loom-do-new-asset)       ;loom-assets.tmpl
     ("enabled-assets" . loom-do-enabled-assets) ;loom-assets.tmpl
     ("asset" . loom-do-asset)
+    ("delete-asset" . loom-delete-asset) ;loom-asset.tmpl
+    ("rename-asset" . loom-rename-asset) ;loom-asset.tmpl
+    ("edit-asset" . loom-edit-asset) ;loom-asset.tmpl
     ("servers" . loom-do-servers-command)
     ("new-loom-server" . loom-do-new-loom-server)       ;loom-servers.tmpl
     ("choose-loom-wallet" . loom-do-choose-loom-wallet) ; loomservers.tmpl
@@ -795,13 +798,18 @@ Return two values: wallet and errmsg"
                      (unless (or (< bal 0) (>= bal 101))
                        (setf errmsg "You don't have 101 usage tokens."))))
                  (unless errmsg
-                   (setf (loom:wallet-locations loom-wallet)
-                         `(,@locations ,(loom:make-location :name name :loc id))
-                         (loom:get-wallet wallet-loc)
-                         loom-wallet)
-                   (when fund
-                     (loom:grid-buy loom:*zero* id wallet-loc t)
-                     (loom:grid-move loom:*zero* 100 wallet-loc id)))))))
+                   (handler-case
+                       (progn
+                         (setf (loom:wallet-locations loom-wallet)
+                               `(,@locations
+                                 ,(loom:make-location :name name :loc id))
+                               (loom:get-wallet wallet-loc)
+                               loom-wallet)
+                         (when fund
+                           (loom:grid-buy loom:*zero* id wallet-loc t)
+                           (loom:grid-move loom:*zero* 100 wallet-loc id)))
+                     (error (c)
+                       (setf errmsg (princ-to-string c)))))))))
       (if errmsg
           (loom-do-contacts-command
            cw
@@ -839,7 +847,10 @@ Return two values: wallet and errmsg"
                   (setf changed-p t
                         (loom:location-disabled-p location) (not enabled-p))))))
           (when changed-p
-            (setf (loom:get-wallet wallet-loc) wallet)))))
+            (handler-case
+                (setf (loom:get-wallet wallet-loc) wallet)
+              (error (c)
+                (setf errmsg (princ-to-string c))))))))
     (loom-do-contacts-command cw :errmsg errmsg)))
 
 (defun loom-do-contact (cw &key errmsg name deleting-p include-rename-p new-name)
@@ -921,10 +932,13 @@ Return two values: wallet and errmsg"
                 ((eq location wallet-location)
                  (setf errmsg "You may not delete your wallet."))
                 (location
-                 (setf (loom:wallet-locations loom-wallet)
-                       (delete location locations :test #'eq)
-                       (loom:get-wallet (loom:location-loc wallet-location))
-                       loom-wallet))
+                 (handler-case
+                     (setf (loom:wallet-locations loom-wallet)
+                           (delete location locations :test #'eq)
+                           (loom:get-wallet (loom:location-loc wallet-location))
+                           loom-wallet)
+                   (error (c)
+                     (setf errmsg (princ-to-string c)))))
                 (t (setf errmsg (format nil "There is no contact named ~s" name))))))
       (if errmsg
           (loom-do-contact cw :errmsg errmsg :name name :deleting-p t)
@@ -958,10 +972,13 @@ Return two values: wallet and errmsg"
                                    nil "Can't find contact named ~s" name))))
                       ((not wallet-location)
                        (setf errmsg "Can't find wallet location."))
-                      (t (setf (loom:location-name location) new-name
-                               (loom:get-wallet
-                                (loom:location-loc wallet-location))
-                               loom-wallet)))))))
+                      (t (handler-case
+                             (setf (loom:location-name location) new-name
+                                   (loom:get-wallet
+                                    (loom:location-loc wallet-location))
+                                   loom-wallet)
+                           (error (c)
+                             (setf errmsg (princ-to-string c))))))))))
         (loom-do-contact cw
                          :errmsg errmsg
                          :name (if errmsg name new-name)
@@ -1098,6 +1115,234 @@ Return two values: wallet and errmsg"
        :name name
        :scale (and scale (princ-to-string scale))
        :precision (and precision (princ-to-string precision))))))
+
+(defun loom-do-asset (cw &key errmsg id deleting-p include-rename-p new-name
+                      include-edit-p scale precision)
+  (unless id
+    (multiple-value-setq (id deleting-p include-rename-p include-edit-p
+                             new-name scale precision)
+      (with-parms (id operation new-name scale precision)
+        (values id
+                (equal operation "delete")
+                (equal operation "rename")
+                (equal operation "edit")
+                new-name scale precision))))
+  (let* ((server (loom-cw-server cw))
+         (wallet (loom-cw-wallet cw))
+         (loom-server (loom:make-loom-uri-server (loom-server-url server)))
+         loom-wallet asset asset-name description
+         wallet-locations qty-alist contacts)
+
+    (loom:with-loom-transaction (:server loom-server)
+      (setf loom-wallet (loom-cw-get-loom-wallet cw :server loom-server)
+            asset (loom:find-asset-by-id id (loom:wallet-assets loom-wallet)))
+      (when asset
+        (setf asset-name (loom:asset-name asset)
+              description (loom:make-asset-description
+                           asset-name id
+                           (loom:asset-scale asset)
+                           (loom:asset-precision asset))
+              wallet-locations (loom:wallet-locations loom-wallet)
+              qty-alist (loom:grid-scan-wallet loom-wallet :assets (list asset)))
+        (unless scale
+          (setf scale (loom:asset-scale asset)
+                precision (loom:asset-precision asset)))))
+
+    (unless (or (null scale) (stringp scale))
+      (setf scale (princ-to-string scale)))
+    (unless (or (null precision) (stringp precision))
+      (setf precision (princ-to-string precision)))
+
+    (unless asset
+      (return-from loom-do-asset
+        (loom-do-assets-command
+         cw :errmsg (format nil "No asset with id: ~s" id))))
+
+    (loop for (loc (id . qty)) in qty-alist
+       for location = (loom:find-location-by-loc loc wallet-locations)
+       for location-name = (and location (loom:location-name location))
+       when (and id location) do
+         (push (list :non-wallet-p (not (loom:location-wallet-p location))
+                     :contact-name (hsc location-name)
+                     :asset-amount (hsc qty)
+                     :asset-name (hsc asset-name)
+                     :url-encoded-contact-name
+                     (url-rewrite:url-encode location-name))
+               contacts))
+    (setf contacts
+          (and (setf contacts (nreverse contacts))
+               (cons (car contacts)
+                     (sort (cdr contacts) #'string-lessp
+                           :key #'(lambda (plist) (getf plist :contact-name))))))
+    (make-cw-loom-menu cw :assets)
+    (setf (loom-cw-title cw) "Loom Contact - Truledger Client"
+          (loom-cw-onload cw)
+          (and (or include-rename-p include-edit-p)
+               "document.getElementById(\"new-name\").focus()")
+          (loom-cw-body cw)
+          (expand-template
+           (list :errmsg errmsg
+                 :server-url (hsc (loom-server-url server))
+                 :wallet-name (hsc (loom-wallet-name wallet))
+                 :name (hsc asset-name)
+                 :id (hsc id)
+                 :description (hsc description)
+                 :scale (hsc scale)
+                 :precision (hsc precision)
+                 :include-options-p (not (or deleting-p include-rename-p
+                                             include-edit-p))
+                 :include-contacts-p (and contacts
+                                          (not include-rename-p)
+                                          (not include-edit-p))
+                 :include-rename-p include-rename-p
+                 :include-edit-p include-edit-p
+                 :deleting-p deleting-p
+                 :contacts contacts
+                 :new-name (if (blankp new-name) (hsc asset-name) (hsc new-name))
+                 )
+           "loom-asset.tmpl"))
+        cw))
+
+(defun loom-delete-asset (cw)
+  (with-parms (id confirm)
+    (unless confirm
+      (return-from loom-delete-asset
+        (loom-do-asset cw
+                       :errmsg "You must check the box to delete the asset."
+                       :id id
+                       :deleting-p t)))
+    (let* ((server (loom-cw-server cw))
+           (loom-server (loom:make-loom-uri-server (loom-server-url server)))
+           asset-name
+           errmsg)
+      (loom:with-loom-transaction (:server loom-server)
+        (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
+               (assets (loom:wallet-assets loom-wallet))
+               (wallet-location (find-if #'loom:location-wallet-p
+                                         (loom:wallet-locations loom-wallet)))
+               (asset (loom:find-asset-by-id id assets)))
+          (cond ((not wallet-location)
+                 (setf errmsg "Can't find wallet location."))
+                (asset
+                 (handler-case
+                     (setf asset-name (loom:asset-name asset)
+                           (loom:wallet-assets loom-wallet)
+                           (delete asset assets :test #'eq)
+                           (loom:get-wallet (loom:location-loc wallet-location))
+                           loom-wallet)
+                   (error (c)
+                     (setf errmsg (princ-to-string c)))))
+                (t (setf errmsg (format nil "There is no asset with id: ~s" id))))))
+      (if errmsg
+          (loom-do-asset cw :errmsg errmsg :id id :deleting-p t)
+          (loom-do-assets-command
+           cw
+           :errmsg (format nil "Asset ~s deleted." asset-name))))))
+
+(defun loom-edit-asset (cw)
+  (with-parms (id new-name scale precision)
+    (let (errmsg)
+      (cond ((blankp new-name)
+             (setf errmsg "You must specify a name."))
+            (t (let ((s (if (blankp scale)
+                            ""
+                            (ignore-errors (parse-integer scale))))
+                     (p (if (blankp precision)
+                            ""
+                            (ignore-errors (parse-integer precision)))))
+                 (cond ((and s p)
+                        (cond ((integerp s)
+                               (cond ((< s 0)
+                                      (setf errmsg "Scale must be non-negative."))
+                                     ((and (integerp p) (> p s))
+                                      (setf errmsg "Precision must be less than scale."))))
+                              ((integerp p)
+                               (unless (eql p 0)
+                                 (setf errmsg "Precision must be less than scale"))))
+                        (unless errmsg
+                          (setf scale s precision p)))
+                       (t
+                        (setf errmsg
+                              "Scale and precision must be blank or non-negative integers."))))))
+      (when errmsg
+        (return-from loom-edit-asset
+          (loom-do-asset cw
+                         :errmsg errmsg
+                         :id id
+                         :scale scale
+                         :precision precision
+                         :include-edit-p t)))
+      (let* ((server (loom-cw-server cw))
+             (loom-server (loom:make-loom-uri-server (loom-server-url server))))
+        (loom:with-loom-transaction (:server loom-server)
+          (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
+                 (assets (loom:wallet-assets loom-wallet))
+                 (wallet-location (find-if #'loom:location-wallet-p
+                                           (loom:wallet-locations loom-wallet)))
+                 (asset (loom:find-asset-by-id id assets)))
+            (cond ((not wallet-location)
+                   (setf errmsg "Can't find wallet location."))
+                  (asset
+                   (handler-case
+                       (setf (loom:asset-name asset) new-name
+                             (loom:asset-scale asset)
+                             (unless (blankp scale) scale)
+                             (loom:asset-precision asset)
+                             (unless (blankp precision) precision)
+                             (loom:get-wallet (loom:location-loc wallet-location))
+                             loom-wallet)
+                     (error (c)
+                       (setf errmsg (princ-to-string c)))))
+                  (t (setf errmsg
+                           (format nil "There is no asset with id: ~s" id))))))
+        (if errmsg
+            (loom-do-asset cw
+                           :errmsg errmsg
+                           :id id
+                           :scale scale
+                           :precision precision
+                           :include-edit-p t)
+            (loom-do-asset cw
+                           :errmsg "Asset updated."
+                           :id id))))))
+
+(defun loom-rename-asset (cw)
+  (with-parms (id new-name)
+    (let (errmsg)
+      (when (blankp new-name)
+        (return-from loom-rename-asset
+          (loom-do-asset cw
+                         :errmsg "You must specify a name."
+                         :id id
+                         :new-name new-name
+                         :include-rename-p t)))
+      (let* ((server (loom-cw-server cw))
+             (loom-server (loom:make-loom-uri-server (loom-server-url server))))
+        (loom:with-loom-transaction (:server loom-server)
+          (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
+                 (assets (loom:wallet-assets loom-wallet))
+                 (wallet-location (find-if #'loom:location-wallet-p
+                                           (loom:wallet-locations loom-wallet)))
+                 (asset (loom:find-asset-by-id id assets)))
+            (cond ((not wallet-location)
+                   (setf errmsg "Can't find wallet location."))
+                  (asset
+                   (handler-case
+                       (setf (loom:asset-name asset) new-name
+                             (loom:get-wallet (loom:location-loc wallet-location))
+                             loom-wallet)
+                     (error (c)
+                       (setf errmsg (princ-to-string c)))))
+                  (t (setf errmsg
+                           (format nil "There is no asset with id: ~s" id))))))
+        (if errmsg
+            (loom-do-asset cw
+                           :errmsg errmsg
+                           :id id
+                           :include-rename-p t)
+            (loom-do-asset cw
+                           :errmsg "Asset renamed."
+                           :id id))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

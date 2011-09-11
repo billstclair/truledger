@@ -1,0 +1,71 @@
+<b>Server URL: </b><a href='<!-- TMPL_VAR server-url -->'><!-- TMPL_VAR server-url --></a><br />
+    <b>Account Name: </b><!-- TMPL_VAR wallet-name --><br />
+    <p><!-- TMPL_IF errmsg -->
+    <span style='color: red;'><!-- TMPL_VAR errmsg --></span><br /><!-- /TMPL_IF -->
+    <b>Asset: </b><!-- TMPL_VAR name --><br />
+    <b>Description:</b> <!-- TMPL_VAR description --><br /><!-- TMPL_IF include-options-p -->
+    <b>Options:</b>&nbsp;&nbsp;
+    <a href='./loom?cmd=asset&id=<!-- TMPL_VAR id -->'>Refresh</a>&nbsp;&nbsp;
+    <a href='./loom?cmd=asset&id=<!-- TMPL_VAR id -->&operation=rename'>Rename</a>&nbsp;&nbsp;
+    <a href='./loom?cmd=asset&id=<!-- TMPL_VAR id -->&operation=edit'>Edit Details</a>&nbsp;&nbsp;
+    <a href='./loom?cmd=asset&id=<!-- TMPL_VAR id -->&operation=delete'>Delete</a>
+    </p><!-- /TMPL_IF --><!-- TMPL_IF deleting-p -->
+
+    <p style="color: red;">Confirm deletion</p>
+<!-- TMPL_IF include-contacts-p -->
+    <p>If you delete this asset, you will not see any
+    quanitities below until you restore it.</p><!-- /TMPL_IF -->
+
+    <form method='post' action='./loom' autocomplete='off'>
+      <input type='hidden' name='cmd' value='delete-asset'/>
+      <input type='hidden' name='id' value='<!-- TMPL_VAR id -->'/>
+      <input type='checkbox' name='confirm'/>
+      Check the box to confirm, then press
+      <input type='submit' name='delete' value="Delete Now!"/>
+      <a href='./loom?cmd=asset&id=<!-- TMPL_VAR id -->'>Cancel</a>
+    </form><!-- /TMPL_IF --><!-- TMPL_IF include-contacts-p -->
+    <table class='prettytable'><!-- TMPL_LOOP contacts -->
+        <tr>
+          <th align='left'><!-- TMPL_IF non-wallet-p -->On the table<!-- TMPL_ELSE -->In my wallet<!-- /TMPL_IF --></th>
+          <th align='left'><!-- TMPL_VAR contact-name --></th>
+          <th align='right'><a href='./loom?cmd=contact&name=<!-- TMPL_VAR url-encoded-contact-name -->'>view contact</a></th>
+        </tr>
+        <tr>
+          <td align='right'><!-- TMPL_VAR asset-amount --></td>
+          <td><!-- TMPL_VAR asset-name --></td>
+          <td>&nbsp;</td>
+        </tr><!-- /TMPL_LOOP -->
+    </table><!-- /TMPL_IF --><!-- TMPL_IF include-rename-p -->
+    <p>Enter the new name you would like to use for this asset:</p>
+    <form method='post' action='./loom' autocomplete='off'>
+      <input type='hidden' name='cmd' value='rename-asset'/>
+      <input type='hidden' name='id' value='<!-- TMPL_VAR id -->'/>
+      <input type='text' name='new-name' id='new-name' size='40' value='<!-- TMPL_VAR new-name -->'/>
+      <input type='submit' name='save' value='Save'/>
+      <a href='./loom?cmd=asset&id=<!-- TMPL_VAR id -->'>Cancel</a>
+    </form><!-- /TMPL_IF --><!-- TMPL_IF include-edit-p -->
+    <form method='post' action='./loom' autocomplete='off'>
+      <input type='hidden' name='cmd' value='edit-asset'/>
+      <input type='hidden' name='id' value='<!-- TMPL_VAR id -->'/>
+      <table>
+        <tr>
+          <td><b>Name:</b></td>
+          <td><input type='text' name='new-name' id='new-name' size='40' value='<!-- TMPL_VAR new-name -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Scale:</b></td>
+          <td><input type='text' name='scale' size='10' value='<!-- TMPL_VAR scale -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Min Precision:</b></td>
+          <td><input type='text' name='precision' size='10' value='<!-- TMPL_VAR precision -->'/></td>
+        </tr>
+        <tr>
+          <td>&nbsp;</td>
+          <td>
+            <input type='submit' name='save' value='Save'/>
+            <a href='./loom?cmd=asset&id=<!-- TMPL_VAR id -->'>Cancel</a>
+          </td>
+        </tr>
+      </table>
+    </form><!-- /TMPL_IF -->
