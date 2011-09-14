@@ -4181,6 +4181,13 @@
 (defun loom-account-session-key (account-hash)
   (fsdb:append-db-keys (loom-account-key account-hash) $SESSION))
 
+(defun initialize-ssl-certificate-temp-dir (db)
+  (setf (loom:ssl-certificate-temp-dir) (fsdb:db-filename db "/")))
+
+(defun make-loom-uri-server (db uri-string)
+  (initialize-ssl-certificate-temp-dir db)
+  (loom:make-loom-uri-server uri-string))
+
 (defmethod loom-make-session ((db fsdb:fsdb) passphrase)
   "Create a new loom user session, encoding $passphrase with a new session id.
    Return the new session id.

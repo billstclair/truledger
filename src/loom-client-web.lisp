@@ -252,7 +252,7 @@ Return two values: wallet and errmsg"
                   (not (equal passphrase2 passphrase)))
              (setf errmsg "Passphrase doesn't match Verification"))
             (t
-             (let* ((server (loom:make-loom-uri-server serverurl))
+             (let* ((server (make-loom-uri-server db serverurl))
                     (loom-walletname nil)
                     (private-p nil))
                (multiple-value-setq (errmsg loom-walletname private-p)
@@ -373,7 +373,8 @@ Return two values: wallet and errmsg"
 
 (defun loom-cw-get-loom-wallet (cw &key server (force-server-p t))
   (let* ((server (or server
-                     (loom:make-loom-uri-server
+                     (make-loom-uri-server
+                      (loom-cw-db cw)
                       (loom-server-url (loom-cw-server cw)))))
          (wallet (loom-cw-wallet cw))
          (account-passphrase (loom-cw-passphrase cw)))
@@ -403,7 +404,8 @@ Return two values: wallet and errmsg"
          wallet-loc)
     (unless contact-name
       (setf contact-name (with-parms (contact-name) contact-name)))
-    (let ((loom-server (loom:make-loom-uri-server (loom-server-url server))))
+    (let ((loom-server (make-loom-uri-server
+                        (loom-cw-db cw) (loom-server-url server))))
       (loom:with-loom-transaction (:server loom-server)
         (let* ((loom-wallet (loom-cw-get-loom-wallet
                              cw :server loom-server))
@@ -546,7 +548,7 @@ Return two values: wallet and errmsg"
       (unless (or errmsg pay-id claim-id)
         (setf errmsg "Neither pay nor claim button pressed."))
       (unless errmsg
-        (let* ((loom-server (loom:make-loom-uri-server (loom-server-url server))))
+        (let* ((loom-server (make-loom-uri-server db (loom-server-url server))))
           (loom:with-loom-transaction (:server loom-server)
             (let* ((loom-wallet (loom-cw-get-loom-wallet
                                  cw :server loom-server :force-server-p nil))
@@ -679,7 +681,7 @@ Return two values: wallet and errmsg"
                       (equal passphrase passphrase2)))
              (setf errmsg "Loom Server Passphrase doesn't match Verification.")))
       (unless errmsg
-        (let* ((loom-server (loom:make-loom-uri-server serverurl))
+        (let* ((loom-server (make-loom-uri-server db serverurl))
                loom-walletname
                private-p)
           (multiple-value-setq (errmsg loom-walletname private-p)
@@ -772,7 +774,8 @@ Return two values: wallet and errmsg"
 (defun loom-do-new-contact (cw)
   (with-parms (id name fund)
     (let* ((server (loom-cw-server cw))
-           (loom-server (loom:make-loom-uri-server (loom-server-url server)))
+           (loom-server (make-loom-uri-server
+                         (loom-cw-db cw) (loom-server-url server)))
            errmsg)
       (loom:with-loom-transaction (:server loom-server)
         (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
@@ -827,7 +830,8 @@ Return two values: wallet and errmsg"
                     when (eql 0 (search prefix name :test #'equal))
                     collect (subseq name prefix-len)))
          (server (loom-cw-server cw))
-         (loom-server (loom:make-loom-uri-server (loom-server-url server)))
+         (loom-server (make-loom-uri-server
+                       (loom-cw-db cw) (loom-server-url server)))
          errmsg)
     (loom:with-loom-transaction (:server loom-server)
       (let* ((wallet (loom-cw-get-loom-wallet cw :server loom-server))
@@ -860,7 +864,8 @@ Return two values: wallet and errmsg"
         (values name (equal operation "delete") (equal operation "rename")))))
   (let* ((server (loom-cw-server cw))
          (wallet (loom-cw-wallet cw))
-         (loom-server (loom:make-loom-uri-server (loom-server-url server)))
+         (loom-server (make-loom-uri-server
+                       (loom-cw-db cw) (loom-server-url server)))
          loom-wallet location loc wallet-assets qty-alist assets)
     (loom:with-loom-transaction (:server loom-server)
       (setf loom-wallet (loom-cw-get-loom-wallet cw :server loom-server)
@@ -920,7 +925,8 @@ Return two values: wallet and errmsg"
                          :name name
                          :deleting-p t)))
     (let* ((server (loom-cw-server cw))
-           (loom-server (loom:make-loom-uri-server (loom-server-url server)))
+           (loom-server (make-loom-uri-server
+                         (loom-cw-db cw) (loom-server-url server)))
            errmsg)
       (loom:with-loom-transaction (:server loom-server)
         (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
@@ -953,7 +959,7 @@ Return two values: wallet and errmsg"
           (setf errmsg "New name may not be blank.")
           (let* ((server (loom-cw-server cw))
                  (loom-server
-                  (loom:make-loom-uri-server (loom-server-url server))))
+                  (make-loom-uri-server (loom-cw-db cw) (loom-server-url server))))
             (loom:with-loom-transaction (:server loom-server)
               (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
                      (locations (loom:wallet-locations loom-wallet))
@@ -1034,7 +1040,8 @@ Return two values: wallet and errmsg"
                                            :precision precision
                                            :id id))
                (server (loom-cw-server cw))
-               (loom-server (loom:make-loom-uri-server (loom-server-url server))))
+               (loom-server (make-loom-uri-server
+                             (loom-cw-db cw) (loom-server-url server))))
           (loom:with-loom-transaction (:server loom-server)
             (let* ((wallet (loom-cw-get-loom-wallet
                             cw :server loom-server :force-server-p t))
@@ -1086,7 +1093,8 @@ Return two values: wallet and errmsg"
                                            :precision precision
                                            :id id))
                (server (loom-cw-server cw))
-               (loom-server (loom:make-loom-uri-server (loom-server-url server))))
+               (loom-server (make-loom-uri-server
+                             (loom-cw-db cw) (loom-server-url server))))
           (loom:with-loom-transaction (:server loom-server)
             (let* ((wallet (loom-cw-get-loom-wallet
                             cw :server loom-server :force-server-p t))
@@ -1129,7 +1137,8 @@ Return two values: wallet and errmsg"
                 new-name scale precision))))
   (let* ((server (loom-cw-server cw))
          (wallet (loom-cw-wallet cw))
-         (loom-server (loom:make-loom-uri-server (loom-server-url server)))
+         (loom-server (make-loom-uri-server
+                       (loom-cw-db cw) (loom-server-url server)))
          loom-wallet asset asset-name description
          wallet-locations qty-alist contacts)
 
@@ -1212,7 +1221,8 @@ Return two values: wallet and errmsg"
                        :id id
                        :deleting-p t)))
     (let* ((server (loom-cw-server cw))
-           (loom-server (loom:make-loom-uri-server (loom-server-url server)))
+           (loom-server (make-loom-uri-server
+                         (loom-cw-db cw) (loom-server-url server)))
            asset-name
            errmsg)
       (loom:with-loom-transaction (:server loom-server)
@@ -1273,7 +1283,8 @@ Return two values: wallet and errmsg"
                          :precision precision
                          :include-edit-p t)))
       (let* ((server (loom-cw-server cw))
-             (loom-server (loom:make-loom-uri-server (loom-server-url server))))
+             (loom-server (make-loom-uri-server
+                           (loom-cw-db cw) (loom-server-url server))))
         (loom:with-loom-transaction (:server loom-server)
           (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
                  (assets (loom:wallet-assets loom-wallet))
@@ -1317,7 +1328,8 @@ Return two values: wallet and errmsg"
                          :new-name new-name
                          :include-rename-p t)))
       (let* ((server (loom-cw-server cw))
-             (loom-server (loom:make-loom-uri-server (loom-server-url server))))
+             (loom-server (make-loom-uri-server
+                           (loom-cw-db cw) (loom-server-url server))))
         (loom:with-loom-transaction (:server loom-server)
           (let* ((loom-wallet (loom-cw-get-loom-wallet cw :server loom-server))
                  (assets (loom:wallet-assets loom-wallet))

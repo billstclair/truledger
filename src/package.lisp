@@ -627,6 +627,7 @@
    #:backup*
 
    ;; Loom functions
+   #:make-loom-uri-server
    #:loom-login-with-sessionid
    #:loom-make-session
    #:loom-remove-session

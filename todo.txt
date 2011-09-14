@@ -5,8 +5,6 @@ No way to redeem a coupon for other than usage tokens.
 
 Loom web client
 
-Assets page
-
 Persist server/wallet list to Loom server in "truledger-loom-servers"
 property of private wallet.
 
