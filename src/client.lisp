@@ -4164,6 +4164,202 @@
               wallets)))
     (sort wallets 'string-lessp :key #'loom-wallet-name)))
 
+(defconstant $truledger-saved-servers "truledger-saved-servers")
+
+;; Encrypted with passphrase:
+;;   (
+;;   :url-<urlhash>=<url>
+;;   :wallet-<urlhash>-<namehash>=<name>
+;;   :passphrase-<urlhash>-<namehash>=<wallet-passphrase>
+;;   :private-<urlhash>-<namehash>=1
+;;   ...
+;;   )
+(defun loom-encode-servers-for-save (account-passphrase servers passphrase)
+  (let (alist)
+    (dolist (server servers)
+      (let ((urlhash (loom-server-urlhash server)))
+        (push (cons (strcat "url-" urlhash)
+                    (loom-server-url server))
+              alist)
+        (dolist (wallet (loom-server-wallets server))
+          (let* ((namehash (loom-wallet-namehash wallet))
+                 (urlhash-namehash (strcat urlhash "-" namehash)))
+            (push (cons (strcat "wallet-" urlhash-namehash)
+                        (loom-wallet-name wallet))
+                  alist)
+            (push (cons (strcat "passphrase-" urlhash-namehash)
+                        (loom-wallet-passphrase wallet account-passphrase))
+                  alist)
+            (when (loom-wallet-private-p wallet)
+              (push (cons (strcat "private-" urlhash-namehash) "1")
+                    alist))))))
+    (encrypt (loom:alist-to-kv-string (nreverse alist))
+             passphrase)))
+
+(defun loom-decode-servers-from-cipher-text
+    (account-passphrase cipher-text passphrase)
+  (let* ((kv (decrypt cipher-text passphrase))
+         (alist (loom:parse-kv kv))
+         (urls nil)
+         (wallet-names (make-hash-table :test #'equal))
+         (passphrases (make-hash-table :test #'equal))
+         (privates (make-hash-table :test #'equal)))
+    (labels ((hashes (str prefix)
+               (apply #'values (split-sequence:split-sequence
+                                #\- (subseq str (length prefix)))))
+             (try (k v prefix hash)
+               (when (eql 0 (search prefix k :test #'equal))
+                 (multiple-value-bind (urlhash namehash) (hashes k prefix)
+                   (push (cons namehash v) (gethash urlhash hash))
+                   t))))
+      (loop for (k . v) in alist
+         do
+           (cond ((eql 0 (search "url-" k :test #'equal))
+                  (push (cons (subseq k 4) v) urls))
+                 (t (or (try k v "wallet-" wallet-names)
+                        (try k v "passphrase-" passphrases)
+                        (try k v "private-" privates)
+                        (error "Unknown key: ~s" k)))))
+      (loop for (urlhash . url) in urls
+         for wallets =
+           (loop for (namehash . name) in (gethash urlhash wallet-names)
+              for passphrase = (or (cdr (assocequal
+                                         namehash (gethash urlhash passphrases)))
+                                   (error "Missing passphrase."))
+              for private = (cdr (assocequal namehash (gethash urlhash privates)))
+              collect (make-loom-wallet
+                       :name name
+                       :namehash namehash
+                       :urlhash urlhash
+                       :encrypted-passphrase (encrypt passphrase account-passphrase)
+                       :private-p (not (null private))))
+         collect (make-loom-server :url url :urlhash urlhash :wallets wallets)))))
+
+;; Returns two booleans:
+;;   1) saving servers will change something
+;;   2) restoring saved-servers will change something
+(defun loom-compare-servers-to-saved (account-passphrase servers saved-servers)
+  (values (servers-change-saved-servers-p
+           account-passphrase servers saved-servers)
+          (saved-servers-change-servers-p
+           account-passphrase servers saved-servers)))
+
+(defun servers-change-saved-servers-p (account-passphrase servers saved-servers)
+  (unless (eql (length servers) (length saved-servers))
+    (return-from servers-change-saved-servers-p t))
+  (loop for server in servers
+     for urlhash = (loom-server-urlhash server)
+     for saved-server = (find urlhash saved-servers
+                              :test #'equal :key #'loom-server-urlhash)
+     do
+       (unless saved-server (return t))
+       (let ((wallets (loom-server-wallets server))
+             (saved-wallets (loom-server-wallets saved-server)))
+         (unless (eql (length wallets) (length saved-wallets))
+           (return t))
+         (loop for wallet in wallets
+            for namehash = (loom-wallet-namehash wallet)
+            for passphrase = (loom-wallet-passphrase wallet account-passphrase)
+            for saved-wallet = (find namehash saved-wallets
+                                     :test #'equal :key #'loom-wallet-namehash)
+            do
+              (unless saved-wallet
+                (return-from servers-change-saved-servers-p t))
+              (unless (equal passphrase
+                             (loom-wallet-passphrase
+                              saved-wallet account-passphrase))
+                (return-from servers-change-saved-servers-p t))))))
+
+(defun saved-servers-change-servers-p (account-passphrase servers saved-servers)
+  (loop for saved-server in saved-servers
+     for urlhash = (loom-server-urlhash saved-server)
+     for server = (find urlhash servers
+                        :test #'equal :key #'loom-server-urlhash)
+     do
+       (unless server (return t))
+       (let ((saved-wallets (loom-server-wallets saved-server))
+             (passphrases (loop for wallet in  (loom-server-wallets server)
+                             collect (loom-wallet-passphrase
+                                      wallet account-passphrase))))
+         (loop for wallet in saved-wallets
+            for passphrase = (loom-wallet-passphrase wallet account-passphrase)
+            unless (member passphrase passphrases :test #'equal)
+            do (return-from saved-servers-change-servers-p t)))))
+
+(defmethod loom-save-wallets ((db fsdb:fsdb) account-passphrase urlhash namehash)
+  (let* ((account-hash (loom-account-hash db account-passphrase))
+         (servers (loom-account-servers db account-hash t))
+         (save-server (or (find urlhash servers
+                                :test #'equal :key #'loom-server-urlhash)
+                          (error "Can't find save server.")))
+         (save-wallet (or (and save-server
+                               (find namehash (loom-server-wallets save-server)
+                                     :test #'equal :key #'loom-wallet-namehash))
+                          (error "Can't find save wallet"))))
+    (let* ((loom-server (make-loom-uri-server db (loom-server-url save-server)))
+           (passphrase (loom-wallet-passphrase save-wallet account-passphrase))
+           (save-string (loom-encode-servers-for-save
+                         account-passphrase servers passphrase))
+           (private-p (loom-wallet-private-p save-wallet)))
+      (loom:with-loom-transaction (:server loom-server)
+        (let ((wallet (loom:get-wallet
+                       passphrase t nil private-p)))
+          (setf (loom:wallet-get-property wallet $truledger-saved-servers)
+                save-string
+                (loom:get-wallet passphrase t nil private-p) wallet))))))
+
+(defmethod loom-load-wallets ((db fsdb:fsdb) account-passphrase urlhash namehash)
+  (let* ((account-hash (loom-account-hash db account-passphrase))
+         (servers (loom-account-servers db account-hash t))
+         (server (or (find urlhash servers :test #'equal :key #'loom-server-urlhash)
+                     (error "Can't find load server.")))
+         (wallet (or (find namehash (loom-server-wallets server)
+                           :test #'equal :key #'loom-wallet-namehash)
+                     (error "Can't find save wallet.")))
+         (passphrase (loom-wallet-passphrase wallet account-passphrase))
+         (private-p (loom-wallet-private-p wallet))
+         (loom-server (loom:make-loom-uri-server (loom-server-url server))))
+    (loom:with-loom-server (loom-server)
+      (let* ((loom-wallet (loom:get-wallet passphrase t nil private-p))
+             (cipher-text (or (loom:wallet-get-property
+                               loom-wallet $truledger-saved-servers)
+                              (error "No saved servers in Loom wallet."))))
+        (values
+         (loom-decode-servers-from-cipher-text
+          account-passphrase cipher-text passphrase)
+         servers)))))
+        
+(defun make-unique-wallet-name (name wallets)
+  (loop for i from 1
+     with res = name
+     do
+       (unless (find res wallets :test #'equal :key #'loom-wallet-name)
+         (return res))
+       (setf res (format nil "~a ~d" name i))))
+
+(defmethod loom-restore-wallets ((db fsdb:fsdb) account-passphrase urlhash namehash)
+  (multiple-value-bind (saved-servers servers)
+      (loom-load-wallets db account-passphrase urlhash namehash)
+    (loop for saved-server in saved-servers
+       for url = (loom-server-url saved-server)
+       for urlhash = (loom-server-urlhash saved-server)
+       for server = (find urlhash servers :test #'equal :key #'loom-server-urlhash)
+       for wallets = (and server (loom-server-wallets server))
+       for passphrases = (loop for wallet in wallets
+                            collect (loom-wallet-passphrase
+                                     wallet account-passphrase))
+       do
+         (loop for wallet in (loom-server-wallets saved-server)
+            for name = (loom-wallet-name wallet)
+            for passphrase = (loom-wallet-passphrase
+                              wallet account-passphrase)
+            for private-p = (loom-wallet-private-p wallet)
+            unless (member passphrase passphrases :test #'equal)
+            do
+              (let ((name (make-unique-wallet-name name wallets)))
+                (add-loom-wallet
+                 db account-passphrase url name passphrase private-p))))))
+
 ;;
 ;; Loom session stuff
 ;;

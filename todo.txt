@@ -5,8 +5,31 @@ No way to redeem a coupon for other than usage tokens.
 
 Loom web client
 
-Persist server/wallet list to Loom server in "truledger-loom-servers"
-property of private wallet.
+
+Loom Wallet page. Below all balances. Two buttons:
+  <Save Servers>
+    Save the current server/wallet configuration.
+    Disabled if server matches local client.
+    If this would remove some information from
+    currently saved, warn first.
+  <Restore Servers>
+    Merge the saved servers with what you have currently.
+    Absent if nothing to restore
+    Disabled if server matches local client.
+
+Loom Servers page, in the table:
+ Choose column renamed to "Actions"
+ Keep <Choose> button. Add three links:
+   Rename
+     Rename this wallet. Bring up page with new name and <Save> button.
+   Remove
+     Remove this wallet from the list. Warn and require confirmation.
+   Delete
+     Delete this wallet from the Loom server.
+     Brings up page with pop-up for wallet into which to merge,
+       defaulting to the current wallet or the first one that isn't
+       the one being deleted.
+     Not available for a wallet that is the only one on its server.
 
 Servers page: change wallet name, change "Loom.cc compatible", delete
 wallet (merge into current).

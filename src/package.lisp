@@ -659,6 +659,11 @@
    #:add-loom-wallet
    #:loom-account-servers
    #:loom-account-wallets
+   #:$truledger-saved-servers
+   #:loom-decode-servers-from-cipher-text
+   #:loom-compare-servers-to-saved
+   #:loom-save-wallets
+   #:loom-restore-wallets
 ))
 
 (cl:defpackage :truledger-client-web
