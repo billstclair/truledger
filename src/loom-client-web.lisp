@@ -53,6 +53,7 @@
     ("choose-loom-wallet" . loom-do-choose-loom-wallet) ; loomservers.tmpl
     ("change-wallet" . loom-do-change-wallet) ;loom-wallet.tmpl
     ("pay-or-claim" . loom-do-pay-or-claim)   ;loom-wallet.tmpl
+    ("save-or-restore" . loom-do-save-or-restore) ;loom-wallet.tmpl
     ("register" . loom-do-register-command)
     ("new-registration" . loom-do-new-registration)
     ("logout" . do-logout)
@@ -392,6 +393,7 @@ Return two values: wallet and errmsg"
          (server (loom-cw-server cw))
          (wallets (loom-cw-wallets cw))
          (wallet (loom-cw-wallet cw))
+         (private-p (loom-wallet-private-p wallet))
          (other-servers (loop for s in (remove server servers)
                            collect (list :urlhash (loom-server-urlhash s)
                                          :url (loom-server-url s))))
@@ -401,7 +403,16 @@ Return two values: wallet and errmsg"
          contacts
          wallet-contact
          table-contacts
-         wallet-loc)
+         wallet-loc
+         servers-cipher-text
+         save-erase-warning-p
+         (save-loom-warning-p (not private-p))
+         (save-confirm-p save-loom-warning-p)
+         save-disabled-p
+         show-restore-p
+         restore-disabled-p
+         show-remove-p
+         )
     (unless contact-name
       (setf contact-name (with-parms (contact-name) contact-name)))
     (let ((loom-server (make-loom-uri-server
@@ -414,7 +425,9 @@ Return two values: wallet and errmsg"
                (qty-alist (loom:grid-scan-wallet loom-wallet))
                (wallet-location (find-if #'loom:location-wallet-p wallet-locations)))
           (setf wallet-loc
-                (and wallet-locations (loom:location-loc wallet-location)))
+                (and wallet-locations (loom:location-loc wallet-location))
+                servers-cipher-text (loom:wallet-get-property
+                                     loom-wallet $truledger-saved-servers))
           (loop for location in (loom:wallet-locations loom-wallet)
              for name = (loom:location-name location)
              for loc = (loom:location-loc location)
@@ -450,6 +463,27 @@ Return two values: wallet and errmsg"
                       (if (loom:location-wallet-p location)
                           (setf wallet-contact contact)
                           (push contact table-contacts))))))))
+
+    (when servers-cipher-text
+      (setf show-remove-p t)
+      (let* ((account-passphrase (loom-cw-passphrase cw))
+             (saved-servers (loom-decode-servers-from-cipher-text
+                            account-passphrase servers-cipher-text
+                            (loom-wallet-passphrase wallet account-passphrase))))
+        (multiple-value-bind (saving-changes-p saving-loses-p restoring-changes-p)
+            (loom-compare-servers-to-saved
+             account-passphrase servers saved-servers)
+          (setf save-loom-warning-p nil
+                save-confirm-p nil)
+          (unless saving-changes-p
+            (setf save-disabled-p t))
+          (when saving-loses-p
+            (setf save-erase-warning-p t
+                  save-confirm-p t))
+          (setf show-restore-p t)
+          (unless restoring-changes-p
+            (setf restore-disabled-p t)))))          
+          
     (make-cw-loom-menu cw :wallet)
     (setf (loom-cw-title cw) "Loom Wallet - Truledger Client"
           (loom-cw-onload cw) "document.getElementById(\"payamt\").focus()"
@@ -469,7 +503,14 @@ Return two values: wallet and errmsg"
              ,@wallet-contact
              :table-contacts ,(sort table-contacts #'string-lessp
                                     :key (lambda (plist)
-                                           (getf plist :contact-name))))
+                                           (getf plist :contact-name)))
+             :save-erase-warning-p ,save-erase-warning-p
+             :save-loom-warning-p ,save-loom-warning-p
+             :save-confirm-p ,save-confirm-p
+             :save-disabled-p ,save-disabled-p
+             :show-restore-p ,show-restore-p
+             :restore-disabled-p ,restore-disabled-p
+             :show-remove-p ,show-remove-p)
            "loom-wallet.tmpl"))))
 
 (defun loom-do-change-wallet (cw)
@@ -606,6 +647,36 @@ Return two values: wallet and errmsg"
        :claimall claimall
        :contact-name contact-name))))
 
+(defun loom-do-save-or-restore (cw)
+  (with-parms (save save-confirm restore remove remove-confirm)
+    (let* ((errmsg nil)
+           (db (loom-cw-db cw))
+           (account-passphrase (loom-cw-passphrase cw))
+           (server (loom-cw-server cw))
+           (wallet (loom-cw-wallet cw))
+           (urlhash (loom-server-urlhash server))
+           (namehash (loom-wallet-namehash wallet)))
+      (handler-case
+          (cond (save
+                 (cond (save-confirm
+                        (loom-save-wallets db account-passphrase urlhash namehash)
+                        (setf errmsg "Server information saved to wallet."))
+                       (t (setf
+                           errmsg
+                           "You must check the \"Confirm\" box to save servers."))))
+                (restore
+                 (loom-restore-wallets db account-passphrase urlhash namehash)
+                 (get-cw-servers cw)
+                 (setf errmsg "Server information restored from wallet."))
+                (remove
+                 (cond (remove-confirm
+                        (loom-remove-wallets db account-passphrase urlhash namehash)
+                        (setf errmsg "Server information removed from wallet."))
+                       (t (setf errmsg "You must check the \"Confirm\" box to remove saved servers.")))))
+        (error (c)
+          (setf errmsg (princ-to-string c))))
+      (loom-do-wallet-command cw :errmsg errmsg))))
+
 (defun loom-do-register-command (cw)
   (when (loom-cw-session cw)
     (return-from loom-do-register-command
@@ -678,6 +749,7 @@ Return two values: wallet and errmsg"
             ((not (or urlhash (equal account-passphrase account-passphrase2)))
              (setf errmsg "Passphrase doesn't match verification."))
             ((not (or (blankp passphrase)
+                      (blankp invitation)
                       (equal passphrase passphrase2)))
              (setf errmsg "Loom Server Passphrase doesn't match Verification.")))
       (unless errmsg

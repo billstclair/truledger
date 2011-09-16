@@ -67,3 +67,21 @@
           <td align='center'><input type='submit' name='claim-<!-- TMPL_VAR asset-loc-hash -->-<!-- TMPL_VAR asset-id -->' value='Claim' /></td>
         </tr><!-- /TMPL_LOOP --><!-- /TMPL_LOOP -->
       </table>
+    </form>
+
+    <form method='post' action='./loom' autocomplete='off'>
+      <input type='hidden' name='cmd' value='save-or-restore' />
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->' />
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->' />
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->' />
+      <input type='hidden' name='urlhash' value='<!-- TMPL_VAR urlhash -->'/>
+      <input type='hidden' name='namehash' value='<!-- TMPL_VAR namehash -->'/><!-- TMPL_IF save-erase-warning-p -->
+      Saving will erase some saved wallet passphrases from the server.<br/><!-- /TMPL_IF --><!-- TMPL_IF save-loom-warning-p -->
+      Accessing this loom server from its web site will potentially reveal your saved server information to the server operators. Consider saving in a non-loom-compatible wallet.<br/><!-- /TMPL_IF -->
+      <input type="submit" name="save" value="Save Servers"<!-- TMPL_IF save-disabled-p --> disabled='disabled'<!-- /TMPL_IF -->/><!-- TMPL_IF save-confirm-p -->
+      <input type="checkbox" name="save-confirm"> Confirm<br/><!-- TMPL_ELSE -->
+      <input type="hidden" name="save-confirm" value="t"/><!-- /TMPL_IF --><!-- TMPL_IF show-restore-p -->
+      <input type="submit" name="restore" value="Restore Servers"<!-- TMPL_IF restore-disabled-p --> disabled='disabled'<!-- /TMPL_IF -->/><!-- /TMPL_IF --><!-- TMPL_IF show-remove-p --><br/>
+      <input type="submit" name="remove" value="Remove Saved Servers"/>
+      <input type="checkbox" name="remove-confirm"> Confirm<br/><!-- /TMPL_IF -->
+    </form>

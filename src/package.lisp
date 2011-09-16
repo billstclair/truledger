@@ -664,6 +664,7 @@
    #:loom-compare-servers-to-saved
    #:loom-save-wallets
    #:loom-restore-wallets
+   #:loom-remove-wallets
 ))
 
 (cl:defpackage :truledger-client-web
