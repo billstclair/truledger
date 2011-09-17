@@ -57,7 +57,7 @@
         <th>Server URL</th>
         <th>Wallet</th>
         <th>Loom.cc<br/>compatible</th>
-        <th>Choose</th>
+        <th>Operation</th>
       </tr><!-- TMPL_LOOP servers -->
       <form method='post' action='./loom' autocomplete='off' style='margin: 0px;'>
         <input type='hidden' name='cmd' value='choose-loom-wallet' />
@@ -72,7 +72,10 @@
           <td style="text-align: center;">
               <input type='checkbox' name='loom-compatible'<!-- TMPL_IF loom-compatible --> checked='checked'<!-- /TMPL_IF --> />
           </td>
-          <td><input type='submit' name='choose' value='Choose' /></td>
+          <td>
+            <input type='submit' name='choose' value='Choose' />
+            <a href='./loom?cmd=wallet-operation&urlhash=<!-- TMPL_VAR urlhash -->&namehash=<!-- TMPL_VAR namehash -->'>Other</a>&nbsp;
+          </td>
         </tr>
       </form><!-- /TMPL_LOOP -->
     </table><!-- /TMPL_IF -->

@@ -50,7 +50,8 @@
     ("edit-asset" . loom-edit-asset) ;loom-asset.tmpl
     ("servers" . loom-do-servers-command)
     ("new-loom-server" . loom-do-new-loom-server)       ;loom-servers.tmpl
-    ("choose-loom-wallet" . loom-do-choose-loom-wallet) ; loomservers.tmpl
+    ("choose-loom-wallet" . loom-do-choose-loom-wallet) ; loom-servers.tmpl
+    ("wallet-operation" . loom-do-wallet-operation)     ;loom-servers.tmpl
     ("change-wallet" . loom-do-change-wallet) ;loom-wallet.tmpl
     ("pay-or-claim" . loom-do-pay-or-claim)   ;loom-wallet.tmpl
     ("save-or-restore" . loom-do-save-or-restore) ;loom-wallet.tmpl
@@ -371,6 +372,43 @@ Return two values: wallet and errmsg"
                 (loom-namehash-preference db account-hash urlhash) namehash))))
     (get-cw-servers cw)
     (loom-do-wallet-command cw)))
+
+(defun loom-do-wallet-operation (cw)
+  (with-parms (urlhash namehash new-wallet-name merge-wallet rename remove delete)
+    (let* ((servers (loom-cw-servers cw))
+           (current-namehash (and (equal urlhash
+                                         (loom-server-urlhash (loom-cw-server cw)))
+                                  (loom-wallet-namehash (loom-cw-wallet cw))))
+           (server (find urlhash servers :test #'equal :key #'loom-server-urlhash))
+           (wallets (and server (loom-server-wallets server)))
+           (wallet (find namehash wallets
+                         :test #'equal :key #'loom-wallet-namehash)))
+      (cond ((and server wallet)
+             (let ((wallet-name (loom-wallet-name wallet))
+                   (wallet-options
+                    (loop for wallet in wallets
+                       for wallet-namehash = (loom-wallet-namehash wallet)
+                       unless (equal namehash (loom-wallet-namehash wallet))
+                       collect (list :namehash wallet-namehash
+                                     :name (hsc (loom-wallet-name wallet))
+                                     :selected-p (equal wallet-namehash
+                                                        (or merge-wallet
+                                                            current-namehash))))))
+               (make-cw-loom-menu cw :servers)
+               (setf (loom-cw-title cw) "Loom Wallet Operation - Truledger Client"
+                     (loom-cw-onload cw)
+                     "document.getElementById(\"new-wallet-name\").focus()"
+                     (loom-cw-body cw)
+                     (expand-template
+                      (list :current-server-url (hsc (loom-server-url server))
+                            :current-wallet-name (hsc wallet-name)
+                            :urlhash (loom-server-urlhash server)
+                            :namehash (loom-wallet-namehash wallet)
+                            :new-wallet-name (hsc (or new-wallet-name wallet-name))
+                            :wallet-options wallet-options)
+                      "loom-wallet-operation.tmpl"))
+               cw))
+            (t (loom-do-servers-command cw :errmsg "Unknown server or wallet"))))))
 
 (defun loom-cw-get-loom-wallet (cw &key server (force-server-p t))
   (let* ((server (or server
