@@ -3,7 +3,8 @@
       <a href='<!-- TMPL_VAR current-server-url -->'><!-- TMPL_VAR current-server-url --></a>
       <br /><!-- TMPL_IF current-wallet-name -->
       <b>Wallet:</b> <!-- TMPL_VAR current-wallet-name --><br/><!-- /TMPL_IF --><!-- /TMPL_IF -->
-      <span style='color: red;'><!-- TMPL_VAR errmsg --></span><br />
+      <br/><!-- TMPL_IF errmsg -->
+      <span style='color: red;'><!-- TMPL_VAR errmsg --></span><br /><!-- /TMPL_IF -->
       <input type='hidden' name='cmd' value='wallet-operation' />
       <input type='hidden' name='urlhash' value='<!-- TMPL_VAR urlhash -->' />
       <input type='hidden' name='namehash' value='<!-- TMPL_VAR namehash -->' />
@@ -25,6 +26,7 @@
       <p>
         Removing a wallet from this Truledger client does not affect it on the Loom server, but if you forget its passphrase, you will no longer be able to access it.<br>
         <input type='submit' name='remove' value='Remove Wallet' />
+        <input type='checkbox' name='confirm-remove' /> Confirm
       </p>
 
       <p>Deleting a wallet merges all its contacts and assets into another wallet on the same server.<br/>
@@ -39,7 +41,10 @@
           </tr>
           <tr>
             <td>&nbsp;</td>
-            <td><input type='submit' name='delete' value='Delete Wallet' /></td>
+            <td>
+              <input type='submit' name='delete' value='Delete Wallet' />
+              <input type='checkbox' name='confirm-delete' /> Confirm
+            </td>
           </tr>
         </table>
       </p>

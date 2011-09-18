@@ -665,6 +665,9 @@
    #:loom-save-wallets
    #:loom-restore-wallets
    #:loom-remove-wallets
+   #:loom-rename-wallet
+   #:loom-remove-wallet
+   #:loom-merge-wallet
 ))
 
 (cl:defpackage :truledger-client-web

@@ -4041,7 +4041,7 @@
   (loom-account-preference db account-hash $NAMEHASH urlhash))
 
 (defun (setf loom-namehash-preference) (value db account-hash urlhash)
-  (check-type value string)
+  (check-type value (or null string))
   (setf (loom-account-preference db account-hash $NAMEHASH urlhash) value))
 
 (defstruct loom-server
@@ -4396,6 +4396,60 @@
       (let* ((loom-wallet (loom:get-wallet passphrase t nil private-p)))
         (setf (loom:wallet-get-property loom-wallet $truledger-saved-servers) nil)
         (setf (loom:get-wallet passphrase t nil private-p) loom-wallet)))))
+
+(defun loom-rename-wallet (db passphrase urlhash namehash new-wallet-name)
+  (let* ((account-hash (loom-account-hash db passphrase))
+         (wallets (loom-account-wallets db account-hash urlhash))
+         (wallet (find namehash wallets :test #'equal :key #'loom-wallet-namehash))
+         (new-wallet (find new-wallet-name wallets
+                           :test #'equal :key #'loom-wallet-name)))
+    (unless wallet (error "No such wallet."))
+    (when new-wallet (error "There is already a wallet with that name."))
+    (let* ((url (loom-get-server-url db urlhash))
+           (loom-server (make-loom-uri-server db url)))
+      (loom:with-loom-transaction (:server loom-server)
+        (let* ((wallet-passphrase (loom-wallet-passphrase wallet passphrase))
+               (private-p (loom-wallet-private-p wallet))
+               (loom-wallet (loom:get-wallet wallet-passphrase t nil private-p))
+               (locations (loom:wallet-locations loom-wallet))
+               (location (find-if #'loom:location-wallet-p locations))
+               (new-location (find new-wallet-name locations
+                                   :test #'equal :key #'loom:location-name)))
+          (when new-location
+            (error "There is already a Loom contact with that name."))
+          (setf (loom:location-name location) new-wallet-name
+                (loom:get-wallet wallet-passphrase t nil private-p) loom-wallet)
+          (let* ((server-key (loom-account-server-key account-hash urlhash))
+                 (old-file (fsdb:db-filename
+                            db (fsdb:append-db-keys server-key $WALLET namehash)))
+                 (old-name-file (fsdb:db-filename
+                                 db (fsdb:append-db-keys
+                                     server-key $WALLETNAME namehash)))
+                 (new-namehash (folded-hash new-wallet-name))
+                 (new-file (fsdb:db-filename
+                            db (fsdb:append-db-keys
+                                server-key $WALLET new-namehash)))
+                 (new-name-key (fsdb:append-db-keys
+                                server-key $WALLETNAME new-namehash))
+                 (new-name-file (fsdb:db-filename db new-name-key)))
+            (rename-file old-file new-file)
+            (rename-file old-name-file new-name-file)
+            (setf (fsdb:db-get db new-name-key) new-wallet-name)
+            (when (equal namehash (loom-namehash-preference
+                                   db account-hash urlhash))
+              (setf (loom-namehash-preference db account-hash urlhash)
+                    new-namehash))))))))
+
+(defun loom-remove-wallet (db account-hash urlhash namehash)
+  (let* ((server-key (loom-account-server-key account-hash urlhash))
+         (wallet-key (fsdb:append-db-keys server-key $WALLET namehash))
+         (walletname-key (fsdb:append-db-keys server-key $WALLETNAME namehash)))
+    (setf (fsdb:db-get db walletname-key) nil)
+    (fsdb:recursive-delete-directory (fsdb:db-filename db wallet-key)
+                                     :if-does-not-exist nil)
+    (when (equal namehash (loom-namehash-preference db account-hash urlhash))
+      (setf (loom-namehash-preference db account-hash urlhash) nil))))
+        
 ;;
 ;; Loom session stuff
 ;;

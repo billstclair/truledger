@@ -374,7 +374,10 @@ Return two values: wallet and errmsg"
     (loom-do-wallet-command cw)))
 
 (defun loom-do-wallet-operation (cw)
-  (with-parms (urlhash namehash new-wallet-name merge-wallet rename remove delete)
+  (with-parms (urlhash namehash
+                       new-wallet-name rename
+                       remove confirm-remove
+                       merge-wallet delete confirm-delete)
     (let* ((servers (loom-cw-servers cw))
            (current-namehash (and (equal urlhash
                                          (loom-server-urlhash (loom-cw-server cw)))
@@ -382,8 +385,43 @@ Return two values: wallet and errmsg"
            (server (find urlhash servers :test #'equal :key #'loom-server-urlhash))
            (wallets (and server (loom-server-wallets server)))
            (wallet (find namehash wallets
-                         :test #'equal :key #'loom-wallet-namehash)))
-      (cond ((and server wallet)
+                         :test #'equal :key #'loom-wallet-namehash))
+           (db (loom-cw-db cw))
+           (passphrase (loom-cw-passphrase cw))
+           errmsg)
+      (cond (wallet
+             (handler-case
+                 (cond (rename
+                        (unless (blankp new-wallet-name)
+                          (loom-rename-wallet
+                           db passphrase urlhash namehash new-wallet-name)
+                          (get-cw-servers cw)
+                          (return-from loom-do-wallet-operation
+                            (loom-do-servers-command
+                             cw :errmsg "Wallet renamed.")))
+                        (setf errmsg
+                              "You must specify the new Wallet Name."))
+                       (remove
+                        (when confirm-remove
+                          (loom-remove-wallet
+                           db (loom-cw-account-hash cw) urlhash namehash)
+                          (get-cw-servers cw)
+                          (return-from loom-do-wallet-operation
+                            (loom-do-servers-command
+                             cw :errmsg "Wallet removed.")))
+                        (error
+                         "You must check the Confirm box to remove a wallet."))
+                       (delete
+                        (when confirm-delete
+                          (loom-merge-wallet
+                           db passphrase urlhash namehash merge-wallet)
+                          (return-from loom-do-wallet-operation
+                            (loom-do-servers-command
+                             cw :errmsg "Wallet merged.")))
+                        (setf errmsg
+                              "You must check the Confirm box to delete a wallet.")))
+               (error (c)
+                 (setf errmsg (princ-to-string c))))
              (let ((wallet-name (loom-wallet-name wallet))
                    (wallet-options
                     (loop for wallet in wallets
@@ -400,7 +438,8 @@ Return two values: wallet and errmsg"
                      "document.getElementById(\"new-wallet-name\").focus()"
                      (loom-cw-body cw)
                      (expand-template
-                      (list :current-server-url (hsc (loom-server-url server))
+                      (list :errmsg errmsg
+                            :current-server-url (hsc (loom-server-url server))
                             :current-wallet-name (hsc wallet-name)
                             :urlhash (loom-server-urlhash server)
                             :namehash (loom-wallet-namehash wallet)
