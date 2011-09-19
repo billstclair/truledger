@@ -415,6 +415,7 @@ Return two values: wallet and errmsg"
                         (when confirm-delete
                           (loom-merge-wallet
                            db passphrase urlhash namehash merge-wallet)
+                          (get-cw-servers cw)
                           (return-from loom-do-wallet-operation
                             (loom-do-servers-command
                              cw :errmsg "Wallet merged.")))
@@ -1160,7 +1161,7 @@ Return two values: wallet and errmsg"
       (setf id (loom:random-loc)))
     (setf (loom-cw-title cw) "Loom Assets - Truledger Client"
           (loom-cw-onload cw)
-          "document.getElementsById(\"description\").focus()"
+          "document.getElementById(\"description\").focus()"
           (loom-cw-body cw)
           (expand-template
            (list :errmsg errmsg

@@ -4453,19 +4453,31 @@
     (when (equal namehash (loom-namehash-preference db account-hash urlhash))
       (setf (loom-namehash-preference db account-hash urlhash) nil))))
 
+(defun find-unique-string (prefix strings)
+  (loop with s = prefix
+     for suffix from 2
+     do (unless (member s strings :test #'equal) (return s))
+       (setf s (format nil "~a ~d" prefix suffix))))
+
 (defun loom-merge-wallet-locations-and-assets (wallet merge-wallet)
   (check-type wallet loom:wallet)
   (check-type merge-wallet loom:wallet)
-  (let ((merge-locations (loom:wallet-locations merge-wallet))
-        (merge-assets (loom:wallet-assets merge-wallet))
+  (let* ((merge-locations (loom:wallet-locations merge-wallet))
+         (merge-assets (loom:wallet-assets merge-wallet))
+         (location-names (mapcar 'loom:location-name merge-locations))
+         (asset-names (mapcar 'loom:asset-name merge-assets))
         new-locations new-assets)
     (dolist (location (loom:wallet-locations wallet))
       (unless (or (loom:location-wallet-p location)
                   (loom:find-location-by-loc
                    (loom:location-loc location) merge-locations))
+        (setf (loom:location-name location)
+              (find-unique-string (loom:location-name location) location-names))
         (push location new-locations)))
     (dolist (asset (loom:wallet-assets wallet))
       (unless (loom:find-asset-by-id (loom:asset-id asset) merge-assets)
+        (setf (loom:asset-name asset)
+              (find-unique-string (loom:asset-name asset) asset-names))
         (push asset new-assets)))
     (setf (loom:wallet-locations merge-wallet)
           (nconc (loom:wallet-locations merge-wallet) (nreverse new-locations)))
@@ -4473,8 +4485,11 @@
           (nconc (loom:wallet-assets merge-wallet) (nreverse new-assets)))
     merge-wallet))
 
+;; This doesn't go through all the saved servers in all the wallets,
+;; just the wallet being deleted and the one being merged into.
+;; Maybe it should remove the deleted wallet from all saved servers in all wallets.
 (defun loom-merge-wallet-saved-servers
-    (account-passphrase wallet merge-wallet &key
+    (account-passphrase urlhash wallet merge-wallet &key
      (passphrase (loom-wallet-passphrase wallet account-passphrase))
      (merge-passphrase (loom-wallet-passphrase merge-wallet account-passphrase)))
   (check-type wallet loom:wallet)
@@ -4492,23 +4507,20 @@
           (and merge-cipher-text
                (loom-decode-servers-from-cipher-text
                 account-passphrase merge-cipher-text merge-passphrase)))
-         omitted-merge-wallet
          new-servers)
     (when servers
       (loop for server in servers
          for merge-server = (find (loom-server-urlhash server) merge-servers
                                   :test #'equal :key #'loom-server-urlhash)
+         with wallet-names
          for passphrases = (and merge-server
                                 (loop for wallet in (loom-server-wallets
                                                      merge-server)
                                    for pass = (loom-wallet-passphrase
                                                wallet account-passphrase)
-                                   for omitted-p = (and (equal passphrase pass)
-                                                        (setf omitted-merge-wallet
-                                                              wallet))
-                                   unless omitted-p
-                                   collect pass))
-
+                                   collect pass
+                                   do
+                                     (push (loom-wallet-name wallet) wallet-names)))
          for new-wallets = nil
          do
            (cond (merge-server
@@ -4520,15 +4532,31 @@
                                             wallet account-passphrase)
                                            passphrases
                                            :test #'equal))
+                         (setf (loom-wallet-name wallet)
+                               (find-unique-string (loom-wallet-name wallet)
+                                                   wallet-names))
                          (push wallet new-wallets)))
                   (setf (loom-server-wallets merge-server)
-                        (nconc (delete omitted-merge-wallet
-                                       (loom-server-wallets merge-server))
+                        (nconc (loom-server-wallets merge-server)
                                (nreverse new-wallets))))
                  (t (push server new-servers))))
       (setf merge-servers
             (nconc merge-servers (nreverse new-servers))))
     (when merge-servers
+      ;; Don't save wallet we're deleting
+      (let ((server (find urlhash merge-servers
+                          :test #'equal :key #'loom-server-urlhash)))
+        (when server
+          (let* ((wallets (loom-server-wallets server))
+                 (deleted-wallet (loop for wallet in wallets
+                                    when (equal passphrase
+                                                (loom-wallet-passphrase
+                                                 wallet account-passphrase))
+                                    do
+                                      (return wallet))))
+            (when deleted-wallet
+              (setf (loom-server-wallets server)
+                    (delete deleted-wallet wallets))))))
       (setf (loom:wallet-get-property merge-wallet $truledger-saved-servers)
             (loom-encode-servers-for-save
              account-passphrase merge-servers merge-passphrase))
@@ -4542,13 +4570,15 @@
                      (find-if #'loom:location-wallet-p
                               (loom:wallet-locations merge-wallet))))
          (asset-ids (mapcar #'loom:asset-id (loom:wallet-assets wallet)))
-         (id.qtys (cdr (loom:grid-scan-wallet
-                        nil :locations (list wallet-loc) :assets asset-ids))))
+         (id.qtys (cdar (loom:grid-scan-wallet
+                         nil :locations (list wallet-loc) :assets asset-ids))))
     (loop for (id . qty) in id.qtys
        do
+         (unless (equal id loom:*zero*)
+           (loom:grid-buy id merge-loc merge-loc))
          (if (eql #\- (aref qty 0))
              (loom:grid-issuer id wallet-loc merge-loc)
-             (loom:grid-move id qty wallet-loc merge-loc))
+             (loom:grid-move id (parse-integer qty) wallet-loc merge-loc))
          (loom:grid-sell id wallet-loc merge-loc t))))
 
 (defun loom-merge-wallet (db passphrase urlhash namehash mergehash)
@@ -4556,7 +4586,7 @@
   (let* ((account-hash (loom-account-hash db passphrase))
          (wallets (loom-account-wallets db account-hash urlhash))
          (wallet (find namehash wallets :test #'equal :key #'loom-wallet-namehash))
-         (merge-wallet (find mergehash wallet
+         (merge-wallet (find mergehash wallets
                              :test #'equal :key #'loom-wallet-namehash)))
     (unless wallet (error "Can't find wallet."))
     (unless merge-wallet (error "Can't find merge wallet."))
@@ -4582,14 +4612,14 @@
                               :usage-private-p merge-wallet-private-p)
           (loom-merge-wallet-locations-and-assets loom-wallet loom-merge-wallet)
           (loom-merge-wallet-saved-servers
-           passphrase loom-wallet loom-merge-wallet
+           passphrase urlhash loom-wallet loom-merge-wallet
            :passphrase wallet-passphrase
            :merge-passphrase merge-wallet-passphrase)
           (setf (loom:get-wallet
                  merge-wallet-passphrase t nil merge-wallet-private-p)
                 loom-merge-wallet)
           (loom-move-wallet-quantities loom-wallet loom-merge-wallet)
-          (loom-remove-wallet db account-hash urlhash mergehash))))))
+          (loom-remove-wallet db account-hash urlhash namehash))))))
         
 ;;
 ;; Loom session stuff
