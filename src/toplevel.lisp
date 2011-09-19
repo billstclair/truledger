@@ -207,6 +207,7 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
 
 (defun save-truledger-application (&optional (filename (application-name)))
   (stop-web-server)
+  (load-template-directory)
   (setq *last-commit* (last-commit))
   (setq *save-application-time* (get-unix-time))
   (save-application filename

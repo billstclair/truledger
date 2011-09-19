@@ -8,18 +8,13 @@
 (in-package :truledger-client-web)
 
 (defvar *template-db* (make-fsdb "templates"))
+(defvar *template-hash* nil)
 
 (defmethod template-get ((db fsdb) key &rest keys)
   (apply #'db-get db key keys))
 
 (defmethod (setf template-get) (value (db fsdb) key &rest keys)
   (apply #'(setf db-get) value db key keys))
-
-(defmethod template-get ((hash hash-table) key &rest keys)
-  (gethash (apply #'append-db-keys key keys) hash))
-
-(defmethod (setf template-get) (value (hash hash-table) key &rest keys)
-  (setf (gethash (apply #'append-db-keys key keys) hash) value))
 
 ;; This is so we can put the default templates in the distributed image
 (defun load-template-directory (&optional (db *template-db*))
@@ -32,7 +27,7 @@
                           (traverse path))
                          (t (setf (gethash path hash) (db-get db path))))))))
       (traverse ""))
-    hash))
+    (setf *template-hash* hash)))
 
 (defun fill-and-print-to-string (template plist)
   (with-output-to-string (s)
@@ -42,7 +37,9 @@
 (defun expand-template (plist key &optional (template-db *template-db*))
   (unless template-db
     (setf template-db *template-db*))
-  (let ((template (template-get template-db key)))
+  (let* ((hash *template-hash*)
+         (template (or (template-get template-db key)
+                       (and hash (gethash key hash)))))
     (fill-and-print-to-string template plist)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
