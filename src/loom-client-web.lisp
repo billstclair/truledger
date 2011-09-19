@@ -742,12 +742,14 @@ Return two values: wallet and errmsg"
                            errmsg
                            "You must check the \"Confirm\" box to save servers."))))
                 (restore
-                 (loom-restore-wallets db account-passphrase urlhash namehash)
+                 (loom-restore-saved-wallets
+                  db account-passphrase urlhash namehash)
                  (get-cw-servers cw)
                  (setf errmsg "Server information restored from wallet."))
                 (remove
                  (cond (remove-confirm
-                        (loom-remove-wallets db account-passphrase urlhash namehash)
+                        (loom-remove-saved-wallets
+                         db account-passphrase urlhash namehash)
                         (setf errmsg "Server information removed from wallet."))
                        (t (setf errmsg "You must check the \"Confirm\" box to remove saved servers.")))))
         (error (c)

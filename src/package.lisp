@@ -663,8 +663,8 @@
    #:loom-decode-servers-from-cipher-text
    #:loom-compare-servers-to-saved
    #:loom-save-wallets
-   #:loom-restore-wallets
-   #:loom-remove-wallets
+   #:loom-restore-saved-wallets
+   #:loom-remove-saved-wallets
    #:loom-rename-wallet
    #:loom-remove-wallet
    #:loom-merge-wallet
