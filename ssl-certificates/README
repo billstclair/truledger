@@ -6,3 +6,11 @@ certificates and CA certificates (certificate authorities).
 File names of the PEM files should not contain periods, except in the
 trailing ".pem". So use "billstclair-com.pem", not
 "billstclair.com.pem". Maybe I'll fix this one day, but not today.
+
+The pem files are loaded only once, the first time you do something
+that requires connection to a Loom server. To add more certificates,
+you'll need to restart the Truledger process.
+
+In a development image, you can cause a reload with:
+
+  (setf truledger-client::*ssl-certificates-initialized-p* nil)
