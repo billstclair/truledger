@@ -4340,7 +4340,7 @@
                      (error "Can't find save wallet.")))
          (passphrase (loom-wallet-passphrase wallet account-passphrase))
          (private-p (loom-wallet-private-p wallet))
-         (loom-server (loom:make-loom-uri-server (loom-server-url server))))
+         (loom-server (make-loom-uri-server db (loom-server-url server))))
     (loom:with-loom-server (loom-server)
       (let* ((loom-wallet (loom:get-wallet passphrase t nil private-p))
              (cipher-text (or (loom:wallet-get-property
@@ -4362,7 +4362,7 @@
 (defmethod loom-restore-saved-wallets
     ((db fsdb:fsdb) account-passphrase urlhash namehash)
   (multiple-value-bind (saved-servers servers)
-      (loom-load-wallets db account-passphrase urlhash namehash)
+      (loom-load-saved-wallets db account-passphrase urlhash namehash)
     (loop for saved-server in saved-servers
        for url = (loom-server-url saved-server)
        for urlhash = (loom-server-urlhash saved-server)
@@ -4394,7 +4394,7 @@
                      (error "Can't find save wallet.")))
          (passphrase (loom-wallet-passphrase wallet account-passphrase))
          (private-p (loom-wallet-private-p wallet))
-         (loom-server (loom:make-loom-uri-server (loom-server-url server))))
+         (loom-server (make-loom-uri-server db (loom-server-url server))))
     (loom:with-loom-server (loom-server)
       (let* ((loom-wallet (loom:get-wallet passphrase t nil private-p)))
         (setf (loom:wallet-get-property loom-wallet $truledger-saved-servers) nil)
@@ -4638,11 +4638,18 @@
 (defun loom-account-session-key (account-hash)
   (fsdb:append-db-keys (loom-account-key account-hash) $SESSION))
 
-(defun initialize-ssl-certificate-temp-dir (db)
-  (setf (loom:ssl-certificate-temp-dir) (fsdb:db-filename db "/")))
+(defvar *ssl-certificates-initialized-p* nil)
+
+(defun initialize-ssl-certificates (&optional (db (make-client-db)))
+  (unless *ssl-certificates-initialized-p*
+    (setf (loom:ssl-certificate-temp-dir) (fsdb:db-filename db "/"))
+    (let ((files (directory "ssl-certificates/*.pem")))
+      (when files
+        (cl+ssl:ssl-verify-init :verify-locations files)))
+    (setf *ssl-certificates-initialized-p* t)))
 
 (defun make-loom-uri-server (db uri-string)
-  (initialize-ssl-certificate-temp-dir db)
+  (initialize-ssl-certificates db)
   (loom:make-loom-uri-server uri-string))
 
 (defmethod loom-make-session ((db fsdb:fsdb) passphrase)

@@ -5,6 +5,7 @@ _darcs
 *.exe.zip
 .DS_Store
 truledger-dbs
+ssl-certificates
 truledger-*86cl*
 appname.txt
 privkey
