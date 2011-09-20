@@ -2,3 +2,7 @@ Any SSL certificates you put in this directory in pem format with file
 names ending in ".pem" will be considered valid. You can append
 multiple certificates in a single file, and you can include site
 certificates and CA certificates (certificate authorities).
+
+File names of the PEM files should not contain periods, except in the
+trailing ".pem". So use "billstclair-com.pem", not
+"billstclair.com.pem". Maybe I'll fix this one day, but not today.
