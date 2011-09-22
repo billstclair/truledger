@@ -28,7 +28,7 @@
   (and *use-random*
        (or (ignore-errors
 	     #-windows (open "/dev/random")
-	     #+windows *windows-random-stream)
+	     #+windows *windows-random-stream*)
            (setq *use-random* nil))))
 
 (defun random-bytes (num &optional (stream (random-stream)))
