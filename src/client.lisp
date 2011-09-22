@@ -4640,10 +4640,21 @@
 
 (defvar *ssl-certificates-initialized-p* nil)
 
+(defvar *ssl-certificates-dir*
+  "ssl-certificates")
+
+(defun ssl-certificates-dir ()
+  (let ((dir *ssl-certificates-dir*))
+    (if (functionp dir) (funcall dir) dir)))
+
+(defun (setf ssl-certificates-dir) (dir)
+  (setf *ssl-certificates-dir* dir))
+
 (defun initialize-ssl-certificates (&optional (db (make-client-db)))
   (unless *ssl-certificates-initialized-p*
     (setf (loom:ssl-certificate-temp-dir) (fsdb:db-filename db "/"))
-    (let ((files (directory "ssl-certificates/*.pem")))
+    (let ((files (directory
+                  (fsdb:append-db-keys (ssl-certificates-dir) "*.pem"))))
       (when files
         (cl+ssl:ssl-verify-init :verify-locations files)))
     (setf *ssl-certificates-initialized-p* t)))

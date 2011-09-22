@@ -309,9 +309,22 @@
       0
       (1+ (ceiling (if (integerp data) data (length data)) 4096))))
 
+(defvar *db-dir* "truledger-dbs")
+
+(defun db-dir ()
+  (let ((dir *db-dir*))
+    (if (functionp dir) (funcall dir) dir)))
+
+(defun (setf db-dir) (dir)
+  (setf *db-dir* dir))
+
 ;; The directory for the client database
 (defun client-db-dir ()
-  "truledger-dbs/clientdb")
+  (fsdb:append-db-keys (db-dir) "clientdb"))
+
+;; The directory for the server database
+(defun server-db-dir ()
+  (fsdb:append-db-keys (db-dir) "serverdb"))
 
 ;;;
 ;;; Latches - there's probably a standard name for this

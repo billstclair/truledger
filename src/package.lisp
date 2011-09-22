@@ -328,7 +328,9 @@
    #:whots
    #:data-contents
    #:data-cost
+   #:db-dir
    #:client-db-dir
+   #:server-db-dir
    #:make-latch
    #:signal-latch
    #:wait-on-latch
@@ -627,6 +629,7 @@
    #:backup*
 
    ;; Loom functions
+   #:ssl-certificates-dir
    #:make-loom-uri-server
    #:loom-login-with-sessionid
    #:loom-make-session

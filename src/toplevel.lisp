@@ -29,6 +29,7 @@
 
 (defparameter *allowed-parameters*
   '((("-p" "--port") :port . t)
+    ("--dbdir" :dbdir . t)
     ("--key" :key . t)
     ("--cert" :cert . t)
     ("--nonsslport" :nonsslport . t)
@@ -44,10 +45,12 @@
 (defun usage-error (app)
   (error 'usage-error
          :format-control
-         "Usage is: ~a [-p port] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid] [-- url-prefix url-prefix]~a
+         "Usage is: ~a [-p port] [--dbdir dbdir] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid] [--url-prefix url-prefix]~a
 port defaults to 8785, unless keyfile & certfile are included, then 8786.
 If port defaults to 8786, then nonsslport defaults to 8785,
 otherwise the application doesn't listen on a non-ssl port.
+dbdir is where the 'database' files are stored.
+  default: ~a
 keyfile is the path to an SSL private key file.
 certfile is the path to an SSL certificate file.
 uid & gid are the user id and group id to change to after listening on the port.
@@ -57,6 +60,7 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
          (list app
                #-loadswank ""
                #+loadswank " [--slimeport slimeport]"
+               (db-dir)
                #-loadswank ""
                #+loadswank (format nil "~%slimeport is a port on which to listen for a connection from the SLIME IDE."))))
 
@@ -86,7 +90,7 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
 
 (defun toplevel-function-internal ()
   (run-startup-functions)
-  (let (port keyfile certfile nonsslport uid gid slimeport)
+  (let (port dbdir keyfile certfile nonsslport uid gid slimeport)
     (multiple-value-bind (args app) (parse-args)
       (handler-case
           (setq keyfile (cdr (assoc :key args))
@@ -96,6 +100,7 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
                           (if keyfile
                               *default-ssl-port-string*
                               *default-port-string*)))
+                dbdir (cdr (assoc :dbdir args))
                 nonsslport (parse-integer
                             (or (cdr (assoc :nonsslport args))
                                 (if (assoc :port args) "0" *default-port-string*)))
@@ -106,6 +111,8 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
                 slimeport (let ((str (cdr (assoc :slimeport args))))
                             (and str (parse-integer str))))
         (error () (usage-error app))))
+    (when dbdir
+      (setf (db-dir) dbdir))
     (when (xor keyfile certfile)
       (error "Both or neither required of --key & --cert"))
     (when keyfile
@@ -205,11 +212,37 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
 (defun application-name ()
   (stringify (target-suffix) "truledger-~a"))
 
+(defun truledger-application-directory ()
+  #+(and unix (not darwin))
+  (fsdb:append-db-keys (asdf:getenv "HOME") ".truledger")
+  #+windows
+  (fsdb:append-db-keys (namestring (pathname (asdf:getenv "HOME")))
+                       "Truledger")
+  #+darwin
+  (fsdb:append-db-keys (asdf:getenv "HOME")
+                       "Library"
+                       "Application Support"
+                       "Truledger"))
+
+(defun set-db-dir-for-saved-application ()
+  (setf (db-dir)
+        (lambda ()
+          (fsdb:append-db-keys (truledger-application-directory) "dbs"))
+        (ssl-certificates-dir)
+        (lambda ()
+          (fsdb:append-db-keys (truledger-application-directory)
+                               "ssl-certificates"))))
+
+(defun set-db-dir-for-development ()
+  (setf (db-dir) "truledger-dbs"
+        (ssl-certificates-dir) "ssl-certificates"))
+
 (defun save-truledger-application (&optional (filename (application-name)))
   (stop-web-server)
   (load-template-directory)
   (setq *last-commit* (last-commit))
   (setq *save-application-time* (get-unix-time))
+  (set-db-dir-for-saved-application)
   (save-application filename
                     :toplevel-function #'toplevel-function
                     :prepend-kernel t

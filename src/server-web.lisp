@@ -112,9 +112,6 @@
                  params)
      ,@body))
 
-(defun server-db-dir ()
-  "truledger-dbs/serverdb")
-
 (defvar *debug-stream* t)
 
 (defmacro with-debug-stream ((&optional (only-if-p t)) &body body)

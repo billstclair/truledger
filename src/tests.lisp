@@ -20,7 +20,7 @@
          rest))        
 
 (defclass test-state ()
-  ((db-dir :accessor db-dir
+  ((db-dir :accessor db-dir-of
            :initarg :db-dir)
    (port :accessor port
          :initarg :port
@@ -36,7 +36,7 @@
 (defmethod initialize-instance :after ((ts test-state) &key
                                        dont-erase
                                        (network-p nil))
-  (let* ((db-dir (ensure-directory-pathname (db-dir ts)))
+  (let* ((db-dir (ensure-directory-pathname (db-dir-of ts)))
          (port (port ts))
          (passphrase (passphrase ts))
          (server-dir (merge-pathnames "serverdb" db-dir))
