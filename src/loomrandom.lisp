@@ -3,7 +3,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Cryptographically secure random number generation
-;;; Needs cryptographic random number generation for Windows
 ;;;
 
 (in-package :truledger)
@@ -11,14 +10,25 @@
 (defvar *use-urandom* t)
 (defvar *use-random* t)
 
+#+windows
+(defvar *windows-random-stream*
+  (cl-crypto:make-random-stream))
+
+#+windows
+(add-startup-function 'cl-crypto:initialize-windows-crypto-library)
+
 (defun urandom-stream ()
   (and *use-urandom*
-       (or (ignore-errors (open "/dev/urandom"))
+       (or (ignore-errors
+	     #-windows (open "/dev/urandom")
+	     #+windows *windows-random-stream*)
            (setq *use-urandom* nil))))
 
 (defun random-stream ()
   (and *use-random*
-       (or (ignore-errors (open "/dev/random"))
+       (or (ignore-errors
+	     #-windows (open "/dev/random")
+	     #+windows *windows-random-stream)
            (setq *use-random* nil))))
 
 (defun random-bytes (num &optional (stream (random-stream)))

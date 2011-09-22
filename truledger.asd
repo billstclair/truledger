@@ -46,6 +46,7 @@
      (:file "tests")
      ))))
 
+#-windows
 (unless (or (find-package :cl-autorepo)
             (ignore-errors (ql:quickload "cl-autorepo")))
   (let* ((dir "~/.local/share/common-lisp/source/")
@@ -55,6 +56,8 @@
     (load autorepo-asd)
     (ql:quickload "cl-autorepo")))
 
+#-windows
+(progn
 (cl-autorepo:add-system
  "cl-crypto" "git://github.com/billstclair/cl-crypto.git" :git)
 (cl-autorepo:add-system
@@ -65,7 +68,7 @@
  :git)
 (cl-autorepo:add-system
  "cl-loom" "git://github.com/billstclair/cl-loom.git" :git)
-
+)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

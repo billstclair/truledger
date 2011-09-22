@@ -9,8 +9,8 @@ branch=`git branch --contains | fgrep '*'`
 branch=${branch:2}
 
 echo "Pushing branch: $branch"
-git push origin $branch
-git push truledger $branch
+git push --tags origin $branch
+git push --tags truledger $branch
 
 # public access:
 # git remote add github git://github.com/billstclair/truledger.git

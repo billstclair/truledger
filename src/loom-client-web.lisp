@@ -168,7 +168,8 @@
                    (loom-cw-onload cw)
                    "document.getElementById(\"serverurl\").focus()"
                    (loom-cw-body cw)
-                   (expand-template (list :serverurl url)
+                   (expand-template (list :serverurl url
+                                          :loom-compatible t)
                                     "loom-servers.tmpl"))))))
 
 (defun load-loom-walletname (server passphrase)
