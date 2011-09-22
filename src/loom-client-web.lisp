@@ -29,7 +29,8 @@
            (plist (list :title (loom-cw-title cw)
                         :menu (loom-cw-menu cw)
                         :onload (loom-cw-onload cw)
-                        :body (loom-cw-body cw))))
+                        :body (loom-cw-body cw)
+                        :version (truledger-version-html))))
       (expand-template plist "index.tmpl"))))
 
 (defparameter *loom-cmd-to-function-alist*

@@ -228,6 +228,23 @@
       (when (cw-postcnt cw)
         (setf (postcnt cw) (1+ (cw-postcnt cw)))))))
 
+(defun truledger-version-html (&key
+                               (version *last-commit*)
+                               (unix-time *save-application-time*)
+                               time)
+  (when time
+    (setf unix-time (universal-to-unix-time time)))
+  (unless (blankp version)
+    (let ((res (whots (s)
+                 (:a :class "version"
+                     :href (stringify
+                            version
+                            "https://github.com/billstclair/truledger/commit/~a")
+                     (str version)))))
+      (when unix-time
+        (setf res (format nil "~a ~a" res (datestr unix-time))))
+      res)))
+
 ;; Should support a template.lhtml file that users can easily change.
 (defun write-template (cw)
   (let ((title (cw-title cw))
@@ -269,18 +286,9 @@
           (flet ((write-version (s label version time)
                    (unless (blankp version)
                      (who (s)
-                       (who (s)
-                         (esc label)
-                         (:a
-                          :class "version"
-                          :href
-                          (stringify
-                           version
-                           "http://github.com/billstclair/truledger/commit/~a")
-                          (str version)))
-                       (when time
-                         (let ((datestr (datestr time)))
-                           (who (s) " " (str datestr)))))
+                       (esc label)
+                       (str (truledger-version-html :version version
+                                                    :unix-time time)))
                      t)))
             (who (s)
               (:p
