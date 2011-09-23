@@ -127,29 +127,29 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
             swank:*default-worker-thread-bindings*)
       (swank:create-server :port slimeport :dont-close t))
     slimeport                           ;no warning
-    (handler-case
-        (let* ((dispport (or nonsslport port))
-               (url (format nil "http://localhost~@[:~a~]/"
-                            (unless (eql dispport 80) dispport))))
-          (truledger-web-server
-           nil
-           :port port
-           :ssl-privatekey-file keyfile
-           :ssl-certificate-file certfile
-           :forwarding-port nonsslport
-           :uid uid
-           :gid gid)
-          (format t "Client web server started on port ~a.~%"
-                  (or nonsslport port))
-          (format t "Web address: ~a~%" url)
-          (when (server-db-exists-p)
-            (format t "REMEMBER TO LOG IN AS THE SERVER TO START THE SERVER!!~%"))
-          (finish-output)
-          (browse-url url))
-      (error (c)
-        (format t "Error starting server on port ~d: ~a~%" port c)
-        (finish-output)
-        (quit -1))))
+    (handler-bind
+	((error (lambda (c)
+		  (break "Error starting server on port ~d: ~a~%" port c)
+		  (return-from toplevel-function-internal
+		    (quit -1)))))
+      (let* ((dispport (or nonsslport port))
+	     (url (format nil "http://localhost~@[:~a~]/"
+			  (unless (eql dispport 80) dispport))))
+	(truledger-web-server
+	 nil
+	 :port port
+	 :ssl-privatekey-file keyfile
+	 :ssl-certificate-file certfile
+	 :forwarding-port nonsslport
+	 :uid uid
+	 :gid gid)
+	(format t "Client web server started on port ~a.~%"
+		(or nonsslport port))
+	(format t "Web address: ~a~%" url)
+	(when (server-db-exists-p)
+	  (format t "REMEMBER TO LOG IN AS THE SERVER TO START THE SERVER!!~%"))
+	(finish-output)
+	(browse-url url))))
   (process-wait
    "Server shutdown"
    (lambda () (not (web-server-active-p)))))
@@ -216,7 +216,7 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
   #+(and unix (not darwin))
   (fsdb:append-db-keys (asdf:getenv "HOME") ".truledger")
   #+windows
-  (fsdb:append-db-keys (namestring (pathname (asdf:getenv "HOME")))
+  (fsdb:append-db-keys (namestring (pathname (asdf:getenv "APPDATA")))
                        "Truledger")
   #+darwin
   (fsdb:append-db-keys (asdf:getenv "HOME")

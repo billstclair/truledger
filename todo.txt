@@ -1,3 +1,25 @@
+--version on the saved application command line
+
+Change truledger client web site to use the template technology in the
+loom client web site. Make modifications shippable with installer as
+.tmpl files, or loaded at truledger-app generation time
+(template-patches directory).
+
+Lock protocol for backing up with rsync
+  Wait for server to remove "locked" file.
+  Create "lock" file.
+  Wait for server to make "locked" file.
+  rsync
+  Delete "lock" file.
+
+Installers making double-clickable apps or services for each platform:
+  Windows
+  Mac OS X
+  Ubuntu
+
+Double-clickable web link to open a web page pointing at the local client.
+
+----------------------------------------------------------------------
 
 No way to redeem a coupon for other than usage tokens.
   Server complains that the coupon isn't for usage tokens.
