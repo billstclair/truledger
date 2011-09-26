@@ -271,6 +271,17 @@ Get fees
 Set Fees
 --------
 
+There are 5 kinds of fees:
+
+  1) Refundable spend fees, in usage tokens, charged for spends,
+     refunded on acceptance, taken by intended recipient on refusal,
+     taken by the server on cancellation.
+  2) One-time registration fees, in usage tokens.
+  3) Fees for spends to another user. These can be in any asset type,
+     and are charged only for the fee's asset type.
+  4) Fees for tranfers between your own <acct>s. Same as 3.
+  5) Fees for creating an asset. These can be in any other asset type.
+
   Customer sends:
 
 (<serverid>,setfees,<time#>,<cnt#>).

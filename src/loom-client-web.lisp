@@ -30,7 +30,8 @@
                         :menu (loom-cw-menu cw)
                         :onload (loom-cw-onload cw)
                         :body (loom-cw-body cw)
-                        :version (truledger-version-html))))
+                        :client-version *last-commit*
+                        :client-date (datestr *save-application-time*))))
       (expand-template plist "index.tmpl"))))
 
 (defparameter *loom-cmd-to-function-alist*

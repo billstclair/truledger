@@ -1138,10 +1138,12 @@
       (dolist (operation operations)
         (setf (db-get db $FEE operation) nil)))))
 
-(defun getfees (server operation)
+(defun getfees (server operation &optional asset-id)
   (let ((res nil))
     (dolist (fee (fees server))
-      (when (equal (car fee) operation)
+      (when (and (equal (car fee) operation)
+                 (or (null asset-id)
+                     (equal asset-id (cadr fee))))
         (push (cdr fee) res)))
     (nreverse res)))
 
@@ -1255,7 +1257,7 @@
          (note (getarg $NOTE args))
          (asset (lookup-asset server assetid))
          (operation (if (equal id id2) $TRANSFER $SPEND))
-         (fees (and (not (equal id serverid)) (getfees server operation)))
+         (fees (and (not (equal id serverid)) (getfees server operation assetid)))
          (two-phase-outbox-hash-p nil)
          (two-phase-balance-hash-p nil)
          (two-phase-commit-p nil))

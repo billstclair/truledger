@@ -263,14 +263,7 @@
         (:link :rel "stylesheet" :type "text/css" :href "../css/tables.css"))
        (:body
         :onload (cw-onload cw)
-        (:p
-         (:a :href "../"
-             (:img :style "vertical-align: middle;border: 1px white"
-                   :src "../truledger-logo-50x49.png"
-                   :alt "Truledger" :width "50" :height "49"))
-         (:b " " (str servername))
-         (when menu
-           (str "&nbsp;&nbsp;") (str menu)))
+        (when menu (str menu))
         (write-serverline cw)
         (write-idcode cw)
         (str (cw-body cw))
@@ -506,7 +499,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
   (acceptor-port acceptor))
 
 (defun setmenu (cw &optional highlight (menuitems *default-menuitems*))
-  (let ((menu nil)
+  (let ((items nil)
         (client (cw-client cw)))
     (cond ((and highlight client (serverid client))
            (loop
@@ -514,17 +507,21 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
               do
               (when (or (not (equal cmd "admins"))
                         (is-local-server-server-p cw))
-                (if menu
-                    (dotcat menu "&nbsp;&nbsp")
-                    (setq menu ""))
-                (dotcat menu (menuitem cmd text highlight)))))
+                (push (list :url ""
+                            :cmd cmd
+                            :highlight (equal highlight cmd)
+                            :name text)
+                      items))))
           ((and client (id client) (not (server-db-exists-p)))
-           (setq menu (menuitem "admins" "Admin" highlight))
+           (push (list :cmd "admins" :name "Admin") items)
            (when (and client (id client))
-             (dotcat menu "&nbsp;&nbsp;" (menuitem "logout" "Logout" nil))))
+             (push (list :cmd "logout" :name "Logout") items)))
           ((and client (id client))
-           (setq menu (menuitem "logout" "Logout"  nil))))
-    (setf (cw-menu cw) menu)))
+           (push (list :cmd "logout" :name "Logout") items)))
+    (setf (cw-menu cw)
+          (expand-template (list :title "Truledger"
+                                 :items (nreverse items))
+                           "menu.tmpl"))))
 
 (defmethod do-logout ((cw cw) &optional no-draw)
   (when (cw-session cw)
@@ -1406,12 +1403,13 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
 (defun datestr (time)
   "Return the ready-for-html-output formatted date for a timestamp"
-  (let ((unix-time (if (stringp time)
-                       (parse-integer (strip-fract time))
-                       time)))
-    (hsc (cybertiggyr-time:format-time
-          nil "%d-%b-%y %I:%M:%S%p"
-          (unix-to-universal-time unix-time)))))
+  (and time
+       (let ((unix-time (if (stringp time)
+                            (parse-integer (strip-fract time))
+                            time)))
+         (hsc (cybertiggyr-time:format-time
+               nil "%d-%b-%y %I:%M:%S%p"
+               (unix-to-universal-time unix-time))))))
 
 (defconstant $nl #.(format nil "~%"))
 (defconstant $brn #.(format nil "<br/>~%"))

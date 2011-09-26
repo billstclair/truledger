@@ -1496,11 +1496,12 @@
         (setf operation (if (equal id toid) $TRANSFER $SPEND)
               fees (delete-if
                     (lambda (f)
-                      (let ((asset (getasset client (fee-assetid f))))
-                        (equal (or (asset-issuer asset)
-                                   (asset-id asset))
-                               id)))
-                    (delete-if-not 
+                      (or (not (equal (fee-assetid f) assetid))
+                          (let ((asset (getasset client (fee-assetid f))))
+                            (equal (or (asset-issuer asset)
+                                       (asset-id asset))
+                                   id))))
+                    (delete-if-not
                      (lambda (f) (equal (fee-type f) operation))
                      fs))))
       (setq tranfee-amt
