@@ -228,104 +228,49 @@
       (when (cw-postcnt cw)
         (setf (postcnt cw) (1+ (cw-postcnt cw)))))))
 
-(defun truledger-version-html (&key
-                               (version *last-commit*)
-                               (unix-time *save-application-time*)
-                               time)
-  (when time
-    (setf unix-time (universal-to-unix-time time)))
-  (unless (blankp version)
-    (let ((res (whots (s)
-                 (:a :class "version"
-                     :href (stringify
-                            version
-                            "https://github.com/billstclair/truledger/commit/~a")
-                     (str version)))))
-      (when unix-time
-        (setf res (format nil "~a ~a" res (datestr unix-time))))
-      res)))
-
-;; Should support a template.lhtml file that users can easily change.
 (defun write-template (cw)
-  (let ((title (cw-title cw))
-        (servername (cw-servername cw))
-        (menu (cw-menu cw)))
-    (unless title (setq title "A Truledger Web Client"))
-    (unless servername (setq servername "Truledger"))
+  (let* ((title (or (cw-title cw) "A Truledger Web Client"))
+         (menu (cw-menu cw))
+         (header (make-truledger-header cw))
+         (page (multiple-value-bind (server-version server-time)
+                   (ignore-errors
+                     (getversion (cw-client cw) (cw-refresh-version cw)))
+                 (expand-template
+                  (list :title title
+                        :menu menu
+                        :pre-body header
+                        :body (cw-body cw)
+                        :debugstr (get-debug-stream-string)
+                        :client-version *last-commit*
+                        :client-date (datestr *save-application-time*)
+                        :server-version server-version
+                        :server-date (datestr server-time))
+                  "index.tmpl"))))
+    (write-string page (cw-html-output cw))))
 
-    (who (s (cw-html-output cw))
-      (:html
-       (:head
-        (:title (str title))
-        (:meta :name "viewport" :content "width=device-width")
-        (:link :rel "apple-touch-icon" :href="../site-icon.ico")
-        (:link :rel "shortcut icon" :href "../site-icon.ico")
-        (:link :rel "stylesheet" :type "text/css" :href "../css/tables.css"))
-       (:body
-        :onload (cw-onload cw)
-        (when menu (str menu))
-        (write-serverline cw)
-        (write-idcode cw)
-        (str (cw-body cw))
-        (multiple-value-bind (version time)
-            (ignore-errors
-              (getversion (cw-client cw) (cw-refresh-version cw)))
-          (let ((debugstr (get-debug-stream-string)))
-            (when debugstr
-              (who (s)
-                (:b "=== Debug log ===")
-                (:br)
-                (:pre (str debugstr)))))
-          (flet ((write-version (s label version time)
-                   (unless (blankp version)
-                     (who (s)
-                       (esc label)
-                       (str (truledger-version-html :version version
-                                                    :unix-time time)))
-                     t)))
-            (who (s)
-              (:p
-               :class "version"
-               (when (write-version s "Client: " *last-commit* *save-application-time*)
-                 (who (s) (:br)))
-               (when (serverid (cw-client cw))
-                 (unless (equal *last-commit* version)
-                   (write-version s "Server: " version time)))))))
-        (:p
-         (:a :href "http://common-lisp.net/"
-             (:img
-              :style "border: 0;" :src "../little-lambda.png"
-              :alt "Made with Lisp" :title "Made with Lisp"
-              :width "16" :height "16"))))))))
-
-(defun write-serverline (cw)
+(defun make-truledger-header (cw)
   (let* ((client (cw-client cw))
-         (serverid (serverid client)))
+         (serverid (serverid client))
+         (id (and client (id client)))
+         server-name server-url
+         acct-name)
     (when serverid
       (let ((server (getserver client serverid)))
         (when server
-          (let ((name (server-info-name server))
-                (url (server-info-url server)))
-            (who (s (cw-html-output cw))
-              (:b "Server: ")
-              (:span :title (hsc serverid) (esc name))
-              " "
-              (:a :href url (str url))
-              (:br))))))))
-
-(defun write-idcode (cw)
-  (let* ((client (cw-client cw))
-         (id (and client (id client))))
+          (setf server-name (server-info-name server)
+                server-url (server-info-url server)))))
     (when id
       (multiple-value-bind (pubkeysig name) (get-id client id)
         (declare (ignore pubkeysig))
-        (who (s (cw-html-output cw))
-          (unless (blankp name)
-            (who (s)
-              (:b "Account name: ") (esc name)
-              (:br)))
-          (:b "Your ID: ") (str id)
-          (:br))))))
+        (unless (blankp name)
+          (setf acct-name name))))
+    (expand-template
+     (list :server-name (hsc server-name)
+           :server-url (hsc server-url)
+           :serverid serverid
+           :acct-name (hsc acct-name)
+           :id id)
+     "truledger-header.tmpl")))
 
 (defmacro form ((s &optional cmd &rest form-params) &body body)
   (let ((stream (gensym "STREAM")))

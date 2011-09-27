@@ -1,0 +1,8 @@
+<!-- TMPL_IF server-url --><b>Server: </b>
+    <span title='<!-- TMPL_VAR serverid -->'><!-- TMPL_VAR server-name --></span>
+    <a href='<!-- TMPL_VAR server-url -->'><!-- TMPL_VAR server-url --></a>
+    <br/><!-- TMPL_IF acct-name -->
+    <b>Account name: </b> <!-- TMPL_VAR acct-name -->
+    <br/><!-- /TMPL_IF -->
+    <b>Your ID: </b><!-- TMPL_VAR id -->
+    <br/><!-- /TMPL_IF -->
