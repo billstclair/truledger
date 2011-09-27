@@ -1345,7 +1345,9 @@
    ACCT is the source sub-account, default $MAIN.
    ACCT can also be a list: (FROMACCT TOACCT), for a transfer.
    In that case TOID should be the logged in ID.
-   Fees are always taken from $MAIN."
+   Fees are always taken from $MAIN.
+   Returns a plist of fees, both in ASSETID
+     (:storage-fee <storage> :transaction-fee <transaction>)"
   (let ((db (db client)))
     (require-current-server client "In spend(): Server not set")
     (init-server-accts client)
@@ -1385,9 +1387,10 @@
          (serverid (serverid client))
          (server (server client))
          (parser (parser client))
-         (acct (or (if (listp acct) (car acct) acct) $MAIN))
          (toacct (or (and (listp acct) (cadr acct)) $MAIN))
-         (amount (unformat-asset-value client formattedamount assetid))
+         (acct (or (if (listp acct) (car acct) acct) $MAIN))
+         (asset (getasset client assetid))
+         (amount (unformat-asset-value client formattedamount asset))
          (two-phase-commit-p (and (not (equal id serverid))
                                   (two-phase-commit-p client)))
          (last-transaction nil)
@@ -1412,9 +1415,6 @@
          (operation nil)
          (fees nil)
          (fees-amounts nil)      ;alist of (assetid . amount) pairs
-         (fees-balances nil)        ;alist of (assetid . balance) pairs
-         (fees-storagefees nil)     ;alist of (assetid . storagefee) pairs
-         (fees-fractions nil)       ;alist of (assetid . fraction) pairs
          )
     (declare (ignorable fees))          ;temporary
 
@@ -1555,49 +1555,15 @@
       (dolist (fee fees)
         (let ((feeid (fee-assetid fee))
               (feeamt (fee-amount fee)))
-          (unless (equal feeid tranfee-asset)
-            (cond ((equal feeid assetid)
-                   (cond ((> (bccomp newamount feeamt) 0)
-                          (setf newamount (bcsub newamount feeamt)))
-                         ((and (equal id toid)
-                               (> (bccomp newtoamount feeamt) 0))
-                          (setf newtoamount (bcsub newtoamount feeamt)))
-                         (t (error "Insufficient balance for nonrefundable fee")))
-                   (push (cons feeid feeamt) fees-amounts))
-                  (t (let (oldbal oldtime
-                           digits percent fraction fractime fracfee
-                           storagefee)
-                       (multiple-value-setq (oldbal oldtime)
-                          (userbalanceandtime client $MAIN feeid))
-                       (unless oldbal
-                         (error
-                          "No main acct balance for non-refundable transaction fee asset"))
-                       ;; Don't double-charge for storage fee if there
-                       ;; is more than one fee for an asset
-                       ;; (maybe I should ensure that doesn't happen).
-                       (unless (assocequal feeid fees-storagefees)
-                         (multiple-value-setq (percent fraction fractime)
-                           (client-storage-info client feeid))
-                         (when percent
-                           (setf digits (fraction-digits percent))
-                           (multiple-value-setq (fracfee fraction)
-                             (storage-fee
-                              fraction fractime time percent digits))
-                           (multiple-value-setq (storagefee oldbal)
-                             (storage-fee
-                              oldbal oldtime time percent digits))
-                           (wbp (digits)
-                             (setq storagefee (bcadd storagefee fracfee)))
-                           (multiple-value-setq (oldbal fraction)
-                             (normalize-balance oldbal fraction digits))
-                           (push (cons feeid storagefee) fees-storagefees)
-                           (push (cons feeid fraction) fees-fractions)))
-                       (unless (>= (bccomp oldbal feeamt) 0)
-                         (error "Insufficient balance for tranaction fee."))
-                       (setf oldbal (bcsub oldbal feeamt))
-                       (push (cons feeid feeamt) fees-amounts)
-                       (push (cons feeid oldbal) fees-balances)))))))
-      )
+          (unless (or (equal feeid tranfee-asset)
+                      (not (equal feeid assetid)))
+            (cond ((> (bccomp newamount feeamt) 0)
+                   (setf newamount (bcsub newamount feeamt)))
+                  ((and (equal id toid)
+                        (> (bccomp newtoamount feeamt) 0))
+                   (setf newtoamount (bcsub newtoamount feeamt)))
+                  (t (error "Insufficient balance for nonrefundable fee")))
+            (push (cons feeid feeamt) fees-amounts)))))
 
     ;; Numbers are computed and validated.
     ;; Create messages for server.
@@ -1606,8 +1572,6 @@
           (feebal nil)
           (feemsg nil)
           (fees-msgs nil)
-          (fees-storagemsgs nil)
-          (fees-fracmsgs nil)          
           balance
           (tobalance nil)
           (outboxhash nil)
@@ -1647,15 +1611,6 @@
       (dolist (cell fees-amounts)
         (push (custmsg client $FEE serverid time operation (car cell) (cdr cell))
               fees-msgs))
-      (dolist (cell fees-balances)
-        (setf (cdr cell)
-              (custmsg client $BALANCE serverid time (car cell) (cdr cell))))
-      (dolist (cell fees-storagefees)
-        (push (custmsg client $STORAGEFEE serverid time (car cell) (cdr cell))
-              fees-storagemsgs))
-      (dolist (cell fees-fractions)
-        (push (custmsg client $FRACTION serverid time (car cell) (cdr cell))
-              fees-fracmsgs))
 
       ;; Compute balancehash
       (unless (equal id serverid)
@@ -1668,10 +1623,6 @@
           (when tobalance
             (setf (gethash assetid (get-inited-hash toacct acctbals))
                   tobalance))
-          (when fees-balances
-            (let ((hash (get-inited-hash $MAIN acctbals)))
-              (dolist (cell fees-balances)
-                (setf (gethash (car cell) hash) (cdr cell)))))
           (setq balancehash
                 (balancehashmsg client time acctbals two-phase-commit-p))))
 
@@ -1691,13 +1642,6 @@
       (when percent (dotcat msg "." storagefeemsg "." fracmsg))
       (dolist (fee fees-msgs)
         (dotcat msg "." fee))
-      (when fees-balances
-        (dolist (cell fees-balances)
-          (dotcat msg "." (cdr cell)))
-        (dolist (fee fees-storagemsgs)
-          (dotcat msg "." fee))
-        (dolist (frac fees-fracmsgs)
-          (dotcat msg "." frac)))
 
       (let* ((servermsg (process server msg)) ; *** Here's the server call ***
              (reqs (parse parser servermsg t))
@@ -1722,13 +1666,6 @@
                 (gethash fracmsg msgs) t))
         (dolist (fee fees-msgs)
           (setf (gethash fee msgs) t))
-        (when fees-balances
-          (dolist (cell fees-balances)
-            (setf (gethash (cdr cell) msgs) t))
-          (dolist (fee fees-storagemsgs)
-            (setf (gethash fee msgs) t))
-          (dolist (frac fees-fracmsgs)
-            (setf (gethash frac msgs) t)))
 
         (dolist (req reqs)
           (let ((onemsg (get-parsemsg req))
@@ -1790,7 +1727,13 @@
             (setf (db-get db (user-last-transaction-key client)) last-transaction))
 
           (when (keep-history-p client)
-            (setf (db-get db (userhistorykey client) time) spend)))))))
+            (setf (db-get db (userhistorykey client) time) spend)))))
+    (let ((feeamt (cdr (assocequal assetid fees-amounts))))
+      `(,@(and feeamt (list :transaction-fee
+                            (format-asset-value client feeamt asset)))
+        ,@(and storagefee (list :storage-fee
+                                (format-asset-value client storagefee asset)))))
+    ))
 
 (defmethod reload-asset-p ((client client) assetid)
   "Reload an asset from the server.
@@ -2239,7 +2182,8 @@
                 (when (and oldamount (> (bccomp oldamount 0) 0))
                   (let ((oldtime (balance-time oldbal)))
                     (setf oldamount (do-storagefee
-                                        client charges oldamount oldtime trans assetid)
+                                        client charges oldamount oldtime
+                                        trans assetid)
                           (balance-amount oldbal) oldamount)))
                 (unless oldamount
                   (setf (gethash feeasset delta-main)
@@ -3065,7 +3009,7 @@
          (issuer (asset-issuer asset))
          (percent (asset-percent asset)))
     (cond ((equal issuer (id client)) nil)
-          ((not percent) nil)
+          ((or (not percent) (bc-zerop percent)) nil)
           (t (let* ((key (userfractionkey client assetid))
                     (msg (db-get db key)))
                (if msg

@@ -885,10 +885,15 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                 (dotimes (i feecnt)
                   (let ((type (hunchentoot:parameter (format nil "type~d" i)))
                         (asset (hunchentoot:parameter (format nil "asset~d" i)))
+                        (assetstring
+                         (hunchentoot:parameter (format nil "assetstring~d" i)))
                         (amt (hunchentoot:parameter (format nil "amt~d" i))))
-                    (unless (blankp amt)
+                    (unless (or (and (blankp assetstring) (blankp asset))
+                                (blankp amt))
                       (push (make-fee :type type
-                                      :assetid asset
+                                      :assetid (if (blankp assetstring)
+                                                   asset
+                                                   assetstring)
                                       :formatted-amount amt)
                             fees))))
                 (handler-case (apply #'setfees client fees)
@@ -1142,6 +1147,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 (defun do-spend (cw)
   (let* ((client (cw-client cw))
          (id (id client))
+         (fee-plist nil)
          (err nil)
          (acct2 nil))
     (bind-parameters (amount recipient mintcoupon recipientid
@@ -1195,14 +1201,15 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                (let ((acct-and-asset (explode #\| (subseq key prelen))))
                  (cond ((not (eql (length acct-and-asset) 2))
                         (setq err "Bug: don't understand spentasset"))
-                       (t (setq err (do-spend-internal
-                                        cw client acct-and-asset
-                                        recipient amount acct2 note)))))
+                       (t (multiple-value-setq (fee-plist err)
+                            (do-spend-internal
+                                cw client acct-and-asset
+                                recipient amount acct2 note)))))
                (return)))
-        (setf (cw-error cw) err)
-        (if (or err (blankp mintcoupon))
-            (unless err (draw-balance cw))
-            (draw-coupon cw (last-spend-time client))))
+        (unless err
+          (if (blankp mintcoupon)
+            (draw-balance cw nil nil nil nil nil nil nil fee-plist)
+            (draw-coupon cw (last-spend-time client)))))
       (when err
         (setf (cw-error cw) err)
         (draw-balance
@@ -1214,18 +1221,19 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
          (assetidx (second acct-and-asset))
          (acct (parm (strcat "acct" acctidx)))
          (assetid (parm (strcat "assetid" acctidx "|" assetidx)))
-         (err nil))
+         (err nil)
+         (fees nil))
     (cond ((or (blankp acct) (blankp assetid))
            (setq err "Bug: blank acct or assetid"))
           (t
            (when acct2 (setq acct (list acct acct2)))
            (handler-case
                (progn
-                 (spend client recipient assetid amount acct note)
+                 (setf fees (spend client recipient assetid amount acct note))
                  (setf (cw-fraction-asset cw) assetid))
              (error (c)
                (setq err (stringify  c))))))
-    err))
+    (values fees err)))
 
 (defun do-canceloutbox (cw)
   (let ((client (cw-client cw))
@@ -1465,7 +1473,7 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
 
 (defun draw-balance (cw &optional
                      spend-amount recipient note toacct tonewacct nickname
-                     mintcoupon)
+                     mintcoupon fee-plist)
   (let* ((client (cw-client cw))
          (serverid (serverid client))
          (servers (getservers client))
@@ -1859,7 +1867,20 @@ forget your passphrase, <b>nobody can recover it, ever</b>.</p>
                          (who (bal-stream)
                            " x 10"
                            (:sup "-" (str scale))))
-                       (:br))))))
+                       (:br))))
+                 (when fee-plist
+                   (let ((transaction-fee (getf fee-plist :transaction-fee))
+                         (storage-fee (getf fee-plist :storage-fee)))
+                     (when transaction-fee
+                       (who (bal-stream)
+                         "Transaction Fee: "
+                         (str transaction-fee)
+                         (:br)))
+                     (when storage-fee
+                       (who (bal-stream)
+                         "Storage Fee: "
+                         (str storage-fee)
+                         (:br)))))))
              (who (bal-stream)
                (:a :href "./?cmd=history" "Show history")
                " (" (str enabled) ")"
@@ -2340,8 +2361,8 @@ list with that nickname, or change the nickname of the selected
             (:input :type "submit" :name "deletecontacts"
                     :value "Delete checked")))))))
 
-(defun draw-assets(cw &key scale precision assetname storage
-                   audits)
+(defun draw-assets (cw &key scale precision assetname storage
+                    audits)
   (let* ((client (cw-client cw))
          (tokenid (tokenid client))
          (assets (getassets client))
@@ -2466,12 +2487,12 @@ list with that nickname, or change the nickname of the selected
              " "
              (:input :type "submit" :name "audit" :value "Audit")))))))))
 
-(defun render-fee-row (cw feeidx type assetid amt &optional assetname)
+(defun render-fee-row (cw feeidx type assetid amt &optional assetname assets)
   (let* ((client (cw-client cw))
          (stream (cw-html-output cw))
          (serverp (equal (id client) (serverid client)))
          (feeidx-p (integerp feeidx)))
-    (unless assetname
+    (when (and assetid (not assetname))
       (let ((asset (ignore-errors (getasset client assetid))))
         (setf assetname
               (if asset (asset-name asset) "Unknown asset"))))
@@ -2500,20 +2521,28 @@ list with that nickname, or change the nickname of the selected
        (:td (if (and serverp feeidx-p)
                 (htm (:select
                       :name (format nil "asset~d" feeidx)
-                      (dolist (asset (getassets client))
+                      (:option :value "" "None")
+                      (dolist (asset (or assets (getassets client)))
                         (let ((name (asset-name asset))
                               (id (asset-assetid asset)))
                           (htm
                            (:option :value id :selected (equal assetid id)
                                     (esc name)))))))
                 (htm (esc assetname))))
-       (:td (:span :class "id" (esc assetid)))))))
+       (:td (if assetid
+                (htm (:span :class "id" (esc assetid)))
+                (if feeidx-p
+                    (htm (:input :type "text"
+                                 :size "48"
+                                 :name (format nil "assetstring~d" feeidx)))
+                    (htm "&nbsp;"))))))))
 
 (defun draw-fees (cw &optional values)
   (let* ((client (cw-client cw))
          (stream (cw-html-output cw))
          (serverp (equal (id client) (serverid client)))
-         (feeidx 0))
+         (feeidx 0)
+         (assets (getassets client)))
     (multiple-value-bind (tranfee regfee fees) (getfees client t)
       (settitle cw "Fees")
       (setmenu cw "fees")
@@ -2542,6 +2571,12 @@ list with that nickname, or change the nickname of the selected
                 (fee-formatted-amount regfee))
             (fee-assetname regfee))
            (dolist (fee fees)
+             (let ((assetid (fee-assetid fee)))
+               (unless (find assetid assets :test #'equal :key #'asset-assetid)
+                 (let ((asset (getasset client assetid)))
+                   (when asset
+                     (setf assets (nconc assets (list asset))))))))
+           (dolist (fee fees)
              (let* ((type (fee-type fee))
                     (assetid (fee-assetid fee))
                     (cell (assocequal (cons type assetid) values)))
@@ -2550,21 +2585,21 @@ list with that nickname, or change the nickname of the selected
                 cw feeidx type
                 assetid
                 (or (cdr cell) (fee-formatted-amount fee))
-                (fee-assetname fee)))
+                (fee-assetname fee)
+                assets))
              (incf feeidx))
            (let ((added-fees (remove-if-not #'listp values :key #'car)))
              (dolist (fee added-fees)
                (let ((type (caar fee))
                      (assetid (cdar fee))
                      (amt (cdr fee)))
-                 (render-fee-row cw feeidx type assetid amt)
+                 (render-fee-row cw feeidx type assetid amt nil assets)
                  (incf feeidx)))
              (let* ((cnt (+ (length fees) (length added-fees)))
                     (feecnt (or (cdr (assoc :feecnt values)) 0))
-                    (diff (- feecnt cnt))
-                    (tokenid (tokenid client)))
+                    (diff (- feecnt cnt)))
                (dotimes (i diff)
-                 (render-fee-row cw feeidx $SPEND tokenid "")
+                 (render-fee-row cw feeidx $SPEND nil nil)
                  (incf feeidx))
                (setf feecnt (max feecnt feeidx))
                (htm

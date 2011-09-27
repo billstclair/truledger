@@ -283,6 +283,7 @@
    ;; bcmath.lisp
    #:bccomp
    #:bc=
+   #:bc-zerop
    #:bcsub
    #:bcadd
    #:bcpow

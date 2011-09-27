@@ -120,6 +120,15 @@
 (defun bc= (x y)
   (eql 0 (bccomp x y)))
 
+;; True if x is really zero, ignoring the precision
+(defun bc-zerop (x)
+  (or (and (numberp x) (= x 0))
+      (and (stringp x)
+           (dotimes (i (length x) t)
+             (let ((char (aref x i)))
+               (unless (or (eql char #\0) (eql char #\.))
+                 (return nil)))))))
+
 (defun bcpow (num exponent)
   "(expt NUM EXPONENT), but only supports integer EXPONENT >= 0"
   (let ((res (bcshift-precision num))

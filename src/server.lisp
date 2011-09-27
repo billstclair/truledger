@@ -126,8 +126,11 @@
 (defun asset-balance-key (id asset &optional (acct $MAIN))
   (append-db-keys (acct-balance-key id acct) asset))
 
+(defun fraction-balances-key (id)
+  (append-db-keys (account-dir id) $FRACTION))
+
 (defun fraction-balance-key (id asset)
-  (append-db-keys (account-dir id) $FRACTION asset))
+  (append-db-keys (fraction-balances-key id) asset))
 
 (defmethod asset-balance ((server server) id asset &optional (acct "main"))
   (let* ((key (asset-balance-key id asset acct))
@@ -862,8 +865,6 @@
          for sb = (storage-info-fraction info)
          do
            (unless (equal sb was)
-             (break "Fraction mismatch, asset: ~s, SB: ~s, Was: ~s"
-                    asset sb was)
              (error "Fraction mismatch, asset: ~s, SB: ~s, Was: ~s"
                     asset sb was)))
       ;; Check outbox hash
@@ -1141,10 +1142,11 @@
 (defun getfees (server operation &optional asset-id)
   (let ((res nil))
     (dolist (fee (fees server))
-      (when (and (equal (car fee) operation)
-                 (or (null asset-id)
-                     (equal asset-id (cadr fee))))
-        (push (cdr fee) res)))
+      (when (equal (car fee) operation)
+        (loop for (id amt) on (cdr fee) by #'cddr
+           when (or (null asset-id) (equal asset-id id))
+           do
+             (push (list id amt) res))))
     (nreverse res)))
 
 (define-message-handler do-getfeatures $GETFEATURES (server args reqs)
@@ -1475,7 +1477,8 @@
                         finally (return t)))
           (error "Storage info mismatch"))
         (when (or two-phase-balance-hash-p two-phase-outbox-hash-p)
-          (unless (and two-phase-balance-hash-p two-phase-outbox-hash-p)
+          (unless (and two-phase-balance-hash-p
+                       (or (equal id id2) two-phase-outbox-hash-p))
             (error "~a value differs between balance hash and outbox hash"
                    $TWOPHASECOMMIT))
           (setf two-phase-commit-p t))
@@ -2264,7 +2267,7 @@
       (setq assetids
             (if assetid
                 (list assetid)
-                assetnames))
+                (db-contents db (fraction-balances-key id))))
       (dolist (assetid assetids)
         (let* ((fractionkey (fraction-balance-key id assetid))
                (fraction (db-get db fractionkey)))
