@@ -1362,6 +1362,134 @@
          (servers (getservers client))
          (err nil)
          (iphone (strstr (or (hunchentoot:header-in* "User-Agent") "") "iPhone"))
+         (serveropts (loop for server in servers
+                        for bid = (server-info-id server)
+                        unless (equal bid serverid)
+                        collect (list :id bid
+                                      :name (hsc (server-info-name server))
+                                      :url (hsc (server-info-url server)))))
+         (postcnt-plist (postcnt-plist cw))
+         (debugging-enabled-p (debug-stream-p))
+         (history-enabled-p (initialize-client-history client))
+         (instructions-enabled-p (not (hideinstructions cw)))
+         outbox
+         acctoptions
+         inbox-p
+         (spendcnt 0)
+         (nonspendcnt 0)
+         spends
+         non-spends
+         body)
+
+    (when serverid
+      (setf outbox (storing-error (err "Error getting outbox: ~a")
+                     (getoutbox client)))
+      (let* ((inbox (storing-error (err "Error getting inbox: ~a")
+                     (getinbox client)))
+             (inboxignored (getinboxignored client))
+             (assets (storing-error (err "Error getting assets: ~a")
+                          (getassets client)))
+             (inbox-msgtimes (make-equal-hash)))
+        (when inbox (setf inbox-p t))
+        (dolist (item inbox)
+          (let* ((request (inbox-request item))
+                 (fromid (inbox-id item))
+                 (time (inbox-time item))
+                 (msgtime (inbox-msgtime item)))
+            (when msgtime
+              (setf (gethash msgtime inbox-msgtimes) item))
+            (cond ((not (equal request $SPEND))
+                   (let* ((outitem (find msgtime outbox
+                                         :test #'equal
+                                         :key #'outbox-time)))
+                     (when outitem
+                       (setf (inbox-assetname item) (outbox-assetname outitem)
+                             (inbox-formattedamount item)
+                             (outbox-formattedamount outitem)
+                             (inbox-reply item) (inbox-note item)
+                             (inbox-note item) (outbox-note outitem)))
+                     (let* ((request (inbox-request item))
+                            (fromid (inbox-id item))
+                            (reqstr (if (equal request $SPENDACCEPT)
+                                        "Accept" "Reject"))
+                            (time (inbox-time item))
+                            (reply (normalize-note (hsc (inbox-reply item))))
+                            (assetname (hsc (inbox-assetname item)))
+                            (amount (hsc (inbox-formattedamount item)))
+                            (itemnote (normalize-note (hsc (inbox-note item))))
+                            (remove-checked-p (not (member time inboxignored
+                                                           :test #'equal)))
+                            (date (datestr time))
+                            (acctcode (if acctoptions
+                                          (whots (s) (:td "&nbsp;"))
+                                          ""))
+                            (namestr (namestr-html cw fromid
+                                                   (lambda () nonspendcnt)
+                                                   "nonspendid" "nonspendnick")))
+                       (push (list :nonspendcnt nonspendcnt
+                                   :reqstr reqstr
+                                   :namestr namestr
+                                   :amount amount
+                                   :assetname assetname
+                                   :itemnote itemnote
+                                   :remove-checked-p remove-checked-p
+                                   :reply reply
+                                   :date date)
+                             non-spends)
+                       (incf nonspendcnt))))
+                  (t (let* ((assetid (inbox-assetid item))
+                            (assetname (hsc (inbox-assetname item)))
+                            (asset-new-p (not (find assetid assets
+                                                    :test #'equal
+                                                    :key #'asset-assetid)))
+                            (amount (hsc (inbox-formattedamount item)))
+                            (itemnote (normalize-note
+                                       (hsc (inbox-note item))))
+                            (ignore-selected-p
+                             (member time inboxignored :test #'equal))
+                            (namestr (namestr-html cw fromid
+                                                   (lambda () spendcnt)
+                                                   "spendid" "spendnick"))
+                            (date (datestr time)))
+                       (push (list :namestr namestr
+                                   :amount amount
+                                   :assetname assetname
+                                   :asset-new-p asset-new-p
+                                   :itemnote itemnote
+                                   :spendcnt spendcnt
+                                   :acctoptions acctoptions
+                                   :ignore-selected-p ignore-selected-p
+                                   :date date)
+                             spends)
+                       (incf spendcnt))))))
+        (setf spends (nreverse spends)
+              non-spends (nreverse non-spends))))
+
+    (settitle cw "Balance")
+    (setmenu cw "balance")
+
+    (setf body (expand-template
+                `(,@postcnt-plist
+                  :serveropts ,serveropts
+                  :history-enabled-p ,history-enabled-p
+                  :debugging-enabled-p ,debugging-enabled-p
+                  :instructions-enabled-p ,instructions-enabled-p
+                  :inbox-p ,inbox-p
+                  :spendcnt ,spendcnt
+                  :nonspendcnt ,nonspendcnt
+                  :spends ,spends
+                  :non-spends ,non-spends)
+                "balance.tmpl"))
+    (princ body (cw-html-output cw))))
+
+(defun draw-balance-not (cw &optional
+                     spend-amount recipient note toacct tonewacct nickname
+                     mintcoupon fee-plist)
+  (let* ((client (cw-client cw))
+         (serverid (serverid client))
+         (servers (getservers client))
+         (err nil)
+         (iphone (strstr (or (hunchentoot:header-in* "User-Agent") "") "iPhone"))
          (servercode "")
          inboxcode
          seloptions
@@ -1884,7 +2012,8 @@
                          (:input :type "text" :name "nickname" :size "30"
                                                                :value nickname)))
                        (let ((xfer-input
-                              (whots (s)
+                              (whots (s
+                                      )
                                 (:input :type "text" :name "tonewacct" :size "30"
                                         :value tonewacct))))
                          (who (s)
