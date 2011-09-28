@@ -1,0 +1,69 @@
+<form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='login'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+      <table>
+        <tr>
+          <td><b>Passphrase:</b></td>
+          <td>
+            <input type='password' name='passphrase' id='passphrase' size='50'/>
+            <input type='hidden' name='page' value='register'/>
+          </td>
+        </tr>
+        <tr>
+          <td></td>
+          <td><span style='color:red;'><!-- TMPL_IF errmsg --><!-- TMPL_VAR errmsg --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></span></td>
+        </tr>
+        <tr>
+          <td><b>Verification:</b></td>
+          <td><input type='password' name='passphrase2' size='50'/></td>
+        </tr>
+        <tr>
+          <td><b>Coupon:</b></td>
+          <td><input type='text' name='coupon' value='<!-- TMPL_VAR coupon -->' size='64'/></td>
+        </tr>
+        <tr>
+          <td><b>Account name<br/>(Optional):</b></td>
+          <td><input type='text' name='name' value='<!-- TMPL_VAR name -->' size='40'/></td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>
+            <input type='checkbox' name='cacheprivkey'<!-- TMPL_IF cache-privkey-p --> checked='checked'<!-- /TMPL_IF -->/>
+            Cache encrypted private key on server
+          </td>
+        </tr>
+        <tr>
+          <td><b>Key size:</b></td>
+          <td>
+            <select name='keysize'><!-- TMPL_LOOP keysizes -->
+              <option value='<!-- TMPL_VAR size -->'<!-- TMPL_IF selected-p --> selected='selected'<!-- /TMPL_IF -->><!-- TMPL_VAR size --></option><!-- /TMPL_LOOP -->
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>
+            <input type='submit' name='newacct' value='Create account'/>
+            <input type='submit' name='showkey' value='Show key'/>
+            <input type='submit' name='login' value='Login'/>
+          </td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>
+            <p>To generate a new private key, leave the area below blank, enter a
+passphrase, the passphrase again to verify, a server coupon, an optional account name, a key size, and click the "Create account" button. To use an existing private key, paste the private key below, enter its passphrase above, a server coupon, an optional account name, and click the "Create account" button.  To show your encrypted private key, enter its passphrase, and click the "Show key" button. Warning: if you forget your passphrase, <b>nobody can recover it, ever</b>.</p>
+
+            <p>If you lose your private key, which is stored on the computer running this client, nobody can recover that either. To protect against that, you can choose to cache your encrypted private key on the server, with the checkbox above. If you wish to create a new account in this client, using a previously-cached private key, enter your "Passphrase", enter the URL of the server (e.g "http://truledger.com/") as the "Coupon", and press the "Create account" button.</p>
+          </td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>
+            <textarea name='privkey' cols='65' rows='44' style='font-family: Monospace;'><!-- TMPL_VAR key --></textarea>
+          </td>
+        </tr>
+      </table>
+    </form>

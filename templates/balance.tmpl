@@ -1,0 +1,79 @@
+<span style='color:red;'><!-- TMPL_IF errmsg --><!-- TMPL_VAR errmsg --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></span>
+    <br/><!-- TMPL_IF serveropts -->
+
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='server'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+      <select name='server'>
+        <option value=''>Choose a server...</option><!-- TMPL_LOOP serveropts -->
+        <option value='<!-- TMPL_VAR id -->'><!-- TMPL_VAR name --> <!-- TMPL_VAR url --></option><!-- /TMPL_LOOP -->
+      </select>
+      <input type='submit' name='selectserver' value='Change Server'/>
+    </form>
+<!-- /TMPL_IF --><!-- TMPL_IF inbox-p -->
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='processinbox'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+      <input type='hidden' name='spendcnt' value='<!-- TMPL_VAR spendcnt -->'/>
+      <input type='hidden' name='nonspendcnt' value='<!-- TMPL_VAR nonspendcnt -->'/>
+      <table class='prettytable'>
+        <caption><b>Inbox</b></caption>
+        <tr>
+          <th>Request</th>
+          <th>From</th>
+          <th colspan='2'>Amount</th>
+          <th>Note</th>
+          <th>Action</th>
+          <th>Reply</th><!-- TMPL_IF acctoptions -->
+          <th>To Acct</th><!-- /TMPL_IF -->
+          <th>Time</th>
+        </tr><!-- TMPL_LOOP spends -->
+        <input type='hidden' name='spend<!-- TMPL_VAR cnt -->' value='<!-- TMPL_VAR time -->'/>
+        <tr>
+          <td>Spend</td>
+          <td><!-- TMPL_VAR namestr --></td>
+          <td align='right' style='border-right-width: 0;'>
+            <!-- TMPL_VAR amount -->
+          </td>
+          <td style='border-left-width: 0;'><!-- TMPL_VAR assetname --></td>
+          <td><!-- TMPL_VAR itemnote --></td>
+          <td>
+            <select name='<!-- TMPL_VAR selname -->'>
+              <option value='accept'>Accept</option>
+              <option value='reject'>Reject</option>
+              <option value='ignore'<!-- TMPL_IF ignore-selected-p --> selected='selected'<!-- /TMPL_IF -->>Ignore</option>
+            </select>
+          </td>
+          <td>
+            <textarea name='<!-- TMPL_VAR notename -->' cols='20' rows='2'>
+            </textarea>
+          </td><!-- TMPL_IF acctoptions -->
+          <td>
+            <select name='<!-- TMPL_VAR acctselname -->'><!-- TMPL_LOOP acctoptions -->
+              <option value='<!-- TMPL_VAR acct -->'><!-- TMPL_VAR acct --></option><!-- /TMPL_LOOP -->
+            </select>
+          </td>
+          <td><!-- TMPL_VAR date --></td>
+        </tr><!-- /TMPL_LOOP --><!-- TMPL_LOOP non-spends -->
+        <tr>
+          <td><!-- TMPL_VAR reqstr --></td>
+          <td><!-- TMPL_VAR namestr --></td>
+          <td align='right' style='border-right-width: 0;'><!-- TMPL_VAR amount --></td>
+          <td style='border-left-width: 0;'><!-- TMPL_VAR assetname --></td>
+          <td><!-- TMPL_VAR itemnote --></td>
+          <td>
+            <input type='checkbox' name='<!-- TMPL_VAR selname --><!-- TMPL_IF remove-checked-p --> checked='checked'<!-- /TMPL_IF -->/> Remove
+          </td>
+          <td><!-- TMPL_VAR reply --></td><!-- TMPL_IF acctoptions -->
+          <td>&nbsp;</td><!-- /TMPL_IF -->
+          <td><!-- TMPL_VAR date --></td>
+        </tr>
+<!-- /TMPL_LOOP -->
+      </table>
+      <input type='submit' name='submit' value='Process Inbox'/>
+    </form>
+<!-- /TMPL_IF  -->

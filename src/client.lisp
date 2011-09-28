@@ -3237,6 +3237,8 @@
     (when (and (eql 0 (bccomp value 0)) (< sign 0))
       (setq res (strcat "-" res)))
 
+    (when (integerp res) (setf res (princ-to-string res)))
+
     ;; Insert commas
     (let* ((start 0)
            (dotpos (or (position #\. res) (length res)))

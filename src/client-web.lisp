@@ -114,12 +114,11 @@
         ((error
           (lambda (c)
             (return-from web-server-internal
-              (whots (s)
-                "Error: " (str c)
-                (when (debug-stream-p)
-                  (who (s)
-                    (:br)
-                    (:pre (esc (backtrace-string))))))))))
+              (expand-template
+               (list :errmsg (hsc (princ-to-string c))
+                     :backtrace (and (debug-stream-p)
+                                     (hsc (backtrace-string))))
+               "backtrace.tmpl")))))
       (web-server-really-internal client))))
 
 (defconstant $POSTCNT "postcnt")
@@ -233,10 +232,12 @@
          (menu (cw-menu cw))
          (header (make-truledger-header cw))
          (page (multiple-value-bind (server-version server-time)
-                   (ignore-errors
-                     (getversion (cw-client cw) (cw-refresh-version cw)))
+                   (handler-case
+                       (getversion (cw-client cw) (cw-refresh-version cw))
+                     (error () nil))
                  (expand-template
                   (list :title title
+                        :onload (cw-onload cw)
                         :menu menu
                         :pre-body header
                         :body (cw-body cw)
@@ -272,6 +273,12 @@
            :id id)
      "truledger-header.tmpl")))
 
+(defun postcnt-plist (cw &optional cmd)
+  `(,@(and cmd (list :cmd cmd))
+      :postcnt ,(cw-postcnt cw)
+      :postsalt ,(cw-postsalt cw)
+      :postmsg ,(cw-postmsg cw)))
+
 (defmacro form ((s &optional cmd &rest form-params) &body body)
   (let ((stream (gensym "STREAM")))
     `(who (,stream ,s)
@@ -306,111 +313,42 @@
     (when (equal page "register")
       (return-from draw-login (draw-register cw key))))
 
-  (setf (cw-onload cw) "document.forms[0].passphrase.focus()")
+  (setf (cw-onload cw) "document.getElementById(\"passphrase\").focus()")
   (setmenu cw nil)
-
   (set-cookie "test" "test")
 
-  (who (s (cw-html-output cw))
-    (form (s "login")
-      (:table
-       (:tr
-        (:td (:b "Passphrase:"))
-        (:td (:input
-              :type "password" :name "passphrase" :size "50")
-             " "
-             (:input
-              :type "submit" :name "login" :value "Login")))
-       (:tr
-        (:td)
-        (:td (draw-error cw s))))
-      (:a :href "./?cmd=register"
-          "Register a new Truledger account")
-      (:br)
-      (:a :href "./loom?cmd=register"
-          "Register a new Loom account"))))
+  (let ((body (expand-template
+               (postcnt-plist cw)
+               "login.tmpl")))
+    (princ body (cw-html-output cw))))
 
 (defun draw-register (cw &optional key)
   (settitle cw "Register")
   (setmenu cw nil)
-  (setf (cw-onload cw) "document.forms[0].passphrase.focus()")
+  (setf (cw-onload cw) "document.getElementById(\"passphrase\").focus()")
 
   (set-cookie "test" "test")
 
-  (let* ((s (cw-html-output cw))
-         (keysize (or (ignore-errors
+  (let* ((keysize (or (ignore-errors
                         (parse-integer (parm "keysize")))
-                      3072))
+                      4096))
          (coupon (parm "coupon"))
          (name (parm "name"))
-         (cache-privkey-p (if coupon (not (blankp (parm "cacheprivkey"))) t)))
-    (flet ((keysize-option (size)
-             (let ((size-str (stringify size "~d")))
-               (who (s)
-                 (:option :value size-str :selected (equal keysize size)
-                          (str size-str))))))
-      (who (s)
-        (form (s "login")
-          (:table
-           (:tr
-            (:td (:b "Passphrase:"))
-            (:td (:input :type "password" :name "passphrase" :size "50")
-                 (:input :type "hidden" :name "page" :value "register")))
-           (:tr
-            (:td)
-            (:td (draw-error cw s)))
-           (:tr
-            (:td (:b "Verification:"))
-            (:td (:input :type "password" :name "passphrase2" :size "50")))
-           (:tr
-            (:td (:b "Coupon:"))
-            (:td (:input :type "text" :name "coupon" :value coupon :size "64")))
-           (:tr
-            (:td (:b "Account Name" (:br) "(Optional):"))
-            (:td (:input :type "text" :name "name" :value name :size "40")))
-           (:tr
-            (:td)
-            (:td (:input :type "checkbox"
-                         :name "cacheprivkey"
-                         :checked cache-privkey-p)
-                 "Cache encrypted private key on server"))
-           (:tr
-            (:td (:b "Key size:"))
-            (:td
-             (:select :name "keysize"
-                      (mapc #'keysize-option '(512 1024 2048 3072 4096)))
-             (:input :type "submit" :name "newacct" :value "Create account")
-             (:input :type "submit" :name "showkey" :value "Show key")
-             (:input :type "submit" :name "login" :value "Login")))
-           (:tr
-            (:td)
-            (:td
-             "<p>To generate a new private key, leave the area below blank, enter a
-passphrase, the passphrase again to verify, a server coupon, an optional
-account name, a key size, and click the \"Create account\" button. To
-use an existing private key, paste the private key below, enter its
-passphrase above, a server coupon, an optional account name, and click
-the \"Create account\" button.  To show your encrypted private key,
-enter its passphrase, and click the \"Show key\" button. Warning: if you
-forget your passphrase, <b>nobody can recover it, ever</b>.</p>
-
-<p>If you lose your private key, which is stored on the computer running this client, nobody can recover that either. To protect against that, you can choose to cache your encrypted private key on the server, with the checkbox above. If you wish to create a new account in this client, using a previously-cached private key, enter your \"Passphrase\", enter the URL of the server (e.g \"http://truledger.com/\") as the \"Coupon\", and press the \"Create account\" button."))
-           (:tr
-            (:td)
-            (:td (:textarea :name "privkey" :cols "65" :rows "44"
-                            :style "font-family: Monospace;"
-                            (esc key))))))))))
+         (cache-privkey-p (if coupon (not (blankp (parm "cacheprivkey"))) t))
+         (body (expand-template
+                `(,@(postcnt-plist cw)
+                    :coupon ,coupon
+                    :name ,name
+                    :cache-privkey-p ,cache-privkey-p
+                    :keysizes ,(loop for size in '(512 1024 2048 3072 4096)
+                                  for selected-p = (eql size keysize)
+                                  collect (list :size size :selected-p selected-p))
+                    :key ,key)
+                "register.tmpl")))
+    (princ body (cw-html-output cw))))
 
 (defun settitle (cw subtitle)
   (setf (cw-title cw) (stringify subtitle "~a - Truledger Client")))
-
-(defun menuitem (cmd text highlight)
-  (let ((highlightp (equal cmd highlight)))
-    (whots (s)
-      (:a :href (stringify cmd "./?cmd=~a")
-          (if highlightp
-              (who (s) (:b :style "font-size: 120%;" (str text)))
-              (who (s) (str text)))))))
 
 (defun server-db-exists-p ()
   (or (ignore-errors (get-running-server))

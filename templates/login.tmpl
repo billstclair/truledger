@@ -1,0 +1,21 @@
+<form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='login'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+      <table>
+        <tr>
+          <td><b>Passphrase:</b></td>
+          <td>
+            <input type='password' name='passphrase' id='passphrase' size='50'/>
+            <input type='submit' name='login' value='Login'/>
+          </td>
+        </tr>
+        <tr>
+          <td/>
+          <td><span style='color:red;'><!-- TMPL_IF errmsg --><!-- TMPL_VAR errmsg --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></span></td>
+        </tr>
+      </table>
+      <a href='./?cmd=register'>Register a new Truledger account</a><br/>
+      <a href='./loom?cmd=register'>Register a new Loom account</a>
+    </form>
