@@ -32,7 +32,7 @@
           <th>To Acct</th><!-- /TMPL_IF -->
           <th>Time</th>
         </tr><!-- TMPL_LOOP spends -->
-        <input type='hidden' name='spend<!-- TMPL_VAR spendcnt -->' value='<!-- TMPL_VAR time -->'/>
+        <input type='hidden' name='spendtime<!-- TMPL_VAR spendcnt -->' value='<!-- TMPL_VAR time -->'/>
         <tr>
           <td>Spend</td>
           <td><!-- TMPL_VAR namestr --></td>
@@ -49,8 +49,7 @@
             </select>
           </td>
           <td>
-            <textarea name='spendnote<!-- TMPL_VAR spendcnt -->' cols='20' rows='2'>
-            </textarea>
+            <textarea name='spendnote<!-- TMPL_VAR spendcnt -->' cols='20' rows='2'></textarea>
           </td><!-- TMPL_IF acctoptions -->
           <td>
             <select name='acct<!-- TMPL_VAR spendcnt -->'><!-- TMPL_LOOP acctoptions -->
@@ -67,7 +66,7 @@
           <td style='border-left-width: 0;'><!-- TMPL_VAR assetname --></td>
           <td><!-- TMPL_VAR itemnote --></td>
           <td>
-            <input type='checkbox' name='nonspend<!-- TMPL_VAR nonspendcnt --><!-- TMPL_IF remove-checked-p --> checked='checked'<!-- /TMPL_IF -->/> Remove
+            <input type='checkbox' name='nonspend<!-- TMPL_VAR nonspendcnt -->'<!-- TMPL_IF remove-checked-p --> checked='checked'<!-- /TMPL_IF -->/> Remove
           </td>
           <td><!-- TMPL_VAR reply --></td><!-- TMPL_IF acctoptions -->
           <td>&nbsp;</td><!-- /TMPL_IF -->
@@ -77,7 +76,7 @@
       </table>
       <input type='submit' name='submit' value='Process Inbox'/>
     </form>
-<!-- /TMPL_IF  --><!-- TMPL_IF assetlist -->
+<!-- /TMPL_IF  --><!-- TMPL_IF accts -->
     <form method='post' action='./' autocomplete='off'>
       <input type='hidden' name='cmd' value='spend'/>
       <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
@@ -89,20 +88,22 @@
         <tr>
           <td valign='top'>
             <table class='prettytable'>
-              <caption><b>Balances</b></caption><!-- TMPL_VAR acctbals -->
+              <caption><b>Balances</b></caption><!-- TMPL_LOOP acctbals -->
               <tr>
                 <th colspan='3'><!-- TMPL_VAR acct --></th>
-              </tr><!-- TMPL_VAR bals -->
+              </tr><!-- TMPL_LOOP bals -->
               <tr>
                 <td align='right' style='border-right-width: 0;'><!-- TMPL_VAR amount --></td>
                 <td style='border-left-width: 0;'><!-- TMPL_VAR assetname --></td>
                 <td>
                   <input type='submit' name='spentasset<!-- TMPL_VAR acctidx -->|<!-- TMPL_VAR assetidx -->' value='Spend'/>
                 </td>
-              </tr>
-            </table><!-- TMPL_IF transaction-fee -->
-            Transaction Fee: <!-- TMPL_VAR transaction-fee --><!-- /TMPL_IF -->
-            <br/><!-- TMPL_IF storage-fee -->
+              </tr><!-- /TMPL_LOOP --><!-- /TMPL_LOOP -->
+            </table><!-- TMPL_IF fractionamt -->
+            Fractional balance: <!-- TMPL_VAR fractionamt --> x 10<sup>-<!-- TMPL_VAR fractionscale --></sup>
+            <br/><!-- /TMPL_IF --><!-- TMPL_IF transaction-fee -->
+            Transaction Fee: <!-- TMPL_VAR transaction-fee -->
+            <br/><!-- /TMPL_IF --><!-- TMPL_IF storage-fee -->
             Storage Fee: <!-- TMPL_VAR storage-fee -->
             <br/><!-- /TMPL_IF -->
             <a href='./?cmd=history'>Show History</a> (<!-- TMPL_IF history-enabled-p -->enabled<!-- TMPL_ELSE -->disabled<!-- /TMPL_IF -->)
@@ -123,7 +124,7 @@
               <tr>
                 <td><b>Recipient:</b></td>
                 <td>
-                  <select name="recipient">
+                  <select name='recipient'>
                     <option value=''>Choose contact...</option><!-- TMPL_LOOP recipopts -->
                     <option value='<!-- TMPL_VAR recipid -->'<!-- TMPL_IF selected-p --> selected='selected'<!-- /TMPL_IF -->><!-- TMPL_VAR name --></option><!-- /TMPL_LOOP -->
                   </select>
@@ -140,7 +141,7 @@
                 <td><b>Recipient ID:</b></td>
                 <td>
                   <input type='text' name='recipientid' size='40' value='<!-- TMPL_VAR recipientid -->'/>
-                  <input type='checkbox' name='allowunregistered'<!-- TMPL_IF cannot-mint-token-p -->disabled='disabled'<!-- /TMPL_IF -->/> Allow unregistered
+                  <input type='checkbox' name='allowunregistered'<!-- TMPL_IF cannot-mint-token-p -->disabled='disabled'<!-- /TMPL_IF --><!-- TMPL_IF allowunregistered --> checked='checked'<!-- /TMPL_IF -->/> Allow unregistered
                 </td>
               </tr>
               <tr>
@@ -150,11 +151,11 @@
                 </td>
               </tr>
               <tr>
-                <td><b>Transfer to:</b></td><!-- TMPL_IF acct-select-p -->
+                <td><b>Transfer to:</b></td><!-- TMPL_IF acct-select-options -->
                 <td>
                   <select name='toacct'>
                     <option value=''>Select or fill-in below...</option><!-- TMPL_LOOP acct-select-options -->
-                    <option value='<!-- TMPL_VAR acct -->'<!-- TMPL_IF selected-p -->selected='selected'<!-- /TMPL_IF -->/><!-- /TMPL_LOOP -->
+                    <option value='<!-- TMPL_VAR acct -->'<!-- TMPL_IF selected-p -->selected='selected'<!-- /TMPL_IF -->><!-- TMPL_VAR acct --></option><!-- /TMPL_LOOP -->
                   </select>
                 </td>
               </tr>
@@ -169,13 +170,13 @@
         </tr>
       </table>
     </form>
-<!-- /TMPL_IF --><!-- TMPL_IF outbox-items -->
+<!-- /TMPL_IF --><!-- TMPL_IF outbox-items --><!-- TMPL_IF cancelcount -->
     <form method='post' action='./' autocomplete='off'>
-      <input type='hidden' name='cmd' value='canceloutbox/>
+      <input type='hidden' name='cmd' value='canceloutbox'/>
       <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
       <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
       <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
-      <input type='hidden' name='cancelcount' value='<!-- TMPL_VAR cancelcount -->'/>
+      <input type='hidden' name='cancelcount' value='<!-- TMPL_VAR cancelcount -->'/><!-- /TMPL_IF -->
       <table class='prettytable'>
         <caption><b>Outbox</b></caption>
         <tr>
@@ -187,18 +188,22 @@
         </tr><!-- TMPL_LOOP outbox-items -->
         <tr>
           <td><!-- TMPL_VAR date --></td>
-          <td><!-- TMPL_VAR name --></td>
+          <td><!-- TMPL_IF coupontime -->
+            <a href='./?cmd=coupon&time=<!-- TMPL_VAR coupontime -->'>Coupon</a><!-- TMPL_ELSE --><!-- TMPL_IF nameid -->
+            <span label='<!-- TMPL_VAR nameid -->'><!-- TMPL_VAR name --></span><!-- TMPL_ELSE -->
+            <!-- TMPL_VAR name --><!-- /TMPL_IF --><!-- /TMPL_IF -->
+          </td>
           <td align='right' style='border-right-width: 0;'><!-- TMPL_VAR amount --></td>
           <td style='border-left-width: 0;'><!-- TMPL_VAR assetname --></td>
-          <td><!-- TMPL_VAR note --></td>
+          <td><!-- TMPL_IF note --><!-- TMPL_VAR note --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></td>
           <td><!-- TMPL_IF cancelcount -->
-            <input type='hidden' name='canceltime<!-- TMPL_VAR cancelcount -->' value='<!-- TMPL_VAR time -->/>
-            <input type='submit' name='cancal<!-- TMPL_VAR cancelcount -->' value='<!-- TMPL_VAR label -->'/><!-- TMPL_ELSE -->
+            <input type='hidden' name='canceltime<!-- TMPL_VAR cancelcount -->' value='<!-- TMPL_VAR time -->'/>
+            <input type='submit' name='cancel<!-- TMPL_VAR cancelcount -->' value='<!-- TMPL_VAR label -->'/><!-- TMPL_ELSE -->
             &nbsp;<!-- /TMPL_IF -->
           </td>
         </tr><!-- /TMPL_LOOP -->
-      </table>
-    </form>
+      </table><!-- TMPL_IF cancelcount -->
+    </form><!-- /TMPL_IF  -->
 <!-- /TMPL_IF --><!-- TMPL_IF storagefees -->
     <form method='post' action='./' autocomplete='off'>
       <input type='hidden' name='cmd' value='storagefees'/>
@@ -220,31 +225,13 @@
 <!-- /TMPL_IF -->
     <p>
       <form method='post' action='./' autocomplete='off'>
-        <input type='hidden' name='cmd' value='togglehistory'/>
+        <input type='hidden' name='cmd' value='balancemisc'/>
         <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'>
         <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
         <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
         <input type='submit' name='togglehistory' value='<!-- TMPL_IF history-enabled-p -->Disable<!-- TMPL_ELSE -->Enable<!-- /TMPL_IF --> history'/>
-      </form>
-      <form method='post' action='./' autocomplete='off'>
-        <input type='hidden' name='cmd' value='sync'/>
-        <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'>
-        <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
-        <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
         <input type='submit' name='resync' value='Resync with server'/>
-      </form>
-      <form method='post' action='./' autocomplete='off'>
-        <input type='hidden' name='cmd' value='toggledebug'/>
-        <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'>
-        <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
-        <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
-        <input type='submit' name='toggledebugging' value='<!-- TMPL_IF debugging-enabled-p -->Disable<!-- TMPL_ELSE -->Enable<!-- /TMPL_IF --> debugging'/>
-      </form>
-      <form method='post' action='./' autocomplete='off'>
-        <input type='hidden' name='cmd' value='toggleinstructions'/>
-        <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'>
-        <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
-        <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+        <input type='submit' name='toggledebug' value='<!-- TMPL_IF debugging-enabled-p -->Disable<!-- TMPL_ELSE -->Enable<!-- /TMPL_IF --> debugging'/>
         <input type='submit' name='toggleinstructions' value='<!-- TMPL_IF instructions-enabled-p -->Disable<!-- TMPL_ELSE -->Enable<!-- /TMPL_IF --> Instructions'/>
       </form>
     </p><!-- TMPL_IF instructions-enabled-p -->

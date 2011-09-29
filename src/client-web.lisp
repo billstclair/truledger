@@ -92,6 +92,7 @@
            "processinbox" (do-processinbox)
            "storagefees" (do-storagefees)
            "dohistory" (do-history)
+           "balancemisc" (do-balancemisc)
            "togglehistory" (do-togglehistory)
            "toggleinstructions" (do-toggleinstructions)
            "toggledebug" do-toggledebug
@@ -308,6 +309,12 @@
                (who (s) (esc err))
                (who (s) (str "&nbsp;"))))))
 
+(defun expand-cw-template (cw plist template)
+  (expand-template
+   `(:errmsg ,(hsc (cw-error cw))
+     ,@plist)
+   template))
+
 (defun draw-login (cw &optional key)
   (let ((page (parm "page")))
     (when (equal page "register")
@@ -317,7 +324,8 @@
   (setmenu cw nil)
   (set-cookie "test" "test")
 
-  (let ((body (expand-template
+  (let ((body (expand-cw-template
+               cw
                (postcnt-plist cw)
                "login.tmpl")))
     (princ body (cw-html-output cw))))
@@ -335,7 +343,8 @@
          (coupon (parm "coupon"))
          (name (parm "name"))
          (cache-privkey-p (if coupon (not (blankp (parm "cacheprivkey"))) t))
-         (body (expand-template
+         (body (expand-cw-template
+                cw
                 `(,@(postcnt-plist cw)
                     :coupon ,coupon
                     :name ,name
@@ -1091,12 +1100,21 @@
                (return)))
         (unless err
           (if (blankp mintcoupon)
-            (draw-balance cw nil nil nil nil nil nil nil fee-plist)
+            (draw-balance cw :fee-plist fee-plist)
             (draw-coupon cw (last-spend-time client)))))
       (when err
         (setf (cw-error cw) err)
         (draw-balance
-         cw amount recipient note toacct tonewacct nickname mintcoupon)))))
+         cw
+         :spend-amount amount
+         :recipient recipient
+         :note note
+         :toacct toacct
+         :tonewacct tonewacct
+         :nickname nickname
+         :mintcoupon mintcoupon
+         :recipientid recipientid
+         :allowunregistered allowunregistered)))))
 
 (defun do-spend-internal (cw client acct-and-asset
                           recipient amount acct2 note)
@@ -1197,6 +1215,13 @@
   (let* ((keephistory (or (user-preference client "keephistory")
                           "keep")))
     (setf (keep-history-p client) (equal keephistory "keep"))))
+
+(defun do-balancemisc (cw)
+  (with-parms (togglehistory resync toggledebug toggleinstructions)
+    (cond (togglehistory (do-togglehistory cw))
+          (resync (do-sync cw))
+          (toggledebug (do-toggledebug cw))
+          (toggleinstructions (do-toggleinstructions cw)))))
 
 (defun do-togglehistory (cw)
   (let* ((client (cw-client cw))
@@ -1354,9 +1379,9 @@
            (:option :value recipid :selected selected
                     (str namestr))))))))
 
-(defun draw-balance (cw &optional
+(defun draw-balance (cw &key
                      spend-amount recipient note toacct tonewacct nickname
-                     mintcoupon fee-plist)
+                     mintcoupon recipientid allowunregistered fee-plist)
   (let* ((client (cw-client cw))
          (serverid (serverid client))
          (servers (getservers client))
@@ -1375,21 +1400,36 @@
          outbox
          acctoptions
          inbox-p
+         (inbox-msgtimes (make-equal-hash))
          (spendcnt 0)
          (nonspendcnt 0)
          spends
          non-spends
+         cancelcount
+         outbox-items
+         accts
+         balance
+         accts-plists
+         acctbals-plists
+         recipopts
+         acct-select-options
+         fractionamt fractionscale
+         transaction-fee
+         storage-fee
          body)
 
     (when serverid
       (setf outbox (storing-error (err "Error getting outbox: ~a")
-                     (getoutbox client)))
+                     (getoutbox client))
+            accts (storing-error (err "Error getting accts: ~a")
+                    (getaccts client))
+            balance (storing-error (err "Error getting balance: ~a")
+                      (getbalance client)))
       (let* ((inbox (storing-error (err "Error getting inbox: ~a")
-                     (getinbox client)))
+                      (getinbox client)))
              (inboxignored (getinboxignored client))
              (assets (storing-error (err "Error getting assets: ~a")
-                          (getassets client)))
-             (inbox-msgtimes (make-equal-hash)))
+                       (getassets client))))
         (when inbox (setf inbox-p t))
         (dolist (item inbox)
           (let* ((request (inbox-request item))
@@ -1420,13 +1460,11 @@
                             (remove-checked-p (not (member time inboxignored
                                                            :test #'equal)))
                             (date (datestr time))
-                            (acctcode (if acctoptions
-                                          (whots (s) (:td "&nbsp;"))
-                                          ""))
                             (namestr (namestr-html cw fromid
                                                    (lambda () nonspendcnt)
                                                    "nonspendid" "nonspendnick")))
                        (push (list :nonspendcnt nonspendcnt
+                                   :time time
                                    :reqstr reqstr
                                    :namestr namestr
                                    :amount amount
@@ -1457,19 +1495,130 @@
                                    :asset-new-p asset-new-p
                                    :itemnote itemnote
                                    :spendcnt spendcnt
+                                   :time time
                                    :acctoptions acctoptions
                                    :ignore-selected-p ignore-selected-p
                                    :date date)
                              spends)
                        (incf spendcnt))))))
         (setf spends (nreverse spends)
-              non-spends (nreverse non-spends))))
+              non-spends (nreverse non-spends)))
+
+      (when outbox
+        (dolist (item outbox)
+          (let* ((time (outbox-time item))
+                 (timestr (hsc time))
+                 (date (datestr time))
+                 (request (outbox-request item)))
+            (when (equal request $SPEND)
+              (let ((nameid (outbox-id item))
+                    (assetname (hsc (outbox-assetname item)))
+                    (amount (hsc (outbox-formattedamount item)))
+                    (note (hsc (outbox-note item)))
+                    (label "Cancel")
+                    name
+                    coupontime
+                    this-cancelcount)
+                (cond ((equal nameid $COUPON)
+                       (setf name "Coupon"
+                             coupontime (hunchentoot:url-encode time)
+                             label "Redeem")
+                       (unless cancelcount (setf cancelcount 0))
+                       (setf this-cancelcount cancelcount)
+                       (incf cancelcount))
+                      (t (let ((contact (getcontact client nameid)))
+                           (cond (contact
+                                  (setf name (contact-namestr contact))
+                                  (when (equal name nameid)
+                                    (setf name "[unknown]"))
+                                  (setf nameid nameid))
+                                 (t (setf name (hsc nameid)))))
+                         (unless (gethash time inbox-msgtimes)
+                           (unless cancelcount (setf cancelcount 0))
+                           (setf this-cancelcount cancelcount)
+                           (incf cancelcount))))
+                (push (list :date date
+                            :coupontime coupontime
+                            :nameid nameid
+                            :name name
+                            :amount amount
+                            :assetname assetname
+                            :note note
+                            :cancelcount this-cancelcount
+                            :time timestr
+                            :label label)
+                      outbox-items)))))
+        (setf outbox-items (nreverse outbox-items)))
+
+      (when balance
+        (let ((contacts (storing-error (err "Error getting contacts: ~a")
+                          (getcontacts client))))
+          (when contacts
+            (dolist (contact contacts)
+              (let* ((namestr (contact-namestr contact))
+                     (recipid (contact-id contact))
+                     (selected-p (equal recipid recipient)))
+                (unless (equal recipid (id client))
+                  (push (list :recipid (hsc recipid)
+                              :selected-p selected-p
+                              :name namestr)
+                        recipopts))))
+            (setf recipopts (nreverse recipopts))))
+        (when accts
+          (dolist (acct accts)
+            (push (list :acct acct
+                        :selected-p (equal acct toacct))
+                  acct-select-options))
+          (setf acct-select-options (nreverse acct-select-options)))
+        (loop
+           for (acct . assets) in balance
+           for acctidx from 0
+           for assets-plists = nil
+           for bals-plists = nil
+           for assetidx = 0
+           do
+             (setf acct (hsc acct))
+             (dolist (bal assets)
+               (unless (eql 0 (bccomp (balance-amount bal) 0))
+                 (let ((assetid (hsc (balance-assetid bal)))
+                       (assetname (hsc (balance-assetname bal)))
+                       (formattedamount (hsc (balance-formatted-amount bal))))
+                   (push (list :acctidx acctidx
+                               :assetidx assetidx
+                               :assetid assetid)
+                         assets-plists)
+                   (push (list :amount formattedamount
+                               :assetname assetname
+                               :acctidx acctidx
+                               :assetidx assetidx)
+                         bals-plists)
+                   (incf assetidx))))
+             (push (list :acctidx acctidx
+                         :acct acct
+                         :assets (nreverse assets-plists))
+                   accts-plists)
+             (push (list :acct acct
+                         :bals (nreverse bals-plists))
+                   acctbals-plists))
+        (setf accts-plists (nreverse accts-plists)
+              acctbals-plists (nreverse acctbals-plists))
+
+        (when (and (cw-fraction-asset cw) (debug-stream-p))
+          (let* ((fraction (getfraction client (cw-fraction-asset cw))))
+            (when fraction
+              (setf fractionamt (hsc (fraction-amount fraction))
+                    fractionscale (hsc (fraction-scale fraction))))))
+        (when fee-plist
+          (setf transaction-fee (getf fee-plist :transaction-fee)
+                storage-fee (getf fee-plist :storage-fee)))))
 
     (settitle cw "Balance")
     (setmenu cw "balance")
 
-    (setf body (expand-template
+    (setf body (expand-cw-template
+                cw
                 `(,@postcnt-plist
+                  :iphone-p ,(not (null iphone))
                   :serveropts ,serveropts
                   :history-enabled-p ,history-enabled-p
                   :debugging-enabled-p ,debugging-enabled-p
@@ -1478,635 +1627,27 @@
                   :spendcnt ,spendcnt
                   :nonspendcnt ,nonspendcnt
                   :spends ,spends
-                  :non-spends ,non-spends)
+                  :non-spends ,non-spends
+                  :accts ,accts-plists
+                  :acctbals ,acctbals-plists
+                  :amount ,(hsc spend-amount)
+                  :recipient ,(hsc recipient)
+                  :recipopts ,recipopts
+                  :note ,(hsc note)
+                  :recipientid ,(hsc recipientid)
+                  :allowunregistered ,(not (blankp allowunregistered))
+                  :acct-select-options ,acct-select-options
+                  :tonewacct ,(hsc tonewacct)
+                  :nickname ,(hsc nickname)
+                  :mintcoupon-p ,(not (null mintcoupon))
+                  :fractionamt ,fractionamt
+                  :fractionscale ,fractionscale
+                  :transaction-fee ,transaction-fee
+                  :storage-fee ,storage-fee
+                  :cancelcount ,cancelcount
+                  :outbox-items ,outbox-items)
                 "balance.tmpl"))
     (princ body (cw-html-output cw))))
-
-(defun draw-balance-not (cw &optional
-                     spend-amount recipient note toacct tonewacct nickname
-                     mintcoupon fee-plist)
-  (let* ((client (cw-client cw))
-         (serverid (serverid client))
-         (servers (getservers client))
-         (err nil)
-         (iphone (strstr (or (hunchentoot:header-in* "User-Agent") "") "iPhone"))
-         (servercode "")
-         inboxcode
-         seloptions
-         selignoreoptions
-         assetlist
-         assetlist-stream
-         (assetidx 0)
-         (acctidx 0)
-         (gotbal nil)
-         (contacts (storing-error (err "Error getting contacts: ~a")
-                     (getcontacts client)))
-         inbox
-         inboxignored
-         outbox
-         accts
-         balance
-         assets
-         acctoptions
-         acctheader
-         (nonspends nil)
-         (spendcnt 0)
-         (nonspendcnt 0)
-         (inbox-msgtimes (make-equal-hash))
-         outboxcode
-         balcode
-         spendcode
-         storagefeecode)
-
-    (settitle cw "Balance")
-    (setmenu cw "balance")
-
-    (let ((serveropts
-           (with-output-to-string (s)
-             (dolist (server servers)
-               (let ((bid (server-info-id server)))
-                 (unless (equal bid serverid)
-                   (unless (equal (userreq client bid) "-1")
-                     (let ((bname (server-info-name server))
-                           (burl (server-info-url server)))
-                       (who (s)
-                         (:option :value bid (str bname) " " (str burl)))))))))))
-      (unless (blankp serveropts)
-        (setq
-         servercode
-         (whots (s)
-           (form (s "server")
-             (:select
-              :name "server"
-              (:option :value "" "Choose a server...")
-              (str serveropts))
-             (:input :type "submit" :name "selectserver" :value "Change Server"))))))
-
-    (when serverid
-      ;; Print inbox, if there is one
-
-      (setq inbox (storing-error (err "Error getting inbox: ~a")
-                    (getinbox client))
-            inboxignored (getinboxignored client)
-            outbox (storing-error (err "Error getting outbox: ~a")
-                     (getoutbox client))
-            accts (storing-error (err "Error getting accts: ~a")
-                    (getaccts client))
-            balance (storing-error (err "Error getting balance: ~a")
-                      (getbalance client))
-            acctoptions
-            (and (> (length accts) 0)
-                 (with-output-to-string (s)
-                   (dolist (acct accts)
-                     (let ((acct (hsc acct)))
-                       (who (s)
-                         (:option :value acct (str acct))))))))
-
-      (when inbox
-        (setq
-         inboxcode
-         (with-output-to-string (inbox-stream)
-           (when acctoptions
-             (setq acctheader (whots (s) (:th "To Acct"))))
-           (setq seloptions
-                 (whots (s)
-                   (:option :value "accept" "Accept")
-                   (:option :value "reject" "Reject")
-                   (:option :value "ignore" "Ignore"))
-                 selignoreoptions
-                 (whots (s)
-                   (:option :value "accept" "Accept")
-                   (:option :value "reject" "Reject")
-                   (:option :value "ignore" :selected t "Ignore")))
-
-           (setq assets (storing-error (err "Error getting assets: ~a")
-                          (getassets client)))
-
-           (dolist (item inbox)
-             (let* ((request (inbox-request item))
-                    (fromid (inbox-id item))
-                    (time (inbox-time item))
-                    (msgtime (inbox-msgtime item)))
-               (when msgtime
-                 (setf (gethash msgtime inbox-msgtimes) item))
-               (cond ((not (equal request $SPEND))
-                      (let* ((outitem (find msgtime outbox
-                                            :test #'equal
-                                            :key #'outbox-time)))
-                        (when outitem
-                          (setf (inbox-assetname item) (outbox-assetname
-                                                        outitem)
-                                (inbox-formattedamount item)
-                                (outbox-formattedamount outitem)
-                                (inbox-reply item) (inbox-note item)
-                                (inbox-note item) (outbox-note outitem)))
-                        (push item nonspends)))
-                     (t (let* ((assetid (inbox-assetid item))
-                               (assetname (hsc (inbox-assetname item)))
-                               (amount (hsc (inbox-formattedamount item)))
-                               (itemnote (normalize-note
-                                          (hsc (inbox-note item))))
-                               (selname (stringify spendcnt "spend~d"))
-                               (notename (stringify spendcnt "spendnote~d"))
-                               (acctselname (stringify spendcnt "acct~d"))
-                               (namestr (namestr-html cw fromid
-                                                      (lambda () spendcnt)
-                                                      "spendid" "spendnick"))
-                               (timecode
-                                (whots (s)
-                                  (:input :type "hidden"
-                                          :name (stringify spendcnt
-                                                           "spendtime~a")
-                                          :value time)))
-                               (selcode
-                                (whots (s)
-                                  (:select :name selname
-                                           (str (if (member time inboxignored
-                                                            :test #'equal)
-                                                    selignoreoptions
-                                                    seloptions)))))
-                               (acctcode
-                                (if (not acctoptions)
-                                    ""
-                                    (whots (s)
-                                      (:td
-                                       (:select :name acctselname
-                                                (str acctoptions))))))
-                               (date (datestr time)))
-
-                          (unless (find assetid assets
-                                        :test #'equal :key #'asset-assetid)
-                            (setq assetname
-                                  (whots (s)
-                                    (str assetname) " "
-                                    (:span :style "color: red;"
-                                           (:i "(new)")))))
-                          (who (inbox-stream)
-                            (str timecode)
-                            (:tr
-                             (:td "Spend")
-                             (:td (str namestr))
-                             (:td :align "right"
-                                  :style "border-right-width: 0;"
-                                  (str amount))
-                             (:td :style "border-left-width: 0;"
-                                  (str assetname))
-                             (:td (str itemnote))
-                             (:td (str selcode))
-                             (:td
-                              (:textarea
-                               :name notename
-                               :cols "20"
-                               :rows "2"
-                               ""))
-                             (str acctcode)
-                             (:td (str date))))
-                          (incf spendcnt))))))
-
-           (dolist (item nonspends)
-             (let* ((request (inbox-request item))
-                    (fromid (inbox-id item))
-                    (reqstr (if (equal request $SPENDACCEPT) "Accept" "Reject"))
-                    (time (inbox-time item))
-                    (reply (normalize-note (hsc (inbox-reply item))))
-                    (assetname (hsc (inbox-assetname item)))
-                    (amount (hsc (inbox-formattedamount item)))
-                    (itemnote (normalize-note (hsc (inbox-note item))))
-                    (selname (stringify nonspendcnt "nonspend~d"))
-                    (timecode
-                     (whots (s)
-                       (:input :type "hidden"
-                               :name (stringify nonspendcnt "nonspendtime~d")
-                               :value time)))
-                    (selcode
-                     (whots (s)
-                       (:input :type "checkbox"
-                               :name selname
-                               :checked (not (member time inboxignored
-                                                     :test #'equal)))
-                       "Remove"))
-                    (date (datestr time))
-                    (acctcode (if acctoptions
-                                  (whots (s) (:td "&nbsp;"))
-                                  ""))
-                    (namestr (namestr-html cw fromid
-                                           (lambda () (1- (incf nonspendcnt)))
-                                           "nonspendid" "nonspendnick")))
-               (incf nonspendcnt)
-               (who (inbox-stream)
-                 (str timecode)
-                 (:tr
-                  (:td (str reqstr))
-                  (:td (str namestr))
-                  (:td :align "right" :style "border-right-width: 0;"
-                       (str amount))
-                  (:td :style "border-left-width: 0;"
-                       (str assetname))
-                  (:td (str itemnote))
-                  (:td (str selcode))
-                  (:td (str reply))
-                  (str acctcode)
-                  (:td (str date))))))))
-      
-             (setq
-              inboxcode
-              (whots (s)
-                (form (s "processinbox")
-                  (:input :type "hidden" :name "spendcnt" :value spendcnt)
-                  (:input :type "hidden" :name "nonspendcnt" :value nonspendcnt)
-                  (:table
-                   :class "prettytable"
-                   (:caption (:b "Inbox"))
-                   (:tr
-                    (:th "Request")
-                    (:th "From")
-                    (:th :colspan "2" "Amount")
-                    (:th "Note")
-                    (:th "Action")
-                    (:th "Reply")
-                    (str acctheader)
-                    (:th "Time"))
-                   (str inboxcode))
-                  (:input :type "submit" :name "submit"
-                          :value "Process Inbox")))))
-
-      ;; Prepare outbox display
-      (let ((cancelcount 0))
-        (setq
-         outboxcode
-         (with-output-to-string (outbox-stream)
-           (dolist (item outbox)
-             (let* ((time (outbox-time item))
-                    (timestr (hsc time))
-                    (date (datestr time))
-                    (request (outbox-request item)))
-               (when (equal request $SPEND)
-                 (let ((recip (outbox-id item))
-                       (assetname (hsc (outbox-assetname item)))
-                       (amount (hsc (outbox-formattedamount item)))
-                       (note (hsc (or (outbox-note item) "")))
-                       (label "Cancel")
-                       namestr
-                       (cancelcode "&nbsp;"))
-                   (when (blankp note)
-                     (setq note  "&nbsp;"))
-                   (cond ((equal recip $COUPON)
-                          (let ((timearg (hunchentoot:url-encode time)))
-                            (setq label "Redeem"
-                                  namestr
-                                  (whots (s)
-                                    (:a :href (stringify
-                                               timearg "./?cmd=coupon&time=~a")
-                                        (str recip))))))
-                         (t (setq namestr (id-namestr cw recip))))
-                   (unless (gethash time inbox-msgtimes)
-                     (setq cancelcode
-                           (whots (s)
-                             (:input :type "hidden"
-                                     :name (stringify cancelcount "canceltime~d")
-                                     :value timestr)
-                             (:input :type "submit"
-                                     :name (stringify cancelcount "cancel~d")
-                                     :value label)))
-                     (incf cancelcount))
-                   (who (outbox-stream)
-                     (:tr
-                      (:td (str date))
-                      (:td (str namestr))
-                      (:td :align "right" :style "border-right-width: 0;"
-                           (str amount))
-                      (:td :style "border-left-width: 0;"
-                           (str assetname))
-                      (:td (str note))
-                      (:td (str cancelcode))))))))))
-        (unless (blankp outboxcode)
-          (setq outboxcode
-                (whots (s)
-                  (:table
-                   :class "prettytable"
-                   (:caption (:b "Outbox"))
-                   (:tr
-                    (:th "Time")
-                    (:th "Recipient")
-                    (:th :colspan "2" "Amount")
-                    (:th "Note")
-                    (:th "Action"))
-                   (str outboxcode))))
-          (when (> cancelcount 0)
-            (setq outboxcode
-                  (whots (s)
-                    (form (s "canceloutbox")
-                     (:input :type "hidden" :name "cancelcount" :value cancelcount)
-                     (str outboxcode)))))))
-
-      (when balance
-        (loop
-           with bal-stream = (make-string-output-stream)
-           for (acct . assets) in balance
-           for assetcode-stream = (make-string-output-stream)
-           for newassetlist-stream = (make-string-output-stream)
-           do
-             (setq acct (hsc acct))
-             (who (assetcode-stream)
-               (dolist (bal assets)
-                 (unless (eql 0 (bccomp (balance-amount bal) 0))
-                   (let ((assetid (hsc (balance-assetid bal)))
-                         (assetname (hsc (balance-assetname bal)))
-                         (formattedamount (hsc (balance-formatted-amount bal))))
-                     (setq gotbal t)
-                     (who (newassetlist-stream)
-                       (:input :type "hidden"
-                               :name (format nil "assetid~d|~d" acctidx assetidx)
-                               :value assetid))
-                     (who (assetcode-stream)
-                       (:tr
-                        (:td :align "right"
-                             :style "border-right-width: 0;"
-                             (str formattedamount))
-                        (:td :title assetid
-                             :style "border-left-width: 0;"
-                             (str assetname))
-                        (:td
-                         (:input :type "submit"
-                                 :name (format nil "spentasset~d|~d"
-                                               acctidx assetidx)
-                                 :value "Spend"))))
-                     (incf assetidx)))))
-
-             (let ((assetcode (get-output-stream-string assetcode-stream))
-                   (newassetlist (get-output-stream-string newassetlist-stream)))
-               (unless (blankp assetcode)
-                 (who (bal-stream)
-                   (:tr
-                    (:th :colspan "3"
-                         (str acct)))
-                   (str assetcode)))
-               (unless (blankp newassetlist)
-                 (unless assetlist-stream
-                   (setq assetlist-stream (make-string-output-stream)))
-                 (who (assetlist-stream)
-                   (:input :type "hidden"
-                           :name (stringify acctidx "acct~d")
-                           :value acct)
-                   (str newassetlist))
-                 (incf acctidx)))
-
-           finally
-             (setq balcode (get-output-stream-string bal-stream)))
-
-        (setq
-         balcode
-         (whots (bal-stream)
-           (:table
-            :class "prettytable"
-            (:caption (:b "Balances"))
-            (:tr
-             (str balcode)))
-
-           (let ((enabled (if (initialize-client-history client)
-                              "enabled"
-                              "disabled")))
-             (when (and (cw-fraction-asset cw) (debug-stream-p))
-               (let* ((fraction (getfraction client (cw-fraction-asset cw))))
-                 (when fraction
-                   (let ((amt (fraction-amount fraction))
-                         (scale (fraction-scale fraction)))
-                     (who (bal-stream)
-                       "Fractional balance: "
-                       (str amt)
-                       (unless (eql 0 (bccomp scale 0))
-                         (who (bal-stream)
-                           " x 10"
-                           (:sup "-" (str scale))))
-                       (:br))))
-                 (when fee-plist
-                   (let ((transaction-fee (getf fee-plist :transaction-fee))
-                         (storage-fee (getf fee-plist :storage-fee)))
-                     (when transaction-fee
-                       (who (bal-stream)
-                         "Transaction Fee: "
-                         (str transaction-fee)
-                         (:br)))
-                     (when storage-fee
-                       (who (bal-stream)
-                         "Storage Fee: "
-                         (str storage-fee)
-                         (:br)))))))
-             (who (bal-stream)
-               (:a :href "./?cmd=history" "Show history")
-               " (" (str enabled) ")"
-               (:br)
-               (:a :href "./?cmd=rawbalance"
-                   "Show raw balance")
-               (:br))))))
-
-      (when assetlist-stream
-        (setq assetlist (get-output-stream-string assetlist-stream)))
-
-        (let* ((recipopts nil)
-               (found nil)
-               (disablemint nil)
-               (can-mint-token-p
-                (ignore-errors (get-permissions client $MINT-TOKENS)))
-               (can-mint-p
-                (ignore-errors (get-permissions client $MINT-COUPONS)))
-               (recipientid nil)
-               (acctcode nil)
-               (instructions nil))
-        (when gotbal
-          (setq recipopts
-                (whots (s)
-                  (:select
-                   :name "recipient"
-                   (str (contact-options-string
-                         client contacts recipient
-                         (lambda (x) (setf found x)))))))
-          (when (or (equal (id client) (serverid client))
-                    (not (or can-mint-token-p can-mint-p)))
-            (setq disablemint t))
-
-          (when (and (not found)
-                     (not (equal recipient $COUPON))
-                     (not (equal (id client) recipient)))
-            (setq recipientid recipient))
-
-          (when (> (length accts) 1)
-            (setq acctcode
-                  (whots (s)
-                    (:select
-                     :name "toacct"
-                     (:option :value "" "Select or fill-in below...")
-                     (dolist (acct accts)
-                       (let ((selected (equal acct toacct)))
-                         (who (s)
-                           (:option :value acct :selected selected
-                                    (esc acct)))))))))
-
-          (let ((storagefees (getstoragefee client)))
-            (when storagefees
-              (setq storagefeecode
-                    (whots (s)
-                      (form (s "storagefees")
-                        (:table
-                         :class "prettytable"
-                         (:tr
-                          (:th :colspan 3 (str "Storage Fees")))
-                         (dolist (storagefee storagefees)
-                           (let* ((formattedamount
-                                   (balance-formatted-amount storagefee))
-                                  (assetname (balance-assetname storagefee))
-                                  (time (balance-time storagefee))
-                                  (date (datestr time)))
-                             (who (s)
-                               (:tr
-                                (:td :align "right"
-                                     :style "border-right-width: 0;"
-                                     (str formattedamount))
-                                (:td
-                                 :style
-                                 "margin-right: 5px; border-left-width: 0;"
-                                 (str assetname))
-                                (:td (str date)))))))
-                        (:input :type "submit" :name "accept"
-                                :value "Move to Inbox"))))))
-
-          (flet ((write-amt (s)
-                   (who (s)
-                     (:td
-                      :valign "top"
-                      (:table
-                       (:tr
-                        (:td
-                         (:b "Spend amount:"))
-                        (:td
-                         (:input :type "text" :name "amount" :size "20"
-                                                             :value spend-amount :style "text-align: right;"
-                                                             :id "spendamount")))
-                       (:tr
-                        (:td
-                         (:b "Recipient:"))
-                        (:td
-                         (str recipopts)
-                         (:input :type "checkbox" :name "mintcoupon"
-                                 :checked mintcoupon
-                                 :disabled disablemint)
-                         "Mint coupon"))
-                       (:tr
-                        (:td (:b "Note:"))
-                        (:td
-                         (:textarea :name "note" :cols "40" :rows "5"
-                                    (str note))))
-                       (:tr
-                        (:td (:b "Recipient ID:"))
-                        (:td
-                         (:input :type "text" :name "recipientid" :size "40"
-                                 :value recipientid)
-                         (:br)
-                         (:input :type "checkbox"
-                                 :name "allowunregistered"
-                                 :disabled (not can-mint-token-p))
-                         "Allow unregistered"))
-                       (:tr
-                        (:td (:b "Nickname:"))
-                        (:td
-                         (:input :type "text" :name "nickname" :size "30"
-                                                               :value nickname)))
-                       (let ((xfer-input
-                              (whots (s
-                                      )
-                                (:input :type "text" :name "tonewacct" :size "30"
-                                        :value tonewacct))))
-                         (who (s)
-                           (:tr
-                            (:td (:b "Transfer to:"))
-                            (:td (str (or acctcode xfer-input))))
-                           (when acctcode
-                             (who (s)
-                               (:tr
-                                (:td)
-                                (:td (str xfer-input))))))))))))
-            (setq
-             spendcode
-             (whots (s)
-               (form (s "spend")
-                 (:table
-                  (:tr
-                   (:td
-                    :valign "top"
-                    (str assetlist)
-                    (str balcode))
-                   (unless iphone (write-amt s)))
-                  (when iphone
-                    (who (s)
-                      (:tr (write-amt s)))))))))
-
-          (let* ((historytext (if (initialize-client-history client)
-                                  "Disable" "Enable"))
-                 (hideinstructions (hideinstructions cw)))
-            (setq instructions
-                  (whots (s)
-                    (:p
-                     (form (s "togglehistory"
-                           :style "margin: 0px;") ; prevent whitespace below button
-                       (:input :type "submit" :name "togglehistory"
-                               :value (stringify historytext "~a history")))
-                     (form (s "sync"
-                            :style "margin: 0px;") ; prevent whitespace below button
-                       (:input :type "submit" :name "resync"
-                               :value "Resync with server"))
-                     (form (s "toggledebug"
-                            :style "margin: 0px;") ; prevent whitespace below button
-                       (:input :type "submit" :name "toggledebug"
-                               :value (if (debug-stream-p)
-                                          "Disable debugging"
-                                          "Enable debugging")))
-                     (form (s "toggleinstructions"
-                            :style "margin: 0px;") ; prevent whitespace below button
-                       (:input :type "submit" :name "toggleinstructions"
-                               :value (if hideinstructions
-                                          "Show Instructions"
-                                          "Hide Instructions"))))
-                    (unless hideinstructions
-                      (who (s)
-                        (:p
-                         "To make a spend, fill in the \Spend amount\", choose a \"Recipient\" or
-enter a \"Recipient ID\", enter (optionally) a \"Note\", and click the
-\"Spend\" button next to the asset you wish to spend.")
-                        (:p
-                         "To transfer balances, enter the \"Spend Amount\", select or fill-in the
-\"Transfer to\" name (letters, numbers, and spaces only), and click
-the\"Spend\" button next to the asset you want to transfer from. Each
-storage location costs one usage token, and there is currently no way
-to recover an unused location. 0 balances will show only on the raw
-balance screen.")
-                        (:p
-                         "To mint a coupon, enter the \"Spend Amount\", check the \"Mint coupon\"
-box, and click the \"Spend\" button next to the asset you want to
-transfer to the coupon. You can redeem a coupon on the \"Servers\" page.")
-                        (:p
-                         "Entering a \"Nickname\" will add the \"Recipient ID\" to your contacts
-list with that nickname, or change the nickname of the selected
-\"Recipient\".")))))))
-
-        (when (cw-error cw)
-          (if err
-              (setq err (strcat (cw-error cw) "<br/>" err))
-              (setq err (cw-error cw))))
-        (when err
-          (setq err
-                (whots (s)
-                  (draw-error cw s err))))
-        (setf (cw-onload cw)
-              "document.getElementById(\"spendamount\").focus()")
-        (who (s (cw-html-output cw))
-          (str err)
-          (:br)
-          (str servercode)
-          (str inboxcode)
-          (str spendcode)
-          (str outboxcode)
-          (str storagefeecode)
-          (str instructions))))))
 
 (defun draw-coupon (cw &optional time)
   (let ((client (cw-client cw)))
