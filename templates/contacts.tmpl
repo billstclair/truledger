@@ -1,0 +1,52 @@
+<span style='color:red;'><!-- TMPL_IF errmsg --><!-- TMPL_VAR errmsg --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></span>
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='contact'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+      <table>
+        <tr>
+          <td><b>ID:</b></td>
+          <td><input type='text' name='id' id='id' size='40' value='<!-- TMPL_VAR id -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Nickname<br/>(optional):</b></td>
+          <td><input type='text' name='nickname' size='30' value='<!-- TMPL_VAR nickname -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Notes:<br/>(optional)</b></td>
+          <td><textarea name='notes' cols='30' rows='5'><!-- TMPL_VAR notes --></textarea></td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>
+            <input type='submit' name='addcontact' value='Add/Change Contact'/>
+            <input type='submit' name='synccontacts' value='Sync with Server'/>
+            <input type='submit' name='cancel' value='Cancel'/>
+          </td>
+        </tr>
+      </table><!-- TMPL_IF contact-items -->
+      <br/>
+      <input type='hidden' name='chkcnt value='<!-- TMPL_VAR chkcnt -->'/>
+      <table class='prettytable'>
+        <tr>
+          <th>Nickname</th>
+          <th>Name</th>
+          <th>Display</th>
+          <th>Notes</th>
+          <th>x</th>
+        </tr><!-- TMPL_LOOP contact-items -->
+        <tr>
+          <td><!-- TMPL_VAR nickname --></td>
+          <td><!-- TMPL_VAR name --></td>
+          <td><!-- TMPL_VAR display --></td>
+          <td><span class='id'><!-- TMPL_VAR id --></span></td>
+          <td><!-- TMPL_VAR note --></td>
+          <td>
+            <input type='hidden' name='id<!-- TMPL_VAR idx -->' value='<!-- TMPL_VAR id -->'/>
+            <input type='checkbox' name='chk<!-- TMPL_VAR idx -->'/>
+          </td>
+        </tr><!-- /TMPL_LOOP -->
+      </table>
+      <input type='submit' name='deletecontacts' value='Delete checked'/><!-- /TMPL_IF -->
+

@@ -1609,13 +1609,14 @@
                                :assetidx assetidx)
                          bals-plists)
                    (incf assetidx))))
-             (push (list :acctidx acctidx
-                         :acct acct
-                         :assets (nreverse assets-plists))
-                   accts-plists)
-             (push (list :acct acct
-                         :bals (nreverse bals-plists))
-                   acctbals-plists))
+             (when bals-plists
+               (push (list :acctidx acctidx
+                           :acct acct
+                           :assets (nreverse assets-plists))
+                     accts-plists)
+               (push (list :acct acct
+                           :bals (nreverse bals-plists))
+                     acctbals-plists)))
         (setf accts-plists (nreverse accts-plists)
               acctbals-plists (nreverse acctbals-plists))
 
@@ -1743,7 +1744,8 @@
     (settitle cw "Raw Balance")
     (setmenu cw "balance")
 
-    (let ((body (expand-template
+    (let ((body (expand-cw-template
+                 cw
                  (list :inbox-items inbox-items
                        :outbox-items outbox-items
                        :accts accts
@@ -1754,153 +1756,67 @@
 (defun draw-servers (cw &optional serverurl name)
   (let* ((client (cw-client cw))
          (servers (getservers client))
-         (err (cw-error cw))
-         (stream (cw-html-output cw)))
+         (postcnt-plist (postcnt-plist cw))
+         (server-items
+          (loop for server in servers
+             for bid = (server-info-id server)
+             for name = (server-info-name server)
+             for url = (server-info-url server)
+             for cached-p = (privkey-cached-p client bid)
+             unless (equal (userreq client bid) "-1")
+             collect (append postcnt-plist
+                             (list :bid bid
+                                   :name (hsc (if (blankp name) "unnamed" name))
+                                   :url (hsc url)
+                                   :cached-p cached-p)))))
 
-    (setf (cw-onload cw) "document.forms[0].serverurl.focus()")
+    (setf (cw-onload cw) "document.getElementById(\"serverurl\").focus()")
     (settitle cw "Servers")
     (setmenu cw "servers")
 
-    (who (stream)
-      (draw-error cw stream err)
-      (:br)
-      (form (stream "server")
-        (:table
-         (:tr
-          (:td (:b "Server URL"
-                   (:br)
-                   "or Coupon:"))
-          (:td
-           (:input :type "text" :name "serverurl" :size "64"
-                                                :value serverurl)))
-         (:tr
-          (:td (:b "Account Name"
-                   (:br)
-                   "(optional):"))
-          (:td
-           (:input :type "text" :name "name" :size "40"
-                                             :value name)))
-         (:tr
-          (:td)
-          (:td
-           (:input :type "submit" :name "newserver" :value "Add Server")
-           (:input :type "submit" :name "cancel" :value "Cancel"))))))
-
-    (when servers
-      (who (stream)
-          (:table
-           :class "prettytable"
-           (:tr
-            (:th "Server")
-            (:th "URL")
-            (:th "ID")
-            (:th "Choose")
-            (:th "Private Key")
-            #+allow-disable-wire-encryption
-            (:th "Encryption"))
-           (dolist (server servers)
-             (let ((bid (server-info-id server)))
-               (unless (equal (userreq client bid) "-1")
-                 (let ((name (server-info-name server))
-                       (url (hsc (server-info-url server)))
-                       (cached-p (privkey-cached-p client bid))
-                       #+allow-disable-wire-encryption
-                       (encrypted-p (not (no-server-encryption-p bid))))                   (when (blankp name)
-                     (setq name "unnamed"))
-                   (form (stream "server"
-                          :style "margin: 0px;") ; prevent whitespace below button
-                     (:input :type "hidden" :name "server" :value bid)
-                     (:tr
-                      (:td (esc name))
-                      (:td (:a :href url (str url)))
-                      (:td (:span :class "id" (esc bid)))
-                      (:td
-                       (:input :type "submit" :name "selectserver"
-                                              :value "Choose"))
-                      (:td :style "text-align: center;"                        
-                       (:input :type "submit"
-                               :name (if cached-p "uncacheprivkey" "cacheprivkey")
-                               :value (if cached-p "Uncache" "Cache")))
-                      #+allow-disable-wire-encryption
-                      (:td
-                       (:input :type "submit"
-                               :name (if encrypted-p "unencrypt" "encrypt")
-                               :value (if encrypted-p "Unencrypt" "Encrypt"))))))))))))))
+    (let ((body (expand-cw-template
+                 cw
+                 (append postcnt-plist
+                          (list :serverurl (hsc serverurl)
+                                :name (hsc name)
+                                :server-items server-items))
+                 "servers.tmpl")))
+      (princ body (cw-html-output cw)))))
 
 (defun draw-contacts (cw &optional id nickname notes)
   (let* ((client (cw-client cw))
-         (stream (cw-html-output cw))
-         (contacts (getcontacts client)))
+         (postcnt-plist (postcnt-plist cw))
+         (contacts (getcontacts client))
+         (contact-items
+          (loop for contact in contacts
+             for id = (hsc (contact-id contact))
+             for idx from 0
+             for name = (trim (hsc (contact-name contact)))
+             for nickname = (hsc (contact-nickname contact))
+             for display = (namestr nickname name id)
+             for note = (normalize-note (hsc (contact-note contact)))
+             collect (list :nickname (if (blankp nickname) "&nbsp;" nickname)
+                           :name (if (blankp name) "&nbsp;" name)
+                           :display (if (blankp display) "&nbsp" display)
+                           :id id
+                           :note note
+                           :idx 0))))
 
     (setf (cw-onload cw) "document.forms[0].id.focus()")
     (settitle cw "Contacts")
     (setmenu cw "contacts")
 
-    (who (stream)
-      (draw-error cw stream)
-      (:br)
-      (form (stream "contact")
-        (:table
-         (:tr
-          (:td :align "right" (:b "ID:"))
-          (:td
-           (:input :type "text" :name "id" :size "40" :value (esc id))))
-         (:tr
-          (:td (:b "Nickname" (:br) "(Optional):"))
-          (:td
-           (:input :type "text" :name "nickname" :size "30" :value (esc nickname))))
-         (:tr
-          (:td (:b "Notes" (:br) "(Optional):"))
-          (:td
-           (:textarea :name "notes" :cols "30" :rows "5" (esc notes))))
-         (:tr
-          (:td)
-          (:td
-           (:input :type "submit" :name "addcontact" :value "Add/Change Contact")
-           (:input :type "submit" :name "synccontacts" :value "Sync with Server")
-           (:input :type "submit" :name "cancel" :value "Cancel"))))
-
-        (when contacts
-          (who (stream)
-            (:br)
-            (:input :type "hidden" :name "cmd" :value "contact")
-            (:input :type "hidden" :name "chkcnt" :value (length contacts))
-            (:table
-             :class "prettytable"
-             (:tr
-              (:th "Nickname")
-              (:th "Name")
-              (:th "Display")
-              (:th "ID")
-              (:th "Notes")
-              (:th "x"))
-             (let ((idx 0))
-               (dolist (contact contacts)
-                 (let* ((id (hsc (contact-id contact)))
-                        (name (trim (hsc (contact-name contact))))
-                        (nickname (hsc (contact-nickname contact)))
-                        (display (namestr nickname name id))
-                        (note  (hsc (contact-note contact))))
-                   (when (blankp name) (setq name "&nbsp;"))
-                   (when (blankp nickname) (setq nickname "&nbsp;"))
-                   (setq note
-                         (if (blankp note)
-                             "&nbsp;"
-                             (str-replace $nl $brn note)))
-                   (who (stream)
-                     (:tr
-                      (:td (str nickname))
-                      (:td (str name))
-                      (:td (str display))
-                      (:td (:span :class "id" (str id)))
-                      (:td (str note))
-                      (:td
-                       (:input :type "hidden" :name (stringify idx "id~d")
-                                              :value id)
-                       (:input :type "checkbox" :name (stringify idx "chk~d")))))
-                   (incf idx)))))
-            (:input :type "submit" :name "deletecontacts"
-                    :value "Delete checked")))))))
+    (let ((body (expand-cw-template
+                 cw
+                 (append postcnt-plist
+                         (list :id (hsc id)
+                               :nickname (hsc nickname)
+                               :notes (hsc notes)
+                               :chkcnt (length contact-items)
+                               :contact-items contact-items))
+                 "contacts.tmpl")))
+      (princ body (cw-html-output cw)))))
+                               
 
 (defun draw-assets (cw &key scale precision assetname storage
                     audits)
