@@ -35,7 +35,14 @@
         <input type='hidden' name='spendtime<!-- TMPL_VAR spendcnt -->' value='<!-- TMPL_VAR time -->'/>
         <tr>
           <td>Spend</td>
-          <td><!-- TMPL_VAR namestr --></td>
+          <td>
+            <span title='<!-- TMPL_VAR fromid -->'><!-- TMPL_IF from-nick -->
+              <!-- TMPL_VAR from-nick --><!-- TMPL_IF from-name --> (<!-- TMPL_VAR from-name -->)<!-- /TMPL_IF --><!-- TMPL_ELSE -->
+              <!-- TMPL_IF from-name -->(<!-- TMPL_VAR from-name -->)<!-- TMPL_ELSE -->[unknown]<!-- /TMPL_IF -->
+              <input type='hidden' name='spendid<!-- TMPL_VAR spendcnt -->' value='<!-- TMPL_VAR fromid -->'/>
+              <input type='text' name='spendnick<!-- TMPL_VAR spendcnt -->' size='10' value='<!-- TMPL_VAR nickname -->'/><!-- /TMPL_IF -->
+            </span>
+          </td>
           <td align='right' style='border-right-width: 0;'>
             <!-- TMPL_VAR amount -->
           </td>
@@ -61,7 +68,14 @@
         <tr>
           <input type='hidden' name='nonspendtime<!-- TMPL_VAR nonspendcnt -->' value='<!-- TMPL_VAR time -->'/>
           <td><!-- TMPL_VAR reqstr --></td>
-          <td><!-- TMPL_VAR namestr --></td>
+          <td>
+            <span title='<!-- TMPL_VAR fromid -->'><!-- TMPL_IF from-nick -->
+              <!-- TMPL_VAR from-nick --><!-- TMPL_IF from-name --> (<!-- TMPL_VAR from-name -->)<!-- /TMPL_IF --><!-- TMPL_ELSE -->
+              <!-- TMPL_IF from-name -->(<!-- TMPL_VAR from-name -->)<!-- TMPL_ELSE -->[unknown]<!-- /TMPL_IF -->
+              <input type='hidden' name='spendid<!-- TMPL_VAR spendcnt -->' value='<!-- TMPL_VAR fromid -->'/>
+              <input type='text' name='spendnick<!-- TMPL_VAR spendcnt -->' size='10' value='<!-- TMPL_VAR nickname -->'/><!-- /TMPL_IF -->
+            </span>
+          </td>
           <td align='right' style='border-right-width: 0;'><!-- TMPL_VAR amount --></td>
           <td style='border-left-width: 0;'><!-- TMPL_VAR assetname --></td>
           <td><!-- TMPL_VAR itemnote --></td>
@@ -118,7 +132,7 @@
               <tr>
                 <td><b>Spend amount:</b></td>
                 <td>
-                  <input type='text' name='amount' size='20' value='<!-- TMPL_VAR apend-amount -->' style='text-align: right;' id='spendamount'/>
+                  <input type='text' name='amount' size='20' value='<!-- TMPL_VAR spend-amount -->' style='text-align: right;' id='spendamount'/>
                 </td>
               </tr>
               <tr>

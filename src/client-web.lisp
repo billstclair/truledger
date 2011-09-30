@@ -1379,6 +1379,22 @@
            (:option :value recipid :selected selected
                     (str namestr))))))))
 
+(defun get-contact-info (client fromid)
+  (if (equal fromid (id client))
+      (values nil "")
+      (let* ((contact (getcontact client fromid))
+         (from-name (and contact (contact-name contact)))
+         (from-nick (and contact (contact-nickname contact)))
+         (default-nickname nil))
+    (cond ((or (blankp from-name)
+              (and from-nick (equal from-name from-nick)))
+           (setf from-name nil))
+          ((null from-nick)
+           (let ((tokenid (fee-assetid (getfees client))))
+             (unless (getbalance client nil tokenid)
+               (setf default-nickname "My Sponsor")))))
+    (values from-name from-nick default-nickname))))
+
 (defun draw-balance (cw &key
                      spend-amount recipient note toacct tonewacct nickname
                      mintcoupon recipientid allowunregistered fee-plist)
@@ -1430,79 +1446,82 @@
              (inboxignored (getinboxignored client))
              (assets (storing-error (err "Error getting assets: ~a")
                        (getassets client))))
-        (when inbox (setf inbox-p t))
-        (dolist (item inbox)
-          (let* ((request (inbox-request item))
-                 (fromid (inbox-id item))
-                 (time (inbox-time item))
-                 (msgtime (inbox-msgtime item)))
-            (when msgtime
-              (setf (gethash msgtime inbox-msgtimes) item))
-            (cond ((not (equal request $SPEND))
-                   (let* ((outitem (find msgtime outbox
-                                         :test #'equal
-                                         :key #'outbox-time)))
-                     (when outitem
-                       (setf (inbox-assetname item) (outbox-assetname outitem)
-                             (inbox-formattedamount item)
-                             (outbox-formattedamount outitem)
-                             (inbox-reply item) (inbox-note item)
-                             (inbox-note item) (outbox-note outitem)))
-                     (let* ((request (inbox-request item))
-                            (fromid (inbox-id item))
-                            (reqstr (if (equal request $SPENDACCEPT)
-                                        "Accept" "Reject"))
-                            (time (inbox-time item))
-                            (reply (normalize-note (hsc (inbox-reply item))))
-                            (assetname (hsc (inbox-assetname item)))
-                            (amount (hsc (inbox-formattedamount item)))
-                            (itemnote (normalize-note (hsc (inbox-note item))))
-                            (remove-checked-p (not (member time inboxignored
-                                                           :test #'equal)))
-                            (date (datestr time))
-                            (namestr (namestr-html cw fromid
-                                                   (lambda () nonspendcnt)
-                                                   "nonspendid" "nonspendnick")))
-                       (push (list :nonspendcnt nonspendcnt
-                                   :time time
-                                   :reqstr reqstr
-                                   :namestr namestr
-                                   :amount amount
-                                   :assetname assetname
-                                   :itemnote itemnote
-                                   :remove-checked-p remove-checked-p
-                                   :reply reply
-                                   :date date)
-                             non-spends)
-                       (incf nonspendcnt))))
-                  (t (let* ((assetid (inbox-assetid item))
-                            (assetname (hsc (inbox-assetname item)))
-                            (asset-new-p (not (find assetid assets
-                                                    :test #'equal
-                                                    :key #'asset-assetid)))
-                            (amount (hsc (inbox-formattedamount item)))
-                            (itemnote (normalize-note
-                                       (hsc (inbox-note item))))
-                            (ignore-selected-p
-                             (member time inboxignored :test #'equal))
-                            (namestr (namestr-html cw fromid
-                                                   (lambda () spendcnt)
-                                                   "spendid" "spendnick"))
-                            (date (datestr time)))
-                       (push (list :namestr namestr
-                                   :amount amount
-                                   :assetname assetname
-                                   :asset-new-p asset-new-p
-                                   :itemnote itemnote
-                                   :spendcnt spendcnt
-                                   :time time
-                                   :acctoptions acctoptions
-                                   :ignore-selected-p ignore-selected-p
-                                   :date date)
-                             spends)
-                       (incf spendcnt))))))
-        (setf spends (nreverse spends)
-              non-spends (nreverse non-spends)))
+        (when inbox
+          (setf inbox-p t)
+          (dolist (item inbox)
+            (let* ((request (inbox-request item))
+                   (fromid (inbox-id item))
+                   (time (inbox-time item))
+                   (msgtime (inbox-msgtime item))
+                   from-name from-nick default-nickname)
+              (multiple-value-setq (from-name from-nick default-nickname)
+                (get-contact-info client fromid))
+              (when msgtime
+                (setf (gethash msgtime inbox-msgtimes) item))
+              (cond ((not (equal request $SPEND))
+                     (let* ((outitem (find msgtime outbox
+                                           :test #'equal
+                                           :key #'outbox-time)))
+                       (when outitem
+                         (setf (inbox-assetname item) (outbox-assetname outitem)
+                               (inbox-formattedamount item)
+                               (outbox-formattedamount outitem)
+                               (inbox-reply item) (inbox-note item)
+                               (inbox-note item) (outbox-note outitem)))
+                       (let* ((request (inbox-request item))
+                              (fromid (inbox-id item))
+                              (reqstr (if (equal request $SPENDACCEPT)
+                                          "Accept" "Reject"))
+                              (time (inbox-time item))
+                              (reply (normalize-note (hsc (inbox-reply item))))
+                              (assetname (hsc (inbox-assetname item)))
+                              (amount (hsc (inbox-formattedamount item)))
+                              (itemnote (normalize-note (hsc (inbox-note item))))
+                              (remove-checked-p (not (member time inboxignored
+                                                             :test #'equal)))
+                              (date (datestr time)))
+                         (push (list :nonspendcnt nonspendcnt
+                                     :time time
+                                     :reqstr reqstr
+                                     :fromid fromid
+                                     :from-name (hsc from-name)
+                                     :from-nick (hsc from-nick)
+                                     :nickname (hsc default-nickname)
+                                     :amount amount
+                                     :assetname assetname
+                                     :itemnote itemnote
+                                     :remove-checked-p remove-checked-p
+                                     :reply reply
+                                     :date date)
+                               non-spends)
+                         (incf nonspendcnt))))
+                    (t (let* ((assetid (inbox-assetid item))
+                              (assetname (hsc (inbox-assetname item)))
+                              (asset-new-p (not (find assetid assets
+                                                      :test #'equal
+                                                      :key #'asset-assetid)))
+                              (amount (hsc (inbox-formattedamount item)))
+                              (itemnote (normalize-note
+                                         (hsc (inbox-note item))))
+                              (ignore-selected-p
+                               (member time inboxignored :test #'equal))
+                              (date (datestr time)))
+                         (push (list :fromid fromid
+                                     :from-name from-name
+                                     :from-nick from-nick
+                                     :amount amount
+                                     :assetname assetname
+                                     :asset-new-p asset-new-p
+                                     :itemnote itemnote
+                                     :spendcnt spendcnt
+                                     :time time
+                                     :acctoptions acctoptions
+                                     :ignore-selected-p ignore-selected-p
+                                     :date date)
+                               spends)
+                         (incf spendcnt))))))
+          (setf spends (nreverse spends)
+                non-spends (nreverse non-spends))))
 
       (when outbox
         (dolist (item outbox)
@@ -1522,21 +1541,18 @@
                 (cond ((equal nameid $COUPON)
                        (setf name "Coupon"
                              coupontime (hunchentoot:url-encode time)
-                             label "Redeem")
-                       (unless cancelcount (setf cancelcount 0))
-                       (setf this-cancelcount cancelcount)
-                       (incf cancelcount))
+                             label "Redeem"))
                       (t (let ((contact (getcontact client nameid)))
                            (cond (contact
                                   (setf name (contact-namestr contact))
                                   (when (equal name nameid)
                                     (setf name "[unknown]"))
                                   (setf nameid nameid))
-                                 (t (setf name (hsc nameid)))))
-                         (unless (gethash time inbox-msgtimes)
-                           (unless cancelcount (setf cancelcount 0))
-                           (setf this-cancelcount cancelcount)
-                           (incf cancelcount))))
+                                 (t (setf name (hsc nameid)))))))
+                (unless (gethash time inbox-msgtimes)
+                  (unless cancelcount (setf cancelcount 0))
+                  (setf this-cancelcount cancelcount)
+                  (incf cancelcount))
                 (push (list :date date
                             :coupontime coupontime
                             :nameid nameid
@@ -1630,7 +1646,7 @@
                   :non-spends ,non-spends
                   :accts ,accts-plists
                   :acctbals ,acctbals-plists
-                  :amount ,(hsc spend-amount)
+                  :spend-amount ,(hsc spend-amount)
                   :recipient ,(hsc recipient)
                   :recipopts ,recipopts
                   :note ,(hsc note)
