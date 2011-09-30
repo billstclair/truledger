@@ -1,0 +1,36 @@
+<br/><!-- TMPL_IF inbox-items -->
+    <table class='prettytable'>
+      <tr><th colspan='2' style='text-align: left;'><b>Inbox</b></th></tr><!-- TMPL_LOOP inbox-items -->
+      <tr>
+        <td valign='top'><!-- TMPL_VAR time --></td>
+        <td><pre><!-- TMPL_VAR msg --></pre></td>
+      </tr><!-- /TMPL_LOOP -->
+    </table><!-- /TMPL_IF --><!-- TMPL_IF outbox-items -->
+
+    <table class='prettytable'>
+      <tr><th colspan='2' style='text-align: left;'><b>Outbox</b></th></tr><!-- TMPL_LOOP outbox-items -->
+      <tr>
+        <td valign='top'><!-- TMPL_VAR time --></td>
+        <td><pre><!-- TMPL_VAR msg --></pre></td>
+      </tr><!-- /TMPL_LOOP -->
+    </table><!-- /TMPL_IF --><!-- TMPL_IF accts -->
+<!-- TMPL_LOOP accts -->
+    <table class='prettytable'>
+      <tr>
+        <th colspan='2' style='text-align: left;'><b><!-- TMPL_VAR acct --></b></th>
+      </tr><!-- TMPL_LOOP balances -->
+      <tr>
+        <td valign='top'><!-- TMPL_VAR assetname --></td>
+        <td><pre><!-- TMPL_VAR msg --></pre></td>
+      </tr><!-- /TMPL_LOOP -->
+    </table><!-- /TMPL_LOOP --><!-- /TMPL_IF --><!-- TMPL_IF fraction-items -->
+
+    <table class='prettytable'>
+      <tr>
+        <th colspan='2' style='text-align: left;'><b>Fractional Balances</b></th>
+      </tr><!-- TMPL_LOOP fraction-items -->
+      <tr>
+        <td valign='top'><!-- TMPL_VAR assetname --></td>
+        <td><pre><!-- TMPL_VAR msg --></pre></td>
+      </tr><!-- /TMPL_LOOP -->
+    </table><!-- /TMPL_IF -->

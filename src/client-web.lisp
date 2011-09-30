@@ -1682,104 +1682,76 @@
                    (formattedamount (hsc (outbox-formattedamount item)))
                    (note (outbox-note item)))
                (when coupons
-                 (unless (blankp note)
-                   (setq note
-                         (whots (s)
-                           (:tr
-                            (:td (:b "Note:"))
-                            (:td
-                             (:span :style "margin: 5px;"
-                                    (esc note)))))))
-                 (who (s (cw-html-output cw))
-                   (:br)
-                   (:table
-                    :class "prettytable"
-                    (:tr
-                     (:th :colspan 2 "Coupon for outbox entry at " (str datestr)))
-                    (:tr
-                     (:td (:b "Amount:"))
-                     (:td
-                      (:span :style "margin: 5px;"
-                             (esc formattedamount) " "
-                             (esc assetname))))
-                    (str note)
-                    (:tr
-                     (:td (:b "Coupon:"))
-                     (:td (:span :style "margin: 5px;" (str (car coupons))))))))))
+                 (let ((body (expand-cw-template
+                              cw
+                              (list :date datestr
+                                    :amount formattedamount
+                                    :assetname assetname
+                                    :note (unless (blankp note)
+                                            (normalize-note (hsc note)))
+                                    :coupon (car coupons))
+                              "coupon.tmpl")))
+                   (princ body (cw-html-output cw))))))
             (t (setf (cw-error cw)
                      (stringify timestr "Couldn't find coupon: ~a"))
                (draw-balance cw))))))
 
 (defun draw-raw-balance (cw)
   (let* ((client (cw-client cw))
-         (s (cw-html-output cw)))
+         inbox-items outbox-items accts fraction-items)
+
+    (multiple-value-bind (inbox msghash) (getinbox client t)
+      (when inbox
+        (setf inbox-items
+              (loop for item in inbox
+                 for msg = (gethash item msghash)
+                 for time = (inbox-time item)
+                 unless (blankp msg)
+                 collect (list :time (hsc time) :msg (trimmsg msg))))))
+
+    (multiple-value-bind (outbox msghash) (getoutbox client t)
+      (when outbox
+        (setf outbox-items
+              (loop for item in outbox
+                 for msg = (gethash item msghash)
+                 for time = (outbox-time item)
+                 collect (list :time (hsc time)
+                               :msg  (trimmsg msg))))))
+
+    (multiple-value-bind (balance msghash) (getbalance client t nil t)
+      (setf accts
+            (loop
+               for (acct . bals) in balance
+               for balances =
+                 (loop for bal in bals
+                    for msg = (gethash bal msghash)
+                    for assetname = (balance-assetname bal)
+                    collect (list :assetname (hsc assetname)
+                                  :msg (trimmsg msg)))
+               collect (list :acct (hsc acct)
+                             :balances balances))))
+
+    (multiple-value-bind (fractions msghash) (getfraction client nil t)
+      (when fractions
+        (setf fraction-items
+              (loop for frac in fractions
+                 for msg = (gethash frac msghash)
+                 for assetname = (fraction-assetname frac)
+                 collect (list :assetname (hsc assetname)
+                               :msg (trimmsg msg))))))
 
     (settitle cw "Raw Balance")
     (setmenu cw "balance")
 
-    (who (s)
-      (:br))
+    (let ((body (expand-template
+                 (list :inbox-items inbox-items
+                       :outbox-items outbox-items
+                       :accts accts
+                       :fraction-items fraction-items)
+                 "rawbalance.tmpl")))
+      (princ body (cw-html-output cw)))))
 
-    (multiple-value-bind (inbox msghash) (getinbox client t)
-      (when inbox
-        (who (s)
-          (:table
-           :class "prettytable"
-           (:tr (:th :colspan 2 :style "text-align: left;" "Inbox"))
-           (dolist (item inbox)
-             (let ((msg (gethash item msghash))
-                   (time (inbox-time item)))
-               (unless (blankp msg)
-                 (who (s)
-                   (:tr
-                    (:td :valign "top" (esc time))
-                    (:td (:pre (str (trimmsg msg)))))))))))))
-
-    (multiple-value-bind (outbox msghash) (getoutbox client t)
-      (when outbox
-        (who (s)
-          (:table
-           :class "prettytable"
-           (:tr (:th :colspan 2 :style "text-align: left;" (:b "Outbox")))
-           (dolist (item outbox)
-             (let ((msg (gethash item msghash))
-                   (time (outbox-time item)))
-               (who (s)
-                 (:tr
-                  (:td :valign "top" (esc time))
-                  (:td (:pre (str (trimmsg msg))))))))))))
-
-    (multiple-value-bind (balance msghash) (getbalance client t nil t)
-      (loop
-         for (acct . bals) in balance
-         do
-           (who (s)
-             (:table
-              :class "prettytable"
-              (:tr (:th :colspan 2 :style "text-align: left;" (:b (esc acct))))
-              (dolist (bal bals)
-                (let ((msg (gethash bal msghash))
-                      (assetname (balance-assetname bal)))
-                  (who (s)
-                    (:tr
-                     (:td :valign "top" (esc assetname))
-                     (:td (:pre (str (trimmsg msg))))))))))))
-
-    (multiple-value-bind (fractions msghash) (getfraction client nil t)
-      (when fractions
-        (who (s)
-          (:table
-           :class "prettytable"
-           (:tr (:th :colspan "2" :style "text-align: left;" "Fractional Balances"))
-           (dolist (frac fractions)
-             (let ((msg (gethash frac msghash))
-                   (assetname (fraction-assetname frac)))
-               (who (s)
-                 (:tr
-                  (:td :valign "top" (esc assetname))
-                  (:td (:pre (str (trimmsg msg))))))))))))))
-
-(defun draw-servers(cw &optional serverurl name)
+(defun draw-servers (cw &optional serverurl name)
   (let* ((client (cw-client cw))
          (servers (getservers client))
          (err (cw-error cw))
