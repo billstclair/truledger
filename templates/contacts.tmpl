@@ -27,7 +27,7 @@
         </tr>
       </table><!-- TMPL_IF contact-items -->
       <br/>
-      <input type='hidden' name='chkcnt value='<!-- TMPL_VAR chkcnt -->'/>
+      <input type='hidden' name='chkcnt' value='<!-- TMPL_VAR chkcnt -->'/>
       <table class='prettytable'>
         <tr>
           <th>Nickname</th>
@@ -35,6 +35,7 @@
           <th>Display</th>
           <th>Notes</th>
           <th>x</th>
+          <th>&nbsp;</th>
         </tr><!-- TMPL_LOOP contact-items -->
         <tr>
           <td><!-- TMPL_VAR nickname --></td>
@@ -48,5 +49,6 @@
           </td>
         </tr><!-- /TMPL_LOOP -->
       </table>
-      <input type='submit' name='deletecontacts' value='Delete checked'/><!-- /TMPL_IF -->
+      <input type='submit' name='deletecontacts' value='Delete checked'/>
+    </form><!-- /TMPL_IF -->
 

@@ -1791,7 +1791,7 @@
           (loop for contact in contacts
              for id = (hsc (contact-id contact))
              for idx from 0
-             for name = (trim (hsc (contact-name contact)))
+             for name = (hsc (contact-name contact))
              for nickname = (hsc (contact-nickname contact))
              for display = (namestr nickname name id)
              for note = (normalize-note (hsc (contact-note contact)))
@@ -1802,7 +1802,7 @@
                            :note note
                            :idx 0))))
 
-    (setf (cw-onload cw) "document.forms[0].id.focus()")
+    (setf (cw-onload cw) "document.getElementById(\"id\").focus()")
     (settitle cw "Contacts")
     (setmenu cw "contacts")
 
@@ -1823,126 +1823,60 @@
   (let* ((client (cw-client cw))
          (tokenid (tokenid client))
          (assets (getassets client))
-         (stream (cw-html-output cw))
+         (postcnt-plist (postcnt-plist cw))
+         (asset-items nil)
          (scale (hsc scale))
          (precision (hsc precision))
          (assetname (hsc assetname))
          (storage (hsc storage))
-         (incnt 0)
-         (owner-p nil))
-    (setf (cw-onload cw) "document.forms[0].scale.focus()")
+         (percentcnt 0))
+
+    (dolist (asset assets)
+      (let* ((ownerid (asset-id asset))
+             (namestr (id-namestr cw ownerid "You"))
+             (assetid (asset-assetid asset))
+             (scale (asset-scale asset))
+             (precision (asset-precision asset))
+             (assetname (asset-name asset))
+             (percent (asset-percent asset))
+             (cell (assoc assetid audits :test #'equal))
+             (balance (second cell))
+             (fraction (third cell))
+             (owner-p (and (equal ownerid (id client))
+                           (not (equal assetid tokenid)))))
+        (push (list* :assetname (hsc assetname)
+                     :scale (hsc scale)
+                     :precision (hsc precision)
+                     :owner-p owner-p
+                     :cnt percentcnt
+                     :opercent percent
+                     :percent percent
+                     :owner namestr
+                     :assetid assetid
+                     :balance (hsc balance)
+                     :fraction (hsc fraction)
+                     :audit-p (or owner-p (equal (id client) (serverid client)))
+                     postcnt-plist)
+              asset-items)
+        (when owner-p (incf percentcnt))))
+    (setf asset-items (nreverse asset-items))
+
+    (setf (cw-onload cw) "document.getElementById(\"scale\").focus()")
     (settitle cw "Assets")
     (setmenu cw "assets")
 
-    (who (stream)
-      (draw-error cw stream)
-      (:br)
-      (cond ((not (get-permissions client $ADD-ASSET t))
-             (who (stream)
-               (:p "You do not have permission to create assets.")))
-            (t
-             (form (stream "asset")
-               (:table
-                (:tr
-                 (:td (:b "Scale:"))
-                 (:td (:input
-                       :type "text" :name "scale" :size "3" :value scale)))
-                (:tr
-                 (:td (:b "Precision:"))
-                 (:td (:input
-                       :type "text"
-                       :name "precision"
-                       :size "3"
-                       :value precision)))
-                (:tr
-                 (:td (:b "Asset name:"))
-                 (:td (:input
-                       :type "text"
-                       :name "assetname"
-                       :size "30"
-                       :value assetname)))
-                (:tr
-                 (:td (:b "Storage fee (%/year):"))
-                 (:td (:input
-                       :type "text" :name "storage" :size "5" :value storage)))
-                (:tr
-                 (:td)
-                 (:td (:input
-                       :type "submit" :name "newasset" :value "Add Asset")
-                      (:input
-                       :type "submit" :name "cancel" :value "Cancel"))))))))
-
-  (when assets
-    (form (stream "asset")
-      (:table
-       :class "prettytable"
-       (:tr
-        (:th "Asset name")
-        (:th "Scale")
-        (:th "Precision")
-        (:th "Storage Fee" (:br) "(%/year)")
-        (:th "Owner")
-        (:th (str (if audits "Asset ID/Audits" "Asset ID"))))
-       (dolist (asset assets)
-         (let* ((ownerid (asset-id asset))
-                (namestr (id-namestr cw ownerid))
-                (assetid (asset-assetid asset))
-                (scale (asset-scale asset))
-                (precision (asset-precision asset))
-                (assetname (asset-name asset))
-                (percent (asset-percent asset))
-                (cell (assoc assetid audits :test #'equal))
-                (balance (second cell))
-                (fraction (third cell)))
-           (setq percent
-                 (if (and (equal ownerid (id client))
-                          (not (equal assetid tokenid)))
-                     (whots (s)
-                       (setf owner-p t)
-                       (:input :type "hidden"
-                               :name (stringify incnt "assetid~d")
-                               :value (hsc assetid))
-                       (:input :type "hidden"
-                               :name (stringify incnt "opercent~d")
-                               :value (hsc percent))
-                       (:input :type "text"
-                               :name (stringify incnt "percent~d")
-                               :value (hsc percent)
-                               :size "7"
-                               :style "text-align: right;"))
-                     (hsc percent)))
-           (incf incnt)
-           (when (blankp percent) (setq percent "&nbsp;"))
-           (who (stream)
-             (:tr
-              (:td (esc assetname))
-              (:td :align "right" (esc scale))
-              (:td :align "right" (esc precision))
-              (:td :align "right" (str percent))
-              (:td (str namestr))
-              (:td (:span :class "id" (esc assetid))
-                   (when balance
-                     (htm
-                      (:br)
-                      (:b "Balance: ")
-                      (str balance)))
-                   (when fraction
-                     (htm
-                      (:br)
-                      (:b "Fraction: ")
-                      (str fraction)))))))))
-      (when (> incnt 0)
-        (who (stream)
-          (:input :type "hidden" :name "percentcnt" :value incnt)
-          (:br)
-          (:input :type "submit" :name "updatepercent"
-                  :value (if owner-p
-                             "Update Storage Fees"
-                             "Refresh"))
-          (when (or owner-p (equal (id client) (serverid client)))
-            (htm
-             " "
-             (:input :type "submit" :name "audit" :value "Audit")))))))))
+    (let ((body (expand-cw-template
+                 cw
+                 (list* :create-assets-p (get-permissions client $ADD-ASSET t)
+                        :scale scale
+                        :precision precision
+                        :assetname assetname
+                        :storage storage
+                        :percentcnt percentcnt
+                        :asset-items asset-items
+                        postcnt-plist)
+                 "assets.tmpl")))
+      (princ body (cw-html-output cw)))))
 
 (defun render-fee-row (cw feeidx type assetid amt &optional assetname assets)
   (let* ((client (cw-client cw))

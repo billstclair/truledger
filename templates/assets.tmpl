@@ -1,0 +1,73 @@
+<span style='color:red;'><!-- TMPL_IF errmsg --><!-- TMPL_VAR errmsg --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></span><!-- TMPL_IF create-assets-p -->
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='asset'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+      <table>
+        <tr>
+          <td><b>Scale:</b></td>
+          <td><input type='text' name='scale' id='scale' size='3' value='<!-- TMPL_VAR scale -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Precision</b></td>
+          <td><input type='text' name='precision' size='3' value='<!-- TMPL_VAR precision -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Asset name:</b></td>
+          <td><input name='assetname' size='30' value='<!-- TMPL_VAR assetname -->'/></td>
+        </tr>
+        <tr>
+          <td><b>Sorage fee (%/year)</b></td>
+          <td><input name='storage' size='5' value='<!-- TMPL_VAR storage -->'/></td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>
+            <input type='submit' name='newasset' value='Add Asset'/>
+            <input type='submit' name='cancel' value='Cancel'/>
+          </td>
+        </tr>
+      </table>
+    </form><!-- TMPL_ELSE -->
+    <p>You do not have permission to create assets.</p><!-- /TMPL_IF --><!-- TMPL_IF asset-items -->
+
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='asset'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+      <input type='hidden' name='percentcnt' value='<!-- TMPL_VAR percentcnt -->'/>
+      <table class='prettytable'>
+        <tr>
+          <th>Asset name</th>
+          <th>Scale</th>
+          <th>Precision</th>
+          <th>Storage Fee<br>(%/year)</th>
+          <th>Owner</th>
+          <th><!-- TMPL_IF audits-p -->Asset ID/Audits<!-- TMPL_ELSE -->Asset ID<!-- /TMPL_IF --></th>
+        </tr><!-- TMPL_LOOP asset-items -->
+        <tr>
+          <td><!-- TMPL_VAR assetname --></td>
+          <td><!-- TMPL_VAR scale --></td>
+          <td><!-- TMPL_VAR precision --></td>
+          <td><!-- TMPL_IF owner-p -->
+            <input type='hidden' name='assetid<!-- TMPL_VAR cnt -->' value='<!-- TMPL_VAR assetid -->'>
+            <input type='hidden' name='opercent<!-- TMPL_VAR cnt -->' value='<!-- TMPL_VAR opercent -->'>
+            <input type='text' name='percent<!-- TMPL_VAR cnt -->' value='<!-- TMPL_VAR percent -->' size='7' style='text-align: right;'><!-- TMPL_ELSE --><!-- TMPL_IF percent -->
+            <!-- TMPL_VAR percent --><!-- /TMPL_ELSE -->
+            &nbsp;<!-- /TMPL_IF --><!-- /TMPL_IF -->
+          </td>
+          <td><!-- TMPL_VAR owner --></td>
+          <td>
+            <span class='id'><!-- TMPL_VAR assetid --></span><!-- TMPL_IF balance -->
+            <br/>
+            <b>Balance: </b><!-- TMPL_VAR balnce -->
+            <br/>
+            <b>Fraction: </b><!-- TMPL_VAR fraction --><!-- /TMPL_IF -->
+          </td>
+        </tr><!-- /TMPL_LOOP -->
+      </table>
+      <input type='submit' name='updatepercent' value='<!-- TMPL_IF owner-p -->Update Storage Feeds<!-- TMPL_ELSE -->Refresh<!-- /TMPL_IF -->'/><!-- TMPL_IF audit-p -->
+      <input type='submit' name='audit' value='Audit'/><!-- /TMPL_IF -->
+    </form><!-- /TMPL_IF -->

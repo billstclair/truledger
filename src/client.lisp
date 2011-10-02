@@ -538,9 +538,9 @@
                :test #'equal)))
 
 (defun string-compare (s1 s2)
-  (cond ((string-lessp s1 s2) 1)
+  (cond ((string-lessp s1 s2) -1)
         ((string-equal s1 s2) 0)
-        (t -1)))
+        (t 1)))
 
 (defun properties-compare (a1 a2 keys &optional (comparef #'string-compare))
   (dolist (key keys 0)
@@ -990,7 +990,7 @@
                              (and bal2 (not gotbal2)))
                      (error
                       "While adding asset: missing returned balance from server"))
-                   (when (and percent (not gotstorage))
+                   (when (and (not (blankp percent)) (not gotstorage))
                      (error
                       "While adding asset: storage fee not returned from server"))
 
@@ -1181,7 +1181,8 @@
   formatted-amount)
 
 (defun balance-lessp (b1 b2)
-  (< (properties-compare b1 b2 '((balance-acct . acct-compare) balance-assetid)) 0))
+  (< (properties-compare b1 b2 '((balance-acct . acct-compare) balance-assetname))
+     0))
 
 (defmethod getbalance ((client client) &optional (acct t) assetid includeraw)
   "Get user balances for all sub-accounts or just one.

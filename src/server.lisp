@@ -2104,7 +2104,7 @@
              )
 
         (unless (and (is-numeric-p scale t) (is-numeric-p precision t)
-                     (> (bccomp scale 0) 0) (> (bccomp precision 0) 0))
+                     (>= (bccomp scale 0) 0) (>= (bccomp precision 0) 0))
           (error "Scale & precision must be integers >= 0"))
 
         (when (> (bccomp scale 10) 0)
