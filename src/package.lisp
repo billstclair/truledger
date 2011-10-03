@@ -522,6 +522,7 @@
    #:asset-name
    #:asset-issuer
    #:asset-percent
+   #:asset-lessp
    #:getassets
    #:getasset
    #:addasset

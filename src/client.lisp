@@ -1011,6 +1011,9 @@
   amount
   formatted-amount)
 
+(defun fee-lessp (fee1 fee2)
+  (properties-lessp fee1 fee2 '(fee-assetname fee-type)))
+
 (defmethod getfees ((client client) &optional reload)
   "Look up the transaction cost.
    Returns three values (FEE instances)
@@ -1055,7 +1058,7 @@
           (dolist (fee others)
             (let ((assetid (fee-assetid fee)))
               (getasset client assetid t)))
-          (values tranfee regfee (nreverse others)))))))
+          (values tranfee regfee (sort others #'fee-lessp)))))))
 
 (defmethod getfees-internal ((client client))
   (let ((db (db client))

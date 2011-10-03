@@ -1930,83 +1930,99 @@
 
 (defun draw-fees (cw &optional values)
   (let* ((client (cw-client cw))
-         (stream (cw-html-output cw))
          (serverp (equal (id client) (serverid client)))
          (feeidx 0)
+         (fee-items nil)
          (assets (getassets client)))
     (multiple-value-bind (tranfee regfee fees) (getfees client t)
-      (settitle cw "Fees")
-      (setmenu cw "fees")
-      (who (stream)
-        (draw-error cw stream)
-        (:br)
-        (form (stream "fee")
-          (:table
-           :class "prettytable"
-           (:tr
-            (:th "Fee")
-            (:th "Amount")
-            (:th "Asset")
-            (:th "Asset ID"))
-           (render-fee-row
-            cw "tranfee"
-            (whots (s) "Transaction" (:br) "(refundable)")
-            (fee-assetid tranfee)
-            (or (cdr (assoc :tranfee values))
-                (fee-formatted-amount tranfee))
-            (fee-assetname tranfee))
-           (render-fee-row
-            cw "regfee" "Registration"
-            (fee-assetid regfee)
-            (or (cdr (assoc :regfee values))
-                (fee-formatted-amount regfee))
-            (fee-assetname regfee))
-           (dolist (fee fees)
-             (let ((assetid (fee-assetid fee)))
-               (unless (find assetid assets :test #'equal :key #'asset-assetid)
-                 (let ((asset (getasset client assetid)))
-                   (when asset
-                     (setf assets (nconc assets (list asset))))))))
-           (dolist (fee fees)
-             (let* ((type (fee-type fee))
-                    (assetid (fee-assetid fee))
-                    (cell (assocequal (cons type assetid) values)))
-               (when cell (setf values (delete cell values :test #'eq)))
-               (render-fee-row
-                cw feeidx type
-                assetid
-                (or (cdr cell) (fee-formatted-amount fee))
-                (fee-assetname fee)
-                assets))
-             (incf feeidx))
-           (let ((added-fees (remove-if-not #'listp values :key #'car)))
-             (dolist (fee added-fees)
-               (let ((type (caar fee))
-                     (assetid (cdar fee))
-                     (amt (cdr fee)))
-                 (render-fee-row cw feeidx type assetid amt nil assets)
-                 (incf feeidx)))
-             (let* ((cnt (+ (length fees) (length added-fees)))
-                    (feecnt (or (cdr (assoc :feecnt values)) 0))
-                    (diff (- feecnt cnt)))
-               (dotimes (i diff)
-                 (render-fee-row cw feeidx $SPEND nil nil)
-                 (incf feeidx))
-               (setf feecnt (max feecnt feeidx))
-               (htm
-                (:input :type "hidden" :name "feecnt" :value feecnt)))))
-          (when serverp
-            (htm
-             "To remove a fee, clear its amount."
-             (:br)
-             "The Transaction & Registration fees may not be removed,"
-             " but clearing their amounts will restore them to default values."
-             (:br)
-             (:input :type "submit" :name "update" :value "Update")
-             " "
-             (:input :type "submit" :name "add" :value "Add fee")
-                          " "
-             (:input :type "submit" :name "cancel" :value "Cancel"))))))))
+      (push (list :type "Transaction (refundable)"
+                  :serverp serverp
+                  :amtname "tranfee"
+                  :amt (hsc (or (cdr (assoc :tranfee values))
+                                (fee-formatted-amount tranfee)))
+                  :assetname (hsc (fee-assetname tranfee))
+                  :assetid (hsc (fee-assetid tranfee)))
+            fee-items)
+      (push (list :type "Registration"
+                  :serverp serverp
+                  :amtname "regfee"
+                  :amt (hsc (or (cdr (assoc :regfee values))
+                                (fee-formatted-amount regfee)))
+                  :assetname (hsc (fee-assetname regfee))
+                  :assetid (hsc (fee-assetid regfee)))
+            fee-items)
+      (dolist (fee fees)
+        (let ((assetid (fee-assetid fee)))
+          (unless (find assetid assets :test #'equal :key #'asset-assetid)
+            (let ((asset (getasset client assetid)))
+              (when asset
+                (push asset assets))))))
+      (setf assets (sort assets #'asset-lessp))
+      (flet ((asset-options (assetid)
+               (loop for asset in assets
+                  for id = (asset-assetid asset)
+                  collect (list :id (hsc id)
+                                :assetname (hsc (asset-name asset))
+                                :selected-p (equal id assetid))))
+             (type-options (type)
+               (list (list :value $SPEND
+                                         :selected-p (equal type $SPEND))
+                                   (list :value $TRANSFER
+                                         :selected-p (EQUAL type $TRANSFER)))))
+        (dolist (fee fees)
+          (let* ((type (fee-type fee))
+                 (assetid (fee-assetid fee))
+                 (cell (assocequal (cons type assetid) values))
+                 (amt (hsc (or (cdr cell) (fee-formatted-amount fee)))))
+            (when cell (setf values (delete cell values :test #'eq)))
+            (push (if serverp
+                      (list :feeidx feeidx
+                            :serverp t
+                            :type-options (type-options type)
+                            :amt amt
+                            :asset-options (asset-options assetid)
+                            :assetid (hsc assetid))
+                      (list :type (hsc type)
+                            :amt amt
+                            :assetname (fee-assetname fee)
+                            :assetid (hsc assetid)))
+                  fee-items)
+            (incf feeidx)))
+        (let ((added-fees (remove-if-not #'listp values :key #'car)))
+          (dolist (fee added-fees)
+            (let ((type (caar fee))
+                  (assetid (cdar fee))
+                  (amt (cdr fee)))
+              (push (list :feeidx feeidx
+                          :type-options (type-options type)
+                          :amt amt
+                          :asset-options (asset-options assetid)
+                          :assetid nil)
+                    fee-items)
+              (incf feeidx)))
+          (let* ((cnt (+ (length fees) (length added-fees)))
+                 (feecnt (or (cdr (assoc :feecnt values)) 0))
+                 (diff (- feecnt cnt)))
+            (dotimes (i diff)
+              (push (list :feeidx feeidx
+                          :type-options (type-options nil)
+                          :amt nil
+                          :asset-options (asset-options nil)
+                          :assetid nil)
+                    fee-items)
+              (incf feeidx))
+            (setf feecnt (max feecnt feeidx))
+
+            (settitle cw "Fees")
+            (setmenu cw "fees")
+            (let ((body (expand-cw-template
+                         cw
+                         (list* :serverp serverp
+                                :feecnt feecnt
+                                :fee-items (nreverse fee-items)
+                                (postcnt-plist cw))
+                         "fees.tmpl")))
+              (princ body (cw-html-output cw)))))))))
 
 (defun draw-permissions (cw &optional shown-permission shown-grantor toid)
   (let* ((client (cw-client cw))

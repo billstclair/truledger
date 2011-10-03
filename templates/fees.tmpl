@@ -1,0 +1,48 @@
+<span style='color:red;'><!-- TMPL_IF errmsg --><!-- TMPL_VAR errmsg --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></span><!-- TMPL_IF serverp -->
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='fee'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+      <input type='hidden' name='feecnt' value='<!-- TMPL_VAR feecnt -->'/><!-- /TMPL_IF --><!-- TMPL_IF fee-items -->
+      <table class='prettytable'>
+        <tr>
+          <th>Fee</th>
+          <th>Amount</th>
+          <th>Asset</th>
+          <th>Asset ID</th>
+        </tr><!-- TMPL_LOOP fee-items -->
+        <tr>
+          <td><!-- TMPL_IF type-options -->
+            <select name='type<!-- TMPL_VAR feeidx -->'><!-- TMPL_LOOP type-options -->
+              <option value='<!-- TMPL_VAR value -->'<!-- TMPL_IF selected-p --> selected='selected'<!-- /TMPL_IF -->><!-- TMPL_VAR value --></option><!-- /TMPL_LOOP -->
+            </select><!-- TMPL_ELSE -->
+            <!-- TMPL_VAR type --><!-- /TMPL_IF  -->
+          </td>
+          <td align='right'><!-- TMPL_IF serverp -->
+            <input type='text' name='<!-- TMPL_IF amtname --><!-- TMPL_VAR amtname --><!-- TMPL_ELSE -->amt<!-- TMPL_VAR feeidx --><!-- /TMPL_IF -->' value='<!-- TMPL_VAR amt -->' size='10' style='text-align: right;'><!-- TMPL_ELSE -->
+            <!-- TMPL_VAR amt --><!-- /TMPL_IF -->
+          </td>
+          <td><!-- TMPL_IF asset-options -->
+            <select name='asset<!-- TMPL_VAR feeidx -->'>
+              <option value=''>None</option><!-- TMPL_LOOP asset-options -->
+              <option value='<!-- TMPL_VAR id -->' <!-- TMPL_IF selected-p --> selected='selected'<!-- /TMPL_IF -->><!-- TMPL_VAR assetname --></option><!-- /TMPL_LOOP -->
+            </select><!-- TMPL_ELSE -->
+            <!-- TMPL_VAR assetname --><!-- /TMPL_IF -->
+          </td>          
+          <td><!-- TMPL_IF assetid -->
+            <span class='id'><!-- TMPL_VAR assetid --></span><!-- TMPL_ELSE --><!-- TMPL_IF feeidx -->
+            <input type='text' size='48' name='assetstring<!-- TMPL_VAR feeidx -->'/><!-- TMPL_ELSE -->
+            &nbsp;<!-- /TMPL_IF --><!-- /TMPL_IF -->
+          </td>
+        </tr><!-- /TMPL_LOOP -->
+      </table><!-- /TMPL_IF --><!-- TMPL_IF serverp -->
+      <input type='submit' name='update' value="Update"/>
+      <input type='submit' name='add' value='Add fee'/>
+      <input type='submit' name='cancel' value='Cancel'/>
+      <p>
+        To remove a fee, clear its amount or set its asset to "None".
+        <br/>
+        The Transaction & Registration fees may not be removed, but clearing their amounts will restore them to default values.
+      </p>
+    </form><!-- /TMPL_IF -->
