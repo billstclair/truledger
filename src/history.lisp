@@ -56,7 +56,8 @@
                         (1- start)))
            (idx 0)
            (nickcnt 0)
-           (scroller-html (scroller-text start count cnt))
+           (postcnt-plist (postcnt-plist cw))
+           (scroller-html (scroller-text start count cnt postcnt-plist))
            (time-items nil)
            (req nil))
       (dolist (time (nthcdr strt times))
@@ -212,21 +213,22 @@
               :scroller-html scroller-html
               :time-items (nreverse time-items)
               :hide-instructions-p (hideinstructions cw)
-              (postcnt-plist cw))
+              postcnt-plist)
        "history.tmpl"))))
 
-(defun scroller-text (start count cnt)
+(defun scroller-text (start count cnt postcnt-plist)
   (let* ((left-disabled-p (<= start 1))
          (right-disabled-p (> (+ start count) cnt)))
     (when (eql count most-positive-fixnum)
       (setq count "ALL" start 1))
     (expand-template
-     (list :cmd "dohistory"
-           :cnt cnt
-           :left-disabled-p left-disabled-p
-           :right-disabled-p right-disabled-p
-           :start start
-           :count count)
+     (list* :cmd "dohistory"
+            :cnt cnt
+            :left-disabled-p left-disabled-p
+            :right-disabled-p right-disabled-p
+            :start start
+            :count count
+            postcnt-plist)
      "scroller.tmpl")))
 
 (defun do-history (cw)

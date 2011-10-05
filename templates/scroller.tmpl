@@ -1,5 +1,8 @@
     <form method='post' action='./' autocomplete='off'>
       <input type='hidden' name='cmd' value='<!-- TMPL_VAR cmd -->'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
       <input type='hidden' name='cnt' value='<!-- TMPL_VAR cnt -->'/>
       <input type='submit' name='top' value='&lt;&lt;'<!-- TMPL_IF left-disabled-p --> disabled='disabled'<!-- /TMPL_IF --> title='Show the first page'/>
       <input type='submit' name='pageup' value='&lt;'<!-- TMPL_IF left-disabled-p --> disabled='disabled'<!-- /TMPL_IF --> title='Show the previous page'/>
@@ -8,5 +11,5 @@
       <input type='text' name='count' size='4' value='<!-- TMPL_VAR count -->'/>
       of <!-- TMPL_VAR cnt --> entries
       <input type='submit' name='pagedown' value='&gt;'<!-- TMPL_IF right-disabled-p --> disabled='disabled'<!-- /TMPL_IF --> title='Show the next page'/>
-      <input type='submit' name='bottom' value='&gt;&gt;'<!-- TMPL_IF right-disabled-p --> disabled='disabled'<!-- /TMPL_IF --> title='Show the last page/>
+      <input type='submit' name='bottom' value='&gt;&gt;'<!-- TMPL_IF right-disabled-p --> disabled='disabled'<!-- /TMPL_IF --> title='Show the last page'/>
     </form>
