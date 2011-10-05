@@ -1,0 +1,77 @@
+<span style='color:red;'><!-- TMPL_IF errmsg --><!-- TMPL_VAR errmsg --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></span>
+    <table class='prettytable'>
+      <tr>
+        <th>Permission</th>
+        <th>Grantor</th>
+        <th>Grantee</th>
+        <th>Action</th>
+      </tr><!-- TMPL_LOOP permission-items -->
+      <form method='post' action='./' autocomplete='off'>
+        <input type='hidden' name='cmd' value='permission'/>
+        <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+        <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+        <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+        <input type='hidden' name='permission' value='<!-- TMPL_VAR perm -->'/>
+        <input type='hidden' name='grantor' value='<!-- TMPL_VAR grantor -->'/>
+        <tr>
+          <td><!-- TMPL_IF permstr --><!-- TMPL_VAR permstr --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></td>
+          <td><!-- TMPL_IF grantor-string --><!-- TMPL_VAR grantor-string --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></td>
+          <td><!-- TMPL_IF grantee --><!-- TMPL_VAR grantee --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></td>
+          <td><!-- TMPL_IF serverp --><!-- TMPL_IF grantor -->
+            <input type='submit' name='<!-- TMPL_IF shown-p -->hide<!-- TMPL_ELSE -->show<!-- /TMPL_IF -->' value='<!-- TMPL_IF shown-p -->Hide<!-- TMPL_ELSE -->Show<!-- /TMPL_IF -->'/>
+            <input type='submit' name='remove' value='Remove'/><!-- TMPL_ELSE -->
+            <input type='submit' name='add' value='Add'/><!-- /TMPL_IF --><!-- TMPL_ELSE --><!-- TMPL_IF grant-p -->
+            <input type='submit' name='<!-- TMPL_IF shown-p -->hide<!-- TMPL_ELSE -->show<!-- /TMPL_IF -->' value='<!-- TMPL_IF shown-p -->Hide<!-- TMPL_ELSE -->Show<!-- /TMPL_IF -->'/><!-- TMPL_ELSE -->
+            &nbsp;<!-- /TMPL_IF --><!-- /TMPL_IF -->
+          </td>
+        </tr>
+      </form><!-- TMPL_LOOP grant-items -->
+      <form method='post' action='./' autocomplete='off'>
+        <input type='hidden' name='cmd' value='permission'/>
+        <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+        <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+        <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+        <input type='hidden' name='permission' value='<!-- TMPL_VAR permission -->'/>
+        <input type='hidden' name='grantor' value='<!-- TMPL_VAR grantor -->'/>
+        <input type='hidden' name='grantee' value='<!-- TMPL_VAR grantee -->'/>
+        <tr>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td><!-- TMPL_VAR grantee-name --></td>
+          <td>
+            <input type='submit' name='<!-- TMPL_IF granted-p -->un<!-- /TMPL_IF -->grant' value='<!-- TMPL_IF granted-p -->No <!-- /TMPL_IF -->Grant'/>
+            <input type='submit' name='remove' value='Remove'/>
+          </td>
+        </tr>
+      </form><!-- /TMPL_LOOP --><!-- TMPL_IF new-grant-p -->
+      <form method='post' action='./' autocomplete='off'>
+        <input type='hidden' name='cmd' value='permission'/>
+        <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+        <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+        <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+        <input type='hidden' name='permission' value='<!-- TMPL_VAR permission -->'/>
+        <input type='hidden' name='grantor' value='<!-- TMPL_VAR grantor -->'/>
+        <tr>
+          <td>&nbsp;</td>
+          <td>&nbsp;</td>
+          <td><!-- TMPL_IF contact-items -->
+            <select name='toid-select'>
+              <option value=''>Choose contact...</option><!-- TMPL_LOOP contact-items -->
+              <option value='<!-- TMPL_VAR id -->'><!-- TMPL_VAR name --></option><!-- /TMPL_LOOP -->
+            </select><!-- /TMPL_IF -->
+            <input type='text' name='toid' value='<!-- TMPL_VAR toid -->'/>
+          </td>
+          <td>
+            <input type='checkbox' name='grant-p'/>grant
+            <input type='submit' name='add' value='Add'/>
+          </td>
+        </tr>
+      </form><!-- /TMPL_IF --><!-- /TMPL_LOOP -->
+    </table>
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='permission'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+      <input type='submit' name='cancel' value='Cancel'/>
+    </form>

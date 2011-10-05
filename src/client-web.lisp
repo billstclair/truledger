@@ -1797,7 +1797,7 @@
              for note = (normalize-note (hsc (contact-note contact)))
              collect (list :nickname (if (blankp nickname) "&nbsp;" nickname)
                            :name (if (blankp name) "&nbsp;" name)
-                           :display (if (blankp display) "&nbsp" display)
+                           :display (if (blankp display) "&nbsp;" display)
                            :id id
                            :note note
                            :idx 0))))
@@ -1877,56 +1877,6 @@
                         postcnt-plist)
                  "assets.tmpl")))
       (princ body (cw-html-output cw)))))
-
-(defun render-fee-row (cw feeidx type assetid amt &optional assetname assets)
-  (let* ((client (cw-client cw))
-         (stream (cw-html-output cw))
-         (serverp (equal (id client) (serverid client)))
-         (feeidx-p (integerp feeidx)))
-    (when (and assetid (not assetname))
-      (let ((asset (ignore-errors (getasset client assetid))))
-        (setf assetname
-              (if asset (asset-name asset) "Unknown asset"))))
-    (who (stream)
-      (:tr
-       (:td
-        (if (and serverp feeidx-p)
-            (htm
-             (:select
-              :name (format nil "type~d" feeidx)
-              (:option :value $SPEND :selected (equal type $SPEND)
-                       (str $SPEND))
-              (:option :value $TRANSFER :selected (equal type $TRANSFER)
-                       (str $TRANSFER))))
-            (htm (str type))))
-       (:td :align "right"
-            (if serverp
-                (htm (:input :type "text"
-                             :name (if feeidx-p
-                                       (format nil "amt~d" feeidx)
-                                       feeidx)
-                             :value amt
-                             :size "10"
-                             :style "text-align: right;"))
-                (htm (esc amt))))
-       (:td (if (and serverp feeidx-p)
-                (htm (:select
-                      :name (format nil "asset~d" feeidx)
-                      (:option :value "" "None")
-                      (dolist (asset (or assets (getassets client)))
-                        (let ((name (asset-name asset))
-                              (id (asset-assetid asset)))
-                          (htm
-                           (:option :value id :selected (equal assetid id)
-                                    (esc name)))))))
-                (htm (esc assetname))))
-       (:td (if assetid
-                (htm (:span :class "id" (esc assetid)))
-                (if feeidx-p
-                    (htm (:input :type "text"
-                                 :size "48"
-                                 :name (format nil "assetstring~d" feeidx)))
-                    (htm "&nbsp;"))))))))
 
 (defun draw-fees (cw &optional values)
   (let* ((client (cw-client cw))
@@ -2026,121 +1976,78 @@
 
 (defun draw-permissions (cw &optional shown-permission shown-grantor toid)
   (let* ((client (cw-client cw))
-         (stream (cw-html-output cw))
          (id (id client))
          (serverid (serverid client))
          (serverp (equal id serverid))
          (err (cw-error cw))
          (last-perm nil)
          (permissions (storing-error (err "Error getting permissions: ~a")
-                        (get-permissions client nil t))))
+                        (get-permissions client nil t)))
+         (postcnt-plist (postcnt-plist cw))
+         (contacts (getcontacts client))
+         permission-items)
     (setf permissions (stable-sort permissions #'string<
                                    :key #'permission-permission))
+    (dolist (permission permissions)
+      (let* ((perm (permission-permission permission))
+             (grantor (permission-id permission))
+             (grantee (permission-toid permission))
+             (grant-p (permission-grant-p permission))
+             (shown-p (and (equal perm shown-permission)
+                           (equal grantor shown-grantor)))
+             (grant-items nil)
+             (new-grant-p nil)
+             (new-grant-plist nil))
+
+        (when shown-p
+          (let* ((grants (delete-if-not
+                          (lambda (p)
+                            (equal (permission-permission p) perm))
+                          (get-granted-permissions client))))
+            (dolist (grant grants)
+              (let ((toid (permission-toid grant)))
+                (push (list* :permission (hsc perm)
+                             :grantor (hsc grantor)
+                             :grantee (hsc toid)
+                             :grantee-name (id-namestr cw toid)
+                             :granted-p (permission-grant-p grant)
+                             postcnt-plist)
+                      grant-items)))
+            (setf grant-items (nreverse grant-items))
+            (let ((contact-items (loop for contact in contacts
+                                    collect (list* :id (hsc (contact-id contact))
+                                                   :name (contact-namestr contact)
+                                                   postcnt-plist))))
+              (setf new-grant-p t
+                    new-grant-plist (list :permission (hsc perm)
+                                          :contact-items contact-items
+                                          :toid toid)))))
+
+        (push (list* :perm (hsc perm)
+                     :permstr (unless (equal last-perm perm) (hsc perm))
+                     :grantor (hsc grantor)
+                     :grantor-string  (cond (grantor
+                                             (id-namestr cw grantor "You"))
+                                            (grantee "Default"))
+                     :grantee (and grantee (id-namestr cw grantee "You"))
+                     :shown-p shown-p
+                     :serverp serverp
+                     :grant-p grant-p
+                     :grant-items grant-items
+                     :new-grant-p new-grant-p
+                     (append new-grant-plist postcnt-plist))
+              permission-items)
+        (setf last-perm perm)))
+
     (settitle cw "Permissions")
     (setmenu cw "permissions")
-    (who (stream)
-      (draw-error cw stream)
-      (:br)
-      (:table
-       :class "prettytable"
-       (:tr
-        (:th "Permission")
-        (:th "Grantor")
-        (:th "Grantee")
-        (:th "Action"))
-       (dolist (permission permissions)
-         (let* ((perm (permission-permission permission))
-                (grantor (permission-id permission))
-                (grantee (permission-toid permission))
-                (grant-p (permission-grant-p permission))
-                (shown-p (and (equal perm shown-permission)
-                              (equal grantor shown-grantor)))
-                (show-name (if shown-p "hide" "show"))
-                (show-value (if shown-p "Hide" "Show")))
-           (form (stream "permission")
-             (:input :type "hidden" :name "permission" :value perm)
-             (:input :type "hidden" :name "grantor" :value grantor)
-             (:tr
-              (:td
-               (if (equal perm last-perm)
-                   (htm "&nbsp;")
-                   (htm (esc perm))))
-              (:td (cond (grantor
-                          (str (id-namestr cw grantor "You")))
-                         ((null grantee) (str "&nbsp;"))
-                         (t (str "Default"))))
-              (:td (str (if grantee
-                            (id-namestr cw grantee "You")
-                            "&nbsp;")))
-              (:td
-               (cond (serverp
-                      (if grantor
-                          (htm
-                           (:input
-                            :type "submit" :name show-name :value show-value)
-                           (:input
-                            :type "submit" :name "remove" :value "Remove"))
-                          (htm
-                           (:input
-                            :type "submit" :name "add" :value "Add"))))
-                     (grant-p
-                      (htm
-                       (:input
-                        :type "submit" :name show-name :value show-value)))
-                     (t
-                      (htm (str "&nbsp;")))))))
-           (when shown-p
-             (let* ((grants (delete-if-not
-                             (lambda (p)
-                               (equal (permission-permission p) perm))
-                             (get-granted-permissions client)))
-                    (contacts (getcontacts client)))
-               (dolist (grant grants)
-                 (unless (and serverp (equal (permission-toid grant) serverid))
-                   (form (stream "permission")
-                     (:input :type "hidden" :name "permission" :value perm)
-                     (:input :type "hidden" :name "grantor" :value grantor)
-                     (:input
-                      :type "hidden" :name "grantee"
-                      :value (permission-toid grant))
-                     (:tr
-                      (:td "&nbsp;")
-                      (:td "&nbsp")
-                      (:td (str (id-namestr cw (permission-toid grant) "You")))
-                      (:td
-                       (:input
-                        :type "submit"
-                        :name (if (permission-grant-p grant)
-                                  "ungrant"
-                                  "grant")
-                        :value (if (permission-grant-p grant)
-                                   "No Grant"
-                                   "Grant"))
-                       (:input
-                        :type "submit" :name "remove" :value "Remove"))))))
-               (form (stream "permission")
-                 (:input :type "hidden" :name "permission" :value perm)
-                 (:input :type "hidden" :name "grantor" :value grantor)
-                 (:tr
-                  (:td "&nbsp;")
-                  (:td "&nbsp;")
-                  (:td
-                   (when contacts
-                     (htm
-                      (:select
-                       :name "toid-select"
-                       (str (contact-options-string client contacts)))
-                      (:br)))
-                   (:input :type "text" :name "toid" :value toid))
-                  (:td
-                   (:input
-                    :type "checkbox" :name "grant-p")
-                   "grant "
-                   (:input
-                    :type "submit" :name "add" :value "Add"))))))
-           (setf last-perm perm))))
-      (form (stream "permission")
-        (:input :type "submit" :name "cancel" :value "Cancel")))))
+
+    (let ((body (expand-cw-template
+                 cw
+                 (list* :permission-items permission-items
+                        postcnt-plist)
+                 "permissions.tmpl")))
+      (princ body (cw-html-output cw)))))
 
 (defun draw-admin (cw &optional servername serverurl)
   (let ((s (cw-html-output cw))
