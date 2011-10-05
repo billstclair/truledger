@@ -652,9 +652,11 @@
                    (t (let ((contact (getcontact client id)))
                         (when contact
                           (when (blankp nickname)
-                            (setq nickname (contact-nickname contact)))
+                            (setf nickname (contact-nickname contact)))
                           (when (blankp notes)
-                            (setq notes (contact-note contact))))
+                            (setf notes (contact-note contact))))
+                        (setf nickname (trim nickname)
+                              notes (trim notes))
                         (handler-case (addcontact client id nickname notes)
                           (error (c)
                             (setq err (stringify c "Can't add contact: ~a")))))))
@@ -1795,11 +1797,11 @@
              for nickname = (hsc (contact-nickname contact))
              for display = (namestr nickname name id)
              for note = (normalize-note (hsc (contact-note contact)))
-             collect (list :nickname (if (blankp nickname) "&nbsp;" nickname)
-                           :name (if (blankp name) "&nbsp;" name)
-                           :display (if (blankp display) "&nbsp;" display)
+             collect (list :nickname (unless (blankp nickname) nickname)
+                           :name (unless (blankp name) name)
+                           :display (unless (blankp display) display)
                            :id id
-                           :note note
+                           :note (unless (blankp note) note)
                            :idx 0))))
 
     (setf (cw-onload cw) "document.getElementById(\"id\").focus()")

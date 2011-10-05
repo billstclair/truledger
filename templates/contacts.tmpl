@@ -33,16 +33,16 @@
           <th>Nickname</th>
           <th>Name</th>
           <th>Display</th>
+          <th>ID</th>
           <th>Notes</th>
           <th>x</th>
-          <th>&nbsp;</th>
         </tr><!-- TMPL_LOOP contact-items -->
         <tr>
-          <td><!-- TMPL_VAR nickname --></td>
-          <td><!-- TMPL_VAR name --></td>
-          <td><!-- TMPL_VAR display --></td>
+          <td><!-- TMPL_IF nickname --><!-- TMPL_VAR nickname --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></td>
+          <td><!-- TMPL_IF name --><!-- TMPL_VAR name --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></td>
+          <td><!-- TMPL_IF display --><!-- TMPL_VAR display --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></td>
           <td><span class='id'><!-- TMPL_VAR id --></span></td>
-          <td><!-- TMPL_VAR note --></td>
+          <td><!-- TMPL_IF note --><!-- TMPL_VAR note --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></td>
           <td>
             <input type='hidden' name='id<!-- TMPL_VAR idx -->' value='<!-- TMPL_VAR id -->'/>
             <input type='checkbox' name='chk<!-- TMPL_VAR idx -->'/>

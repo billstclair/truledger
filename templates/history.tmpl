@@ -1,0 +1,83 @@
+<span style='color:red;'><!-- TMPL_IF errmsg --><!-- TMPL_VAR errmsg --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></span>
+<!-- TMPL_VAR scroller-html -->
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='dohistory'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+      <input type='hidden' name='start' value='<!-- TMPL_VAR start -->'/>
+      <input type='hidden' name='count' value='<!-- TMPL_VAR count -->'/>
+      <input type='hidden' name='chkcnt' value='<!-- TMPL_VAR cnt -->'/>
+      <input type='hidden' name='nickcnt' value='<!-- TMPL_VAR nickcnt -->'/>
+      <table class='prettytable'>
+        <caption><b>History</b></caption>
+        <tr>
+          <th>Time</th>
+          <th>Request</th>
+          <th>From</th>
+          <th>To</th>
+          <th colspan='2'>Amount</th>
+          <th>Note</th>
+          <th>Response</th>
+          <th>x</th>
+        </tr><!-- TMPL_LOOP time-items -->
+        <tr><!-- TMPL_IF exception-p --><!-- TMPL_IF err -->
+          <td>
+            <span title='<!-- TMPL_VAR timestr -->'><!-- TMPL_VAR datestr --></span>
+          </td>
+          <td colspan='7' style='color: red;'>
+            Error: <!-- TMPL_VAR err -->
+          </td><!-- TMPL_ELSE -->
+          <td><!-- TMPL_VAR req --></td>
+          <td colspan='6'>Unknown request type</td><!-- /TMPL_IF --><!-- TMPL_ELSE --><!-- TMPL_UNLESS not-first-p -->
+          <td<!-- TMPL_IF rowspan --> rowspan='<!-- TMPL_VAR rowspan -->'<!-- /TMPL_IF -->>
+            <span title='<!-- TMPL_VAR timestr -->'><!-- TMPL_VAR datestr --></span>
+          </td><!-- /TMPL_UNLESS -->
+          <td><!-- TMPL_VAR req --></td>
+          <td><!-- TMPL_VAR from --></td>
+          <td><!-- TMPL_VAR to --></td>
+          <td align='right' style='border-right-width: 0'><!-- TMPL_VAR amount --></td>
+          <td style='border-left-width: 0;'><!-- TMPL_VAR assetname --></td>
+          <td><!-- TMPL_IF note --><!-- TMPL_VAR note --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></td>
+          <td><!-- TMPL_VAR response --></td><!-- /TMPL_IF --><!-- TMPL_UNLESS not-first-p -->
+          <td<!-- TMPL_IF rowspan --> rowspan='<!-- TMPL_VAR rowspan -->'<!-- /TMPL_IF -->>
+            <input type='hidden' name='time<!-- TMPL_VAR idx -->' value='<!-- TMPL_VAR timestr -->'/>
+            <input type='checkbox' name='chk<!-- TMPL_VAR idx -->'/>
+          </td><!-- /TMPL_UNLESS -->
+        </tr><!-- /TMPL_LOOP -->
+      </table>
+      <input type='submit' name='delete' value='Delete checked<!-- TMPL_IF add-nicknames-p --> &amp; Add Nicknames<!-- /TMPL_IF -->'/>
+      <input type='submit' name='deleteolder' value='Delete Checked &amp; Older'/>
+    </form>
+<!-- TMPL_VAR scroller-html --><!-- TMPL_UNLESS hide-instructions-p -->
+    <table class='prettytable'>
+      <tr><th colspan='2'>Key</th></tr>
+      <tr><td>spend</td><td>You made a spend</td></tr>
+      <tr><td>accept</td><td>You accepted a spend</td></tr>
+      <tr><td>reject</td><td>You rejected a spend</td></tr>
+      <tr>
+        <td>@accept</td>
+        <td>You acknowledged acceptance of your spend</td>
+      </tr>
+      <tr>
+        <td>@reject</td>
+        <td>You acknowledged rejection of your spend</td>
+      </tr>
+      <tr>
+        <td>=reject</td>
+        <td>You acknowledged your cancel of a spend</td>
+      </tr>
+      <tr>
+        <td>=accept</td>
+        <td>You acknowledged your acceptance of a coupon you spent to yourself</td>
+      </tr>
+    </table>
+    <br/><!-- /TMPL_UNLESS -->
+    <form method='post' action='./' autocomplete='off' style='margin: 0px;'>
+      <input type='hidden' name='cmd' value='toggleinstructions'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+      <input type='hidden' name='page' value='history'/>
+      <input type='submit' name='toggleinstructions' value='<!-- TMPL_IF hide-instructions-p -->Show<!-- TMPL_ELSE -->Hide<!-- /TMPL_IF --> Instructions'/>
+    </form>
