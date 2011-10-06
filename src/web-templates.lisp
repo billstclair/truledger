@@ -8,6 +8,7 @@
 (in-package :truledger-client-web)
 
 (defvar *template-db* (make-fsdb "templates"))
+(defvar *template-custom-db* (make-fsdb "templates-custom"))
 (defvar *template-hash* nil)
 
 (defmethod template-get ((db fsdb) key &rest keys)
@@ -17,16 +18,21 @@
   (apply #'(setf db-get) value db key keys))
 
 ;; This is so we can put the default templates in the distributed image
-(defun load-template-directory (&optional (db *template-db*))
+(defun load-template-directory (&key
+                                (db *template-db*)
+                                (custom-db *template-custom-db*))
   (when (stringp db) (setf db (make-fsdb db)))
+  (when (stringp custom-db) (setf custom-db (make-fsdb custom-db)))
   (let ((hash (make-hash-table :test #'equal)))
-    (labels ((traverse (base)
+    (labels ((traverse (db base)
                (dolist (key (db-contents db base))
                  (let ((path (append-db-keys base key)))
                    (cond ((db-dir-p db path)
-                          (traverse path))
+                          (traverse db path))
                          (t (setf (gethash path hash) (db-get db path))))))))
-      (traverse ""))
+      (traverse db "")
+      (when custom-db
+        (traverse custom-db "")))
     (setf *template-hash* hash)))
 
 (defun fill-and-print-to-string (template plist)
@@ -34,11 +40,13 @@
     (let ((template:*string-modifier* 'identity))
       (template:fill-and-print-template template plist :stream s))))
 
-(defun expand-template (plist key &optional (template-db *template-db*))
-  (unless template-db
-    (setf template-db *template-db*))
+(defun expand-template (plist key &key
+                        (template-custom-db *template-custom-db*)
+                        (template-db *template-db*))
   (let* ((hash *template-hash*)
-         (template (or (template-get template-db key)
+         (template (or (and template-custom-db
+                            (template-get template-custom-db key))
+                       (template-get template-db key)
                        (and hash (gethash key hash)))))
     (fill-and-print-to-string template plist)))
 

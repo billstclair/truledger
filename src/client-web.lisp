@@ -7,12 +7,6 @@
 
 (in-package :truledger-client-web)
 
-;; Causes WHO and WHOTS to indent prettily by default.
-;; Remove when debugged, to reduce bandwidth.
-
-(eval-when nil ;; (:compile-toplevel :execute :load-toplevel)
-  (setq cl-who::*indent* t))
-
 (defparameter *default-menuitems*
   '(("balance" . "Balance")
     ("contacts" . "Contacts")
@@ -280,18 +274,6 @@
       :postsalt ,(cw-postsalt cw)
       :postmsg ,(cw-postmsg cw)))
 
-(defmacro form ((s &optional cmd &rest form-params) &body body)
-  (let ((stream (gensym "STREAM")))
-    `(who (,stream ,s)
-       (:form
-        :method "post" :action "./" :autocomplete "off"
-        ,@form-params
-        ,@(and cmd `((:input :type "hidden" :name "cmd" :value ,cmd)))
-        (:input :type "hidden" :name "postcnt" :value (cw-postcnt cw))
-        (:input :type "hidden" :name "postsalt" :value (cw-postsalt cw))
-        (:input :type "hidden" :name "postmsg" :value (cw-postmsg cw))
-        ,@body))))
-
 (defmacro storing-error ((err-var format) &body body)
   `(do-storing-error (lambda (x) (unless ,err-var (setf ,err-var x)))
      ,format (lambda () ,@body)))
@@ -301,13 +283,6 @@
     (error (c)
       (funcall setter (format nil format c))
       nil)))
-
-(defun draw-error (cw s &optional (err (cw-error cw)))
-  (who (s)
-    (:span :style "color: red;"
-           (if err
-               (who (s) (esc err))
-               (who (s) (str "&nbsp;"))))))
 
 (defun expand-cw-template (cw plist template)
   (expand-template

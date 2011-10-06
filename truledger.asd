@@ -9,7 +9,7 @@
   :author "Bill St. Clair <bill@billstclair.com>"
   :version "1.0.0"
   :license "Apache"
-  :depends-on (cffi cl-base64 cl-who hunchentoot drakma cl-smtp split-sequence
+  :depends-on (cffi cl-base64 hunchentoot drakma cl-smtp split-sequence
                html-template
                ;; Systems above here come from quicklisp
                ;; System below here are in systems/ dir

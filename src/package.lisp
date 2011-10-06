@@ -160,7 +160,7 @@
    #:$UNPACK-REQS-KEY))
 
 (cl:defpackage :truledger
-  (:use :cl :cffi :cl-base64 :cl-who :fsdb :truledger-tokens)
+  (:use :cl :cffi :cl-base64 :fsdb :truledger-tokens)
   (:import-from :cl-user #:reload)
   (:export
 
@@ -440,7 +440,7 @@
    #:backtrace-string))
 
 (cl:defpackage :truledger-server
-  (:use :cl :cl-base64 :cl-who :truledger :truledger-tokens)
+  (:use :cl :cl-base64 :truledger :truledger-tokens)
   (:export
    #:process
    #:make-server
@@ -458,7 +458,7 @@
    #:wrapped-db))
 
 (cl:defpackage :truledger-client
-  (:use :cl :cl-base64 :cl-who :truledger :truledger-tokens)
+  (:use :cl :cl-base64 :truledger :truledger-tokens)
   (:export
    #:client
    #:make-client
@@ -676,7 +676,7 @@
 ))
 
 (cl:defpackage :truledger-client-web
-  (:use :cl :cffi :cl-base64 :cl-who :truledger :truledger-tokens :truledger-client)
+  (:use :cl :cffi :cl-base64 :truledger :truledger-tokens :truledger-client)
   (:export
    #:web-server
    #:loom-web-server))

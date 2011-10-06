@@ -1,0 +1,7 @@
+This directory is for customizations of the standard templates in the
+"templates" directory. Any file here with the same name as a file
+there will be used instead. This allows you to completely or
+selectively override the standard layouts.
+
+Files in this directory will be used at run-time and will be saved
+with a saved application.
