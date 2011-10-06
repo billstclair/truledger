@@ -1337,49 +1337,57 @@
       ""
       (str-replace $nl $brn note)))
 
-(defun namestr-html (cw otherid cnt-thunk idname textname &optional you)
-  (multiple-value-bind (namestr contact) (id-namestr cw otherid you)
-    (when (and (or (null contact)
-                   (not (contact-contact-p contact)))
-               (not (equal otherid (id (cw-client cw))))
-               (not (equal otherid $COUPON)))
-      (let* ((cnt (funcall cnt-thunk))
-             (nickname (contact-nickname contact))
-             (client (cw-client cw)))
-        (ignore-errors
-          (unless (equal otherid (serverid client))
-            (let* ((tokenid (fee-assetid (getfees client))))
-              (unless (getbalance client nil tokenid)
-                (setq nickname "My Sponsor")))))
-        (setq namestr
-              (whots (s)
-                (str namestr)
-                (:br)
-                (:input :type "hidden"
-                        :name (format nil "~a~d" idname cnt)
-                        :value otherid)
-                "Nickname: "
-                (:input :type "text"
-                        :name (format nil "~a~d" textname cnt)
-                        :size "10"
-                        :value nickname)))))
-    namestr))
+(defun id-name-info (cw fromid you)
+  "Returns five values: contact id namestr you-p unknown-p coupon-p"
+  (let ((client (cw-client cw))
+        (contact nil)
+        (id fromid)
+        (you-p nil)
+        (namestr nil)
+        (unknown-p nil)
+        (coupon-p nil))
+    (cond ((equal fromid "coupon")
+           (setf namestr fromid id nil coupon-p t))
+          ((and you (equal fromid (id client)))
+           (setf namestr you you-p t))
+          (t (setf contact (getcontact client fromid))
+             (when contact
+               (setf namestr (contact-namestr contact))
+               (when (equal namestr fromid)
+                 (setf namestr "[unknown]" unknown-p t)))))
+    (values contact id namestr you-p unknown-p coupon-p)))
 
-(defun contact-options-string (client contacts &optional recipient found-setter)
-  (whots (s)
-    (:option :value "" "Choose contact...")
-    (dolist (contact contacts)
-      (let ((namestr (contact-namestr contact))
-            (recipid (contact-id contact))
-            (selected nil))
-        (unless (equal recipid (id client))
-          (when (equal recipid recipient)
-            (setq selected t)
-            (when found-setter
-              (funcall found-setter t)))
-          (htm
-           (:option :value recipid :selected selected
-                    (str namestr))))))))
+(defun namestr-html (cw otherid cnt-thunk idname textname &optional you)
+  (multiple-value-bind (contact id namestr you-p unknown-p coupon-p)
+      (id-name-info cw otherid you)
+    (let (cnt sponsor-p nickname)
+      (when (and (or (null contact)
+                     (not (contact-contact-p contact)))
+                 (not (equal otherid (id (cw-client cw))))
+                 (not (equal otherid $COUPON)))
+        (let ((client (cw-client cw)))
+          (setf cnt (funcall cnt-thunk)
+                nickname (contact-nickname contact))
+          (ignore-errors
+            (unless (equal otherid (serverid client))
+              (let* ((tokenid (fee-assetid (getfees client))))
+                (unless (getbalance client nil tokenid)
+                  (setf nickname "My Sponsor"
+                        sponsor-p t)))))))
+      (expand-template
+       (list :id id
+             :namestr namestr
+             :you-p you-p
+             :unknown-p unknown-p
+             :coupon-p coupon-p
+             :regular-p (not (or you-p unknown-p coupon-p sponsor-p))
+             :cnt cnt
+             :idname idname
+             :textname textname
+             :sponsor-p sponsor-p
+             :otherid otherid
+             :nickname (hsc nickname))
+       "namestr.tmpl"))))
 
 (defun get-contact-info (client fromid)
   (if (equal fromid (id client))
@@ -2052,11 +2060,15 @@
       (princ body (cw-html-output cw)))))
 
 (defun draw-admin (cw &optional servername serverurl)
-  (let ((s (cw-html-output cw))
-        (disable-p (server-db-exists-p))
-        (server (get-running-server))
-        (port (get-current-port)))
-    (setf (cw-onload cw) "document.forms[0].servername.focus()")
+  (let* ((disable-p (server-db-exists-p))
+         (server (get-running-server))
+         (port (get-current-port))
+         (hide-server-info-p (and (not server) disable-p))
+         backup-p backup-failing-p backup-enabled-p
+         backup-url notification-email backup-mode-p
+         )
+
+    (setf (cw-onload cw) "document.getElementById(\"servername\").focus()")
     (settitle cw "Admin")
     (setmenu cw "admins")
 
@@ -2064,130 +2076,34 @@
       (setq servername (servername server)
             serverurl (serverurl server)))
 
-    (who (s)
-      (draw-error cw s)
-      (:br)
-      (str (unless port
-             "Web server shut down. Say goodnight, Dick."))
+    (when server
+      (setf backup-p (truledger-server:backup-process-url server)
+            backup-url (or backup-p (backup-url-preference server) "")
+            notification-email
+            (or (truledger-server:backup-notification-email server)
+                (notification-email-preference server))
+            backup-mode-p (truledger-server:backup-mode-p server))
+      (if backup-p
+          (setf backup-failing-p (truledger-server:backup-failing-p server))
+          (setf backup-enabled-p (backup-enabled-preference server))))
 
-      (when port
-        (form (s "admin")
-          (str (stringify port "Client web server is running on port ~d."))
-          (:br)
-          (:input :type "submit" :name "killclient"
-                  :value "Shut down web server")
-          (:br)(:br)
-          (str (cond (server "Server is running.")
-                     (disable-p "Server database exists but server not running.")
-                     (t "Server database not yet created. Enter info below.")))
-          (when (and disable-p (not server))
-            (who (s)
-              (:br)
-              (str "To start it, log out, and log back in as the server.")))
-          (when server
-            (who (s)
-              (:br)
-              (:input :type "submit" :name "killserver"
-                      :value "Stop Server")
-              (:br))))
-        (when server
-          (let* ((backup-p (truledger-server:backup-process-url server))
-                 (backup-url (or backup-p
-                                 (backup-url-preference server)
-                                 ""))
-                 (notification-email
-                  (or (truledger-server:backup-notification-email server)
-                      (notification-email-preference server)))
-                 (backup-mode-p (truledger-server:backup-mode-p server)))
-            (cond (backup-mode-p
-                   (form (s "admin")
-                     "Backup mode enabled"
-                     (:br)
-                     (:input :type "submit" :name "togglebackupmode"
-                             :value "Disable Backup Mode")))
-                  (t
-                   (form (s "admin")
-                     "Backup "
-                     (str (if backup-p
-                              (if (truledger-server:backup-failing-p server)
-                                  "is failing to backup."
-                                  "is running.")
-                              (if (backup-enabled-preference server)
-                                  "has crashed."
-                                  "is disabled.")))
-                     (:br)
-                     (:table
-                      (:tr
-                       (:td (:b "Backup Server URL:"))
-                       (:td (:input :type "text"
-                                    :size "30"
-                                    :name "backup-url"
-                                    :value backup-url
-                                    :disabled (not (null backup-p)))))
-                      (:tr
-                       (:td (:b "Notification Email:"))
-                       (:td (:input :type "text"
-                                    :size "30"
-                                    :name "notification-email"
-                                    :value notification-email
-                                    :disabled (not (null backup-p))))))
-                     (:input :type "submit" :name "togglebackup"
-                             :value (if backup-p "Stop Backup" "Start Backup"))
-                     (unless backup-p
-                       (who (s)
-                         (:input :type "submit" :name "togglebackupmode"
-                                 :value "Enable backup mode")))))))))
-
-      (when (or server (not disable-p))
-        (form (s "admin")
-          (:br)
-          (:table
-           (:tr
-            (:td (:b "Server Name:"))
-            (:td (:input :type "text"
-                         :name "servername"
-                         :value servername
-                         :disabled disable-p
-                         :size 30)))
-           (:tr
-            (:td (:b "Server URL:"))
-            (:td (:input :type "text"
-                         :name "serverurl"
-                         :value serverurl
-                         :disabled disable-p
-                         :size 30)))
-           (unless disable-p
-             (who (s)
-               (:tr
-                (:td (:b "Server Passphrase:"))
-                (:td (:input :type "password"
-                             :name "passphrase"
-                             :value ""
-                             :size 50)))
-               (:tr
-                (:td (:b "Verification:"))
-                (:td (:input :type "password"
-                      :name "verification"
-                      :value ""
-                      :size 50)))
-               (:tr
-                (:td (:b "Admin Passphrase:"))
-                (:td (:input :type "password"
-                      :name "adminpass"
-                      :value ""
-                      :size 50)))
-               (:tr
-                (:td (:b "Verification:"))
-                (:td (:input :type "password"
-                      :name "adminverify"
-                      :value ""
-                      :size 50)))
-               (:tr
-                (:td)
-                (:td (:input :type "submit" :name "create"
-                                            :value "Start Server")
-                     (:input :type "submit" :name "cancel"
-                                            :value "Cancel")))))))))))
+    (let ((body (expand-cw-template
+                 cw
+                 (list* :disable-p disable-p
+                        :server server
+                        :port port
+                        :hide-server-info-p hide-server-info-p
+                        :servername (hsc servername)
+                        :serverurl (hsc serverurl)
+                        :backup-p backup-p
+                        :backup-failing-p backup-failing-p
+                        :backup-enabled-p backup-enabled-p
+                        :backup-url (hsc backup-url)
+                        :notification-email (hsc notification-email)
+                        :backup-mode-p backup-mode-p
+                        (postcnt-plist cw))
+                 "admin.tmpl")))
+      (princ body (cw-html-output cw)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

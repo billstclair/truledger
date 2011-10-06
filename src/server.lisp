@@ -930,17 +930,6 @@
         (unless coupon
           (error "Coupon invalid or already redeemed"))
         (setq args (unpack-servermsg server coupon $ATSPEND $SPEND))
-        (let ((assetid (getarg $ASSET args))
-              (amount (getarg $AMOUNT args))
-              (id (getarg $CUSTOMER inargs)))
-          (unless (db-get db (acct-last-key id))
-            ;; Not already registered, coupon must be for usage tokens,
-            ;; and must be big enough to register with
-            (unless (equal assetid (tokenid server))
-              (error "Coupon not for usage tokens"))
-            (when (< (bccomp amount (bcadd (regfee server) 10)) 0)
-              (error "It costs ~a + 10 usage tokens to register a new account."
-                     (regfee server)))))
         (let ((msg (servermsg server $COUPONNUMBERHASH coupon-number-hash)))
           (dotcat res "." msg))))
 

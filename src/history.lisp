@@ -106,6 +106,7 @@
                     with cancelp
                     with toid
                     with to
+                    with coupon-redeemer-p
                     with fromid
                     with from
                     with amount
@@ -125,15 +126,15 @@
                                     (return))
                                   (setq req (if (equal request $SPENDACCEPT)
                                                 "accept" "reject"))
-                                  (setq
+                                  (setf
                                    cancelp (equal (getarg $CUSTOMER item) id)
                                    response (maybe-decrypt-note
                                              client (getarg $NOTE item))
-                                   toid (getarg $CUSTOMER item))
-                                  to (namestr-html
-                                      cw toid
-                                      (lambda () (1- (incf nickcnt)))
-                                      "nickid" "nick" "You"))
+                                   toid (getarg $CUSTOMER item)
+                                   to (namestr-html
+                                       cw toid
+                                       (lambda () (1- (incf nickcnt)))
+                                       "nickid" "nick" "You")))
                                  ((equal request $SPEND)
                                   (setq
                                    fromid (getarg $CUSTOMER item)
@@ -142,14 +143,9 @@
                                          (lambda () (1- (incf nickcnt)))
                                          "nickid" "nick" "You")
                                    toid (getarg $ID item))
-                                  (cond ((not (blankp to))
-                                         ;; to set by spendaccept/spendredeem code
-                                         (when (equal toid $COUPON)
-                                           (setq to
-                                                 (whots (s)
-                                                   "Coupon redeemed by:"
-                                                   (:br)
-                                                   "to"))))
+                                  (cond ((and (not (blankp to))
+                                              (equal toid $COUPON))
+                                         (setq coupon-redeemer-p t))
                                         (t
                                          (setq to (namestr-html
                                                    cw toid
@@ -163,16 +159,18 @@
                                                $ATSPEND)
                                     (setq req (stringify
                                                req (if cancelp "=~a" "@~a")))))))
-                      (when req
-                        (push (list req from to amount assetname note response)
-                              rows)
-                        (setq req nil
-                              from nil
-                              to nil
-                              amount nil
-                              assetname nil
-                              note nil
-                              response nil))
+                      (when (and req (not (blankp amount)))
+                          (push (list req from to coupon-redeemer-p
+                                      amount assetname note response)
+                                rows))
+                      (setq req nil
+                            from nil
+                            to nil
+                            coupon-redeemer-p nil
+                            amount nil
+                            assetname nil
+                            note nil
+                            response nil)
                     finally
                       (when rows
                         (setq rows (nreverse rows))
@@ -180,7 +178,8 @@
                               (first t))
                           (dolist (row rows)
                             (destructuring-bind
-                                  (req from to amount assetname note response)
+                                  (req from to coupon-redeemer-p
+                                       amount assetname note response)
                                 row
                               (push (list :not-first-p (not first)
                                           :rowspan (and first rowcnt)
@@ -189,6 +188,7 @@
                                           :req (hsc req)
                                           :from from
                                           :to to
+                                          :coupon-redeemer-p coupon-redeemer-p
                                           :amount (hsc amount)
                                           :assetname (hsc assetname)
                                           :note (hsc note)

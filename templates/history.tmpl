@@ -35,7 +35,7 @@
           </td><!-- /TMPL_UNLESS -->
           <td><!-- TMPL_VAR req --></td>
           <td><!-- TMPL_VAR from --></td>
-          <td><!-- TMPL_VAR to --></td>
+          <td><!-- TMPL_IF coupon-redeemer-p -->Coupon received by:<br/><!-- /TMPL_IF --><!-- TMPL_VAR to --></td>
           <td align='right' style='border-right-width: 0'><!-- TMPL_VAR amount --></td>
           <td style='border-left-width: 0;'><!-- TMPL_VAR assetname --></td>
           <td><!-- TMPL_IF note --><!-- TMPL_VAR note --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></td>

@@ -1,0 +1,108 @@
+<span style='color:red;'><!-- TMPL_IF errmsg --><!-- TMPL_VAR errmsg --><!-- TMPL_ELSE -->&nbsp;<!-- /TMPL_IF --></span>
+    <br/><!-- TMPL_UNLESS port -->
+    <p>Web server shut down. Say goodnight, Dick.</p><!-- /TMPL_UNLESS --><!-- TMPL_IF port -->
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='admin'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
+      Client web server is running on port <!-- TMPL_VAR port -->.
+      <br/>
+      <input type='submit' name='killclient' value='Shut down web server'/>
+    </form>
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='admin'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/><!-- TMPL_IF server -->
+      Server is running.
+      <br/>
+      <input type='submit' name='killserver' value='Stop Server'/>
+    </form>
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='admin'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/><!-- TMPL_ELSE --><!-- TMPL_UNLESS disable-p -->
+      Server database not yet created. Enter info below.<!-- /TMPL_UNLESS --><!-- TMPL_IF disable-p -->
+      Server database exists, but server not running.<br/>
+      To start it, log out, and log back in as the server.<!-- /TMPL_IF --><!-- /TMPL_IF -->
+<!-- TMPL_IF server --><!-- TMPL_IF backup-mode-p -->      
+      Backup mode enabled.
+      <br/>
+      <input type='submit' name='togglebackupmode' value='Disable Backup Mode'/>
+    </form>
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='admin'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/><!-- TMPL_ELSE -->
+      Backup <!-- TMPL_IF backup-p --><!-- TMPL_IF backup-failing-p -->is failing to backup.<!-- TMPL_ELSE -->is running.<!-- /TMPL_IF --><!-- TMPL_ELSE --><!-- TMPL_IF backup-enabled-p -->mode has crashed.<!-- TMPL_ELSE -->mode disabled.<!-- /TMPL_IF --><!-- /TMPL_IF -->
+      <table>
+        <tr>
+          <td><b>Backup Server URL:</b></td>
+          <td>
+            <input type='text' size='30' name='backup-url' value='<!-- TMPL_VAR backup-url -->'<!-- TMPL_IF backup-p --> disabled='disabled'<!-- /TMPL_IF -->/>
+          </td>
+        </tr>
+        <tr>
+          <td><b>Notification Email:</b></td>
+          <td>
+            <input type='text' size='30' name='notification-email' value='<!-- TMPL_VAR notification-email -->'<!-- TMPL_IF backup-p --> disabled='disabled'<!-- /TMPL_IF -->'/>
+          </td>
+        </tr>
+      </table>
+      <input type='submit' name='togglebackup' value='<!-- TMPL_IF backup-p -->Stop<!-- TMPL_ELSE -->Start<!-- /TMPL_IF --> Backup'/><!-- TMPL_UNLESS backup-p -->
+      <input type='submit' name='togglebackupmode' value='Enable backup mode'/><!-- /TMPL_UNLESS --><!-- /TMPL_IF -->
+    </form>
+    <form method='post' action='./' autocomplete='off'>
+      <input type='hidden' name='cmd' value='admin'/>
+      <input type='hidden' name='postcnt' value='<!-- TMPL_VAR postcnt -->'/>
+      <input type='hidden' name='postsalt' value='<!-- TMPL_VAR postsalt -->'/>
+      <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/><!-- /TMPL_IF --><!-- TMPL_UNLESS hide-server-info-p -->
+      <table>
+        <tr>
+          <td><b>Server Name:</b></td>
+          <td>
+            <input type='text' name='servername' id='servername' value='<!-- TMPL_VAR servername -->' size='30'<!-- TMPL_IF disable-p --> disabled='disabled'<!-- /TMPL_IF -->/>
+          </td>
+        </tr>
+        <tr>
+          <td><b>Server URL:</b></td>
+          <td>
+            <input type='text' name='serverurl' value='<!-- TMPL_VAR serverurl -->' size='30'<!-- TMPL_IF disable-p --> disabled='disabled'<!-- /TMPL_IF -->/>
+          </td>
+        </tr><!-- TMPL_UNLESS disable-p -->
+        <tr>
+          <td><b>Server Passphrase:</b></td>
+          <td>
+            <input type='password' name='passphrase' size='50'/>
+          </td>
+        </tr>
+        <tr>
+          <td><b>Verification:</b></td>
+          <td>
+            <input type='password' name='verification' size='50'/>
+          </td>
+        </tr>
+        <tr>
+          <td><b>Admin Passphrase:</b></td>
+          <td>
+            <input type='password' name='adminpass' size='50'/>
+          </td>
+        </tr>
+        <tr>
+          <td><b>Verification:</b></td>
+          <td>
+            <input type='password' name='adminverify' size='50'/>
+          </td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>
+            <input type='submit' name='create' value='Start Server'/>
+            <input type='submit' name='cancel' value='Cancel'/>
+          </td>
+        </tr><!-- /TMPL_UNLESS -->
+      </table><!-- /TMPL_UNLESS  -->
+    </form><!-- /TMPL_IF -->
