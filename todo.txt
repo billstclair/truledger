@@ -1,14 +1,8 @@
-I changed asset-related "spend" and "transfer" fees to apply only on
-  spends of the asset of the fee.
-  Need to display the fee amount on the Balance screen,
-  which may mean returning it from the SPEND function somehow.
+Client needs to notice when server web server is up, but server not
+running (no passphrase entered). Currently, no error message is
+displayed.
 
---version on the saved application command line
-
-Change truledger client web site to use the template technology in the
-loom client web site. Make modifications shippable with installer as
-.tmpl files, or loaded at truledger-app generation time
-(template-patches directory).
+See if Inno Setup can check for needing to install OpenSSL, and do it.
 
 Lock protocol for backing up with rsync
   Wait for server to remove "locked" file.

@@ -1,0 +1,8 @@
+This directory is where installer executables are put.
+
+Windows
+=======
+
+Using Inno Setup: http://www.jrsoftware.org/isinfo.php
+truledger-32.iss creates truledger-setup32.exe here
+truledger-64.iss creates truledger-setup64.exe here
