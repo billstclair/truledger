@@ -230,6 +230,9 @@
                    (handler-case
                        (getversion (cw-client cw) (cw-refresh-version cw))
                      (error () nil))
+                 (when (equal server-version *last-commit*)
+                   (setf server-version nil
+                         server-time nil))
                  (expand-template
                   (list :title title
                         :onload (cw-onload cw)
