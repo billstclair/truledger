@@ -1617,6 +1617,7 @@
           (setf transaction-fee (getf fee-plist :transaction-fee)
                 storage-fee (getf fee-plist :storage-fee)))))
 
+    (setf (cw-error cw) err)
     (settitle cw "Balance")
     (setmenu cw "balance")
 
@@ -1809,8 +1810,13 @@
 (defun draw-assets (cw &key scale precision assetname storage
                     audits)
   (let* ((client (cw-client cw))
-         (tokenid (tokenid client))
-         (assets (getassets client))
+         (err nil)
+         (tokenid (storing-error (err "Error getting tokenid: ~a")
+                    (tokenid client)))
+         (assets (storing-error (err "Error getting assets: ~a")
+                   (getassets client)))
+         (create-assets-p (storing-error (err "Error getting permissions: ~a")
+                            (get-permissions client $ADD-ASSET t)))
          (postcnt-plist (postcnt-plist cw))
          (asset-items nil)
          (scale (hsc scale))
@@ -1849,13 +1855,14 @@
         (when owner-p (incf percentcnt))))
     (setf asset-items (nreverse asset-items))
 
+    (setf (cw-error cw) err)
     (setf (cw-onload cw) "document.getElementById(\"scale\").focus()")
     (settitle cw "Assets")
     (setmenu cw "assets")
 
     (let ((body (expand-cw-template
                  cw
-                 (list* :create-assets-p (get-permissions client $ADD-ASSET t)
+                 (list* :create-assets-p create-assets-p
                         :scale scale
                         :precision precision
                         :assetname assetname
@@ -1871,24 +1878,29 @@
          (serverp (equal (id client) (serverid client)))
          (feeidx 0)
          (fee-items nil)
-         (assets (getassets client)))
-    (multiple-value-bind (tranfee regfee fees) (getfees client t)
-      (push (list :type "Transaction (refundable)"
-                  :serverp serverp
-                  :amtname "tranfee"
-                  :amt (hsc (or (cdr (assoc :tranfee values))
-                                (fee-formatted-amount tranfee)))
-                  :assetname (hsc (fee-assetname tranfee))
-                  :assetid (hsc (fee-assetid tranfee)))
-            fee-items)
-      (push (list :type "Registration"
-                  :serverp serverp
-                  :amtname "regfee"
-                  :amt (hsc (or (cdr (assoc :regfee values))
-                                (fee-formatted-amount regfee)))
-                  :assetname (hsc (fee-assetname regfee))
-                  :assetid (hsc (fee-assetid regfee)))
-            fee-items)
+         (err nil)
+         (assets (storing-error (err "Error getting assets: ~a")
+                   (getassets client))))
+    (multiple-value-bind (tranfee regfee fees)
+        (storing-error (err "Error getting fees: ~a") (getfees client t))
+      (when tranfee
+        (push (list :type "Transaction (refundable)"
+                    :serverp serverp
+                    :amtname "tranfee"
+                    :amt (hsc (or (cdr (assoc :tranfee values))
+                                  (fee-formatted-amount tranfee)))
+                    :assetname (hsc (fee-assetname tranfee))
+                    :assetid (hsc (fee-assetid tranfee)))
+              fee-items))
+      (when regfee
+        (push (list :type "Registration"
+                    :serverp serverp
+                    :amtname "regfee"
+                    :amt (hsc (or (cdr (assoc :regfee values))
+                                  (fee-formatted-amount regfee)))
+                    :assetname (hsc (fee-assetname regfee))
+                    :assetid (hsc (fee-assetid regfee)))
+              fee-items))
       (dolist (fee fees)
         (let ((assetid (fee-assetid fee)))
           (unless (find assetid assets :test #'equal :key #'asset-assetid)
@@ -1951,6 +1963,7 @@
               (incf feeidx))
             (setf feecnt (max feecnt feeidx))
 
+            (setf (cw-error cw) err)
             (settitle cw "Fees")
             (setmenu cw "fees")
             (let ((body (expand-cw-template
@@ -2027,6 +2040,7 @@
               permission-items)
         (setf last-perm perm)))
 
+    (setf (cw-error cw) err)
     (settitle cw "Permissions")
     (setmenu cw "permissions")
 
