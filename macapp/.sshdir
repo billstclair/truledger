@@ -1,0 +1,2 @@
+#!/bin/bash
+echo "$HUBTL:/usr/local/www/truledger/lisp/www/download"

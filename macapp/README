@@ -1,0 +1,128 @@
+This directory contains bits to create a Macintosh .DMG installer.
+
+The create-dmg script is usually all you'll need. It copies
+InfoPlist.strings and the Truledger binary into a mounted copy of
+Truledger.sparseimage, then uses hdiutil to convert the SPARSEIMAGE
+file to a compressed DMG. It is called automatically from the script
+that creates the executable:
+
+  .../truledger/truledger-app
+
+Normally, you just need to edit .../truledger/macapp/InfoPlist.strings
+before running the truledger-app script, inserting the current version
+number and copyright year(s).
+
+
+How to create Truledger.sparseimage
+===================================
+
+Platypus-4.4.tar.gz is binary for the Platypus app, which can create a
+standard Mac application wrapper for a script. Its home page is:
+
+   http://www.sveinbjorn.org/platypus
+
+To create Truledger.app, start Platypus, and enter the following in
+its dialog, after clicking the "Show Advanced Options" triangle:
+
+  App Name: Truledger
+  Script type: "Shell" /bin/sh (the default)
+  Script path: .../truledger/macapp/truledger-mac.sh (in this directory)
+  Output: "Text Window"
+  Identifier: com.truledger.Truledger
+  Version: x.y.z (whatever it is)
+  Signature: TRUL
+  Files and folders to be bundled: .../truledger/truledger-dx86cl64
+
+Uncheck "Remains running after initial execution".
+
+Click create and save as "Truledger" in this directory. Double click
+the resulting "Truledger.app" to ensure it works. Then delete the
+file:
+
+  Truledger.app/Contents/Resources/truledger-dx86cl64
+
+And copy the file:
+
+  .../truledger/macapp/truledger.icns
+
+over:
+
+  Truledger.app/Contents/Resources/appIcon.icns
+
+That changes the icon from the Platypus icon to the Truledger
+icon. You may have to duplicate Truledger.app to get the new icon to
+show up. It appears to be cached somewhere.
+
+To create or edit truledger.icns, install XCode and use:
+
+  /Developer/Applications/Utilities/Icon Composer.app
+
+I used Seashore to create dmg-background.xcf, and export it as
+dmg-background.png. You can use any image editing program you like. It
+needs to have room for the Truledger.app and Application directory
+alias icons, in whatever size you like (I used 256x256), plus whatever
+graphics and text you want in addition. It is used as the background
+image for the .dmg folder.
+
+Next, create a read-write disk image which we'll use as
+a template for the shipped .DMG files, using the ideas in:
+
+  http://mac101.net/content/how-to/how-to-create-dmg-art-for-fancy-application-installations/
+
+Open "Disk Utility".
+Click "New Image".
+Navigate to the .../truledger/macapp directory and Enter
+"Truledger.sparseimage" as "Save as". Enter/select the following:
+
+  Name: Truledger
+  Size: Custom... 70MB
+  Format: Mac OS Extended (NOT journaled)
+  Encryption: none
+  Partitions: Single Partition - Apple Partition Map (default)
+  Image Format: sparse disk image
+
+Click "Create". This will mount the image on /Volumes/Truledger/.
+
+Open /Volumes/Truledger/ in the Finder
+Create a directory and name it "background".
+Drag dmg-background.png to that directory.
+Open a new Finder window to /Volumes/Truledger/background/
+Select the /Volumes/Truledger window
+Click the "Options/Show View Options" menu item.
+Check "Always open in icon view" and "Browse in icon view" in the
+  new view options window.
+Select "Picture" for the "Background".
+Drag dmg-background.png from the /Volumes/Truledger/background/ window
+  to the "Drag Image Here" square near the "Picture" radio button.
+You should see the background appear in the /Volumes/Truledger/ window.
+In a shell, type:
+
+  cd /Volumes/Truledger
+  ln -s /Applications .
+  /Developer/Tools/SetFile -a V background
+
+The "SetFile" command makes the background folder invisible.
+Drag the Applications folder alias to the appropriate place in the
+  right-hand side of the /Volumes/Truledger/ window.
+Drag .../truledger/macapp/Truledger.app to the /Volumes/Truledger/
+  window, and place it in the left-hand side of the window.
+Click the "View/Hide Sidebar" menu item
+Resize the window to be just big enough for the background image.
+Dismount /Volumes/Truledger/, either in Disk Utility, or from the shell:
+
+  hdiutil detach /Volumes/Truledger
+
+Now test that it works. In the shell:
+
+  cd .../truledger/macapp
+  hdiutil convert Truledger.sparseimage -format UDZO -o Truledger.dmg
+  open Truledger.dmg
+
+Drag the "Truledger" icon to the "Applications" folder alias, then
+open /Applications and double-click the Truledger icon. You should see
+a window titled "Truledger" with the text "Can't find
+executable". That's because you deleted the executable before creating
+the sparse image, as expected. The create-dmg script will restore it
+before creating the .dmg file. Click "Cancel" to exit the app, and
+move /Applications/Truledger.app to the trash.
+

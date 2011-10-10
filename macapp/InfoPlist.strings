@@ -1,0 +1,4 @@
+CFBundleName = "Truledger";
+CFBundleShortVersionString = "1.0.6";
+CFBundleGetInfoString = "Truledger version 1.0.6 Copyright 2011 Bill St. Clair";
+NSHumanReadableCopyright = "Copyright 2011 Bill St. Clair.";
