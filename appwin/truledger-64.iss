@@ -7,9 +7,9 @@
 #define MyAppVersion "1.0.7"
 #define MyAppPublisher "Truledger"
 #define MyAppURL "http://truledger.com/"
-#define MyAppExeName "truledger-wx86cl.exe"
-#define bits "32"
-#define MyAppLogoFile "truledger-logo-32x32.ico"
+#define MyAppExeName "truledger-wx86cl64.exe"
+#define bits "64"
+#define MyAppLogoFile "truledger-logo-256x256.ico"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
@@ -25,7 +25,7 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={pf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
-OutputDir=.\installers
+OutputDir=.
 OutputBaseFilename=truledger-setup{#bits}
 Compression=lzma
 SolidCompression=yes
@@ -38,7 +38,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 0,6.1
 
 [Files]
-Source: "{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyAppLogoFile}"; DestDir: "{app}"; Flags: ignoreversion
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 

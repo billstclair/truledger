@@ -1,0 +1,15 @@
+This directory is for creating Truledger Windows installers.
+I'm using Inno Setup for this: http://www.jrsoftware.org/isinfo.php
+The Inno Setup installer is in isetup-5.4.2.exe
+
+To build an installer, first run truledger-app.bat in the truledger directory, then
+
+  cd appwin
+  iscc truledger-32.iss
+
+or:
+
+  iscc truledger-64.iss
+
+truledger-32.iss creates truledger-setup32.exe from truledger-wx86cl.exe.
+truledger-64.iss creates truledger-setup64.exe from truledger-wx86cl64.exe.
