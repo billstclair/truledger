@@ -3,6 +3,9 @@ _darcs
 *.tar.gz
 *.exe
 *.exe.zip
+*.dmg
+*.sparseimage
+*.app
 .DS_Store
 truledger-dbs
 ssl-certificates

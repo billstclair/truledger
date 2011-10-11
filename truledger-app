@@ -1,7 +1,8 @@
 #!/bin/bash
 # Load Truledger and save-application
+# Create installer
 
-if [ "x$CCL" = 'x' ]; then
+if [[ "x$CCL" == 'x' ]]; then
   CCL=ccl
 fi
 $CCL -e '(load "start")' \
@@ -11,3 +12,9 @@ $CCL -e '(load "start")' \
 APPNAME=`cat appname.txt`
 tar -czf $APPNAME.tar.gz $APPNAME
 echo $APPNAME packaged as $APPNAME.tar.gz
+if [[ `uname -s` == 'Darwin' ]]; then
+  THREETWO=''
+  if [[ $APPNAME == 'truledger-dx86cl' ]]; then THREETWO='y'; fi
+  cd appmac
+  ./create-dmg $THREETWO
+fi
