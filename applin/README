@@ -1,0 +1,12 @@
+To build Debian packages:
+
+Build the truledger binary with ../truledger-app
+
+  cd <this directory>
+  ./create-deb VERSION BITS
+
+Where VERSION is the version number: major.minor.patch
+And BITS is 32 or 64.
+
+Creates truledger_VERSION_ARCH.deb, where ARCH is amd64 if bits is 64
+or i386 if bits is 32.

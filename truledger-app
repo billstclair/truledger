@@ -2,6 +2,8 @@
 # Load Truledger and save-application
 # Create installer
 
+VERSION=1.1.0
+
 if [[ "x$CCL" == 'x' ]]; then
   CCL=ccl
 fi
@@ -17,4 +19,11 @@ if [[ `uname -s` == 'Darwin' ]]; then
   if [[ $APPNAME == 'truledger-dx86cl' ]]; then THREETWO='y'; fi
   cd appmac
   ./create-dmg $THREETWO
+elif [[ `uname -s` == 'Linux' ]]; then
+  if [ -x "`which dpkg 2>/dev/null`" ]; then
+    BITS=64
+    if [[ $APPNAME == 'truledger-lx86cl' ]]; then BITS=32; fi
+    cd applin
+    ./create-deb $VERSION $BITS
+  fi
 fi

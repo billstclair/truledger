@@ -6,6 +6,8 @@ _darcs
 *.dmg
 *.sparseimage
 *.app
+*.deb
+*.rpm
 .DS_Store
 truledger-dbs
 ssl-certificates

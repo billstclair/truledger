@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# Usage create-deb VERSION BITS
+# where BITS is 32 or 64
+
+VERSION=$1
+BITS=$2
+
+if [[ $BITS != 32 && $BITS != 64 ]]; then
+  echo "usage is create-deb VERSION BITS"
+  echo "  where VERSION is M.m.p (Major.minor.patch)"
+  echo "    and BITS is 32 or 64"
+  exit 0
+fi
+
+if [ -f debian.tar.gz ]; then
+  rm -rf debian
+  tar -xzf debian.tar.gz
+else
+  echo "Can't find debian.tar.gz. Wrong pwd?"
+  exit 0
+fi
+
+if [[ $BITS == 32 ]]; then
+  FILE='../truledger-lx86cl'
+  ARCH=i386
+else
+  FILE='../truledger-lx86cl64'
+  ARCH=amd64
+fi
+
+if [ -f $FILE ]; then
+  >/dev/null
+else
+  echo "Can't find $FILE"
+  exit 0
+fi
+
+cp $FILE debian/usr/local/bin/
+# Need to write some SED to change
+# VERSION and ARCH in control.tmpl
+# and write it at debian/DEBIAN/control
+sed -e s/VERSION/$VERSION/ <control.tmpl | sed -e s/ARCH/$ARCH/ >debian/DEBIAN/control
+dpkg -b debian
+DEBFILE=truledger_${VERSION}_${ARCH}.deb
+mv debian.deb $DEBFILE
+rm -rf debian
+echo $DEBFILE generated
+
+# to view:
+# rpm -q -p truledger-xxx.rpm -l -i
+if [ -x "`which alien 2>/dev/null`" ]; then
+  alien --to-rpm --scripts $DEBFILE
+else
+  echo "Install 'alien', and this script will generate .rpm files"
+fi
