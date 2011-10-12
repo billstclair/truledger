@@ -2,7 +2,7 @@
 # Load Truledger and save-application
 # Create installer
 
-VERSION=1.1.0
+VERSION=`cat VERSION`
 
 if [[ "x$CCL" == 'x' ]]; then
   CCL=ccl

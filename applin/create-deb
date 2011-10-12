@@ -37,9 +37,7 @@ else
 fi
 
 cp $FILE debian/usr/local/bin/
-# Need to write some SED to change
-# VERSION and ARCH in control.tmpl
-# and write it at debian/DEBIAN/control
+cp copyright debian/usr/share/doc/truledger/
 sed -e s/VERSION/$VERSION/ <control.tmpl | sed -e s/ARCH/$ARCH/ >debian/DEBIAN/control
 dpkg -b debian
 DEBFILE=truledger_${VERSION}_${ARCH}.deb
