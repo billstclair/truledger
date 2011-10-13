@@ -11,9 +11,12 @@
     <!-- TMPL_VAR pre-body --><!-- /TMPL_IF -->
     <!-- TMPL_VAR body --><!-- TMPL_IF debugstr -->
     === Debug Log ===<br/>
-    <pre><!-- TMPL_VAR debugstr --></pre><!-- /TMPL_IF --><!-- TMPL_IF client-version -->
-    <p class='version'>Client: <a href='https://github.com/billstclair/truledger/commit/<!-- TMPL_VAR client-version -->'><!-- TMPL_VAR client-version --></a>&nbsp;&nbsp;<!-- TMPL_VAR client-date --></p><!-- /TMPL_IF --><!-- TMPL_IF server-version -->
-    <p class='version'>Server: <a href='https://github.com/billstclair/truledger/commit/<!-- TMPL_VAR server-version -->'><!-- TMPL_VAR server-version --></a>&nbsp;&nbsp;<!-- TMPL_VAR server-date --></p><!-- /TMPL_IF -->
+    <pre><!-- TMPL_VAR debugstr --></pre><!-- /TMPL_IF -->
+    <p class='version'><!-- TMPL_IF client-version -->
+      Client: <a href='https://github.com/billstclair/truledger/commit/<!-- TMPL_VAR client-version -->'><!-- TMPL_VAR client-version --></a>&nbsp;&nbsp;<!-- TMPL_VAR client-date --><!-- TMPL_IF server-version -->
+      <br/><!-- /TMPL_IF --><!-- /TMPL_IF --><!-- TMPL_IF server-version -->
+      Server: <a href='https://github.com/billstclair/truledger/commit/<!-- TMPL_VAR server-version -->'><!-- TMPL_VAR server-version --></a>&nbsp;&nbsp;<!-- TMPL_VAR server-date --><!-- /TMPL_IF -->
+    </p>
     <p><a href='http://common-lisp.net/'><img style='border: 0;' src='../little-lambda.png' alt='Made with Lisp' title='Made with Lisp' width='16' height='16' /></a></p>
   </body>
 </html>
