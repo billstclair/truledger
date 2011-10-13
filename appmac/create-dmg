@@ -1,26 +1,28 @@
 #!/bin/bash
 
-# usage: create-dmg [32-bit-p]
-# if 32-bit-p is non-blank, will install the 32-bit image.
-# otherwise, installs the 64-bit image.
+# usage: create-dmg VERSION BITS
+# Where VERSION is a version string, and BITS is 32 or 64.
 
 # This script expects to be run from its directory.
 # Copy InfoPlist.strings from this dir and the Truledger binary
 # from the parent dir into the Truledger.app in Truledger.sparseimage,
 # and convert that to a compressed Truledger.dmg.
 
-# Edit InfoPlist.strings before running this, changing the version
-# numbers and copyright year to match your binary.
-
-# This will fail if you don't have admin privileges on your machine.
-
+# "VERSION" in InfoPlist.strings will be replaced by $VERSION
 # Usually, this script is run automatically by .../truledger/truledger-app
+# It will fail if you don't have admin privileges on your machine.
 
-THREETWOP=$1
+VERSION=$1
+BITS=$2
 IMAGE=truledger-dx86cl64
 SUFFIX=''
 
-if [[ "x$THREETWOP" != "x" ]]; then
+if [[ $BiTS != 32 && $BITS != 64 ]]; then
+    echo "usage is create-dmg VERSION BITS"
+    exit 0
+fi
+
+if [[ $BITS == 32 ]]; then
     IMAGE=truledger-dx86cl
     SUFFIX='-32'
 fi
@@ -36,7 +38,13 @@ hdiutil detach /Volumes/Truledger 2>/dev/null
 hdiutil detach /Volumes/Truledger\ 1 2>/dev/null
 gunzip -c Truledger.sparseimage.gz >Truledger-copy.sparseimage
 hdiutil attach Truledger-copy.sparseimage
-cp InfoPlist.strings ../$IMAGE /Volumes/Truledger/Truledger.app/Contents/Resources/
+
+APPDIR=/Volumes/Truledger/Truledger.app
+RESOURCEDIR=$APPDIR/Contents/Resources/
+sed -e s/VERSION/$VERSION/ <InfoPlist.strings >$RESOURCEDIR/English.lproj/InfoPlist.strings
+cp ../$IMAGE $RESOURCEDIR
+touch $APPDIR
+
 hdiutil detach /Volumes/Truledger
 rm -f Truledger.dmg
 hdiutil convert Truledger-copy.sparseimage -format UDZO -o Truledger$SUFFIX.dmg
