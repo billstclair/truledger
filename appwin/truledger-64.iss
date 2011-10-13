@@ -4,7 +4,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Truledger"
-#define MyAppVersion "1.0.7"
+#define MyAppVersion "{code:TruledgerVersion}"
 #define MyAppPublisher "Truledger"
 #define MyAppURL "http://truledger.com/"
 #define MyAppExeName "truledger-wx86cl64.exe"
@@ -51,3 +51,12 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Fil
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, "&", "&&")}}"; Flags: nowait postinstall skipifsilent
 
+[Code]
+function TruledgerVersion(Param: String): String;
+var
+  VersionString: AnsiString;
+  Ignore: Boolean;
+begin
+  Ignore := LoadStringFromFile('version.txt', VersionString);
+  Result := VersionString;
+end;
