@@ -157,6 +157,15 @@
   (dolist (function (reverse *startup-functions*))
     (funcall function)))
 
+(defvar *save-application-functions* nil)
+
+(defun add-save-application-function (function)
+  (pushnew function *save-application-functions*))
+
+(defun run-save-application-functions ()
+  (dolist (function (reverse *save-application-functions*))
+    (funcall function)))
+
 (defun xor (&rest args)
   "True if an even number of args are true"
   (let ((res nil))

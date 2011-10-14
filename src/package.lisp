@@ -368,6 +368,8 @@
    #:xor-strings
    #:browse-url
    #:add-startup-function
+   #:add-save-application-function
+   #:run-save-application-functions
 
    ;; session.lisp
    #:crypto-session-id

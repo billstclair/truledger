@@ -243,6 +243,7 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
   (setq *last-commit* (last-commit))
   (setq *save-application-time* (get-unix-time))
   (set-db-dir-for-saved-application)
+  (run-save-application-functions)
   (save-application filename
                     :toplevel-function #'toplevel-function
                     :prepend-kernel t

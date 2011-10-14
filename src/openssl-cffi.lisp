@@ -45,6 +45,48 @@
                (funcall thunk))
           (setq *openssl-process* nil))))))
 
+;; From cl+ssl
+(cffi:define-foreign-library libssl
+  (:windows "libssl32.dll")
+  (:darwin "libssl.dylib")
+  (:openbsd (:or "libssl3.so" "libssl.so.16.0" "libssl.so.15.1"))
+  (:unix (:or "libssl.so.0.9.8" "libssl.so" "libssl.so.4" "libssl.so.10"))
+  (t (:default "libssl3")))
+
+;; From cl+ssl
+(cffi:define-foreign-library libeay32
+  (:windows "libeay32.dll"))
+
+(cffi:define-foreign-library libcrypto
+  (:darwin (:or "libcrypto.dylib"))
+  (:unix (:or "libcrypto.so.0.9.8" "libcrypto.so" "libcrypto.so.4")))
+
+;; This is necessary to successfully start a saved application built
+;; with a version of OpenSSL that has libcrypto on a machine whose
+;; OpenSSL doesn't have libcrypto, or vice-versa.
+(defun clear-eep-addresses ()
+  #+ccl
+  (let ((libssl (cffi:load-foreign-library 'libssl))
+        (libcrypto (ignore-errors (cffi:load-foreign-library 'libcrypto)))
+        (cnt 0))
+    (when libssl
+      (setf libssl (cffi::foreign-library-handle libssl)))
+    (when libcrypto
+      (setf libcrypto (cffi::foreign-library-handle libcrypto)))
+    (maphash (lambda (key eep)
+               (declare (ignore key))
+               (let ((container (ccl::eep.container eep)))
+                 (when (and container
+                            (or (eq container libssl)
+                                (eq container libcrypto)))
+                   (setf (ccl::eep.address eep) nil
+                         (ccl::eep.container eep) nil)
+                   (incf cnt))))
+             ccl::*eeps*)
+    (and (> cnt 0) cnt)))
+
+(truledger:add-save-application-function 'clear-eep-addresses)
+
 (defparameter $null (null-pointer))
 
 (defcfun ("OPENSSL_add_all_algorithms_conf" open-ssl-add-all-algorithms) :void
@@ -55,21 +97,11 @@
   (with-openssl-lock ()
     (open-ssl-add-all-algorithms)))
 
-;; From cl+ssl
-(cffi:define-foreign-library libssl
-  (:windows "libssl32.dll")
-  (:darwin "libssl.dylib")
-  (:openbsd (:or "libssl3.so" "libssl.so.16.0" "libssl.so.15.1"))
-  (:unix (:or "libssl.so.0.9.8" "libssl.so" "libssl.so.4"))
-  (t (:default "libssl3")))
-
-;; From cl+ssl
-(cffi:define-foreign-library libeay32
-  (:windows "libeay32.dll"))
-
 (defun startup-openssl ()
   (load-foreign-library 'libssl)
   (load-foreign-library 'libeay32)
+  ;; libcrypto merged into libssl for recent OpenSSL versions.
+  (ignore-errors (load-foreign-library 'libcrypto))
   (open-ssl-add-all-algorithms))
 
 (truledger:add-startup-function 'startup-openssl)
