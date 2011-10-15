@@ -414,6 +414,11 @@
    #:*save-application-time*
    #:with-server-crypto-session-context
 
+   ;; web-templates.lisp
+   #:load-template-directory
+   #:load-template
+   #:expand-template
+
    ;; server-web.lisp
    #:with-debug-stream
    #:get-debug-stream-string

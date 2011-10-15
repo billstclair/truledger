@@ -5,7 +5,7 @@
 ;;; Templates for Truledger
 ;;;
 
-(in-package :truledger-client-web)
+(in-package :truledger)
 
 (defvar *template-db* (make-fsdb "templates"))
 (defvar *template-custom-db* (make-fsdb "templates-custom"))
@@ -40,15 +40,24 @@
     (let ((template:*string-modifier* 'identity))
       (template:fill-and-print-template template plist :stream s))))
 
+(defun load-template (key &key
+                      (template-custom-db *template-custom-db*)
+                      (template-db *template-db*))
+  (let* ((hash *template-hash*))
+    (or (and template-custom-db
+             (template-get template-custom-db key))
+        (template-get template-db key)
+        (and hash (gethash key hash)))))
+  
+
 (defun expand-template (plist key &key
                         (template-custom-db *template-custom-db*)
                         (template-db *template-db*))
-  (let* ((hash *template-hash*)
-         (template (or (and template-custom-db
-                            (template-get template-custom-db key))
-                       (template-get template-db key)
-                       (and hash (gethash key hash)))))
-    (fill-and-print-to-string template plist)))
+  (fill-and-print-to-string
+   (load-template key
+                  :template-custom-db template-custom-db
+                  :template-db template-db)
+   plist))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

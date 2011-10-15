@@ -815,6 +815,28 @@ p.version {
     ("/site-icon.ico" do-png ,(b642s *site-icon-base64*) "image/x-icon")
     ("/css/tables.css" do-text ,*tables-css* "text/css")))
 
+(defun coded-file-function-and-mime-type (pathspec)
+  (let* ((mime (or (hunchentoot:mime-type pathspec) "text/plain"))
+         (slash-pos (position #\/ mime))
+         (type (or (and slash-pos (subseq mime 0 slash-pos)) "text")))
+    (values (if (equal type "text") 'do-text 'do-png)
+            mime)))
+
+(defun get-coded-file (uri)
+  (let* ((start (- (length uri) 5)))
+    (when (and (>= start 0)
+               (search ".tmpl" uri :start2 start))
+      (return-from get-coded-file nil)))
+  (or (let* ((key (if (and (> (length uri) 0) (eql #\/ (elt uri 0)))
+                      (subseq uri 1)
+                      uri))
+             (bits (ignore-errors (load-template key))))
+        (when bits
+          (multiple-value-bind (function mime-type)
+              (coded-file-function-and-mime-type uri)
+            (list function bits mime-type))))
+      (cdr (assoc uri *coded-files* :test 'string-equal))))
+
 (defun do-static-file ()
   (let* ((acceptor hunchentoot:*acceptor*)
          (port (hunchentoot:acceptor-port acceptor))
@@ -824,7 +846,7 @@ p.version {
           (t
            (let* ((uri (remove-url-prefix
                         (hunchentoot:request-uri hunchentoot:*request*)))
-                  (coded-file (cdr (assoc uri *coded-files* :test 'string-equal))))
+                  (coded-file (get-coded-file uri)))
              ;; Change this to look for the coded file in the file system first,
              ;; and use that if it's there.
              (cond ((null uri) nil)
