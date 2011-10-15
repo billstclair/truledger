@@ -113,7 +113,8 @@
                   <input type='submit' name='spentasset<!-- TMPL_VAR acctidx -->|<!-- TMPL_VAR assetidx -->' value='Spend'/>
                 </td>
               </tr><!-- /TMPL_LOOP --><!-- /TMPL_LOOP -->
-            </table><!-- TMPL_IF fractionamt -->
+            </table>
+            <br/><!-- TMPL_IF fractionamt -->
             Fractional balance: <!-- TMPL_VAR fractionamt --> x 10<sup>-<!-- TMPL_VAR fractionscale --></sup>
             <br/><!-- /TMPL_IF --><!-- TMPL_IF transaction-fee -->
             Transaction Fee: <!-- TMPL_VAR transaction-fee -->
@@ -155,6 +156,7 @@
                 <td><b>Recipient ID:</b></td>
                 <td>
                   <input type='text' name='recipientid' size='40' value='<!-- TMPL_VAR recipientid -->'/>
+                  <br/>
                   <input type='checkbox' name='allowunregistered'<!-- TMPL_IF cannot-mint-token-p -->disabled='disabled'<!-- /TMPL_IF --><!-- TMPL_IF allowunregistered --> checked='checked'<!-- /TMPL_IF -->/> Allow unregistered
                 </td>
               </tr>
