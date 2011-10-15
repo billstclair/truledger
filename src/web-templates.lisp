@@ -73,7 +73,7 @@
        (load-template *client-properties-key* :wired-in-p t)))))
 
 (defun client-properties (&optional reload-p)
-  (or (and (not reload-p) *client-properties* *template-hash*)
+  (or (and (not reload-p) *template-hash* *client-properties*)
       (setf *client-properties* (read-client-properties))))
 
 (defun get-client-property (property)
