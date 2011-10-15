@@ -42,13 +42,15 @@
 
 (defun load-template (key &key
                       (template-custom-db *template-custom-db*)
-                      (template-db *template-db*))
+                      (template-db *template-db*)
+                      wired-in-p)
   (let* ((hash *template-hash*))
-    (or (and template-custom-db
-             (template-get template-custom-db key))
-        (template-get template-db key)
+    (or (and (not (and hash wired-in-p))
+             (or (and template-custom-db
+                      (template-get template-custom-db key))
+                 (and template-db
+                      (template-get template-db key))))
         (and hash (gethash key hash)))))
-  
 
 (defun expand-template (plist key &key
                         (template-custom-db *template-custom-db*)
@@ -58,6 +60,28 @@
                   :template-custom-db template-custom-db
                   :template-db template-db)
    plist))
+
+(defparameter *client-properties-key*
+  "client-properties.sexp")
+
+(defvar *client-properties* nil)
+
+(defun read-client-properties ()
+  (ignore-errors
+    (let ((*read-eval* nil))
+      (read-from-string
+       (load-template *client-properties-key* :wired-in-p t)))))
+
+(defun client-properties (&optional reload-p)
+  (or (and (not reload-p) *client-properties* *template-hash*)
+      (setf *client-properties* (read-client-properties))))
+
+(defun get-client-property (property)
+  (getf (client-properties) property))
+
+(defun get-highlighted-asset-color (assetid)
+  (let ((alist (get-client-property :highlighted-assets)))
+    (second (assocequal assetid alist))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

@@ -418,6 +418,9 @@
    #:load-template-directory
    #:load-template
    #:expand-template
+   #:client-properties
+   #:get-client-property
+   #:get-highlighted-asset-color
 
    ;; server-web.lisp
    #:with-debug-stream

@@ -80,6 +80,7 @@
                  (let* ((from "You")
                         (toid (getarg $ID item))
                         (amount (getarg $FORMATTEDAMOUNT item))
+                        (assetid (getarg $ASSET item))
                         (assetname (getarg $ASSETNAME item))
                         (note (maybe-decrypt-note client (getarg $NOTE item)))
                         (to (namestr-html
@@ -92,7 +93,8 @@
                                :from (hsc from)
                                :to to
                                :amount (hsc amount)
-                               :assetname (hsc assetname)
+                               :assetname (highlight-assetname
+                                           assetid (hsc assetname))
                                :note (hsc note)
                                :idx idx)
                          time-items)))
@@ -110,6 +112,7 @@
                     with fromid
                     with from
                     with amount
+                    with assetid
                     with assetname
                     with note
                     with response  
@@ -152,6 +155,7 @@
                                                    (lambda () (1- (incf nickcnt)))
                                                    "nickid" "nick" "You"))))
                                   (setq amount (getarg $FORMATTEDAMOUNT item)
+                                        assetid (getarg $ASSET item)
                                         assetname (getarg $ASSETNAME item)
                                         note (maybe-decrypt-note
                                               client (getarg $NOTE item)))
@@ -161,13 +165,14 @@
                                                req (if cancelp "=~a" "@~a")))))))
                       (when (and req (not (blankp amount)))
                           (push (list req from to coupon-redeemer-p
-                                      amount assetname note response)
+                                      amount assetid assetname note response)
                                 rows))
                       (setq req nil
                             from nil
                             to nil
                             coupon-redeemer-p nil
                             amount nil
+                            assetid nil
                             assetname nil
                             note nil
                             response nil)
@@ -179,7 +184,7 @@
                           (dolist (row rows)
                             (destructuring-bind
                                   (req from to coupon-redeemer-p
-                                       amount assetname note response)
+                                       amount assetid assetname note response)
                                 row
                               (push (list :not-first-p (not first)
                                           :rowspan (and first rowcnt)
@@ -190,7 +195,8 @@
                                           :to to
                                           :coupon-redeemer-p coupon-redeemer-p
                                           :amount (hsc amount)
-                                          :assetname (hsc assetname)
+                                          :assetname (highlight-assetname
+                                                      assetid (hsc assetname))
                                           :note (hsc note)
                                           :response (hsc response))
                                     time-items)

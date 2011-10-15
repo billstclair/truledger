@@ -1383,6 +1383,12 @@
                (setf default-nickname "My Sponsor")))))
     (values from-name from-nick default-nickname))))
 
+(defun highlight-assetname (assetid assetname)
+  (expand-template
+   (list :color (get-highlighted-asset-color assetid)
+         :assetname assetname)
+   "assetname.tmpl"))
+
 (defun draw-balance (cw &key
                      spend-amount recipient note toacct tonewacct nickname
                      mintcoupon recipientid allowunregistered fee-plist)
@@ -1462,6 +1468,7 @@
                                           "Accept" "Reject"))
                               (time (inbox-time item))
                               (reply (normalize-note (hsc (inbox-reply item))))
+                              (assetid (inbox-assetid item))
                               (assetname (hsc (inbox-assetname item)))
                               (amount (hsc (inbox-formattedamount item)))
                               (itemnote (normalize-note (hsc (inbox-note item))))
@@ -1476,7 +1483,8 @@
                                      :from-nick (hsc from-nick)
                                      :nickname (hsc default-nickname)
                                      :amount amount
-                                     :assetname assetname
+                                     :assetname (highlight-assetname
+                                                 assetid assetname)
                                      :itemnote itemnote
                                      :remove-checked-p remove-checked-p
                                      :reply reply
@@ -1498,7 +1506,8 @@
                                      :from-name from-name
                                      :from-nick from-nick
                                      :amount amount
-                                     :assetname assetname
+                                     :assetname (highlight-assetname
+                                                 assetid assetname)
                                      :asset-new-p asset-new-p
                                      :itemnote itemnote
                                      :spendcnt spendcnt
@@ -1519,6 +1528,7 @@
                  (request (outbox-request item)))
             (when (equal request $SPEND)
               (let ((nameid (outbox-id item))
+                    (assetid (outbox-assetid item))
                     (assetname (hsc (outbox-assetname item)))
                     (amount (hsc (outbox-formattedamount item)))
                     (note (hsc (outbox-note item)))
@@ -1546,7 +1556,7 @@
                             :nameid nameid
                             :name name
                             :amount amount
-                            :assetname assetname
+                            :assetname (highlight-assetname assetid assetname)
                             :note note
                             :cancelcount this-cancelcount
                             :time timestr
@@ -1592,7 +1602,7 @@
                                :assetid assetid)
                          assets-plists)
                    (push (list :amount formattedamount
-                               :assetname assetname
+                               :assetname (highlight-assetname assetid assetname)
                                :acctidx acctidx
                                :assetidx assetidx)
                          bals-plists)
@@ -1668,6 +1678,7 @@
            (datestr (datestr time)))
       (cond (item
              (let ((coupons (outbox-coupons item))
+                   (assetid (outbox-assetid item))
                    (assetname (hsc (outbox-assetname item)))
                    (formattedamount (hsc (outbox-formattedamount item)))
                    (note (outbox-note item)))
@@ -1676,7 +1687,8 @@
                               cw
                               (list :date datestr
                                     :amount formattedamount
-                                    :assetname assetname
+                                    :assetname (highlight-assetname
+                                                assetid assetname)
                                     :note (unless (blankp note)
                                             (normalize-note (hsc note)))
                                     :coupon (car coupons))
@@ -1715,8 +1727,10 @@
                for balances =
                  (loop for bal in bals
                     for msg = (gethash bal msghash)
-                    for assetname = (balance-assetname bal)
-                    collect (list :assetname (hsc assetname)
+                    for assetid = (balance-assetid bal)
+                    for assetname = (hsc (balance-assetname bal))
+                    collect (list :assetname (highlight-assetname
+                                              assetid assetname)
                                   :msg (trimmsg msg)))
                collect (list :acct (hsc acct)
                              :balances balances))))
@@ -1726,8 +1740,10 @@
         (setf fraction-items
               (loop for frac in fractions
                  for msg = (gethash frac msghash)
-                 for assetname = (fraction-assetname frac)
-                 collect (list :assetname (hsc assetname)
+                 for assetid = (fraction-assetid frac)
+                 for assetname = (hsc (fraction-assetname frac))
+                 collect (list :assetname (highlight-assetname
+                                           assetid assetname)
                                :msg (trimmsg msg))))))
 
     (settitle cw "Raw Balance")
@@ -1810,7 +1826,7 @@
 (defun draw-assets (cw &key scale precision assetname storage
                     audits)
   (let* ((client (cw-client cw))
-         (err nil)
+         (err (cw-error cw))
          (tokenid (storing-error (err "Error getting tokenid: ~a")
                     (tokenid client)))
          (assets (storing-error (err "Error getting assets: ~a")
@@ -1831,14 +1847,14 @@
              (assetid (asset-assetid asset))
              (scale (asset-scale asset))
              (precision (asset-precision asset))
-             (assetname (asset-name asset))
+             (assetname (hsc (asset-name asset)))
              (percent (asset-percent asset))
              (cell (assoc assetid audits :test #'equal))
              (balance (second cell))
              (fraction (third cell))
              (owner-p (and (equal ownerid (id client))
                            (not (equal assetid tokenid)))))
-        (push (list* :assetname (hsc assetname)
+        (push (list* :assetname (highlight-assetname assetid assetname)
                      :scale (hsc scale)
                      :precision (hsc precision)
                      :owner-p owner-p
@@ -1889,7 +1905,9 @@
                     :amtname "tranfee"
                     :amt (hsc (or (cdr (assoc :tranfee values))
                                   (fee-formatted-amount tranfee)))
-                    :assetname (hsc (fee-assetname tranfee))
+                    :assetname (highlight-assetname
+                                (fee-assetid tranfee)
+                                (hsc (fee-assetname tranfee)))
                     :assetid (hsc (fee-assetid tranfee)))
               fee-items))
       (when regfee
@@ -1898,7 +1916,9 @@
                     :amtname "regfee"
                     :amt (hsc (or (cdr (assoc :regfee values))
                                   (fee-formatted-amount regfee)))
-                    :assetname (hsc (fee-assetname regfee))
+                    :assetname (highlight-assetname
+                                (fee-assetid regfee)
+                                (hsc (fee-assetname regfee)))
                     :assetid (hsc (fee-assetid regfee)))
               fee-items))
       (dolist (fee fees)
@@ -1912,7 +1932,8 @@
                (loop for asset in assets
                   for id = (asset-assetid asset)
                   collect (list :id (hsc id)
-                                :assetname (hsc (asset-name asset))
+                                :assetname (highlight-assetname
+                                            id (hsc (asset-name asset)))
                                 :selected-p (equal id assetid))))
              (type-options (type)
                (list (list :value $SPEND
@@ -1934,7 +1955,8 @@
                             :assetid (hsc assetid))
                       (list :type (hsc type)
                             :amt amt
-                            :assetname (fee-assetname fee)
+                            :assetname (highlight-assetname
+                                        assetid (hsc (fee-assetname fee)))
                             :assetid (hsc assetid)))
                   fee-items)
             (incf feeidx)))
