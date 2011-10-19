@@ -72,8 +72,8 @@
             <span title='<!-- TMPL_VAR fromid -->'><!-- TMPL_IF from-nick -->
               <!-- TMPL_VAR from-nick --><!-- TMPL_IF from-name --> (<!-- TMPL_VAR from-name -->)<!-- /TMPL_IF --><!-- TMPL_ELSE -->
               <!-- TMPL_IF from-name -->(<!-- TMPL_VAR from-name -->)<!-- TMPL_ELSE -->[unknown]<!-- /TMPL_IF -->
-              <input type='hidden' name='spendid<!-- TMPL_VAR spendcnt -->' value='<!-- TMPL_VAR fromid -->'/>
-              <input type='text' name='spendnick<!-- TMPL_VAR spendcnt -->' size='10' value='<!-- TMPL_VAR nickname -->'/><!-- /TMPL_IF -->
+              <input type='hidden' name='nonspendid<!-- TMPL_VAR nonspendcnt -->' value='<!-- TMPL_VAR fromid -->'/>
+              <input type='text' name='nonspendnick<!-- TMPL_VAR nonspendcnt -->' size='10' value='<!-- TMPL_VAR nickname -->'/><!-- /TMPL_IF -->
             </span>
           </td>
           <td align='right' style='border-right-width: 0;'><!-- TMPL_VAR amount --></td>
