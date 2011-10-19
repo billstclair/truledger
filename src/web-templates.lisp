@@ -7,9 +7,16 @@
 
 (in-package :truledger)
 
-(defvar *template-db* (make-fsdb "templates"))
-(defvar *template-custom-db* (make-fsdb "templates-custom"))
+(defvar *template-db* nil)
+(defvar *template-custom-db* nil)
 (defvar *template-hash* nil)
+
+(defun make-template-dbs ()
+  (setf *template-db* (make-fsdb "templates")
+        *template-custom-db* (make-fsdb "templates-custom")))
+
+(make-template-dbs)
+(add-startup-function 'make-template-dbs)
 
 (defmethod template-get ((db fsdb) key &rest keys)
   (apply #'db-get db key keys))
@@ -44,13 +51,15 @@
                       (template-custom-db *template-custom-db*)
                       (template-db *template-db*)
                       wired-in-p)
-  (let* ((hash *template-hash*))
-    (or (and (not (and hash wired-in-p))
-             (or (and template-custom-db
-                      (template-get template-custom-db key))
-                 (and template-db
-                      (template-get template-db key))))
-        (and hash (gethash key hash)))))
+  (let* ((hash *template-hash*)
+         (not-wired-in-p (not (and hash wired-in-p))))
+    (or (and not-wired-in-p
+             template-custom-db
+             (template-get template-custom-db key))
+        (and hash (gethash key hash))
+        (and not-wired-in-p
+             template-db
+             (template-get template-db key)))))
 
 (defun expand-template (plist key &key
                         (template-custom-db *template-custom-db*)
