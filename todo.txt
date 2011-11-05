@@ -1,3 +1,5 @@
+If there is no home page at /, forward to /client/
+
 Lock protocol for backing up with rsync
   Wait for server to remove "locked" file.
   Create "lock" file.

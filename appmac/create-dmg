@@ -15,7 +15,7 @@
 VERSION=$1
 BITS=$2
 IMAGE=truledger-dx86cl64
-SUFFIX=''
+SUFFIX="-$VERSION"
 
 if [[ $BiTS != 32 && $BITS != 64 ]]; then
     echo "usage is create-dmg VERSION BITS"
@@ -24,7 +24,7 @@ fi
 
 if [[ $BITS == 32 ]]; then
     IMAGE=truledger-dx86cl
-    SUFFIX='-32'
+    SUFFIX="-$VERSION-32"
 fi
 
 if [ -f ../$IMAGE ]; then
@@ -46,7 +46,7 @@ cp ../$IMAGE $RESOURCEDIR
 touch $APPDIR
 
 hdiutil detach /Volumes/Truledger
-rm -f Truledger.dmg
+rm -f Truledger$SUFFIX.dmg
 hdiutil convert Truledger-copy.sparseimage -format UDZO -o Truledger$SUFFIX.dmg
 hdiutil detach /Volumes/Truledger 2>/dev/null
 hdiutil detach /Volumes/Truledger\ 1 2>/dev/null

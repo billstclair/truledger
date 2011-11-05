@@ -102,6 +102,9 @@ original serverid, a customer will notice the change, and be able to
 prove it.  The server checks, for all requests, that the <serverid>
 sent matches. I won't repeat this requirement below.
 
+I've noted <errcode> and <reason> in "failed" messages below. The
+current implementation omits <errcode> and just sends <reason>, making
+it hard to do automatic analysis of errors.
 
 Get serverid
 ----------
@@ -1034,19 +1037,12 @@ Disagreement Resolution
   Customer sends:
 
 (<id>,resolve,<serverid>,<time#>).
-(<serverid>,@balance,(<id>,balance,<serverid>,<time1#>,<assetid1>,<amount1>,acct:<acct1>))
+(<serverid>,@balance,(<id>,balance,<serverid>,<time1#>,<assetid1>,<amount1>,acct:<acct1>)).
 (<serverid>,@fraction,(<id>,fraction,<serverid>,<time1#>,<assetid1>,<fractionamount1>).
 ...
 (<serverid>,@balance,(<id>,balance,<serverid>,<timeN#>,<assetidN>,<amountN>,acct:<acctN>)).
 (<serverid>,@fraction,(<id>,fraction,<serverid>,<timeN#>,<assetidN>,<fractionamountN>).
 (<id>,balancehash,<serverid>,<time#>,<count>,<hash>).
-(<serverid>,@spend,(<id>,spend,<serverid>,<timeA#>,<idA>,<assetidA>,<amountA>,note:<noteA>)).
-(<serverid>,@tranfee,(<id>,tranfee,<serverid>,<timeA#>,<tokenid>,<amountAfee>))
-...
-(<serverid>,@spend,(<id>,spend,<serverid>,<timeZ#>,<idZ>,<assetidZ>,<amountZ>,note:<noteZ>)).
-(<serverid>,@tranfee,(<id>,tranfee,<serverid>,<timeZ#>,<tokenid>,<amountZfee>)).
-(<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<timeX#>,<count>,<hash>).
-(<id>,outboxhash,<serverid>,<time#>,<count>,<hash>)
 
   The "@balance" messages are balances for which the client has a
   newer transaction time than the server. Some, but not all, of them
@@ -1058,20 +1054,13 @@ Disagreement Resolution
   message. Note that the "balancehash" message is new, having the same
   transaction time as the "resolve" message. This enables mixing
   server and client balances to arrive at the latest value for
-  each. You can't do that with the outbox. Either the server or the
-  client has the right outbox contents. Mixing can't be done. The
-  server CAN check for corresponding inbox entries, but that gets
-  complicated fast. Note that the outbox hash is sent twice, once
-  countersigned by the server, and once NOT countersigned and with the
-  new "resolve" transaction time. This enables a newly countersigned
-  balancehash.
+  each.
 
   The server checks that everything looks hunky-dory, updates its
   database, and sends back:
 
 (<serverid>,@resolve,(<id>,resolve,<serverid>,<time#>)).
 (<serverid>,@balancehash,(<id>,balancehash,<serverid>,<time#>,<count>,<hash>)).
-(<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<time#>,<count>,<hash>))
 
   Or, if things don't look right:
 
@@ -1082,6 +1071,43 @@ Disagreement Resolution
   allowing him to invoice the server operator for the loss. Probably,
   asset issuers will want a limit to those losses, which will push the
   loss back on the customer. This needs more thought.
+
+
+  Customer sends:
+
+(<id>,resolveoutbox,<serverid>,<time#>).
+(<serverid>,@spend,(<id>,spend,<serverid>,<timeA#>,<idA>,<assetidA>,<amountA>,note:<noteA>)).
+(<serverid>,@tranfee,(<id>,tranfee,<serverid>,<timeA#>,<tokenid>,<amountAfee>))
+...
+(<serverid>,@spend,(<id>,spend,<serverid>,<timeZ#>,<idZ>,<assetidZ>,<amountZ>,note:<noteZ>)).
+(<serverid>,@tranfee,(<id>,tranfee,<serverid>,<timeZ#>,<tokenid>,<amountZfee>)).
+(<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<timeX#>,<count>,<hash>).
+(<id>,outboxhash,<serverid>,<time#>,<count>,<hash>)
+
+  For resolving outbox differences, the client sends the entire outbox,
+  including the @outboxhash message. If he has no @outboxhash message
+  that matches the rest of his outbox contents, he has to trust the server.
+  Note that the outbox hash is sent twice, once countersigned by the
+  server, and once NOT countersigned and with the new "resolve"
+  transaction time. This enables a newly countersigned outboxhash.
+
+  The server checks that everything looks hunky-dory, updates its
+  database, and sends back:
+
+(<serverid>,@resolveoutbox,(<id>,resolveoutbox,<serverid>,<time#>)).
+(<serverid>,@outboxhash,(<id>,outboxhash,<serverid>,<time#>,<count>,<hash>))
+
+  This may mean addition, change, and removal of inbox entries
+  corresponding to the new, changed, and removed outbox entries.
+  It will also cause an error to attempt to remove an outbox entry
+  whose corresponding inbox entry has been accepted or rejected and
+  which acceptance or rejection is in the inbox on the server.
+
+  If things don't look right, the server returns:
+
+(<serverid>,failed,(<id>,resolveoutbox,<serverid>,<time#>),errcode:<errcode>,reason:<reason>)
+
+  Again, this resolution can cause the server to go out of balance.
 
 
 Session encryption

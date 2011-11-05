@@ -1284,7 +1284,7 @@
   (let ((client (cw-client cw)))
     (cond ((equal fromid "coupon") fromid)
           ((and you (equal fromid (id client)))
-           (format nil "<span title='~a'>~a</span"
+           (format nil "<span title='~a'>~a</span>"
                    fromid you))
           (t (let ((contact (getcontact client fromid)))
                (cond (contact
@@ -1839,7 +1839,8 @@
          (precision (hsc precision))
          (assetname (hsc assetname))
          (storage (hsc storage))
-         (percentcnt 0))
+         (percentcnt 0)
+         (one-owner-p nil))
 
     (dolist (asset assets)
       (let* ((ownerid (asset-id asset))
@@ -1854,6 +1855,7 @@
              (fraction (third cell))
              (owner-p (and (equal ownerid (id client))
                            (not (equal assetid tokenid)))))
+        (when owner-p (setf one-owner-p t))
         (push (list* :assetname (highlight-assetname assetid assetname)
                      :scale (hsc scale)
                      :precision (hsc precision)
@@ -1865,7 +1867,6 @@
                      :assetid assetid
                      :balance (hsc balance)
                      :fraction (hsc fraction)
-                     :audit-p (or owner-p (equal (id client) (serverid client)))
                      postcnt-plist)
               asset-items)
         (when owner-p (incf percentcnt))))
@@ -1885,6 +1886,9 @@
                         :storage storage
                         :percentcnt percentcnt
                         :asset-items asset-items
+                        :owner-p one-owner-p
+                        :audit-p (or one-owner-p
+                                     (equal (id client) (serverid client)))
                         postcnt-plist)
                  "assets.tmpl")))
       (princ body (cw-html-output cw)))))

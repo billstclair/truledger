@@ -1,44 +1,116 @@
 <html>
 <head>
-<link rel="stylesheet" type="text/css" href="css/tables.css">
+<link rel="stylesheet" type="text/css" href="../css/tables.css">
 <title>Truledger Downloads</title>
 </head>
 <body>
 <table class="prettytable">
-  <caption><a href="../">Truledger</a> Client Downloads</caption>
+  <caption><a href="http://truledger.com/">Truledger</a> Client Downloads</caption>
   <tr>
     <th>&nbsp;</th>
-    <th>Windows</th>
-    <th>Linux</th>
-    <th>Mac OS X</th>
-    <th>FreeBSD</th>
+    <th>Intel 32-bit (x86)</th>
+    <th>Intel 64-bit (x8664)</th>
+    <th>Raw binary, 32-bit</th>
+    <th>Raw binary, 64-bit</th>
   </tr>
   <tr>
-    <th>Intel 32-bit (x86)</th>
+    <th>Windows</th>
     <td>
       <ol style="margin-left: 1.2em; padding-left: 0; margin-bottom: 0px">
         <li><a href="http://www.microsoft.com/downloads/details.aspx?FamilyID=9b2da534-3e03-4391-8a4d-074b9f2bc1bf&displaylang=en">vcredist</a></li>
         <li><a href="http://www.slproweb.com/download/Win32OpenSSL_Light-1_0_0e.exe">OpenSSL</a></li>
-        <li><a href="truledger-wx86cl.exe.zip">truledger-wx86cl.exe.zip</a></li>
+        <li><a href="truledger-1.1.3-setup32.exe">truledger-1.1.3-setup32.exe</a></li>
     </td>
-    <td><a href="truledger-lx86cl.tar.gz">truledger-lx86cl.tar.gz</a></td>
-    <td>Will build <a href="mailto:bill@billstclair.com?subject=Truledger">on request</a></td>
-    <td>Don't have</td>
-  </tr>
-  <tr>
-    <th>Intel 64-bit (x8664)</th>
     <td>
       <ol style="margin-left: 1.2em; padding-left: 0; margin-bottom: 0px">
         <li><a href="http://www.microsoft.com/downloads/details.aspx?familyid=bd2a6171-e2d6-4230-b809-9a8d7548c1b6">vcredist (x64)</a></li>
         <li><a href="http://www.slproweb.com/download/Win64OpenSSL_Light-1_0_0e.exe">OpenSSL (x64)</a></li>
-        <li><a href="truledger-wx86cl64.exe.zip">truledger-wx86cl64.exe.zip</a></li>
+        <li><a href="truledger-1.1.3-setup64.exe">truledger-1.1.3-setup64.exe</a></li>
     </td>
-    <td><a href="truledger-lx86cl64.tar.gz">truledger-lx86cl64.tar.gz</a></td>
+    <td><a href="truledger-wx86cl.exe.zip">truledger-wx86cl.exe.zip</a></td>
+    <td><a href="truledger-wx86cl64.exe.zip">truledger-wx86cl64.exe.zip</a></td>
+  </tr>
+  <tr>
+    <th>Linux<br/>Debian/Ubuntu</th>
+    <td><a href="truledger_1.1.3_i386.deb">truledger_1.1.3_i386.deb</a></td>
+    <td><a href="truledger_1.1.3_amd64.deb">truledger_1.1.3_amd64.deb</a></td>
+    <td rowspan="2"><a href="truledger-lx86cl.tar.gz">truledger-lx86cl.tar.gz</a></td>
+    <td rowspan="2"><a href="truledger-lx86cl64.tar.gz">truledger-lx86cl64.tar.gz</a></td>
+  </tr>
+  <tr>
+    <th>Linux<br/>RedHat/Fedora</th>
+    <td><a href="truledger-1.1.3-2.i386.rpm">truledger-1.1.3-2.i386.rpm</a></td>
+    <td><a href="truledger-1.1.3-2.x86_64.rpm">truledger-1.1.3-2.x86_64.rpm</a></td>
+  </tr>
+  <tr>
+    <th>Mac OS X</th>
+    <td>Will build <a href="mailto:bill@billstclair.com?subject=Truledger">on request
+</a></td>
+    <td><a href="Truledger-1.1.3.dmg">Truledger-1.1.3.dmg</a></td>
+    <td>Will build on request</td>
     <td><a href="truledger-dx86cl64.tar.gz">truledger-dx86cl64.tar.gz</a></td>
+  </tr>
+  <tr>
+    <th>FreeBSD</th>
+    <td>Don't have</td>
+    <td><a href="truledger-fx86cl64.tar.gz">truledger-fx86cl64.tar.gz</a></td>
+    <td>Don't have</td>
     <td><a href="truledger-fx86cl64.tar.gz">truledger-fx86cl64.tar.gz</a></td>
   </tr>
 </table>
 Downloads are around 10 megabytes.<br/>
-Latest builds: <a href="https://github.com/billstclair/truledger/tree/1.0.4">1.0.4</a>  22-Sep-11 09:49:46AM EDT
+Latest builds: <a href="https://github.com/billstclair/truledger/tree/1.1.3">1.1.3</a> &nbsp;&nbsp;19-Oct-11 10:35AM
+
+<p>The first two columns in the table above are installers (except for
+  the FreeBSD row). The third and fourth columns are compressed raw
+  binaries. If you're running Truledger as a client on your PC, you
+  probably want an installer. If you're running Truledger as a server,
+  you probably want a raw binary.</p>
+
+<p>For Windows, you need to do three installs, vcredist, OpenSSL, and
+  Truledger. Use the installers in the column for your machine's
+  architecture (32-bit or 64-bit).</p>
+
+<p>The files' MD5 hashes are in <a href="md5.txt">md5.txt</a>. They are:</p>
+<pre>
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA1
+
+923171566551b2bcea7f3d9e551971e8 truledger-1.1.3-setup32.exe
+aa6e1d342f87ae9fe3d393513d6871a5 truledger-1.1.3-setup64.exe
+26a6ea8fde9b6971b407a8e38c9bb908 truledger_1.1.3_amd64.deb
+c93660653a444ad28c03ca15500e9224 truledger_1.1.3_i386.deb
+b83cb37b64149d3a604901c040436a8c truledger-1.1.3-2.i386.rpm
+2298eee92a6754ea840f90f8c7771424 truledger-1.1.3-2.x86_64.rpm
+0baadb7d5ca1e51de3193d826c6be498 Truledger-1.1.3.dmg
+a8c95a92cbb4aee899b7d797ec59a812 truledger-wx86cl.exe.zip
+a87e651cb79b72717036f7203be4d8f6 truledger-wx86cl64.exe.zip
+383a527a419974d19c665780227e11cb truledger-dx86cl64.tar.gz
+8c019fa1583e1f83a6d163c1bcf58464 truledger-fx86cl64.tar.gz
+3373000e96cc56ef47db4630d49c2ced truledger-lx86cl.tar.gz
+255b903b882ae12bba747b47236a1bcc truledger-lx86cl64.tar.gz
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1.4.11 (Darwin)
+
+iQIcBAEBAgAGBQJOnuivAAoJENim99wXg5awuzoP/3M3TSVnLGvm1sdYwXYldjfg
+4qjDFRxhEf0e2KOTfD819JwS5CcJRX9XvEWE/wYN5EWZDOtjyr2EOCsEqDb/rM+8
+i4YVNxZoZgeJhfGF5hgf17lTE10xBLVl68onM+B25PPViWOog90IUlcGyEskyPVG
+WICAdNJhqJLxI9jKiK4U7IDyshYWkT8V8w8HJx0POEpzHFfHw74CJ+whHbLS1q/R
+ihQxzkonoz9wD9IGnBzfXLmzHoKjefWub8Z4M9jPsWepAfFVJauzyKDUXaBQue8y
+UruoqsINDZlCGWIXEfZSADj9VpVLdDzezghiy/35UKQry9bVQF1w0j2JTiphXWnq
+sMKkfpNsn1E2+3D6T3ut0gSCMhNkIjSX1LnySv/zNT7wkcWjxmhuzPn5ij/nrcRo
+fZZrrjQxuQFMxmhDBcQPgqACaoPLfCahmqmURYhluMnLc8bytY+mq2xaWxIXM5WB
+5TPFDd0lfLzLRo4sr4d0Lzzr9r4JpyQG+031V/F92U3SMzaDr5iSKYJjE03QAjB2
+gkqq/9ELGBpHSX3Hz4b46jzSTsof8S2QWNfkcDmfw/WyiklmC1JNaMSmlNuoWTn+
+bx9wScu/OfIsdaosHUWl5WJVZcGd15NKAigGs5Bcd3zKlsS/lCHpYSBjgpk9tKGd
+iT4IbG/nWKa13O2z40pz
+=4xfp
+-----END PGP SIGNATURE-----
+</pre>
+
+<p>The PGP public key for the signature above is
+at <a href="https://billstclair.com/pgp.html">billstclair.com/pgp.html</a>.
+
+<p><a href="../">home</a></p>
 </body>
 </html>
