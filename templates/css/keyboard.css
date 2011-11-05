@@ -1,0 +1,96 @@
+#keyboardInputMaster {
+  position:absolute;
+  border:2px groove #dddddd;
+  background-color:#dddddd;
+  padding:3px 5px;
+  text-align:left;
+  z-index:1000000;
+  _width:300px;
+}
+
+#keyboardInputMaster select,
+#keyboardInputMaster label {
+  font:normal 11px Arial,sans-serif;
+}
+#keyboardInputMaster span {
+  position:absolute;
+  top:5px;
+  padding:1px 4px;
+  font:bold 11px Arial,sans-serif;
+  border:1px outset #aaaaaa;
+  background-color:#cccccc;  
+  cursor:pointer;
+}
+#keyboardInputMaster span#keyboardInputClose {
+  right:5px;
+}
+#keyboardInputMaster span#keyboardInputClear {
+  right:25px;
+}
+#keyboardInputMaster span.pressed {
+  border:1px inset #999999;
+  background-color:#bbbbbb;  
+}
+
+#keyboardInputMaster div {
+  margin-top:3px;
+}
+#keyboardInputMaster div div {
+  text-align:left;
+  margin:0px;
+}
+#keyboardInputMaster div div.keyboardInputCenter {
+  text-align:center;
+}
+#keyboardInputMaster div div ul {
+  list-style-type:none;
+  margin:0px;
+  padding:0px;
+  text-align:left;
+  height:20px;
+  white-space:nowrap;
+}
+#keyboardInputMaster div div.keyboardInputCenter ul {
+  text-align:center;
+}
+#keyboardInputMaster div div ul li {
+  display:inline;
+  vertical-align:middle;
+  padding:3px 5px 4px 5px;
+  white-space:pre;
+  font:normal 11px 'Lucida Console',monospace;
+  border-top:1px solid #e5e5e5;
+  border-right:1px solid #5d5d5d;
+  border-bottom:1px solid #5d5d5d;
+  border-left:1px solid #e5e5e5;
+  background-color:#eeeeee;
+  cursor:default;
+  line-height:20px;
+}
+#keyboardInputMaster div div ul li.alive {
+  background-color:#ccccdd;
+}
+#keyboardInputMaster div div ul li.target {
+  background-color:#ddddcc;
+}
+#keyboardInputMaster div div ul li.hover {
+  border-top:1px solid #d5d5d5;
+  border-right:1px solid #555555;
+  border-bottom:1px solid #555555;
+  border-left:1px solid #d5d5d5;
+  background-color:#cccccc;
+}
+#keyboardInputMaster div div ul li.pressed,
+#keyboardInputMaster div div ul li.dead {
+  border-top:1px solid #555555;
+  border-right:1px solid #d5d5d5;
+  border-bottom:1px solid #d5d5d5;
+  border-left:1px solid #555555;
+  background-color:#cccccc;
+}
+
+.keyboardInputInitiator {
+  margin-left:3px;
+  vertical-align:middle;
+  cursor:pointer;
+}
