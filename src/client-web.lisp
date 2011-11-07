@@ -222,6 +222,10 @@
       (when (cw-postcnt cw)
         (setf (postcnt cw) (1+ (cw-postcnt cw)))))))
 
+(defun jskeyboardp (body)
+  (or (search "password" body :test #'string-equal)
+      (search "keyboardInput" body :test #'string=)))
+
 (defun write-template (cw)
   (let* ((title (or (cw-title cw) "A Truledger Web Client"))
          (menu (cw-menu cw))
@@ -233,18 +237,20 @@
                  (when (equal server-version *last-commit*)
                    (setf server-version nil
                          server-time nil))
-                 (expand-template
-                  (list :title title
-                        :onload (cw-onload cw)
-                        :menu menu
-                        :pre-body header
-                        :body (cw-body cw)
-                        :debugstr (get-debug-stream-string)
-                        :client-version *last-commit*
-                        :client-date (datestr *save-application-time*)
-                        :server-version server-version
-                        :server-date (datestr server-time))
-                  "index.tmpl"))))
+                 (let* ((body (cw-body cw)))
+                   (expand-template
+                    (list :title title
+                          :jskeyboardp (jskeyboardp body)
+                          :onload (cw-onload cw)
+                          :menu menu
+                          :pre-body header
+                          :body body
+                          :debugstr (get-debug-stream-string)
+                          :client-version *last-commit*
+                          :client-date (datestr *save-application-time*)
+                          :server-version server-version
+                          :server-date (datestr server-time))
+                    "index.tmpl")))))
     (write-string page (cw-html-output cw))))
 
 (defun make-truledger-header (cw)

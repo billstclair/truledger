@@ -26,10 +26,12 @@
   (catch 'raw-return
     (let* ((db (make-client-db))
            (cw (loom-web-server-internal db))
+           (body (loom-cw-body cw))
            (plist (list :title (loom-cw-title cw)
+                        :jskeyboardp (jskeyboardp body)
                         :menu (loom-cw-menu cw)
                         :onload (loom-cw-onload cw)
-                        :body (loom-cw-body cw)
+                        :body body
                         :client-version *last-commit*
                         :client-date (datestr *save-application-time*))))
       (expand-template plist "index.tmpl"))))
