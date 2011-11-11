@@ -1,4 +1,4 @@
-if [[ -f truledger-dx86cl64 && `uname -m` == 'x86_64' ]]; then
+if [[ -f truledger-dx86cl64 && $HOSTTYPE == 'x86_64' ]]; then
   ./truledger-dx86cl64;
 elif [[ -f truledger-dx86cl32 ]]; then
   ./truledger-dx86cl32;
