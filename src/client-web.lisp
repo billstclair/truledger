@@ -1432,6 +1432,8 @@
          fractionamt fractionscale
          transaction-fee
          storage-fee
+         storage-amounts
+         storagefees
          body)
 
     (when serverid
@@ -1446,6 +1448,9 @@
              (inboxignored (getinboxignored client))
              (assets (storing-error (err "Error getting assets: ~a")
                        (getassets client))))
+        ;; Have to do this after getinbox. That updates the client db's storage fees.
+        (setf storage-amounts (storing-error (err "Error getting storage fees: ~a")
+                                (getstoragefee client)))
         (when inbox
           (setf inbox-p t)
           (dolist (item inbox)
@@ -1631,7 +1636,20 @@
                     fractionscale (hsc (fraction-scale fraction))))))
         (when fee-plist
           (setf transaction-fee (getf fee-plist :transaction-fee)
-                storage-fee (getf fee-plist :storage-fee)))))
+                storage-fee (getf fee-plist :storage-fee))))
+
+      (when storage-amounts
+        (dolist (storagefee storage-amounts)
+          (let* ((formattedamount
+                  (balance-formatted-amount storagefee))
+                 (assetname (balance-assetname storagefee))
+                 (time (balance-time storagefee))
+                 (date (datestr time)))
+            (push (list :amount formattedamount
+                        :assetname assetname
+                        :date date)
+                  storagefees)))
+        (setf storagefees (nreverse storagefees))))
 
     (setf (cw-error cw) err)
     (settitle cw "Balance")
@@ -1667,7 +1685,8 @@
                   :transaction-fee ,transaction-fee
                   :storage-fee ,storage-fee
                   :cancelcount ,cancelcount
-                  :outbox-items ,outbox-items)
+                  :outbox-items ,outbox-items
+                  :storagefees ,storagefees)
                 "balance.tmpl"))
     (princ body (cw-html-output cw))))
 

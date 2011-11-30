@@ -1,3 +1,18 @@
+Attempting to spend to the server doesn't give an error message.
+The server returns an error message, but the client doesn't report it.
+It should be rejected by the client immediately.
+
+Delete history doesn't work any more.
+
+Can't mint a coupon if you specify a nick.
+
+Auto-sync contacts.
+Sync and Auto-sync history.
+
+Detect client/server incompatibilties, or don't create them.
+
+----------------------------------------------------------------------
+
 If there is no home page at /, forward to /client/
 
 Lock protocol for backing up with rsync
