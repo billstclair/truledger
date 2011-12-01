@@ -1428,6 +1428,9 @@
       (validation-error "Transfer from and to the same acct (~s). Nothing to do."
              acct))
 
+    (when (equal toid serverid)
+      (validation-error "Spends to the server are not allowed."))
+
     ;; Must get time before accessing balances since GETTIME may FORCEINIT.
     (setq time (gettime client))
 

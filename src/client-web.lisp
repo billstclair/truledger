@@ -1119,7 +1119,7 @@
                  (setf fees (spend client recipient assetid amount acct note))
                  (setf (cw-fraction-asset cw) assetid))
              (error (c)
-               (setq err (stringify  c))))))
+               (setq err (stringify c))))))
     (values fees err)))
 
 (defun do-canceloutbox (cw)
@@ -1401,7 +1401,7 @@
   (let* ((client (cw-client cw))
          (serverid (serverid client))
          (servers (getservers client))
-         (err nil)
+         (err (cw-error cw))
          (iphone (strstr (or (hunchentoot:header-in* "User-Agent") "") "iPhone"))
          (serveropts (loop for server in servers
                         for bid = (server-info-id server)
@@ -1583,7 +1583,8 @@
               (let* ((namestr (contact-namestr contact))
                      (recipid (contact-id contact))
                      (selected-p (equal recipid recipient)))
-                (unless (equal recipid (id client))
+                (unless (or (equal recipid (id client))
+                            (equal recipid serverid))
                   (push (list :recipid (hsc recipid)
                               :selected-p selected-p
                               :name namestr)
