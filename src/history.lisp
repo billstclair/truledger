@@ -198,7 +198,8 @@
                                           :assetname (highlight-assetname
                                                       assetid (hsc assetname))
                                           :note (hsc note)
-                                          :response (hsc response))
+                                          :response (hsc response)
+                                          :idx idx)
                                     time-items)
                               (setf first nil)))))))
                 (t (push (list :exception-p t
