@@ -10,6 +10,12 @@
 
 (in-package :truledger)
 
+;; This changed to UTF-8 recently.
+;; Causes our binary *coded-files* to get converted.
+;; Fix that sometime.
+(setf hunchentoot:*hunchentoot-default-external-format*
+      hunchentoot::+latin-1+)
+
 (defvar *ports-to-servers*
   (make-hash-table :test 'eql))
 
