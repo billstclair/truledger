@@ -28,6 +28,12 @@
           <td><input type='text' name='name' value='<!-- TMPL_VAR name -->' size='40'/></td>
         </tr>
         <tr>
+          <td><b>Proxy Host:<br/>(Optional):</b></td>
+          <td><input type='text' name='proxy-host' value='<!-- TMPL_VAR proxy-host -->' size='30'/>
+            <b>Port:</b>
+            <input type='text' name='proxy-port' value='<!-- TMPL_VAR proxy-port -->' size='5'/></td>
+        </tr>
+        <tr>
           <td></td>
           <td>
             <input type='checkbox' name='cacheprivkey'<!-- TMPL_IF cache-privkey-p --> checked='checked'<!-- /TMPL_IF -->/>

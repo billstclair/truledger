@@ -176,15 +176,24 @@
 (defstruct server-info
   id
   name
-  url)
+  url
+  proxy-host
+  proxy-port)
 
 (defmethod getserver ((client client) serverid &optional all)
   "Returns a SERVER-INFO instance, or NIL if it doesn't find the SERVERID.
    If ALL is true, return the server even if the current user isn't logged in."
   (and (or all (userreq client serverid))
-       (make-server-info :id serverid
-                         :name (serverprop client $NAME serverid)
-                         :url (serverprop client $URL serverid))))
+       (let* ((proxy-host (serverprop client $HTTP-PROXY-HOST serverid))
+              (proxy-port (serverprop client $HTTP-PROXY-PORT serverid)))
+         (make-server-info :id serverid
+                           :name (serverprop client $NAME serverid)
+                           :url (serverprop client $URL serverid)
+                           :proxy-host proxy-host
+                           :proxy-port (and proxy-host
+                                            (if proxy-port
+                                                (parse-integer proxy-port)
+                                                80))))))
 
 (defmethod getservers ((client client) &optional all)
   "Return all the servers known by the current user,
@@ -313,6 +322,12 @@
                ;; Initialize the server in the database
                (setf (db-get db $SERVER $SERVERID urlhash) serverid
                      (db-get db (serverkey client $URL serverid)) url
+                     (db-get db (serverkey client $HTTP-PROXY-HOST))
+                     (if (listp http-proxy) (car http-proxy) http-proxy)
+                     (db-get db (serverkey client $HTTP-PROXY-PORT))
+                     (cond ((blankp http-proxy) nil)
+                           ((listp http-proxy) (second http-proxy))
+                           (t 80))
                      (db-get db (serverkey client $NAME serverid)) name
                      (db-get db (pubkeykey serverid))
                      (format nil "~a~%" (trim pubkey))))
@@ -355,7 +370,8 @@
                    (oldserver (server client))
                    (ok nil))
                (setf (serverid client) serverid
-                     url (serverprop client $URL serverid))
+                     url (serverprop client $URL serverid)
+                     http-proxy (get-http-proxy-serverprop client serverid))
                (unwind-protect
                     (progn
                       (unless url
@@ -379,7 +395,10 @@
   (let ((host (serverprop client $HTTP-PROXY-HOST serverid))
         (port (serverprop client $HTTP-PROXY-PORT serverid)))
     (unless (blankp host)
-      (setf port (parse-integer port))
+      (setf port
+            (if (blankp port)
+                80
+                (parse-integer port)))
       (if (eql port 80)
           host
           (list host port)))))    

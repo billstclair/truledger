@@ -14,6 +14,13 @@
           <td><input type='text' name='name' size='40' value='<!-- TMPL_VAR name -->'/></td>
         </tr>
         <tr>
+          <td><b>Proxy Host<br/>(optional):</b></td>
+          <td>
+            <input type='text' name='proxy-host' size='30' value='<!-- TMPL_VAR proxy-host -->'/>
+            <b>Port:</b>
+            <input type='text' name='proxy-port' size='5' value='<!-- TMPL_VAR proxy-port -->'/>
+          </td>
+        <tr>
           <td></td>
           <td>
             <input type='submit' name='newserver' value='Add Server'/>
@@ -39,7 +46,10 @@
           <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/>
           <input type='hidden' name='server' value='<!-- TMPL_VAR bid -->'/>
           <td><!-- TMPL_VAR name --></td>
-          <td><a href='<!-- TMPL_VAR url -->'><!-- TMPL_VAR url --></a></td>
+          <td>
+            <a href='<!-- TMPL_VAR url -->'><!-- TMPL_VAR url --></a><!-- TMPL_IF proxy --><br/>
+            Proxy: <!-- TMPL_VAR proxy --><!-- /TMPL_IF -->
+          </td>
           <td><span class='id'><!-- TMPL_VAR bid --></span></td>
           <td><input type='submit' name='selectserver' value='Choose'/></td>
           <td style='text-align: center;'>

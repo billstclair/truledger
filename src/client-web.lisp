@@ -326,12 +326,16 @@
                       4096))
          (coupon (parm "coupon"))
          (name (parm "name"))
+         (proxy-host (parm "proxy-host"))
+         (proxy-port (parm "proxy-port"))
          (cache-privkey-p (if coupon (not (blankp (parm "cacheprivkey"))) t))
          (body (expand-cw-template
                 cw
                 `(,@(postcnt-plist cw)
-                    :coupon ,coupon
-                    :name ,name
+                    :coupon ,(hsc coupon)
+                    :name ,(hsc name)
+                    :proxy-host ,(hsc proxy-host)
+                    :proxy-port ,(hsc proxy-port)
                     :cache-privkey-p ,cache-privkey-p
                     :keysizes ,(loop for size in '(512 1024 2048 3072 4096)
                                   for selected-p = (eql size keysize)
@@ -452,7 +456,13 @@
 (defun get-http-proxy ()
   (bind-parameters (proxy-host proxy-port)
     (unless (blankp proxy-host)
-      (setf proxy-port (parse-integer proxy-port :junk-allowed t))
+      (when (equalp proxy-host "localhost")
+        (setf proxy-host "127.0.0.1"))
+      (setf proxy-port
+            (if (blankp proxy-port)
+                80
+                (or (ignore-errors (parse-integer proxy-port))
+                    (return-from get-http-proxy :error))))
       (if (eq proxy-port 80)
           proxy-host
           (list proxy-host proxy-port)))))
@@ -466,6 +476,11 @@
           (url-p (url-p coupon))
           (http-proxy (get-http-proxy))
           fetched-privkey-p)
+
+      (when (eq http-proxy :error)
+        (setf (cw-error cw) "Non-integer for Proxy Port")
+        (return-from do-login-internal (draw-login cw privkey)))
+
       (when showkey
         (let ((key (ignore-errors (get-privkey client passphrase))))
           (unwind-protect
@@ -589,7 +604,9 @@
     (let* ((client (cw-client cw))
            (err nil)
            (http-proxy (get-http-proxy)))
-      (cond (newserver
+      (cond ((eq http-proxy :error)
+             (setf err "Proxy Port must be an integer"))
+            (newserver
              (setq serverurl (trim serverurl))
              (handler-case
                  (progn (addserver client serverurl :name name
@@ -625,7 +642,8 @@
                        "Communications will no longer be encrypted."))))
       (cond (err
              (setf (cw-error cw) err)
-             (draw-servers cw serverurl name))
+             (draw-servers
+              cw serverurl name (parm "proxy-host") (parm "proxy-port")))
             (t (draw-balance cw))))))
 
 (defun do-contact (cw)
@@ -1801,7 +1819,7 @@
                  "rawbalance.tmpl")))
       (princ body (cw-html-output cw)))))
 
-(defun draw-servers (cw &optional serverurl name)
+(defun draw-servers (cw &optional serverurl name proxy-host proxy-port)
   (let* ((client (cw-client cw))
          (servers (getservers client))
          (postcnt-plist (postcnt-plist cw))
@@ -1810,12 +1828,17 @@
              for bid = (server-info-id server)
              for name = (server-info-name server)
              for url = (server-info-url server)
+             for proxy-host = (server-info-proxy-host server)
+             for proxy-port = (server-info-proxy-port server)
+             for proxy = (and proxy-host
+                              (format nil "~a:~d" proxy-host proxy-port))
              for cached-p = (privkey-cached-p client bid)
              unless (equal (userreq client bid) "-1")
              collect (append postcnt-plist
                              (list :bid bid
                                    :name (hsc (if (blankp name) "unnamed" name))
                                    :url (hsc url)
+                                   :proxy (hsc proxy)
                                    :cached-p cached-p)))))
 
     (setf (cw-onload cw) "document.getElementById(\"serverurl\").focus()")
@@ -1827,6 +1850,8 @@
                  (append postcnt-plist
                           (list :serverurl (hsc serverurl)
                                 :name (hsc name)
+                                :proxy-host (hsc proxy-host)
+                                :proxy-port (hsc proxy-port)
                                 :server-items server-items))
                  "servers.tmpl")))
       (princ body (cw-html-output cw)))))

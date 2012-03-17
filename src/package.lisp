@@ -497,6 +497,8 @@
    #:server-info-id
    #:server-info-name
    #:server-info-url
+   #:server-info-proxy-host
+   #:server-info-proxy-port
    #:getserver
    #:getservers
    #:url-p
