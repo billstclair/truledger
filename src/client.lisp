@@ -243,16 +243,16 @@
       (error "Coupon number malformed: ~a" coupon-number))
     (values url coupon-number)))
 
-(defmethod verify-coupon ((client client) coupon serverid url)
+(defmethod verify-coupon ((client client) coupon serverid url &key http-proxy)
   "Verify that a message is a valid coupon.
    Check that it is actually signed by the server that it
    claims to be from.
    Ask the server whether a coupon of that number exists."
   (let ((parser (parser client))
         (coupon-number (nth-value 1 (parse-coupon coupon))))
-    (verify-server client url serverid)
+    (verify-server client url serverid http-proxy)
     (let* ((msg (strcat "(0," $SERVERID ",0," coupon-number "):0"))
-           (server (make-server-proxy client url))
+           (server (make-server-proxy client url :http-proxy http-proxy))
            (msg (process server msg))
            (reqs (parse parser msg)))
       (match-serverreq client (car reqs) $REGISTER serverid)
@@ -264,10 +264,10 @@
 ;;   1) serverid
 ;;   2) server pubkey
 ;;   3) server name
-(defmethod serverid-for-url ((client client) url &optional serverid)
+(defmethod serverid-for-url ((client client) url &key serverid http-proxy)
   (let* ((parser (parser client))
          (msg (strcat "(0," $SERVERID ",0):0"));
-         (server (make-server-proxy client url))
+         (server (make-server-proxy client url :http-proxy http-proxy))
          (msg (process server msg))
          (save-serverid (prog1 (serverid client)
                         (setf (serverid client) serverid)))
@@ -287,7 +287,7 @@
       (error "verifyserver: Server's id doesn't match its public key"))
     (values serverid pubkey name)))
 
-(defmethod verify-server ((client client) url &optional id)
+(defmethod verify-server ((client client) url &optional id http-proxy)
   "Verify that a server matches its URL.
    Add the server to our database if it's not there already.
    Error if ID is non-null and doesn't match serverid at URL.
@@ -303,7 +303,8 @@
              (error "verifyserver: id <> serverid"))
            (unless id (setq id serverid)))
           (t
-           (multiple-value-bind (serverid pubkey name) (serverid-for-url client url)
+           (multiple-value-bind (serverid pubkey name)
+               (serverid-for-url client url :http-proxy http-proxy)
              (if (not id)
                  (setq id serverid)
                  (unless (equal serverid id)
@@ -317,7 +318,7 @@
                      (format nil "~a~%" (trim pubkey))))
              serverid)))))
 
-(defmethod addserver ((client client) url &optional name couponok)
+(defmethod addserver ((client client) url &key name couponok http-proxy)
   "Add a server with the given URL to the database.
    URL can be a coupon to redeem that with registration.
    No error, but does nothing, if the server is already there.
@@ -334,11 +335,12 @@
     (require-current-user client)
     (cond ((url-p url)
            (setq realurl url
-                 serverid (verify-server client url)))
+                 serverid (verify-server client url nil http-proxy)))
           (t (multiple-value-setq (realurl coupon) (parse-coupon url))
-             (setq serverid (verify-server client realurl))
+             (setq serverid (verify-server client realurl nil http-proxy))
              (unless couponok
-               (verify-coupon client url serverid realurl))))
+               (verify-coupon client url serverid realurl
+                              :http-proxy http-proxy))))
     (let ((already-registered-p t))
       (handler-case (setserver client serverid nil)
         (error ()
@@ -358,8 +360,14 @@
                     (progn
                       (unless url
                         (error "URL not stored for verified server: ~s" serverid))
-                      (setf (server client) (make-server-proxy client url))
-                      (register client name coupon serverid)
+                      (setf (server client)
+                            (make-server-proxy client url
+                                               :http-proxy http-proxy))
+                      (register client
+                                :name name
+                                :coupons coupon
+                                :serverid serverid
+                                :http-proxy http-proxy)
                       (forceinit client)
                       (setq ok t))
                  (unless ok
@@ -367,17 +375,27 @@
                          (serverid client) oldserverid
                          (server client) oldserver)))))))))
 
+(defun get-http-proxy-serverprop (client serverid)
+  (let ((host (serverprop client $HTTP-PROXY-HOST serverid))
+        (port (serverprop client $HTTP-PROXY-PORT serverid)))
+    (unless (blankp host)
+      (setf port (parse-integer port))
+      (if (eql port 80)
+          host
+          (list host port)))))    
+
 (defmethod setserver ((client client) serverid &optional (check-p t))
   "Set the server to the given id.
    Sets the client instance to use this server until addserver() or setserver()
    is called to change it, by setting $this->serverid and $this->server"
   (let ((url (or (serverprop client $URL serverid)
-                 (error "Server not known: ~s" serverid))))
+                 (error "Server not known: ~s" serverid)))
+        (http-proxy (get-http-proxy-serverprop client serverid)))
     (require-current-user client)
     (unless (userserverprop client $REQ serverid)
       (error "User not registered at server"))
     (setf (serverid client) serverid
-          (server client) (make-server-proxy client url))
+          (server client) (make-server-proxy client url :http-proxy http-proxy))
 
     (when check-p
       (let* ((msg (sendmsg client $SERVERID (pubkey client)))
@@ -410,7 +428,7 @@
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defmethod register ((client client) &optional name coupons serverid)
+(defmethod register ((client client) &key name coupons serverid http-proxy)
   "Register at the current server.
    No error if already registered
    If not registered, and COUPONS is a string or array of strings,
@@ -425,7 +443,8 @@
           (t 
            (let ((url (or (serverprop client $URL)
                           (error "In register: Unknown serverid"))))
-             (setq server (make-server-proxy client url)))))
+             (setq server (make-server-proxy client url
+                                             :http-proxy http-proxy)))))
 
     (require-current-server client "In register(): Server not set")
 
@@ -519,9 +538,12 @@
       (unwind-protect (doit passphrase)
         (destroy-password passphrase)))))
 
-(defmethod fetch-privkey ((client client) serverurl passphrase)
+(defmethod fetch-privkey ((client client) serverurl passphrase &key http-proxy)
   (let ((key (passphrase-hash passphrase $PRIVKEY-CACHE-SALT)))
-    (readdata client key :anonymous-p t :serverurl serverurl)))
+    (readdata client key
+              :anonymous-p t
+              :serverurl serverurl
+              :http-proxy http-proxy)))
 
 (defstruct contact
   id
@@ -1840,6 +1862,17 @@
     (require-current-server client "In removehistoryitem(): Server not set")
     (setf (db-get db (userhistorykey client) time) nil)))
 
+(defun history-key (client timestamp)
+  (sha1 (strcat "history" (id client) timestamp)))
+
+(defmethod %get-saved-history ((client client) id)
+  (ignore-errors
+    (readdata client (history-key client id))))
+
+(defmethod (setf %get-saved-history) (value client id)
+  (writedata client (history-key client id) (or value ""))
+  value)
+
 (defmethod getcoupon ((client client))
   "Return the last coupon resulting from a spend.
    Clear the coupon store, so you can only get the coupon once."
@@ -2563,14 +2596,14 @@
           (values (getarg $VERSION args) (getarg $TIME args)))))))
 
 (defmethod readdata ((client client) key &key
-                     anonymous-p size-p serverurl)
+                     anonymous-p size-p serverurl http-proxy)
   (unless anonymous-p
     (require-current-server client "In readdata(): Server not set"))
   (let* ((serverid (or (and anonymous-p
                           serverurl
-                          (verify-server client serverurl))
-                     (serverid client)
-                     (error "Can't determine serverid")))
+                          (verify-server client serverurl nil http-proxy))
+                       (serverid client)
+                       (error "Can't determine serverid")))
          (size-arg (and size-p (list "Y")))
          (msg (if anonymous-p
                   (strcat
@@ -2628,7 +2661,7 @@
                (acctbals (make-equal-hash $MAIN (make-equal-hash tokenid newbal)))
                (balhashmsg (balancehashmsg client time acctbals))
                (servermsg (process (server client)
-                                 (strcat msg "." balmsg "." balhashmsg)))
+                                   (strcat msg "." balmsg "." balhashmsg)))
                (reqs (parse (parser client) servermsg t))
                (args (match-serverreq client (car reqs) $ATWRITEDATA)))
           (unless (and (equal (getarg $ID args) (id client))
@@ -2930,7 +2963,7 @@
   (backup* client keys&values))
 
 (defmethod backup* ((client client) keys&values)
-  (require-current-server client "In writedata(): Server not set")
+  (require-current-server client "In backup*(): Server not set")
   (unless (evenp (length keys&values))
     (error "odd length keys&values list"))
   (let* ((req (getreq client))
@@ -3700,13 +3733,21 @@
 ;;; Connection to the server
 ;;;
 
-(defmethod make-server-proxy ((client client) url)
-  (make-instance 'serverproxy :url url :client client))
+(defmethod make-server-proxy ((client client) url &key http-proxy)
+  (make-instance 'serverproxy
+                 :url url
+                 :client client
+                 :http-proxy http-proxy))
 
 (defclass serverproxy ()
   ((url :type string
         :initarg :url
         :accessor url)
+   (http-proxy :type (or string list)
+               :initarg :http-proxy
+               :accessor http-proxy
+               :initform nil
+               :documentation "hostname, ip number, or (host port)")
    (client :type client
            :initarg :client
            :accessor client)
@@ -3723,7 +3764,8 @@
 (defparameter *max-redirect-count* 5)
 
 (defmethod post ((proxy serverproxy) url &optional parameters)
-  (let* ((stream (post-stream proxy)))
+  (let* ((stream (post-stream proxy))
+         (http-proxy (http-proxy proxy)))
     (multiple-value-bind (res status headers uri stream)
         (block nil
           (handler-bind ((error (lambda (c)
@@ -3738,6 +3780,7 @@
                                              :parameters parameters
                                              :form-data t
                                              :redirect *max-redirect-count*
+                                             :proxy http-proxy
                                              :close nil
                                              :keep-alive t))))))
             (drakma:http-request
@@ -3747,6 +3790,7 @@
              :form-data t
              :redirect *max-redirect-count*
              :stream stream
+             :proxy http-proxy
              :close nil
              :keep-alive t)))
       (declare (ignore uri))

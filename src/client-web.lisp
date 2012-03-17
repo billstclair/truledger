@@ -449,6 +449,14 @@
       (destroy-password passphrase)
       (destroy-password passphrase2))))
 
+(defun get-http-proxy ()
+  (bind-parameters (proxy-host proxy-port)
+    (unless (blankp proxy-host)
+      (setf proxy-port (parse-integer proxy-port :junk-allowed t))
+      (if (eq proxy-port 80)
+          proxy-host
+          (list proxy-host proxy-port)))))
+
 (defun do-login-internal (cw passphrase passphrase2)
   (bind-parameters (coupon name cacheprivkey keysize login newacct showkey privkey)
     (when coupon
@@ -456,6 +464,7 @@
     (let ((client (cw-client cw))
           (err nil)
           (url-p (url-p coupon))
+          (http-proxy (get-http-proxy))
           fetched-privkey-p)
       (when showkey
         (let ((key (ignore-errors (get-privkey client passphrase))))
@@ -499,15 +508,17 @@
         (unless (blankp coupon)
           (handler-case
               (let ((url (parse-coupon coupon)))
-                (handler-case (verify-coupon client coupon nil url)
+                (handler-case (verify-coupon client coupon nil url
+                                             :http-proxy http-proxy)
                   (error (c) (setq err (stringify c)))))
             (error ()
               (handler-case
                   ;; Ensure that coupon is a URL for a proper server
-                  (progn (verify-server client coupon)
+                  (progn (verify-server client coupon nil http-proxy)
                          (when (blankp passphrase2)
                            (setq privkey
-                                 (fetch-privkey client coupon passphrase)
+                                 (fetch-privkey client coupon passphrase
+                                                :http-proxy http-proxy)
                                  fetched-privkey-p t)))
                 (error (c)
                   (setq err (stringify c "Invalid coupon: ~a")))))))
@@ -548,7 +559,8 @@
               (when newacct
                 (unless (blankp coupon)
                   (ignore-errors
-                    (addserver client coupon name t)
+                    (addserver client coupon :name name :couponok t
+                               :http-proxy http-proxy)
                     (cond (fetched-privkey-p
                            (setf (privkey-cached-p client) t))
                           (cacheprivkey
@@ -575,11 +587,13 @@
                               encrypt unencrypt
                               serverurl name server)
     (let* ((client (cw-client cw))
-           (err nil))
+           (err nil)
+           (http-proxy (get-http-proxy)))
       (cond (newserver
              (setq serverurl (trim serverurl))
              (handler-case
-                 (progn (addserver client serverurl name)
+                 (progn (addserver client serverurl :name name
+                                   :http-proxy http-proxy)
                         (setf (user-preference client "serverid") (serverid client)))
                (error (c) (setq err (stringify c)))))
             (selectserver
@@ -868,6 +882,7 @@
                              togglebackup togglebackupmode)
     (let ((client (cw-client cw))
           (server (get-running-server))
+          (http-proxy (get-http-proxy))
           (err nil))
       (cond (killclient
              ;; Bye-bye birdy
@@ -950,7 +965,8 @@
                                    (stringify
                                     c "Can't create server account in client")))))
                        (handler-case
-                           (addserver client serverurl servername)
+                           (addserver client serverurl :name servername
+                                      :http-proxy http-proxy)
                          (error (c)
                            (setq err (stringify
                                       c "Can't add server to client: ~a")))))
@@ -964,7 +980,8 @@
                          (handler-case
                              (progn
                                (login client adminpass)
-                               (addserver client serverurl admin-name)
+                               (addserver client serverurl :name admin-name
+                                          :http-proxy http-proxy)
                                (addcontact client serverid servername "The server"))
                            (error (c)
                              (setq err (stringify

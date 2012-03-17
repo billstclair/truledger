@@ -137,10 +137,11 @@
             (db-get (wrapped-db db) $BACKUP $READINDEX) (stringify (read-index db))
             (last-read-key db) nil))))
 
-(defun make-backup-client (server remote-url)
+(defun make-backup-client (server remote-url &key http-proxy)
   (let* ((client (truledger-client:make-client (client-db-dir)))
          (serverid (serverid server))
-         (remote-serverid (truledger-client:serverid-for-url client remote-url)))
+         (remote-serverid (truledger-client:serverid-for-url
+                           client remote-url :http-proxy http-proxy)))
     (unless (equal serverid remote-serverid)
       (error "Remote server not for same serverid as local server"))
     (setf (id client) serverid

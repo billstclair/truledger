@@ -142,6 +142,8 @@
 (defconstant $SERVER "server")
 (defconstant $SERVERS "servers")
 (defconstant $URL "url")
+(defconstant $HTTP-PROXY-HOST "httpproxyhost")
+(defconstant $HTTP-PROXY-PORT "httpproxyport")
 (defconstant $NICKNAME "nickname")
 (defconstant $CONTACT "contact")
 (defconstant $SESSION "session")

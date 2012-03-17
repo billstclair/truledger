@@ -29,7 +29,7 @@
            (first-id-p t))
       (with-output-to-string (s)
         (princ "[" s)
-        (dolist (id ids)
+        (dolist (id (if (listp ids) ids (list ids)))
           (let* ((pubkey (or (fsdb:db-get pubkeydb id)
                              (error "No public key for id: ~s" id)))
                  (key (pubkey-encrypt password-string pubkey)))

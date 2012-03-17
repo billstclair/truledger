@@ -134,6 +134,8 @@
    #:$SERVER
    #:$SERVERS
    #:$URL
+   #:$HTTP-PROXY-HOST
+   #:$HTTP-PROXY-PORT
    #:$NICKNAME
    #:$CONTACT
    #:$SESSION

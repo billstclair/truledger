@@ -1,9 +1,25 @@
+Should it work to change the server URL in a coupon?
+
+Add HTTP proxy to server settings in client.
+Add SOCKS proxy if I can figure out how.
+
+======================================================================
+Client commands for merchant pages, so you can have a "Pay" or "Buy"
+button. Would specify the payee, amount, asset, comment. Needs to be
+carried through login. Could direct to localhost or a particular
+server that has a server-based client UI.
+
 Can't mint a coupon if you specify a nick.
 
 Auto-sync contacts.
 Sync and Auto-sync history.
 
 Detect client/server incompatibilties, or don't create them.
+
+----------------------------------------------------------------------
+
+Grok http://www.erights.org/smart-contracts/
+Does E make sense as a scripting language for Truledger?
 
 ----------------------------------------------------------------------
 
