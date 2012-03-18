@@ -118,6 +118,25 @@
             (privkey client) privkey
             (pubkey client) pubkey))))
 
+(defmethod remove-user ((client client) id passphrase)
+  "Remove all traces of a user from the client db."
+  (when (equal (id client) id)
+    (logout client))
+  (let* ((db (db client))
+         (hash (passphrase-hash passphrase))
+         (privkey-str (db-get db $PRIVKEY hash))
+         (privkey (decode-rsa-private-key privkey-str passphrase)))
+    (unwind-protect
+         (let ((pubkey (encode-rsa-public-key privkey)))
+           (unless (equal id (pubkey-id pubkey))
+             (error "ID doesn't correspond to passphrase key."))
+           (setf (db-get db $PRIVKEY hash) nil
+                 (db-get db (pubkeykey id)) nil)
+           (ignore-errors
+             (recursive-delete-directory
+              (fsdb:db-filename db (append-db-keys $ACCOUNT id)))))
+      (rsa-free privkey))))
+
 (defmethod get-privkey ((client client) passphrase)
   (let ((db (db client))
         (hash (passphrase-hash passphrase)))
@@ -287,7 +306,7 @@
          (pubkey (getarg $PUBKEY args))
          (name (getarg $NAME args)))
     (when (equal $FAILED request)
-      (error "Failed to register at server: ~s"
+      (error "Failed get serverid from server: ~s"
              (or (getarg $ERRMSG args) msg)))
     (unless (and (equal $REGISTER request)
                  (equal serverid (getarg $SERVERID args)))

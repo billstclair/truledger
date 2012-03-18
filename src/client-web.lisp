@@ -296,7 +296,7 @@
 (defun expand-cw-template (cw plist template)
   (expand-template
    `(:errmsg ,(hsc (cw-error cw))
-     ,@plist)
+             ,@plist)
    template))
 
 (defun draw-login (cw &optional key)
@@ -385,18 +385,20 @@
            (loop
               for (cmd . text) in menuitems
               do
-              (when (or (not (equal cmd "admins"))
-                        (is-local-server-server-p cw))
-                (push (list :url ""
-                            :cmd cmd
-                            :highlight (equal highlight cmd)
-                            :name text)
-                      items))))
-          ((and client (id client) (not (server-db-exists-p)))
-           (push (list :cmd "admins" :name "Admin") items)
-           (when (and client (id client))
-             (push (list :cmd "logout" :name "Logout") items)))
+                (when (or (not (equal cmd "admins"))
+                          (is-local-server-server-p cw))
+                  (push (list :url ""
+                              :cmd cmd
+                              :highlight (equal highlight cmd)
+                              :name text)
+                        items))))
           ((and client (id client))
+           (push (list :cmd "servers" :name "Servers") items)
+           (unless (and (server-db-exists-p)
+                        (let ((server (port-server (get-current-port))))
+                          (or (null server)
+                              (not (equal (id client) (serverid server))))))
+             (push (list :cmd "admins" :name "Admin") items))
            (push (list :cmd "logout" :name "Logout") items)))
     (setf (cw-menu cw)
           (expand-template (list :title "Truledger"
@@ -419,7 +421,7 @@
            (serverid-reqs
             (ignore-errors (parse (parser client) (db-get db $SERVERID))))
            (serverid (and (eql 1 (length serverid-reqs))
-                        (gethash 0 (car serverid-reqs)))))
+                          (gethash 0 (car serverid-reqs)))))
       (when (and serverid (equal serverid (id client)))
         (handler-case
             (let* ((server (make-server (server-db-dir) passphrase))
@@ -455,14 +457,14 @@
 
 (defun get-http-proxy ()
   (bind-parameters (proxy-host proxy-port)
+    (setf proxy-port
+          (if (blankp proxy-port)
+              80
+              (or (ignore-errors (parse-integer proxy-port))
+                  (return-from get-http-proxy :error))))
     (unless (blankp proxy-host)
       (when (equalp proxy-host "localhost")
         (setf proxy-host "127.0.0.1"))
-      (setf proxy-port
-            (if (blankp proxy-port)
-                80
-                (or (ignore-errors (parse-integer proxy-port))
-                    (return-from get-http-proxy :error))))
       (if (eq proxy-port 80)
           proxy-host
           (list proxy-host proxy-port)))))
@@ -478,7 +480,7 @@
           fetched-privkey-p)
 
       (when (eq http-proxy :error)
-        (setf (cw-error cw) "Non-integer for Proxy Port")
+        (setf (cw-error cw) "Proxy Port must be blank or an integer")
         (return-from do-login-internal (draw-login cw privkey)))
 
       (when showkey
@@ -605,7 +607,7 @@
            (err nil)
            (http-proxy (get-http-proxy)))
       (cond ((eq http-proxy :error)
-             (setf err "Proxy Port must be an integer"))
+             (setf err "Proxy Port must be blank or an integer"))
             (newserver
              (setq serverurl (trim serverurl))
              (handler-case
@@ -895,9 +897,10 @@
 
 (defun do-admin-internal 
     (cw passphrase verification adminpass adminverify)
-  (bind-parameters (servername serverurl backup-url notification-email
-                             killclient killserver
-                             togglebackup togglebackupmode)
+  (bind-parameters (servername serverurl proxy-host proxy-port
+                               backup-url notification-email
+                               killclient killserver
+                               togglebackup togglebackupmode)
     (let ((client (cw-client cw))
           (server (get-running-server))
           (http-proxy (get-http-proxy))
@@ -926,6 +929,8 @@
             ((or (blankp serverurl)
                  (not (url-p serverurl)))
              (setq err "Server URL must be a web address"))
+            ((eq http-proxy :error)
+             (setq err "Proxy Port must be blank or an integer"))
             ((or (blankp passphrase)
                  (not (equal passphrase verification)))
              (setq err "Passphrase didn't match verification"))
@@ -946,22 +951,54 @@
                                (error (c)
                                  (setq err (stringify
                                             c "Error initializing server: ~a"))
-                                 nil))))
+                                 nil)))
+                     (port (acceptor-port hunchentoot:*acceptor*)))
                  (when server
                    ;; Enable server web hosting
-                   (setf (port-server (acceptor-port hunchentoot:*acceptor*))
+                   (setf (port-server port)
                          server)
                    (let ((serverid (serverid server))
                          (admin-name (stringify servername "~a Admin"))
                          (admin-id nil)
                          (admin-exists-p nil))
+                     (let ((privkey-str
+                            (encode-rsa-private-key
+                             (privkey server) passphrase)))
+                       (handler-case
+                           (newuser client
+                                    :passphrase passphrase
+                                    :privkey (decode-rsa-private-key
+                                              privkey-str passphrase))
+                         (error (c)
+                           (setq err
+                                 (stringify
+                                  c "Can't create server account in client")))))
+                     ;; Make sure we can communicate to server
+                     (unless err
+                       (handler-case
+                           (truledger-client:serverid-for-url
+                            client serverurl
+                            :serverid serverid
+                            :http-proxy http-proxy)
+                         (error ()
+                           (setq err "Can't contact server at Server URL. Try again.")
+                           (setf (port-server port) nil)
+                           (recursive-delete-directory
+                            (fsdb:db-filename (db server) nil))
+                           (logout client)
+                           (progn ;;ignore-errors
+                             (remove-user client serverid passphrase)
+                             (let ((session (login-new-session client adminpass)))
+                               (set-cookie "session" session)
+                               (init-post-salt-and-msg cw session))))))
                      ;; Login as admin on client, creating account if necessary
-                     (handler-case (login client adminpass)
-                       (error ()
-                         (handler-case
-                             (newuser client :passphrase adminpass)
-                           (error ()
-                             (setq err "Can't create admin account")))))
+                     (unless err
+                       (handler-case (login client adminpass)
+                         (error ()
+                           (handler-case
+                               (newuser client :passphrase adminpass)
+                             (error ()
+                               (setq err "Can't create admin account"))))))
                      (unless err
                        (setq admin-id (id client))
                        (ignore-errors
@@ -970,21 +1007,11 @@
                          (setserver client serverid)
                          (setq admin-exists-p t)))
                      (unless err
-                       (let ((privkey-str
-                              (encode-rsa-private-key
-                               (privkey server) passphrase)))
-                         (handler-case
-                             (newuser client
-                                      :passphrase passphrase
-                                      :privkey (decode-rsa-private-key
-                                                privkey-str passphrase))
-                           (error (c)
-                             (setq err
-                                   (stringify
-                                    c "Can't create server account in client")))))
                        (handler-case
-                           (addserver client serverurl :name servername
-                                      :http-proxy http-proxy)
+                           (progn
+                             (login client passphrase)
+                             (addserver client serverurl :name servername
+                                        :http-proxy http-proxy))
                          (error (c)
                            (setq err (stringify
                                       c "Can't add server to client: ~a")))))
@@ -1022,7 +1049,7 @@
                              err "Server started!")))))))
 
       (setf (cw-error cw) err)
-      (draw-admin cw servername serverurl))))
+      (draw-admin cw servername serverurl proxy-host proxy-port))))
 
 (defun toggle-backup (cw server backup-url &optional notification-email)
   (declare (ignore cw))
@@ -2145,7 +2172,7 @@
                  "permissions.tmpl")))
       (princ body (cw-html-output cw)))))
 
-(defun draw-admin (cw &optional servername serverurl)
+(defun draw-admin (cw &optional servername serverurl proxy-host proxy-port)
   (let* ((disable-p (server-db-exists-p))
          (server (get-running-server))
          (port (get-current-port))
@@ -2181,6 +2208,8 @@
                         :hide-server-info-p hide-server-info-p
                         :servername (hsc servername)
                         :serverurl (hsc serverurl)
+                        :proxy-host (hsc proxy-host)
+                        :proxy-port (hsc proxy-port)
                         :backup-p backup-p
                         :backup-failing-p backup-failing-p
                         :backup-enabled-p backup-enabled-p

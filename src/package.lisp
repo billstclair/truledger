@@ -484,6 +484,7 @@
    #:server-times
    #:showprocess
    #:newuser
+   #:remove-user
    #:get-privkey
    #:login
    #:login-with-sessionid

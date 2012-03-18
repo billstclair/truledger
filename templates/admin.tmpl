@@ -98,6 +98,14 @@
           </td>
         </tr>
         <tr>
+          <td><b>Proxy Host<br/>(optional):</b></td>
+          <td>
+            <input type='text' name='proxy-host' size='30' value='<!-- TMPL_VAR proxy-host -->'<!-- TMPL_IF disable-p --> disabled='disabled'<!-- /TMPL_IF -->/>
+            <b>Port:</b>
+            <input type='text' name='proxy-port' size='5' value='<!-- TMPL_VAR proxy-port -->'<!-- TMPL_IF disable-p --> disabled='disabled'<!-- /TMPL_IF -->>
+          </td>
+        </tr>
+        <tr>
           <td></td>
           <td>
             <input type='submit' name='create' value='Start Server'/>
