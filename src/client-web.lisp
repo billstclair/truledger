@@ -299,10 +299,10 @@
              ,@plist)
    template))
 
-(defun draw-login (cw &optional key)
+(defun draw-login (cw &optional key proxy-host proxy-port)
   (let ((page (parm "page")))
     (when (equal page "register")
-      (return-from draw-login (draw-register cw key))))
+      (return-from draw-login (draw-register cw key proxy-host proxy-port))))
 
   (setf (cw-onload cw) "document.getElementById(\"passphrase\").focus()")
   (setmenu cw nil)
@@ -314,7 +314,7 @@
                "login.tmpl")))
     (princ body (cw-html-output cw))))
 
-(defun draw-register (cw &optional key)
+(defun draw-register (cw &optional key proxy-host proxy-port)
   (settitle cw "Register")
   (setmenu cw nil)
   (setf (cw-onload cw) "document.getElementById(\"passphrase\").focus()")
@@ -326,8 +326,8 @@
                       4096))
          (coupon (parm "coupon"))
          (name (parm "name"))
-         (proxy-host (parm "proxy-host"))
-         (proxy-port (parm "proxy-port"))
+         (proxy-host (or proxy-host (parm "proxy-host")))
+         (proxy-port (or proxy-port (parm "proxy-port")))
          (cache-privkey-p (if coupon (not (blankp (parm "cacheprivkey"))) t))
          (body (expand-cw-template
                 cw
@@ -455,8 +455,24 @@
       (destroy-password passphrase)
       (destroy-password passphrase2))))
 
-(defun get-http-proxy ()
+(defun url-tld (url)
+  (let ((uri (and url (ignore-errors (puri:parse-uri url)))))
+    (when uri
+      (let* ((host (puri:uri-host uri))
+             (dotpos (and host (position #\. host :from-end t))))
+        (and dotpos (subseq host (1+ dotpos)))))))
+
+;; Default to localhost:4444 for .i2p and localhost:8118 for .onion
+(defun get-http-proxy (&optional url)
   (bind-parameters (proxy-host proxy-port)
+    (let ((tld (url-tld url)))
+      (when (and tld (blankp proxy-host))
+        (when (member tld '("i2p" "onion") :test #'string-equal)
+          (setf proxy-host "localhost"
+                proxy-port
+                (if (blankp proxy-port)
+                    (if (string-equal tld "i2p") "4444" "8118")
+                    proxy-port)))))
     (setf proxy-port
           (if (blankp proxy-port)
               80
@@ -465,23 +481,18 @@
     (unless (blankp proxy-host)
       (when (equalp proxy-host "localhost")
         (setf proxy-host "127.0.0.1"))
-      (if (eq proxy-port 80)
-          proxy-host
-          (list proxy-host proxy-port)))))
+      (list proxy-host proxy-port))))
 
 (defun do-login-internal (cw passphrase passphrase2)
-  (bind-parameters (coupon name cacheprivkey keysize login newacct showkey privkey)
+  (bind-parameters (coupon name cacheprivkey keysize login newacct showkey privkey
+                           proxy-host proxy-port)
     (when coupon
       (setf coupon (trim coupon)))
     (let ((client (cw-client cw))
           (err nil)
           (url-p (url-p coupon))
-          (http-proxy (get-http-proxy))
+          (http-proxy nil)
           fetched-privkey-p)
-
-      (when (eq http-proxy :error)
-        (setf (cw-error cw) "Proxy Port must be blank or an integer")
-        (return-from do-login-internal (draw-login cw privkey)))
 
       (when showkey
         (let ((key (ignore-errors (get-privkey client passphrase))))
@@ -499,7 +510,8 @@
                      (t (setf (cw-error cw) "No key for passphrase")))
             (when key
               (rsa-free key))))
-        (return-from do-login-internal (draw-login cw privkey)))
+        (return-from do-login-internal
+          (draw-login cw privkey proxy-host proxy-port)))
 
       (when newacct
         (setq login nil)
@@ -520,25 +532,41 @@
 
         (when err
           (setf (cw-error cw) err)
-          (return-from do-login-internal (draw-login cw)))
+          (return-from do-login-internal
+            (draw-login cw privkey proxy-host proxy-port)))
 
-        (unless (blankp coupon)
-          (handler-case
-              (let ((url (parse-coupon coupon)))
-                (handler-case (verify-coupon client coupon nil url
+        (flet ((get-proxy (url)
+                 (setf http-proxy (get-http-proxy url))
+                 (when (eq http-proxy :error)
+                   (setf (cw-error cw) "Proxy Port must be blank or an integer")
+                   (return-from do-login-internal
+                     (draw-login cw (parm "privkey") proxy-host proxy-port)))
+                 (when http-proxy
+                   (setf proxy-host (first http-proxy)
+                         proxy-port (princ-to-string (second http-proxy))))))
+          (unless (blankp coupon)
+            (handler-case
+                (let ((url (parse-coupon coupon)))
+                  (get-proxy url)
+                  (handler-case (verify-coupon client coupon nil url
+                                               :http-proxy http-proxy)
+                    (error (c) (setq err (stringify c)))))
+              (error ()
+                (handler-case
+                    ;; Ensure that coupon is a URL for a proper server
+                    (progn
+                      (get-proxy coupon)
+                      (verify-server client coupon nil http-proxy)
+                      (when (blankp passphrase2)
+                        (setq privkey
+                              (fetch-privkey client coupon passphrase
                                              :http-proxy http-proxy)
-                  (error (c) (setq err (stringify c)))))
-            (error ()
-              (handler-case
-                  ;; Ensure that coupon is a URL for a proper server
-                  (progn (verify-server client coupon nil http-proxy)
-                         (when (blankp passphrase2)
-                           (setq privkey
-                                 (fetch-privkey client coupon passphrase
-                                                :http-proxy http-proxy)
-                                 fetched-privkey-p t)))
-                (error (c)
-                  (setq err (stringify c "Invalid coupon: ~a")))))))
+                              fetched-privkey-p t)))
+                  (error ()
+                    (setq err
+                          (if (blankp passphrase2)
+                              "Failed to fetch saved private key"
+                              "Invalid coupon"))))))))
 
         (unless err
           (let ((allocated-privkey-p nil))
@@ -595,7 +623,7 @@
             (setq err (stringify c "Login error: ~a")))))
 
       (setf (cw-error cw) err)
-      (draw-login cw (parm "privkey")))))
+      (draw-login cw (parm "privkey") proxy-host proxy-port))))
 
 (defun do-server (cw)
   "Here to change servers or add a new server"
@@ -603,13 +631,15 @@
                               cacheprivkey uncacheprivkey
                               encrypt unencrypt
                               serverurl name server)
+    (setq serverurl (trim serverurl))
     (let* ((client (cw-client cw))
            (err nil)
-           (http-proxy (get-http-proxy)))
+           (http-proxy (get-http-proxy
+                        (or (ignore-errors (parse-coupon serverurl))
+                            serverurl))))
       (cond ((eq http-proxy :error)
              (setf err "Proxy Port must be blank or an integer"))
             (newserver
-             (setq serverurl (trim serverurl))
              (handler-case
                  (progn (addserver client serverurl :name name
                                    :http-proxy http-proxy)
@@ -644,8 +674,11 @@
                        "Communications will no longer be encrypted."))))
       (cond (err
              (setf (cw-error cw) err)
-             (draw-servers
-              cw serverurl name (parm "proxy-host") (parm "proxy-port")))
+             (let ((proxy-host (and (consp http-proxy) (car http-proxy)))
+                   (proxy-port (and (consp http-proxy)
+                                    (princ-to-string (second http-proxy)))))
+               (draw-servers
+                cw serverurl name proxy-host proxy-port)))
             (t (draw-balance cw))))))
 
 (defun do-contact (cw)
@@ -903,8 +936,11 @@
                                togglebackup togglebackupmode)
     (let ((client (cw-client cw))
           (server (get-running-server))
-          (http-proxy (get-http-proxy))
+          (http-proxy (get-http-proxy serverurl))
           (err nil))
+      (when http-proxy
+        (setf proxy-host (first http-proxy)
+              proxy-port (princ-to-string (second http-proxy))))
       (cond (killclient
              ;; Bye-bye birdy
              (do-logout cw t)
@@ -976,10 +1012,12 @@
                      ;; Make sure we can communicate to server
                      (unless err
                        (handler-case
-                           (truledger-client:serverid-for-url
-                            client serverurl
-                            :serverid serverid
-                            :http-proxy http-proxy)
+                           (progn
+                             ;;(break "do-admin-internal calling serverid-for-url")
+                             (serverid-for-url
+                              client serverurl
+                              :serverid serverid
+                              :http-proxy http-proxy))
                          (error ()
                            (setq err "Can't contact server at Server URL. Try again.")
                            (setf (port-server port) nil)

@@ -8,7 +8,8 @@
 (in-package :truledger-client)
 
 (defun make-client (dir &rest rest)
-  (apply 'make-instance 'client :db (make-fsdb dir) rest))
+  (let ((db (if (typep dir 'fsdb) dir (make-fsdb dir))))
+    (apply 'make-instance 'client :db db rest)))
 
 (defclass client ()
   ((db :type db
@@ -280,7 +281,8 @@
         (coupon-number (nth-value 1 (parse-coupon coupon))))
     (verify-server client url serverid http-proxy)
     (let* ((msg (strcat "(0," $SERVERID ",0," coupon-number "):0"))
-           (server (make-server-proxy client url :http-proxy http-proxy))
+           (server (make-server-proxy
+                    (make-client (db client)) url :http-proxy http-proxy))
            (msg (process server msg))
            (reqs (parse parser msg)))
       (match-serverreq client (car reqs) $REGISTER serverid)
@@ -295,7 +297,8 @@
 (defmethod serverid-for-url ((client client) url &key serverid http-proxy)
   (let* ((parser (parser client))
          (msg (strcat "(0," $SERVERID ",0):0"));
-         (server (make-server-proxy client url :http-proxy http-proxy))
+         (server (make-server-proxy
+                  (make-client (db client)) url :http-proxy http-proxy))
          (msg (process server msg))
          (save-serverid (prog1 (serverid client)
                         (setf (serverid client) serverid)))
@@ -341,12 +344,14 @@
                ;; Initialize the server in the database
                (setf (db-get db $SERVER $SERVERID urlhash) serverid
                      (db-get db (serverkey client $URL serverid)) url
-                     (db-get db (serverkey client $HTTP-PROXY-HOST))
+                     (db-get db (serverkey client $HTTP-PROXY-HOST serverid))
                      (if (listp http-proxy) (car http-proxy) http-proxy)
-                     (db-get db (serverkey client $HTTP-PROXY-PORT))
-                     (cond ((blankp http-proxy) nil)
-                           ((listp http-proxy) (second http-proxy))
-                           (t 80))
+                     (db-get db (serverkey client $HTTP-PROXY-PORT serverid))
+                     (unless (blankp http-proxy)
+                       (princ-to-string
+                        (if (listp http-proxy)
+                            (second http-proxy)
+                            80)))
                      (db-get db (serverkey client $NAME serverid)) name
                      (db-get db (pubkeykey serverid))
                      (format nil "~a~%" (trim pubkey))))
@@ -2651,7 +2656,8 @@
                  (apply #'custmsg client
                         $READDATA serverid (getreq client) key size-arg)))
          (server (if (and anonymous-p serverurl)
-                     (make-server-proxy client serverurl)
+                     (make-server-proxy
+                      (make-client (db client)) serverurl :http-proxy http-proxy)
                      (server client)))
          (save-serverid (prog1 (serverid client)
                         (setf (serverid client) serverid)))
