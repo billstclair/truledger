@@ -1,9 +1,13 @@
-Should it work to change the server URL in a coupon?
+Webapp access to client. Maybe a simple scripting language.
 
-Add HTTP proxy to server settings in client.
-Add SOCKS proxy if I can figure out how.
+----------------------------------------------------------------------
 
-======================================================================
+Change server URL/Proxy
+Delete server from client. Warn loudly if no backed-up private key.
+Delete account from server. Only works if no assets, other than usage tokens.
+
+----------------------------------------------------------------------
+
 Client commands for merchant pages, so you can have a "Pay" or "Buy"
 button. Would specify the payee, amount, asset, comment. Needs to be
 carried through login. Could direct to localhost or a particular
