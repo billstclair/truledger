@@ -1,0 +1,102 @@
+The Truledger client webapp uses JSON to encode client function calls.
+
+The general format of a request is:
+
+  http://truleder.com/?json=<string>
+
+This can be sent via GET or POST, as with ?msg=<msg> commands to the server.
+
+The general form of a <string> is:
+
+  [function,{name:value,name:value,...}]
+
+Results vary by function and are documented with each function.
+Error results are always returned as {error:<string>}
+
+[newuser,{passphrase:<string>,size:<integer>,privkey:<string>,
+          coupon:<string>,proxy:<string>] => <client-handle>
+  Create a new user with the given "passphrase". Error if already there.
+  If "size" is included, create a new private key of the given size
+    (512, 1024, 2048, 3072, or 4096).
+  If "privkey" is included, it should be the ASCII encoding of
+    the private key, encrypted with the passhprase.
+  If "coupon" is included, it should either be a coupon or the URL of
+    truledger server on which you already have an account.
+    This is not required if logging into a client with no running server,
+    But it IS required if there is a running server, to avoid
+    a multitude of new accounts being created by bots.
+  If "proxy" is included, it is the "host:port" for an http proxy
+    to use to contact the server in coupon.
+  On successful return, the new user is logged in to the client,
+    and, if "coupon" was included, the current server is set to
+    that server.
+  The returned <client-handle> is a rantom string, passed as a
+    parameter to the other functions.  
+
+[getprivkey,{client:<client-handle>,passphrase:<string>}] => <string>
+  Lookup the private key associated with passphrase, and
+  return it as a string.
+
+[login,{passphrase:<string>}] => <client-handle>
+  Login with an existing private key, using its passphrase.
+  Set the current server to the last server set.
+  Return a <client-handle> string for use with the other functions.
+
+[logout,{client:<client-handle>}] => null
+  Release the resources associated with <client-handle>.
+
+[current-user,{client:<client-handle>}] => <user-id>
+  Return the user id string of the currently logged in user.
+
+[user-pubkey,{client:<client-handle>,id:<user-id>}]
+  Return the public key for "id", which defaults to the
+  currently logged-in user.
+
+[getserver,{client:<client-handle>,serverid:<string>}]
+  => {id:<string>,name:<string>,url:<string>,proxy:<string>}
+  Return information for the given "serverid", which defaults to
+  the current server, when there is one.
+
+[getservers,{client:<client-handle>}]
+  => [<server-info>, ...]
+  Get the "getserver" info for every server known to the currently
+  logged in user.
+
+[addserver,{client:<client-handle>,coupon:<string>,proxy:<string>}]
+  Add a server to the logged-in account.
+  "coupon" will usually be an introduction coupon from that server,
+    but it can be just a URL, if you already have an account there.
+  "proxy" is an optional http proxy, "host:port", to use for contacting
+    the server.
+
+[setserver,{client:<client-handle>,serverid:<string>}] => null
+  Set the current server to "serverid".
+
+[currentserver,{client:<client-handle>}] => <serverid>
+  Returns the ID of the current server, or null if there isn't one.
+
+[privkey-cached-p,{client:<client-handle>,serverid:<string>}] => <boolean>
+  Return whether or not the private key for "serverid", which defaults
+    to the current server, is cached on the server.
+
+[cache-privkey,{client:<client-handle>,uncache?:<boolean>}]
+  Cache the private key on the current server,
+  or uncache it if "uncache?" is true.
+
+[getcontacts,{client:<client-handle>}]
+  => [{id:<string>,name:<string>,nickname:<string>,note:<string>}, ...]
+  Return the contacts for the current server.
+
+[getcontact,{client:<client-handle>,id:<string>}]
+  => {id:<string>,name:<string>,nickname:<string>,note:<string>}
+  Get a single contact, but its "id".
+
+[addcontact,{client:<client-handle>,id:<string>,nickname:<string>,note:<string>}]
+  => null
+  Add or update a contact with the given "id" and optional "nickname" and "note".
+
+[deletecontact,{client:<client-handle>,id:<string>}] => null
+  Remove the contact with the given "id".
+
+[sync-contacts,{client:<client-handle>}]
+  Synchronize client contacts with current server.
