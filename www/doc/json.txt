@@ -11,10 +11,10 @@ The general form of a <string> is:
   [function,{name:value,name:value,...}]
 
 Results vary by function and are documented with each function.
-Error results are always returned as {error:<string>}
+Error results are always returned as {@type:"error","message":<string>}
 
-[newuser,{passphrase:<string>,size:<integer>,privkey:<string>,
-          coupon:<string>,proxy:<string>] => <client-handle>
+["newuser",{"passphrase":<string>,"size":<integer>,"privkey":<string>,
+          "coupon":<string>,"proxy":<string>] => <client-handle>
   Create a new user with the given "passphrase". Error if already there.
   If "size" is included, create a new private key of the given size
     (512, 1024, 2048, 3072, or 4096).
@@ -33,70 +33,135 @@ Error results are always returned as {error:<string>}
   The returned <client-handle> is a rantom string, passed as a
     parameter to the other functions.  
 
-[getprivkey,{client:<client-handle>,passphrase:<string>}] => <string>
+["getprivkey",{"client":<client-handle>,"passphrase":<string>}] => <string>
   Lookup the private key associated with passphrase, and
   return it as a string.
 
-[login,{passphrase:<string>}] => <client-handle>
+["login",{"passphrase":<string>}] => <client-handle>
   Login with an existing private key, using its passphrase.
   Set the current server to the last server set.
   Return a <client-handle> string for use with the other functions.
 
-[logout,{client:<client-handle>}] => null
+["logout",{"client":<client-handle>}] => null
   Release the resources associated with <client-handle>.
 
-[current-user,{client:<client-handle>}] => <user-id>
+["current-user",{"client":<client-handle>}] => <user-id>
   Return the user id string of the currently logged in user.
 
-[user-pubkey,{client:<client-handle>,id:<user-id>}]
+["user-pubkey",{client:<client-handle>,id:<user-id>}] => <string>
   Return the public key for "id", which defaults to the
   currently logged-in user.
 
-[getserver,{client:<client-handle>,serverid:<string>}]
-  => {id:<string>,name:<string>,url:<string>,proxy:<string>}
+["getserver",{"client":<client-handle>,"serverid":<string>}]
+  => {"@type":"server","id":<string>,"name":<string>,"url":<string>,"proxy":<string>}
   Return information for the given "serverid", which defaults to
   the current server, when there is one.
 
-[getservers,{client:<client-handle>}]
+["getservers",{"client":<client-handle>}]
   => [<server-info>, ...]
   Get the "getserver" info for every server known to the currently
   logged in user.
 
-[addserver,{client:<client-handle>,coupon:<string>,proxy:<string>}]
+["addserver",{"client":<client-handle>,"coupon":<string>,"proxy":<string>}]
+  => <serverid>
   Add a server to the logged-in account.
   "coupon" will usually be an introduction coupon from that server,
     but it can be just a URL, if you already have an account there.
   "proxy" is an optional http proxy, "host:port", to use for contacting
     the server.
+  Returns the server ID, a string.
 
-[setserver,{client:<client-handle>,serverid:<string>}] => null
+["setserver",{"client":<client-handle>,"serverid":<string>}] => null
   Set the current server to "serverid".
 
-[currentserver,{client:<client-handle>}] => <serverid>
+["currentserver",{"client":<client-handle>}] => <serverid>
   Returns the ID of the current server, or null if there isn't one.
 
-[privkey-cached-p,{client:<client-handle>,serverid:<string>}] => <boolean>
+["privkey-cached-p",{"client":<client-handle>,"serverid":<string>}] => <boolean>
   Return whether or not the private key for "serverid", which defaults
     to the current server, is cached on the server.
 
-[cache-privkey,{client:<client-handle>,uncache?:<boolean>}]
+["cache-privkey",{"client":<client-handle>,"uncache"?:<boolean>}]
   Cache the private key on the current server,
   or uncache it if "uncache?" is true.
 
-[getcontacts,{client:<client-handle>}]
-  => [{id:<string>,name:<string>,nickname:<string>,note:<string>}, ...]
-  Return the contacts for the current server.
-
-[getcontact,{client:<client-handle>,id:<string>}]
-  => {id:<string>,name:<string>,nickname:<string>,note:<string>}
+["getcontact",{"client":<client-handle>,"id":<string>}]
+  => {"@type":"contact","id":<string>,"name":<string>,"nickname":<string>,
+      "note":<string>}
   Get a single contact, but its "id".
 
-[addcontact,{client:<client-handle>,id:<string>,nickname:<string>,note:<string>}]
-  => null
+["getcontacts",{"client":<client-handle>}]
+  => [<contact-info>,...]
+  Return the contacts for the current server.
+  <contact-info> is as returned by getcontact
+
+["addcontact",{"client":<client-handle>,"id":<string>,"nickname":<string>,
+             "note":<string>}] => null
   Add or update a contact with the given "id" and optional "nickname" and "note".
 
-[deletecontact,{client:<client-handle>,id:<string>}] => null
+["deletecontact",{"client":<client-handle>,"id":<string>}] => null
   Remove the contact with the given "id".
 
-[sync-contacts,{client:<client-handle>}]
+["sync-contacts",{"client":<client-handle>}] => null
   Synchronize client contacts with current server.
+
+["getasset",{"client":<client-handle>,"assetid":<string>}]
+  => {"@type":"asset","id":<string>,"assetid":<string>,
+      "scale":<integer>,"precision":<integer>,"name":<string>,
+      "issuer":<string>,"percent":<string>}
+  Get information about an asset.
+
+["getassets",{"client":<client-handle>}] => [<asset-info>,...]
+  Return a list of all assets for which the customer has balances,
+  as a list of returns from "getasset".
+
+["addasset",{"client":<client-handle>,"scale":<integer>,"precision":<integer>,
+             "assetname":<string>,"percent":<string>}] => <assetid>
+  Add a new asset, or update the storage fee "percent" of an existing asset.
+  "percent" is optional.
+  The returned <assetid> is a string.
+
+["getfees",{"client":<client-handle>}]
+  => [{"@type":"fee","type":<string>,"assetid":<string>,"assetname":<string>,
+       "amount":<string>,"formatted-amount":<string>"}, ...]
+  Returns a list of "fee" arrays.
+  There are always at least two elements in that array.
+  The first element is of "type":"tranfee"
+  The second element is of "type":"regfee"
+  The other elements are of "type":"spend" or "type":"transfer"
+
+["setfees",{"client":<client-handle>,"fees":[{"@type":"foo",...},...]}] => null
+  Set fees. You must be logged in as the server to do this.
+
+["getbalance",{"client":<client-handle>,"assetid":<string>,"acct":<string>}]
+  => {"@type":"balance>,"acct":<string>,"assetid":<string>,"assetname":<string>,
+      "amount":<string>,"time":<string>,"formatted-amount":<string>}
+  Get a single balance.
+  "acct" defaults to "main"
+
+["getbalances",{"client":<client-handle>,"assetid":<string>,"acct":<string>}]
+  => {<acct>:[{"@type":"balance",...},...],...}
+  Get a set of balances, organized by <acct>.
+  "assetid" and "acct" default to all
+
+["getrawbalances",{"client":<client-handle>,"assetid":<string>,"acct":<string>}]
+  => {<acct>:{<assetid>:<string>,...},...}
+  Get the same balances as "getbalances", but as raw signed message strings,
+  not parsed into "@type":"balance" records.
+  "assetid" and "acct" default to all.
+
+["getfraction",{"client":<client-handle>,"assetid":<string>}]
+  => {"@type":"fraction","assetid":<string>,"assetname":<string>,
+      "amount":<string>,"scale":<integer>}
+  Get the fractional balance for an assetid.
+  Fractional balances are created when you pay storage fees on
+  a balance.
+
+["getfractions",{"client":<client-handle>}]
+  =>[{"@type":"fraction",...},...]
+  Return a list of all fractional balances.
+
+["getrawfractions",{"client":<client-handle>},"assetid":<string>]
+  => {<assetid>:<string>}
+  Return an array of the raw signed messages for fractional balances.
+  If "assetid" is included, the list will include only that assetid.
