@@ -203,6 +203,12 @@ Error results are always returned as {"@type":"error","message":<string>}
   You lose your transaction fee when you reject a spend.
     This discourages making it a habit.
 
+["ishistoryenabled?",{"client:<client-handle>"}] => <boolean>
+  Return true if keeping history is enabled.
+
+["sethistoryenabled",{"client:<client-handle>","enabled?":<boolean>}] => null
+  Enable history if "enabled?" is true. Disable otherwise.
+
 ["gethistorytimes",{"client":<client-handle>}] => [<string>,...]
   Get the times for which there are history items.
 
