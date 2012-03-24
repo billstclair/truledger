@@ -11,7 +11,7 @@ The general form of a <string> is:
   [function,{name:value,name:value,...}]
 
 Results vary by function and are documented with each function.
-Error results are always returned as {@type:"error","message":<string>}
+Error results are always returned as {"@type":"error","message":<string>}
 
 ["newuser",{"passphrase":<string>,"size":<integer>,"privkey":<string>,
           "coupon":<string>,"proxy":<string>] => <client-handle>
@@ -140,12 +140,12 @@ Error results are always returned as {@type:"error","message":<string>}
   "acct" defaults to "main"
 
 ["getbalances",{"client":<client-handle>,"assetid":<string>,"acct":<string>}]
-  => {<acct>:[{"@type":"balance",...},...],...}
+  => {"@type":"balances",<acct>:[{"@type":"balance",...},...],...}
   Get a set of balances, organized by <acct>.
   "assetid" and "acct" default to all
 
 ["getrawbalances",{"client":<client-handle>,"assetid":<string>,"acct":<string>}]
-  => {<acct>:{<assetid>:<string>,...},...}
+  => {"@type":"rawbalances",<acct>:{<assetid>:<string>,...},...}
   Get the same balances as "getbalances", but as raw signed message strings,
   not parsed into "@type":"balance" records.
   "assetid" and "acct" default to all.
@@ -162,6 +162,141 @@ Error results are always returned as {@type:"error","message":<string>}
   Return a list of all fractional balances.
 
 ["getrawfractions",{"client":<client-handle>},"assetid":<string>]
-  => {<assetid>:<string>}
+  => {"@type":"rawfractions",<assetid>:<string>}
   Return an array of the raw signed messages for fractional balances.
   If "assetid" is included, the list will include only that assetid.
+
+["getstoragefee",{"client":<client-handle>,"assetid":<string>}]
+  => {"@type":"storagefee","acct":<string>,"assetid":<string>,"assetname":<string>,
+      "amount":<string>,"time":<string>,"formatted-amount":<string>,
+      "fraction":<string>}
+  Return the accumulated storage fees for a single assetid.
+  Only relevant if logged in as the issuer of the asset.
+  Return has the same properties as "@type":"balance", with the addition
+  of the "fraction".
+
+["getstoragefees",{"client":<client-handle>,"assetid":<string>}]
+  => [{"@type":<storagefee>,...},...]
+  Return a list of storage fees, all of them if "assetid" is not
+  specified, or just that asset if specified.
+
+["spend",{"client":<client-handle>,"toid":<string>,"assetid":<string>,
+          "formatted-amount":<string>,"acct":<string>,"note":<string>}]
+  => {"@type":"spendresult","transaction-fee":<string>,"storage-fee":<string>,
+      "coupon":<string>}
+  Spend "formatted-amount" of "assetid" to "toid".
+  "acct" defaults to "main"
+  "note" is optional.
+  If "toid" is "coupon", mints a coupon instead of spending to another user
+  If "toid" is the logged in user's ID, then this is a transfer.
+    "acct" should be a list: [<fromacct>,<toacct>].
+  "transaction-fee", "storage-fee" in the result may be omitted.
+  "coupon" will be present in the result only if "toid" was "coupon".
+
+["spendreject",{"client":<client-handle>,"time":<string>,"note":<string>}]
+  => null
+  Cancels the spend with the given "time" (as returned by "getoutbox").
+  "note" is optional.
+  The spend will be moved into the inbox, where it will look
+    just like a rejection from the recipient of the spend.
+    Use "processinbox" to remove it.
+  You lose your transaction fee when you reject a spend.
+    This discourages making it a habit.
+
+["gethistorytimes",{"client":<client-handle>}] => [<string>,...]
+  Get the times for which there are history items.
+
+["gethistoryitems",{"client":<client-handle>,"time":<string>}]
+  => [{"@type":"history","time":<string>,"request":<string>,"from":<string>
+       "to":<string>,"formatted-amount":<string>,"assetid":<string>,
+       "assetname":<string>,"note":<string>,"response":<string>},...]
+  Returns all the history items for "time".
+
+["removehistoryitems",{"client":<client-handle>,"time":<string>}] => null
+  Remove all the history items for "time".
+
+["getinbox",{"client":<client-handle>}]
+  => [{"@type","inbox","request":<string>,"id":<string>,"time":<string>,
+       "msgtime":<string>,"assetid":<string>,"assetname":<string>,
+       "amount":<string>,"formatted-amount":"string","note":<string>,
+       "reply":<string>,"items":[{"@type":"fee",...}]},...]
+  Return the contents of the inbox.
+  "request" is "spend", "spend|accept", or "spend|reject".
+  "id" is the user ID of the source of the item.
+  "time" is the time on the server-signed inbox item.
+  "msgtime" is the time on the user-signed message.
+  "assetid" is the ID of the asset.
+  "assetname" is the name of the asset.
+  "amount" is the asset amount, an integer string.
+  "formatted-amount" is the amount formatted with the asset's scale & precision.
+  "note" is the note on the original message.
+  "reply" is the note on the reply for "spend|accept" or "spend|reject".
+  "items" is a list of "type":"tranfee" "fee" items.
+
+["processinbox",{"client":<client-handle>,
+                 "directions":[{"@type":"processinbox",...},...]}] => null
+  Process some or all of the inbox items returned by "getinbox".
+  The full form of the "directions" items is:
+    {"@type":"processinbox","time":<string>,"request":<string>,
+     "note":<string>,"acct":<string>}
+  "time" is a "time" from a "getinbox" item.
+  "request" is "spend|accept" or "spend|reject" for inbox items
+    whose "request" is "spend". Ignored for "spend|accept" and
+    "spend|reject" inbox items.
+  "note" is an optional note to send back to the spender.
+    Ignored for other than "spend" inbox items.
+  "acct" is the acct into which to deposit the assets, default "main".
+    Ignored for other than "request":"spend|accept" on "spend" inbox items
+
+["storagefees":{"client":<client-handle>}] => null
+  Tell the server to move the non-fractional part of the "getstoragefees"
+  fees to the inbox. You can then then see them with "getinbox" and process
+  them with "processinbox".
+
+["getoutbox":{"client":<client-handle>}]
+  => [{"@type":"outbox","time":<string>,"id":<string>,"request":<string>,
+       "assetid":<string>,"assetname":<string>,"amount":<string>,
+       "formatted-amount":<string>,"note":<string>,
+       "items":[{"@type":"fee",...}],"coupons":[<string>]},...]
+  Return information about outstanding spends.
+  You can use the "time" for "rejectspend".
+  Other than that, it's only information, showing "spend"
+  requests that have not yet been accepted or rejected, and then
+  completed with "processinbox".
+
+["redeem",{"client":<client-handle>,"coupon":<string>}] => null
+  Redeem a coupon. If successful, add an inbox entry for the
+  coupon spend.
+
+["getversion",{"client":<client-handle>}]
+  => {"@type":"version","version":<string>,"time":<string>}
+  Get the server version and build time.
+
+["getpermissions",{"client":<client-handle>,"permission":<string>,
+                   "reload?":<boolean>}]
+  => [{"@type":"permission","id":<string>,"toid":<string>,"permission":<string>,
+       "grant?":<boolean>,"time":<string>},...]
+  Get permissions.
+  If "permission" is included, get only that one permission.
+  If "reload?" is true, reload the permissions from the server.
+  The currently supported "permission"s are "mint-tokens", "mint-coupons",
+  and "add-asset".
+
+["getgrantedpermissions",{"client":<client-handle>}]
+  => [{"@type:"permission",...},...]
+  Return the permissions you've directly granted.
+
+["grant",{"client":<client-handle>,"toid":<string>,"permission":<string>,
+          "grant?":<boolean>}
+  Grant "permission" to "toid". Give him permission to grant that permission
+  if "grant?" is true.
+
+["deny",{"client":<client-handle>,"toid":<string>,"permission":<string>}]
+  Deny "permission" to "toid".
+
+["audit",{"client":<client-handle>,"assetid":<string>}]
+  => {"@type":"audit","amount":<string>,"formatted-amount":<string>,
+      "fraction":<string>}
+  Add up all the balances for "assetid" and return the result.
+  Should be all zeroes, unless the server is out of balance.
+  Only the asset issuer or the server can request an audit.
