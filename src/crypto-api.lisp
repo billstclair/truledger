@@ -150,15 +150,15 @@
           (rsa-free key)))
       (funcall thunk key)))
 
-(defmacro with-rsa-private-key ((keyvar key) &body body)
+(defmacro with-rsa-private-key ((keyvar key &optional password) &body body)
   (let ((thunk (gensym)))
     `(flet ((,thunk (,keyvar) ,@body))
        (declare (dynamic-extent #',thunk))
-       (call-with-rsa-private-key #',thunk ,key))))
+       (call-with-rsa-private-key #',thunk ,key ,password))))
              
-(defun call-with-rsa-private-key (thunk key)
+(defun call-with-rsa-private-key (thunk key &optional password)
   (if (stringp key)
-      (let ((key (decode-rsa-private-key key)))
+      (let ((key (decode-rsa-private-key key password)))
         (unwind-protect
              (funcall thunk key)
           (rsa-free key)))

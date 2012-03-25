@@ -92,6 +92,9 @@
 
 ;; API Methods
 
+(defmethod passphrase-exists-p ((client client) passphrase)
+  (not (null (db-get (db client) $PRIVKEY (passphrase-hash passphrase)))))
+
 (defmethod newuser ((client client) &key passphrase (privkey 3072))
   "Create a new user with the given passphrase, error if already there.
    If privkey is a string, use that as the private key.
@@ -176,6 +179,7 @@
       (setf (privkey client) nil)
       (rsa-free privkey))
     (setf (serverid client) nil
+          (pubkey client) nil
           (server client) nil)))
 
 ;; All the API methods below require the user to be logged in.
@@ -279,7 +283,7 @@
    Ask the server whether a coupon of that number exists."
   (let ((parser (parser client))
         (coupon-number (nth-value 1 (parse-coupon coupon))))
-    (verify-server client url serverid http-proxy)
+    (setf serverid (verify-server client url serverid http-proxy))
     (let* ((msg (strcat "(0," $SERVERID ",0," coupon-number "):0"))
            (server (make-server-proxy
                     (make-client (db client)) url :http-proxy http-proxy))
@@ -288,7 +292,33 @@
       (match-serverreq client (car reqs) $REGISTER serverid)
       (unless (eql 2 (length reqs))
         (error "verifycoupon: expected 2 messages from server"))
-      (match-serverreq client (cadr reqs) $COUPONNUMBERHASH serverid))))
+      (match-serverreq client (cadr reqs) $COUPONNUMBERHASH serverid)
+      serverid)))
+
+(defmethod verify-private-key ((client client) privkey passphrase url
+                               &optional http-proxy)
+  "Verify that privkey has an account with the server at URL.
+Error if it does not. If it does, return two values:
+1) The server id
+2) The id for privkey"
+  (let ((serverid (verify-server client url nil http-proxy)))
+    (with-rsa-private-key (pk privkey passphrase)
+      (let* ((pubkey (encode-rsa-public-key pk))
+             (id (pubkey-id pubkey))
+             (client (make-client (db client)))
+             (parser (parser client))
+             (server (make-server-proxy client url :http-proxy http-proxy)))
+        (setf (id client) id
+              (privkey client) pk
+              (get-keydict parser id) pubkey)
+        (let* ((msg (process server (custmsg client $ID serverid id)))
+               (reqs (parse parser msg))
+               (args (match-serverreq client (car reqs) $ATREGISTER serverid)))
+          (setf args (getarg $MSG args))
+          (unless (and (equal $REGISTER (getarg $REQUEST args))
+                       (equal id (getarg $CUSTOMER args)))
+            (error "Malformed ~s message from server" $REGISTER))
+          (values serverid id))))))
 
 ;; Returns three values:
 ;;   1) serverid

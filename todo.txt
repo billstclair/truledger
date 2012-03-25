@@ -1,4 +1,12 @@
-Webapp access to client. Maybe a simple scripting language.
+Webapp access to client.
+
+----------------------------------------------------------------------
+
+Command line passphrase, to make server startup automatable, at
+expense of security.
+
+Negative storage fee = interest
+For investment assets, e.g. stocks
 
 ----------------------------------------------------------------------
 

@@ -178,6 +178,12 @@
         (error "Premature end of message"))
       (nreverse res))))
 
+(defmethod get-keydict ((parser parser) id)
+  (gethash id (parser-keydict parser)))
+
+(defmethod (setf get-keydict) (pubkey (parser parser) id)
+  (setf (gethash id (parser-keydict parser)) pubkey))
+
 (defmethod parser-get-pubkey ((parser parser) id dict)
   (let* ((keydict (parser-keydict parser))
          (keydb (parser-keydb parser))

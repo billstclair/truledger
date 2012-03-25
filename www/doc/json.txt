@@ -13,24 +13,32 @@ The general form of a <string> is:
 Results vary by function and are documented with each function.
 Error results are always returned as {"@type":"error","message":<string>}
 
-["newuser",{"passphrase":<string>,"size":<integer>,"privkey":<string>,
+["newuser",{"passphrase":<string>,"keysize":<integer>,"name":<string>,
+          "privkey":<string>,"fetch-privkey?":<boolean>,"url":<string>,
           "coupon":<string>,"proxy":<string>] => <client-handle>
   Create a new user with the given "passphrase". Error if already there.
-  If "size" is included, create a new private key of the given size
+  All other parameters are optional
+  If "keysize" is included, create a new private key of the given size
     (512, 1024, 2048, 3072, or 4096).
+  If "name" is included, it will be attached to the new server account.
   If "privkey" is included, it should be the ASCII encoding of
     the private key, encrypted with the passhprase.
-  If "coupon" is included, it should either be a coupon or the URL of
-    truledger server on which you already have an account.
+    That will create a local account on a client with no running server.
+    If you include a "url", will look for the account on that server.
+    If you include a "coupon", will register with that coupon on its server.
+  If "fetch-privkey?" is true, then "url" must be included, and
+    the cached private key is fetched from "url".
+  If "coupon" is included, it should be a coupon for
+    a truledger server on which you want to create an account.
     This is not required if logging into a client with no running server,
     But it IS required if there is a running server, to avoid
     a multitude of new accounts being created by bots.
   If "proxy" is included, it is the "host:port" for an http proxy
-    to use to contact the server in coupon.
+    to use to contact the server in "coupon" or "url".
   On successful return, the new user is logged in to the client,
     and, if "coupon" was included, the current server is set to
     that server.
-  The returned <client-handle> is a rantom string, passed as a
+  The returned <client-handle> is a random string, passed as a
     parameter to the other functions.  
 
 ["getprivkey",{"client":<client-handle>,"passphrase":<string>}] => <string>
@@ -129,9 +137,6 @@ Error results are always returned as {"@type":"error","message":<string>}
   The first element is of "type":"tranfee"
   The second element is of "type":"regfee"
   The other elements are of "type":"spend" or "type":"transfer"
-
-["setfees",{"client":<client-handle>,"fees":[{"@type":"foo",...},...]}] => null
-  Set fees. You must be logged in as the server to do this.
 
 ["getbalance",{"client":<client-handle>,"assetid":<string>,"acct":<string>}]
   => {"@type":"balance>,"acct":<string>,"assetid":<string>,"assetname":<string>,

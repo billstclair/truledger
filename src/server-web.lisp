@@ -118,6 +118,20 @@
                  params)
      ,@body))
 
+(defun get-running-server ()
+  (port-server (get-current-port)))
+
+(defun get-current-port (&optional (acceptor hunchentoot:*acceptor*))
+  (acceptor-port acceptor))
+
+(defun server-db-exists-p ()
+  (or (ignore-errors (get-running-server))
+      (server-privkey-file-exists-p)))
+
+(defun server-privkey-file-exists-p ()
+  (let ((db (make-fsdb (server-db-dir))))
+    (not (null (db-get db $PRIVKEY)))))
+
 (defvar *debug-stream* t)
 
 (defmacro with-debug-stream ((&optional (only-if-p t)) &body body)
@@ -987,7 +1001,7 @@ openssl x509 -in cert.pem -text -noout
                   (get-web-script-handler port "/client/loom")
                   'do-loom-web-client
                   (get-web-script-handler port "/json")
-                  #'(lambda () (redirect "/json/"))
+                  'do-truledger-json
                   (get-web-script-handler port "/json/")
                   'do-truledger-json)
             (when *url-prefix*

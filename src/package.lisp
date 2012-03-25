@@ -281,6 +281,7 @@
    #:match-message
    #:tokenize
    #:remove-signatures
+   #:get-keydict
 
    ;; bcmath.lisp
    #:bccomp
@@ -443,6 +444,10 @@
    #:port-forwarded-from
    #:acceptor-port
    #:bind-parameters
+   #:get-running-server
+   #:get-current-port
+   #:server-db-exists-p
+   #:server-privkey-file-exists-p
 
    ;; toplevel.lisp
    #:write-application-name
@@ -483,6 +488,7 @@
    #:keep-history-p
    #:server-times
    #:showprocess
+   #:passphrase-exists-p
    #:newuser
    #:remove-user
    #:get-privkey
@@ -505,6 +511,7 @@
    #:url-p
    #:parse-coupon
    #:verify-coupon
+   #:verify-private-key
    #:serverid-for-url
    #:verify-server
    #:addserver

@@ -347,14 +347,6 @@
 (defun settitle (cw subtitle)
   (setf (cw-title cw) (stringify subtitle "~a - Truledger Client")))
 
-(defun server-db-exists-p ()
-  (or (ignore-errors (get-running-server))
-      (server-privkey-file-exists-p)))
-
-(defun server-privkey-file-exists-p ()
-  (let ((db (make-fsdb (server-db-dir))))
-    (not (null (db-get db $PRIVKEY)))))
-
 (defun is-local-server-server-p (cw &optional (acceptor hunchentoot:*acceptor*))
   (let* ((port (acceptor-port acceptor))
          (server (port-server port))
@@ -371,12 +363,6 @@
                                     (null (cdr reqs))
                                     (getarg 2 (car reqs)))))))))
         (and (not server) (not (server-db-exists-p))))))
-
-(defun get-running-server ()
-  (port-server (get-current-port)))
-
-(defun get-current-port (&optional (acceptor hunchentoot:*acceptor*))
-  (acceptor-port acceptor))
 
 (defun setmenu (cw &optional highlight (menuitems *default-menuitems*))
   (let ((items nil)

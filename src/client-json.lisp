@@ -4,13 +4,13 @@
 ;;;
 ;;; The Truledger JSON webapp server
 ;;;
-;;; See www/docs/json.txt for spec
+;;; See www/docs/json.txt (http://truledger.com/doc/json.txt) for spec.
 ;;;
 
 (in-package :truledger-json)
 
 ;; Called from do-truledger-json in server-web.lisp
-;; Returns a string with the contents of the client web page.
+;; Returns a JSON string.
 (defun json-server ()
   (let* ((client (make-client (client-db-dir))))
     (let* ((res (catch 'error-return
@@ -28,8 +28,8 @@
 
 (defun json-error (format-string &rest format-args)
   (throw 'error-return
-    `((@type . error)
-      (message . ,(apply #'format nil format-string format-args)))))
+    `(("@type" . "error")
+      ("message" . ,(apply #'format nil format-string format-args)))))
 
 (defparameter *json-commands*
   '("newuser"
@@ -54,7 +54,6 @@
     "getassets"
     "addasset"
     "getfees"
-    "setfees"
     "getbalance"
     "getbalances"
     "getrawbalances"
@@ -139,10 +138,96 @@
                                     val-form)))
          ,@body))))
 
+(defun parse-proxy (proxy)
+  (check-type proxy (or null string))
+  (unless (blankp proxy)
+    (let ((colon-pos (position #\: proxy :from-end t)))
+      (unless colon-pos
+        (json-error "Proxy must be host:port"))
+      (let ((host (subseq proxy 0 colon-pos))
+            (port (subseq proxy (1+ colon-pos))))
+        (unless (ignore-errors
+                  (setf port (parse-integer port)))
+          (json-error "Proxy port not an integer: ~s" proxy))
+        (when (string-equal host "localhost")
+          (setf host "127.0.0.1"))
+        (list host port)))))
+
+(defun ensure-string (var name &optional optionalp)
+  (unless (or (and optionalp (null var))
+              (stringp var))
+    (json-error "~a must be a string" name)))
+
+(defun ensure-integer (var name &optional optionalp)
+  (unless (or (and optionalp (null var))
+              (integerp var))
+    (json-error "~a must be an integer" name)))
+
 (defun json-newuser (client args)
-  client
-  (with-json-args (passphrase size privkey coupon proxy) args
-    (list passphrase size privkey coupon proxy)))
+  (with-json-args (passphrase) args
+    (unwind-protect
+         (json-newuser-internal client passphrase args)
+      (when (stringp passphrase)
+        (destroy-password passphrase)))))
+
+(defun json-newuser-internal (client passphrase args)
+  (with-json-args (keysize name privkey fetch-privkey? url coupon proxy)
+      args
+    (ensure-string passphrase "passphrase")
+    (ensure-integer keysize "keysize" t)
+    (ensure-string name "name" t)
+    (ensure-string privkey "privkey" t)
+    (ensure-string url "url" t)
+    (ensure-string coupon "coupon" t)
+    (ensure-string proxy "proxy" t)
+    (when (cond (keysize (or privkey fetch-privkey?))
+                (privkey fetch-privkey?)
+                ((not fetch-privkey?)
+                 (json-error
+                  "One of keysize, privkey, and fetch-privkey? must be included")))
+      (json-error
+       "Only one of keysize, privkey, and fetch-privkey? may be included"))
+    (when (and url coupon)
+      (error "Only one of url and coupon may be included"))
+    (when (passphrase-exists-p client passphrase)
+      (json-error "There is already a client account for passphrase"))
+    (when proxy
+      (setf proxy (parse-proxy proxy)))
+    (when fetch-privkey?
+      (unless url
+        (json-error "url required to fetch private key from server"))
+      (verify-server client url nil proxy)
+      (when fetch-privkey?
+        (handler-case
+            (setf privkey (fetch-privkey client url passphrase
+                                         :http-proxy proxy))
+          (error (c)
+            (json-error "Error fetching private key from ~a: ~a"
+                        url c)))))
+    (cond ((and privkey url)
+           ;; Make sure we've got an account.
+           (verify-private-key client privkey passphrase url proxy))
+          ((not coupon)
+           (when (server-db-exists-p)
+             (json-error "Coupon must be included to create new account")))
+          (t
+           (let ((url (parse-coupon coupon)))
+             (handler-case
+                 (verify-coupon client coupon nil url :http-proxy proxy)
+               (error (c)
+                 (json-error "Coupon didn't verify: ~a" c))))))
+    (newuser client :passphrase passphrase :privkey (or privkey keysize))
+    (let ((session (login-new-session client passphrase)))
+      ;; Not calling maybe-start-server here. Maybe I should
+      (handler-case
+          (addserver client (or coupon url) :name name :couponok t
+                     :http-proxy proxy)
+        (error (c)
+          (logout client)
+          (json-error "Failed to add server: ~a" c)))
+      (when fetch-privkey?
+        (setf (privkey-cached-p client) t))
+      session)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
