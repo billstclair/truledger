@@ -1388,8 +1388,8 @@ Error if it does not. If it does, return two values:
 
 (defmethod getstoragefee ((client client) &optional assetid)
   "Get the storagefee balance for a particular assetid, or all assetids,
-   Returns a list of BALANCE instances, or a single BALANCE instance, if
-   ASSETID is specified."
+   Returns a listof BALANCE+FRACTION instances, or a single BALANCE+FRACTION
+   instance, if ASSETID is specified."
   (let ((db (db client)))
     (require-current-server client "In getfraction(): Server not set")
     (init-server-accts client)

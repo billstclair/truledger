@@ -15,7 +15,7 @@ Error results are always returned as {"@type":"error","message":<string>}
 
 ["newuser",{"passphrase":<string>,"keysize":<integer>,"name":<string>,
           "privkey":<string>,"fetch-privkey?":<boolean>,"url":<string>,
-          "coupon":<string>,"proxy":<string>] => <client-handle>
+          "coupon":<string>,"proxy":<string>] => <session-string>
   Create a new user with the given "passphrase". Error if already there.
   All other parameters are optional
   If "keysize" is included, create a new private key of the given size
@@ -38,98 +38,101 @@ Error results are always returned as {"@type":"error","message":<string>}
   On successful return, the new user is logged in to the client,
     and, if "coupon" was included, the current server is set to
     that server.
-  The returned <client-handle> is a random string, passed as a
-    parameter to the other functions.  
+  Return a <session-string>, for use with the other functions.
 
-["getprivkey",{"client":<client-handle>,"passphrase":<string>}] => <string>
+["getprivkey",{"passphrase":<string>}] => <string>
   Lookup the private key associated with passphrase, and
   return it as a string.
 
-["login",{"passphrase":<string>}] => <client-handle>
+["login",{"passphrase":<string>}] => <session-string>
   Login with an existing private key, using its passphrase.
   Set the current server to the last server set.
-  Return a <client-handle> string for use with the other functions.
+  Return a <session-string> for use with the other functions.
 
-["logout",{"client":<client-handle>}] => null
-  Release the resources associated with <client-handle>.
+["logout",{"session":<session-string>}] => null
+  Release the resources associated with <session-string>.
 
-["current-user",{"client":<client-handle>}] => <user-id>
+["current-user",{"session":<session-string>}] => <user-id>
   Return the user id string of the currently logged in user.
 
-["user-pubkey",{client:<client-handle>,id:<user-id>}] => <string>
+["user-pubkey",{client:<session-string>,id:<user-id>}] => <string>
   Return the public key for "id", which defaults to the
   currently logged-in user.
 
-["getserver",{"client":<client-handle>,"serverid":<string>}]
+["getserver",{"session":<session-string>,"serverid":<string>}]
   => {"@type":"server","id":<string>,"name":<string>,"url":<string>,"proxy":<string>}
   Return information for the given "serverid", which defaults to
   the current server, when there is one.
 
-["getservers",{"client":<client-handle>}]
+["getservers",{"session":<session-string>}]
   => [<server-info>, ...]
   Get the "getserver" info for every server known to the currently
   logged in user.
 
-["addserver",{"client":<client-handle>,"coupon":<string>,"proxy":<string>}]
+["addserver",{"session":<session-string>,"coupon":<string>,"name":<string>,
+              "proxy":<string>}]
   => <serverid>
   Add a server to the logged-in account.
   "coupon" will usually be an introduction coupon from that server,
     but it can be just a URL, if you already have an account there.
+  "name" is an optional name to use to identify yourself on the server.
   "proxy" is an optional http proxy, "host:port", to use for contacting
     the server.
   Returns the server ID, a string.
 
-["setserver",{"client":<client-handle>,"serverid":<string>}] => null
+["setserver",{"session":<session-string>,"serverid":<string>}] => null
   Set the current server to "serverid".
 
-["currentserver",{"client":<client-handle>}] => <serverid>
+["currentserver",{"session":<session-string>}] => <serverid>
   Returns the ID of the current server, or null if there isn't one.
 
-["privkey-cached-p",{"client":<client-handle>,"serverid":<string>}] => <boolean>
+["privkey-cached?",{"session":<session-string>,"serverid":<string>}] => <boolean>
   Return whether or not the private key for "serverid", which defaults
     to the current server, is cached on the server.
 
-["cache-privkey",{"client":<client-handle>,"uncache"?:<boolean>}]
+["cache-privkey",{"session":<session-string>,"uncache?":<boolean>}]
   Cache the private key on the current server,
   or uncache it if "uncache?" is true.
 
-["getcontact",{"client":<client-handle>,"id":<string>}]
+["getcontact",{"session":<session-string>,"id":<string>}]
   => {"@type":"contact","id":<string>,"name":<string>,"nickname":<string>,
       "note":<string>}
   Get a single contact, but its "id".
 
-["getcontacts",{"client":<client-handle>}]
+["getcontacts",{"session":<session-string>}]
   => [<contact-info>,...]
   Return the contacts for the current server.
   <contact-info> is as returned by getcontact
 
-["addcontact",{"client":<client-handle>,"id":<string>,"nickname":<string>,
+["addcontact",{"session":<session-string>,"id":<string>,"nickname":<string>,
              "note":<string>}] => null
   Add or update a contact with the given "id" and optional "nickname" and "note".
 
-["deletecontact",{"client":<client-handle>,"id":<string>}] => null
+["deletecontact",{"session":<session-string>,"id":<string>}] => null
   Remove the contact with the given "id".
 
-["sync-contacts",{"client":<client-handle>}] => null
+["sync-contacts",{"session":<session-string>}] => null
   Synchronize client contacts with current server.
 
-["getasset",{"client":<client-handle>,"assetid":<string>}]
+["getasset",{"session":<session-string>,"assetid":<string>,"force-server?":true}]
   => {"@type":"asset","id":<string>,"assetid":<string>,
       "scale":<integer>,"precision":<integer>,"name":<string>,
       "issuer":<string>,"percent":<string>}
-  Get information about an asset.
+  Get information about "assetid".
+  If "force-asset?" is included and true, refresh the local
+  information about the asset from the server.
 
-["getassets",{"client":<client-handle>}] => [<asset-info>,...]
+["getassets",{"session":<session-string>}] => [<asset-info>,...]
   Return a list of all assets for which the customer has balances,
   as a list of returns from "getasset".
 
-["addasset",{"client":<client-handle>,"scale":<integer>,"precision":<integer>,
+["addasset",{"session":<session-string>,"scale":<integer>,"precision":<integer>,
              "assetname":<string>,"percent":<string>}] => <assetid>
   Add a new asset, or update the storage fee "percent" of an existing asset.
   "percent" is optional.
   The returned <assetid> is a string.
 
-["getfees",{"client":<client-handle>}]
+["getfees",{"session":<session-string>,"reload?":<boolean>}]
   => [{"@type":"fee","type":<string>,"assetid":<string>,"assetname":<string>,
        "amount":<string>,"formatted-amount":<string>"}, ...]
   Returns a list of "fee" arrays.
@@ -137,42 +140,32 @@ Error results are always returned as {"@type":"error","message":<string>}
   The first element is of "type":"tranfee"
   The second element is of "type":"regfee"
   The other elements are of "type":"spend" or "type":"transfer"
+  If "reload?" is included and true, reloads the fees from the server.
 
-["getbalance",{"client":<client-handle>,"assetid":<string>,"acct":<string>}]
+["getbalance",{"session":<session-string>,"assetid":<string>,"acct":<string>}]
   => {"@type":"balance>,"acct":<string>,"assetid":<string>,"assetname":<string>,
       "amount":<string>,"time":<string>,"formatted-amount":<string>}
   Get a single balance.
-  "acct" defaults to "main"
+  "acct" defaults to "main".
 
-["getbalances",{"client":<client-handle>,"assetid":<string>,"acct":<string>}]
-  => {"@type":"balances",<acct>:[{"@type":"balance",...},...],...}
-  Get a set of balances, organized by <acct>.
-  "assetid" and "acct" default to all
-
-["getrawbalances",{"client":<client-handle>,"assetid":<string>,"acct":<string>}]
-  => {"@type":"rawbalances",<acct>:{<assetid>:<string>,...},...}
-  Get the same balances as "getbalances", but as raw signed message strings,
-  not parsed into "@type":"balance" records.
+["getbalances",{"session":<session-string>,"assetid":<string>,"acct":<string>}]
+  => [{"@type":"balance",...},...]
+  Get a set of balances, sorted by "acct", then "assetname".
   "assetid" and "acct" default to all.
 
-["getfraction",{"client":<client-handle>,"assetid":<string>}]
+["getfraction",{"session":<session-string>,"assetid":<string>}]
   => {"@type":"fraction","assetid":<string>,"assetname":<string>,
       "amount":<string>,"scale":<integer>}
   Get the fractional balance for an assetid.
   Fractional balances are created when you pay storage fees on
   a balance.
 
-["getfractions",{"client":<client-handle>}]
+["getfractions",{"session":<session-string>}]
   =>[{"@type":"fraction",...},...]
   Return a list of all fractional balances.
 
-["getrawfractions",{"client":<client-handle>},"assetid":<string>]
-  => {"@type":"rawfractions",<assetid>:<string>}
-  Return an array of the raw signed messages for fractional balances.
-  If "assetid" is included, the list will include only that assetid.
-
-["getstoragefee",{"client":<client-handle>,"assetid":<string>}]
-  => {"@type":"storagefee","acct":<string>,"assetid":<string>,"assetname":<string>,
+["getstoragefee",{"session":<session-string>,"assetid":<string>}]
+  => {"@type":"storagefee","assetid":<string>,"assetname":<string>,
       "amount":<string>,"time":<string>,"formatted-amount":<string>,
       "fraction":<string>}
   Return the accumulated storage fees for a single assetid.
@@ -180,12 +173,11 @@ Error results are always returned as {"@type":"error","message":<string>}
   Return has the same properties as "@type":"balance", with the addition
   of the "fraction".
 
-["getstoragefees",{"client":<client-handle>,"assetid":<string>}]
-  => [{"@type":<storagefee>,...},...]
-  Return a list of storage fees, all of them if "assetid" is not
-  specified, or just that asset if specified.
+["getstoragefees",{"session":<session-string>}]
+  => [{"@type":"storagefee",...},...]
+  Return a list of all the storage fees.
 
-["spend",{"client":<client-handle>,"toid":<string>,"assetid":<string>,
+["spend",{"session":<session-string>,"toid":<string>,"assetid":<string>,
           "formatted-amount":<string>,"acct":<string>,"note":<string>}]
   => {"@type":"spendresult","transaction-fee":<string>,"storage-fee":<string>,
       "coupon":<string>}
@@ -198,7 +190,7 @@ Error results are always returned as {"@type":"error","message":<string>}
   "transaction-fee", "storage-fee" in the result may be omitted.
   "coupon" will be present in the result only if "toid" was "coupon".
 
-["spendreject",{"client":<client-handle>,"time":<string>,"note":<string>}]
+["spendreject",{"session":<session-string>,"time":<string>,"note":<string>}]
   => null
   Cancels the spend with the given "time" (as returned by "getoutbox").
   "note" is optional.
@@ -208,25 +200,25 @@ Error results are always returned as {"@type":"error","message":<string>}
   You lose your transaction fee when you reject a spend.
     This discourages making it a habit.
 
-["ishistoryenabled?",{"client:<client-handle>"}] => <boolean>
+["ishistoryenabled?",{"client:<session-string>"}] => <boolean>
   Return true if keeping history is enabled.
 
-["sethistoryenabled",{"client:<client-handle>","enabled?":<boolean>}] => null
+["sethistoryenabled",{"client:<session-string>","enabled?":<boolean>}] => null
   Enable history if "enabled?" is true. Disable otherwise.
 
-["gethistorytimes",{"client":<client-handle>}] => [<string>,...]
+["gethistorytimes",{"session":<session-string>}] => [<string>,...]
   Get the times for which there are history items.
 
-["gethistoryitems",{"client":<client-handle>,"time":<string>}]
+["gethistoryitems",{"session":<session-string>,"time":<string>}]
   => [{"@type":"history","time":<string>,"request":<string>,"from":<string>
        "to":<string>,"formatted-amount":<string>,"assetid":<string>,
        "assetname":<string>,"note":<string>,"response":<string>},...]
   Returns all the history items for "time".
 
-["removehistoryitems",{"client":<client-handle>,"time":<string>}] => null
+["removehistoryitems",{"session":<session-string>,"time":<string>}] => null
   Remove all the history items for "time".
 
-["getinbox",{"client":<client-handle>}]
+["getinbox",{"session":<session-string>}]
   => [{"@type","inbox","request":<string>,"id":<string>,"time":<string>,
        "msgtime":<string>,"assetid":<string>,"assetname":<string>,
        "amount":<string>,"formatted-amount":"string","note":<string>,
@@ -244,7 +236,7 @@ Error results are always returned as {"@type":"error","message":<string>}
   "reply" is the note on the reply for "spend|accept" or "spend|reject".
   "items" is a list of "type":"tranfee" "fee" items.
 
-["processinbox",{"client":<client-handle>,
+["processinbox",{"session":<session-string>,
                  "directions":[{"@type":"processinbox",...},...]}] => null
   Process some or all of the inbox items returned by "getinbox".
   The full form of the "directions" items is:
@@ -259,12 +251,12 @@ Error results are always returned as {"@type":"error","message":<string>}
   "acct" is the acct into which to deposit the assets, default "main".
     Ignored for other than "request":"spend|accept" on "spend" inbox items
 
-["storagefees":{"client":<client-handle>}] => null
+["storagefees":{"session":<session-string>}] => null
   Tell the server to move the non-fractional part of the "getstoragefees"
   fees to the inbox. You can then then see them with "getinbox" and process
   them with "processinbox".
 
-["getoutbox":{"client":<client-handle>}]
+["getoutbox":{"session":<session-string>}]
   => [{"@type":"outbox","time":<string>,"id":<string>,"request":<string>,
        "assetid":<string>,"assetname":<string>,"amount":<string>,
        "formatted-amount":<string>,"note":<string>,
@@ -275,15 +267,15 @@ Error results are always returned as {"@type":"error","message":<string>}
   requests that have not yet been accepted or rejected, and then
   completed with "processinbox".
 
-["redeem",{"client":<client-handle>,"coupon":<string>}] => null
+["redeem",{"session":<session-string>,"coupon":<string>}] => null
   Redeem a coupon. If successful, add an inbox entry for the
   coupon spend.
 
-["getversion",{"client":<client-handle>}]
+["getversion",{"session":<session-string>}]
   => {"@type":"version","version":<string>,"time":<string>}
   Get the server version and build time.
 
-["getpermissions",{"client":<client-handle>,"permission":<string>,
+["getpermissions",{"session":<session-string>,"permission":<string>,
                    "reload?":<boolean>}]
   => [{"@type":"permission","id":<string>,"toid":<string>,"permission":<string>,
        "grant?":<boolean>,"time":<string>},...]
@@ -293,19 +285,19 @@ Error results are always returned as {"@type":"error","message":<string>}
   The currently supported "permission"s are "mint-tokens", "mint-coupons",
   and "add-asset".
 
-["getgrantedpermissions",{"client":<client-handle>}]
+["getgrantedpermissions",{"session":<session-string>}]
   => [{"@type:"permission",...},...]
   Return the permissions you've directly granted.
 
-["grant",{"client":<client-handle>,"toid":<string>,"permission":<string>,
+["grant",{"session":<session-string>,"toid":<string>,"permission":<string>,
           "grant?":<boolean>}
   Grant "permission" to "toid". Give him permission to grant that permission
   if "grant?" is true.
 
-["deny",{"client":<client-handle>,"toid":<string>,"permission":<string>}]
+["deny",{"session":<session-string>,"toid":<string>,"permission":<string>}]
   Deny "permission" to "toid".
 
-["audit",{"client":<client-handle>,"assetid":<string>}]
+["audit",{"session":<session-string>,"assetid":<string>}]
   => {"@type":"audit","amount":<string>,"formatted-amount":<string>,
       "fraction":<string>}
   Add up all the balances for "assetid" and return the result.

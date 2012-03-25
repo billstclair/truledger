@@ -43,7 +43,7 @@
     "addserver"
     "setserver"
     "currentserver"
-    "privkey-cached-p"
+    "privkey-cached?"
     "cache-privkey"
     "getcontact"
     "getcontacts"
@@ -228,6 +228,260 @@
       (when fetch-privkey?
         (setf (privkey-cached-p client) t))
       session)))
+
+(defun json-getprivkey (client args)
+  (with-json-args (passphrase) args
+    (login client passphrase)
+    (encode-rsa-private-key (privkey client) passphrase)))
+
+(defun json-login (client args)
+  (with-json-args (passphrase) args
+    (let ((session (login-new-session client passphrase)))
+      (%setserver-json client)
+      session)))
+
+(defun %setserver-json (client)
+  (let ((serverid (user-preference client "serverid")))
+    (ignore-errors (setserver client serverid nil))
+    (or (serverid client)
+        (dolist (server (getservers client))
+          (ignore-errors
+            (setserver client (server-info-id server))
+            (setf (user-preference client "serverid") serverid)
+            (return (server-info-id server)))))))
+
+(defun %login-json (client args)
+  (with-json-args (session) args
+    (login-with-sessionid client session)
+    (%setserver-json client)))
+
+(defun json-logout (client args)
+  (%login-json client args)
+  (logout client))
+
+(defun json-current-user (client args)
+  (%login-json client args)
+  (id client))
+
+(defun json-user-pubkey (client args)
+  (%login-json client args)
+  (pubkey client))
+
+(defun json-getserver (client args)
+  (%login-json client args)
+  (with-json-args (serverid) args
+    (unless serverid
+      (setf serverid (serverid client))
+      (unless serverid
+        (json-error "There is no current server")))
+    (let ((server (or (getserver client serverid)
+                      (json-error "There is no server with id: ~a" serverid))))
+      (%json-server-alist server))))
+
+(defun %json-server-alist (server)
+  `(("@type" . "server")
+    ("id" . ,(server-info-id server))
+    ("name" . ,(server-info-name server))
+    ("url" . ,(server-info-url server))
+    ,@(let ((host (server-info-proxy-host server)))
+           (when host
+             `(("proxy"
+                .
+                ,(format nil "~s:~d"
+                         host (server-info-proxy-port server))))))))
+
+(defun json-getservers (client args)
+  (%login-json client args)
+  (loop for server in (getservers client)
+     collect (%json-server-alist server)))
+
+(defun json-addserver (client args)
+  (%login-json client args)
+  (with-json-args (coupon name proxy) args
+    (addserver client coupon :name name :http-proxy (parse-proxy proxy))
+    (serverid client)))
+
+(defun json-setserver (client args)
+  (%login-json client args)
+  (with-json-args (serverid) args
+    (setserver client serverid)))
+
+(defun json-currentserver (client args)
+  (%login-json client args)
+  (serverid client))
+
+(defun json-privkey-cached? (client args)
+  (%login-json client args)
+  (with-json-args (serverid) args
+    (privkey-cached-p client serverid)))
+
+(defun json-cache-privkey (client args)
+  (%login-json client args)
+  (with-json-args (session uncache?) args
+    (cache-privkey client session uncache?)))
+  
+(defun json-getcontact (client args)
+  (%login-json client args)
+  (with-json-args (id) args
+    (let ((contact (getcontact client id)))
+      (unless contact
+        (json-error "There is no contact with id: ~a" id))
+      (%json-contact-alist contact))))
+
+(defun %json-optional (name value)
+  (when value
+    `((,name . ,value))))
+
+(defun %json-contact-alist (contact)
+  `(("@type" . "contact")
+    ("id" . ,(contact-id contact))
+    ("name" . ,(contact-name contact))
+    ,@(%json-optional "nick" (contact-nickname contact))
+    ,@(%json-optional "note" (contact-note contact))))
+
+(defun json-getcontacts (client args)
+  (%login-json client args)
+  (loop for contact in (getcontacts client)
+     collect (%json-contact-alist contact)))
+
+(defun json-addcontact (client args)
+  (%login-json client args)
+  (with-json-args (id nickname note) args
+    (addcontact client id nickname note)
+    nil))
+
+(defun json-deletecontact (client args)
+  (%login-json client args)
+  (with-json-args (id) args
+    (deletecontact client id)))
+
+(defun json-sync-contacts (client args)
+  (%login-json client args)
+  (sync-contacts client)
+  nil)
+
+(defun json-getasset (client args)
+  (%login-json client args)
+  (with-json-args (assetid force-server?) args
+    (let ((asset (getasset client assetid force-server?)))
+      (unless asset
+        (json-error "There is no asset with id: ~a" assetid))
+      (%json-asset-alist asset))))
+
+(defun %json-asset-alist (asset)
+  `(("@type" . "asset")
+    ("id" . ,(asset-id asset))
+    ("assetid" . ,(asset-assetid asset))
+    ("scale" . ,(parse-integer (asset-scale asset)))
+    ("precision" . ,(parse-integer (asset-precision asset)))
+    ("name" . ,(asset-name asset))
+    ,@(%json-optional "issuer" (asset-issuer asset))
+    ,@(%json-optional "percent" (asset-percent asset))))
+
+(defun json-getassets (client args)
+  (%login-json client args)
+  (loop for asset in (getassets client)
+     collect (%json-asset-alist asset)))
+
+(defun json-addasset (client args)
+  (%login-json client args)
+  (with-json-args (scale precision assetname percent) args
+    (unless (and (typep scale '(integer 0))
+                 (typep precision '(integer 0)))
+      (json-error "scale and precision must be positive integers"))
+    (unless (and (stringp assetname)
+                 (not (blankp assetname)))
+      (error "assetname must be a non-blank string"))
+    (unless (or (null percent) (stringp percent))
+      (error "percent must be null or a string"))
+    (asset-assetid (addasset client
+                             (as-string scale)
+                             (as-string precision)
+                             assetname percent))))
+
+(defun json-getfees (client args)
+  (%login-json client args)
+  (with-json-args (reload?) args
+    (multiple-value-bind (tranfee regfee other-fees)
+        (getfees client reload?)
+      (loop for fee in (list* tranfee regfee other-fees)
+         collect (%json-fee-alist fee)))))
+
+(defun %json-fee-alist (fee)
+  `(("@type" . "fee")
+    ("type" . ,(fee-type fee))
+    ("assetid" . ,(fee-assetid fee))
+    ("assetname" . ,(fee-assetname fee))
+    ("amount" . ,(fee-amount fee))
+    ("formatted-amount" . ,(fee-formatted-amount fee))))
+
+(defun json-getbalance (client args)
+  (%login-json client args)
+  (with-json-args (assetid acct) args
+    (unless acct (setf acct $MAIN))
+    (let ((bal (getbalance client acct assetid)))
+      (%json-balance-alist bal))))
+
+(defun %json-balance-alist (bal)
+  `(("@type" . "balance")
+    ("acct" . ,(balance-acct bal))
+    ("assetid" . ,(balance-assetid bal))
+    ("assetname" . ,(balance-assetname bal))
+    ("amount" . ,(balance-amount bal))
+    ("time" . ,(balance-time bal))
+    ("formatted-amount" . ,(balance-formatted-amount bal))))
+
+(defun json-getbalances (client args)
+  (%login-json client args)
+  (with-json-args (assetid acct) args
+    (let ((bals (getbalance client (or acct t) assetid)))
+      (unless (listp bals)
+        (setf bals `((,acct ,bals))))
+      (loop for acct.bals in bals
+         nconc (loop for bal in (cdr acct.bals)
+                  collect (%json-balance-alist bal))))))
+
+(defun json-getfraction (client args)
+  (%login-json client args)
+  (with-json-args (assetid) args
+    (unless (stringp assetid)
+      (json-error "assetid must be a string"))
+    (let ((fraction (getfraction client assetid)))
+      (%json-fraction-alist fraction))))
+
+(defun %json-fraction-alist (fraction)
+  `(("@type" . "fraction")
+    ("assetid" . ,(fraction-assetid fraction))
+    ("assetname" . ,(fraction-assetname fraction))
+    ("amount" . ,(fraction-amount fraction))
+    ("sclae" . ,(fraction-scale fraction))))
+
+(defun json-getfractions (client args)
+  (%login-json client args)
+  (loop for fraction in (getfraction client)
+     collect (%json-fraction-alist fraction)))
+
+(defun json-getstoragefee (client args)
+  (%login-json client args)
+  (with-json-args (assetid) args
+    (unless (stringp assetid)
+      (json-error "assetid must be a string"))
+    (let ((fee (getstoragefee client assetid)))
+      (%json-storagefee-alist fee))))
+
+(defun %json-storagefee-alist (fee)
+  `(("@type" . "storagefee")
+    ("assetid" . ,(balance-assetid fee))
+    ("assetname" . ,(balance-assetname fee))
+    ("amount" . ,(balance-amount fee))
+    ("time" . ,(balance-time fee))
+    ("formatted-amount". ,(balance-formatted-amount fee))
+    ("fraction" . ,(balance+fraction-fraction fee))))
+
+(defun json-getstoragefees (client args)
+  (%login-json client args)
+  (loop for fee in (getstoragefee client)
+     collect (%json-storagefee-alist fee)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
