@@ -2,7 +2,7 @@ The Truledger client webapp uses JSON to encode client function calls.
 
 The general format of a request is:
 
-  http://truleder.com/?json=<string>
+  http://truleder.com/json/?eval=<string>
 
 This can be sent via GET or POST, as with ?msg=<msg> commands to the server.
 

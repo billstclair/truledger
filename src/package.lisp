@@ -696,6 +696,11 @@
    #:web-server
    #:loom-web-server))
 
+(cl:defpackage :truledger-json
+  (:use :cl :cffi :cl-base64 :truledger :truledger-tokens :truledger-client)
+  (:export
+   #:json-server))
+
 (cl:defpackage :truledger-test
   (:use :cl :truledger :truledger-tokens :truledger-client))
 

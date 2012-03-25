@@ -10,7 +10,7 @@
   :version "1.0.0"
   :license "Apache"
   :depends-on (cffi cl-base64 hunchentoot drakma cl-smtp split-sequence
-               html-template
+               html-template cl-json
                ;; Systems above here come from quicklisp
                ;; System below here are in systems/ dir
                cl-crypto fsdb cybertiggyr-time limited-thread-taskmaster cl-loom)
@@ -42,6 +42,7 @@
      (:file "toplevel")
      (:file "client-web")
      (:file "loom-client-web")
+     (:file "client-json")
      (:file "history")
      (:file "tests")
      ))))

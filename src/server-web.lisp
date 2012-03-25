@@ -191,6 +191,12 @@
          (*default-pathname-defaults* (or (port-pathname-defaults port)
                                           *default-pathname-defaults*)))
     (truledger-client-web:web-server)))
+
+(defun do-truledger-json ()
+  (let* ((port (hunchentoot:acceptor-port hunchentoot:*acceptor*))
+         (*default-pathname-defaults* (or (port-pathname-defaults port)
+                                          *default-pathname-defaults*)))
+    (truledger-json:json-server)))
   
 (defun do-loom-web-client ()
   (let* ((port (hunchentoot:acceptor-port hunchentoot:*acceptor*))
@@ -979,7 +985,11 @@ openssl x509 -in cert.pem -text -noout
                   (get-web-script-handler port "/client/")
                   'do-truledger-web-client       
                   (get-web-script-handler port "/client/loom")
-                  'do-loom-web-client)
+                  'do-loom-web-client
+                  (get-web-script-handler port "/json")
+                  #'(lambda () (redirect "/json/"))
+                  (get-web-script-handler port "/json/")
+                  'do-truledger-json)
             (when *url-prefix*
               (setf (get-web-script-handler port "")
                     (lambda () (redirect "/"))))
