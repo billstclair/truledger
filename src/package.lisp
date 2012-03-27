@@ -517,6 +517,8 @@
    #:addserver
    #:setserver
    #:current-server
+   #:initialize-client-history
+   #:toggle-client-history
    #:register
    #:privkey-cached-p
    #:need-privkey-cache-p

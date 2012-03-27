@@ -1283,11 +1283,6 @@
         (setf (cw-error cw) (stringify c))))
     (draw-balance cw)))
 
-(defun initialize-client-history (client)
-  (let* ((keephistory (or (user-preference client "keephistory")
-                          "keep")))
-    (setf (keep-history-p client) (equal keephistory "keep"))))
-
 (defun do-balancemisc (cw)
   (with-parms (togglehistory resync toggledebug toggleinstructions)
     (cond (togglehistory (do-togglehistory cw))
@@ -1297,11 +1292,9 @@
 
 (defun do-togglehistory (cw)
   (let* ((client (cw-client cw))
-         (keephistory-p (initialize-client-history client)))
-    (setf (user-preference client "keephistory")
-          (if keephistory-p "forget" "keep"))
+         (keephistory-p (toggle-client-history client)))
     (setf (cw-error cw)
-          (if keephistory-p "History disabled" "History enabled"))
+          (if keephistory-p "History enabled" "History disabled"))
     (draw-balance cw)))
 
 (defun hideinstructions(cw)

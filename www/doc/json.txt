@@ -55,7 +55,7 @@ Error results are always returned as {"@type":"error","message":<string>}
 ["current-user",{"session":<session-string>}] => <user-id>
   Return the user id string of the currently logged in user.
 
-["user-pubkey",{client:<session-string>,id:<user-id>}] => <string>
+["getpubkey",{client:<session-string>,id:<user-id>}] => <string>
   Return the public key for "id", which defaults to the
   currently logged-in user.
 
@@ -83,7 +83,7 @@ Error results are always returned as {"@type":"error","message":<string>}
 ["setserver",{"session":<session-string>,"serverid":<string>}] => null
   Set the current server to "serverid".
 
-["currentserver",{"session":<session-string>}] => <serverid>
+["current-server",{"session":<session-string>}] => <serverid>
   Returns the ID of the current server, or null if there isn't one.
 
 ["privkey-cached?",{"session":<session-string>,"serverid":<string>}] => <boolean>
@@ -200,22 +200,23 @@ Error results are always returned as {"@type":"error","message":<string>}
   You lose your transaction fee when you reject a spend.
     This discourages making it a habit.
 
-["ishistoryenabled?",{"client:<session-string>"}] => <boolean>
+["is-history-enabled?",{"client:<session-string>"}] => <boolean>
   Return true if keeping history is enabled.
 
-["sethistoryenabled",{"client:<session-string>","enabled?":<boolean>}] => null
+["set-history-enabled",{"client:<session-string>","enabled?":<boolean>}] => enabled?
   Enable history if "enabled?" is true. Disable otherwise.
 
-["gethistorytimes",{"session":<session-string>}] => [<string>,...]
+["get-history-times",{"session":<session-string>}] => [<string>,...]
   Get the times for which there are history items.
 
-["gethistoryitems",{"session":<session-string>,"time":<string>}]
-  => [{"@type":"history","time":<string>,"request":<string>,"from":<string>
-       "to":<string>,"formatted-amount":<string>,"assetid":<string>,
+["get-history-items",{"session":<session-string>,"time":<string>}]
+  => [{"@type":"history","time":<string>,"request":<string>,
+       "fromid":<string>,"from":<string>,"toid":<string>,"to":<string>,
+       "amount":<string>,"formatted-amount":<string>,"assetid":<string>,
        "assetname":<string>,"note":<string>,"response":<string>},...]
   Returns all the history items for "time".
 
-["removehistoryitems",{"session":<session-string>,"time":<string>}] => null
+["remove-history-items",{"session":<session-string>,"time":<string>}] => null
   Remove all the history items for "time".
 
 ["getinbox",{"session":<session-string>}]
@@ -285,7 +286,7 @@ Error results are always returned as {"@type":"error","message":<string>}
   The currently supported "permission"s are "mint-tokens", "mint-coupons",
   and "add-asset".
 
-["getgrantedpermissions",{"session":<session-string>}]
+["get-granted-permissions",{"session":<session-string>}]
   => [{"@type:"permission",...},...]
   Return the permissions you've directly granted.
 

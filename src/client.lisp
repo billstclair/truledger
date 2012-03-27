@@ -493,6 +493,18 @@ Error if it does not. If it does, return two values:
   (unless (current-server client)
     (error (or msg "Server not set"))))
 
+(defun initialize-client-history (client)
+  (let* ((keephistory (or (user-preference client "keephistory")
+                          "keep")))
+    (setf (keep-history-p client) (equal keephistory "keep"))))
+
+(defun toggle-client-history (client)
+  (setf (keep-history-p client) (not (keep-history-p client))))
+
+(defmethod (setf keep-history-p) :after (value (client client))
+  (setf (user-preference client "keep-history")
+        (if value "keep" "forget")))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;;  All the API methods below require the user to be logged and the server to be set.
@@ -1496,7 +1508,7 @@ Error if it does not. If it does, return two values:
          oldamount
          oldtime
          time
-         (storagefee 0)
+         storagefee
          (digits 0)
          percent
          fraction
@@ -1951,7 +1963,12 @@ Error if it does not. If it does, return two values:
    Clear the coupon store, so you can only get the coupon once."
   (let ((coupon (coupon client)))
     (setf (coupon client) nil)
-    (and coupon (privkey-decrypt coupon (privkey client)))))
+    (when coupon
+      (setf coupon (privkey-decrypt coupon (privkey client)))
+      (let* ((args (unpack-servermsg client coupon $COUPON))
+             (url (getarg $SERVERURL args))
+             (coupon-number (getarg $COUPON args)))
+        (format nil "[~a,~a]" url coupon-number)))))
 
 (defstruct inbox
   request
@@ -2604,7 +2621,7 @@ Error if it does not. If it does, return two values:
                           (args (unpack-servermsg client coupon $COUPON))
                           (url (getarg $SERVERURL args))
                           (coupon-number (getarg $COUPON args)))
-                     (push (format nil "[~a, ~a]" url coupon-number)
+                     (push (format nil "[~a,~a]" url coupon-number)
                            coupons)))
                   (t (error "Bad request in outbox: ~s" request)))))
         (unless item

@@ -4,7 +4,7 @@
 ;;;
 ;;; The Truledger JSON webapp server
 ;;;
-;;; See www/docs/json.txt (http://truledger.com/doc/json.txt) for spec.
+;;; See www/doc/json.txt (http://truledger.com/doc/json.txt) for spec.
 ;;;
 
 (in-package :truledger-json)
@@ -37,12 +37,12 @@
     "login"
     "logout"
     "current-user"
-    "user-pubkey"
+    "getpubkey"
     "getserver"
     "getservers"
     "addserver"
     "setserver"
-    "currentserver"
+    "current-server"
     "privkey-cached?"
     "cache-privkey"
     "getcontact"
@@ -64,11 +64,11 @@
     "getstoragefees"
     "spend"
     "spendreject"
-    "ishistoryenabled?"
-    "sethistoryenabled"
-    "gethistorytimes"
-    "gethistoryitems"
-    "removehistoryitems"
+    "is-history-enabled?"
+    "set-history-enabled"
+    "get-history-times"
+    "get-history-items"
+    "remove-history-items"
     "getinbox"
     "processinbox"
     "storagefees"
@@ -76,7 +76,7 @@
     "redeem"
     "getversion"
     "getpermissions"
-    "getgrantedpermissions"
+    "get-granted-permissions"
     "grant"
     "deny"
     "audit"))
@@ -107,7 +107,7 @@
      (when (null x) (return t))
      (unless (listp x) (return nil))
      (let ((elt (pop x)))
-       (unless (and (listp elt) (atom (car elt)) (atom (cdr elt)))
+       (unless (and (listp elt) (atom (car elt)))
          (return nil)))))
 
 (defun json-server-internal (client)
@@ -253,7 +253,8 @@
 (defun %login-json (client args)
   (with-json-args (session) args
     (login-with-sessionid client session)
-    (%setserver-json client)))
+    (%setserver-json client)
+    (initialize-client-history client)))
 
 (defun json-logout (client args)
   (%login-json client args)
@@ -263,7 +264,7 @@
   (%login-json client args)
   (id client))
 
-(defun json-user-pubkey (client args)
+(defun json-getpubkey (client args)
   (%login-json client args)
   (pubkey client))
 
@@ -306,7 +307,7 @@
   (with-json-args (serverid) args
     (setserver client serverid)))
 
-(defun json-currentserver (client args)
+(defun json-current-server (client args)
   (%login-json client args)
   (serverid client))
 
@@ -482,6 +483,48 @@
   (%login-json client args)
   (loop for fee in (getstoragefee client)
      collect (%json-storagefee-alist fee)))
+
+(defun json-spend (client args)
+  (%login-json client args)
+  (with-json-args (toid assetid formatted-amount acct note) args
+    (let* ((plist (spend client toid assetid formatted-amount acct note)))
+      `(("@type" . "spendresult")
+        ,@(%json-optional "transaction-fee" (getf plist :transaction-fee))
+        ,@(%json-optional "storage-fee" (getf plist :storage-fee))
+        ,@(%json-optional "coupon" (getcoupon client))))))
+
+(defun json-spend-reject (client args)
+  (%login-json client args)
+  (with-json-args (time note) args
+    (spendreject client time note)
+    nil))
+
+(defun json-is-history-enabled? (client args)
+  (%login-json client args)
+  (keep-history-p client))
+
+(defun json-set-history-enabled (client args)
+  (%login-json client args)
+  (with-json-args (enabled?) args
+    (setf (keep-history-p client) enabled?)))
+
+(defun json-get-history-times (client args)
+  (%login-json client args)
+  (gethistorytimes client))
+
+(defun json-get-history-items (client args)
+  (%login-json client args)
+  (with-json-args (time) args
+    (let ((items (gethistoryitems client time)))
+      ;; *** This needs processing ***
+      (loop for hash in items
+         collect
+           (let ((res nil))
+             (maphash (lambda (key value)
+                        (when (stringp key)
+                          (push `(,key . ,value) res)))
+                      hash)
+             res)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
