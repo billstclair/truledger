@@ -599,6 +599,7 @@
    #:inbox-reply
    #:inbox-items
    #:getinbox
+   #:maybe-decrypt-note
    #:make-process-inbox
    #:process-inbox
    #:process-inbox-time

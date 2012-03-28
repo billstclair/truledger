@@ -211,7 +211,7 @@ Error results are always returned as {"@type":"error","message":<string>}
 
 ["get-history-items",{"session":<session-string>,"time":<string>}]
   => [{"@type":"history","time":<string>,"request":<string>,
-       "fromid":<string>,"from":<string>,"toid":<string>,"to":<string>,
+       "fromid":<string>,"toid":<string>,
        "amount":<string>,"formatted-amount":<string>,"assetid":<string>,
        "assetname":<string>,"note":<string>,"response":<string>},...]
   Returns all the history items for "time".
@@ -276,8 +276,8 @@ Error results are always returned as {"@type":"error","message":<string>}
   => {"@type":"version","version":<string>,"time":<string>}
   Get the server version and build time.
 
-["getpermissions",{"session":<session-string>,"permission":<string>,
-                   "reload?":<boolean>}]
+["get-permissions",{"session":<session-string>,"permission":<string>,
+                    "reload?":<boolean>}]
   => [{"@type":"permission","id":<string>,"toid":<string>,"permission":<string>,
        "grant?":<boolean>,"time":<string>},...]
   Get permissions.
@@ -285,17 +285,18 @@ Error results are always returned as {"@type":"error","message":<string>}
   If "reload?" is true, reload the permissions from the server.
   The currently supported "permission"s are "mint-tokens", "mint-coupons",
   and "add-asset".
+  The "time" property of the return values will be missing for default permissions.
 
 ["get-granted-permissions",{"session":<session-string>}]
   => [{"@type:"permission",...},...]
   Return the permissions you've directly granted.
 
 ["grant",{"session":<session-string>,"toid":<string>,"permission":<string>,
-          "grant?":<boolean>}
+          "grant?":<boolean>} => null
   Grant "permission" to "toid". Give him permission to grant that permission
   if "grant?" is true.
 
-["deny",{"session":<session-string>,"toid":<string>,"permission":<string>}]
+["deny",{"session":<session-string>,"toid":<string>,"permission":<string>}] => null
   Deny "permission" to "toid".
 
 ["audit",{"session":<session-string>,"assetid":<string>}]

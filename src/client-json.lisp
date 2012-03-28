@@ -75,7 +75,7 @@
     "getoutbox"
     "redeem"
     "getversion"
-    "getpermissions"
+    "get-permissions"
     "get-granted-permissions"
     "grant"
     "deny"
@@ -330,7 +330,7 @@
       (%json-contact-alist contact))))
 
 (defun %json-optional (name value)
-  (when value
+  (unless (blankp value)
     `((,name . ,value))))
 
 (defun %json-contact-alist (contact)
@@ -515,16 +515,248 @@
 (defun json-get-history-items (client args)
   (%login-json client args)
   (with-json-args (time) args
-    (let ((items (gethistoryitems client time)))
-      ;; *** This needs processing ***
-      (loop for hash in items
-         collect
-           (let ((res nil))
-             (maphash (lambda (key value)
-                        (when (stringp key)
-                          (push `(,key . ,value) res)))
-                      hash)
-             res)))))
+    (let* ((items (or (gethistoryitems client time)
+                      (return-from json-get-history-items nil)))
+           (item (car items))
+           (request (and item (getarg $REQUEST item)))
+           (res nil))
+      (cond ((equal request $SPEND)
+             (let ((fromid (id client))
+                   (toid (getarg $ID item))
+                   (amount (getarg $AMOUNT item))
+                   (formatted-amount (getarg $FORMATTEDAMOUNT item))
+                   (assetid (getarg $ASSET item))
+                   (assetname (getarg $ASSETNAME item))
+                   (note (maybe-decrypt-note client (getarg $NOTE item))))
+               (push `(("@type" . "history")
+                       ("time" . ,time)
+                       ("request" . ,request)
+                       ("fromid" . ,fromid)
+                       ("toid" . ,toid)
+                       ("amount" . ,amount)
+                       ("formatted-amount" . ,formatted-amount)
+                       ("assetid" . ,assetid)
+                       ("assetname" . ,assetname)
+                       ,@(%json-optional "note" note))
+                     res)))
+            ((equal request $PROCESSINBOX)
+             (loop
+                with id = (id client)
+                while items
+                with req
+                with cancelp
+                with toid
+                with coupon-redeemer-p
+                with fromid
+                with amount
+                with formatted-amount
+                with assetid
+                with assetname
+                with note
+                with response  
+                do
+                  (loop
+                     while items
+                     for item = (pop items) 
+                     for request = (getarg $REQUEST item)
+                     for last-toid = toid
+                     do
+                       (cond ((or (equal request $SPENDACCEPT)
+                                  (equal request $SPENDREJECT))
+                              (when req
+                                (push item items)
+                                (return))
+                              (setf req (if (equal request $SPENDACCEPT)
+                                            "accept" "reject"))
+                              (setf
+                               cancelp (equal (getarg $CUSTOMER item) id)
+                               response (maybe-decrypt-note
+                                         client (getarg $NOTE item))
+                               toid (getarg $CUSTOMER item)))
+                             ((equal request $SPEND)
+                              (setf
+                               fromid (getarg $CUSTOMER item)
+                               toid (getarg $ID item))
+                              (when (and (not (blankp last-toid))
+                                         (equal toid $COUPON))
+                                (setf coupon-redeemer-p t))
+                              (setf amount (getarg $AMOUNT item)
+                                    formatted-amount (getarg $FORMATTEDAMOUNT item)
+                                    assetid (getarg $ASSET item)
+                                    assetname (getarg $ASSETNAME item)
+                                    note (maybe-decrypt-note
+                                          client (getarg $NOTE item)))
+                              (when (equal (getarg $ATREQUEST item)
+                                           $ATSPEND)
+                                (setf req (stringify
+                                           req (if cancelp "=~a" "@~a")))))))
+                  (when (and req (not (blankp amount)))
+                    (push `(("@type" . "history")
+                            ("time" . ,time)
+                            ("request" . ,req)
+                            ("fromid" . ,fromid)
+                            ("toid" . ,toid)
+                            ("is-coupon?" . ,coupon-redeemer-p)
+                            ("amount" . ,amount)
+                            ("formatted-amount" . ,formatted-amount)
+                            ("assetid" . ,assetid)
+                            ("assetname" . ,assetname)
+                            ,@(%json-optional "note" note)
+                            ,@(%json-optional "response" response))
+                          res))
+                  (setf req nil
+                        fromid nil
+                        toid nil
+                        coupon-redeemer-p nil
+                        amount nil
+                        formatted-amount nil
+                        assetid nil
+                        assetname nil
+                        note nil
+                        response nil))))
+      (nreverse res))))
+
+(defun json-remove-history-items (client args)
+  (%login-json client args)
+  (with-json-args (time) args
+    (removehistoryitem client time)
+    nil))
+
+(defun json-getinbox (client args)
+  (%login-json client args)
+  (let ((items (getinbox client)))
+    (loop for item in items
+       collect `(("@type" . "inbox")
+                 ("request" . ,(inbox-request item))
+                 ("id" . ,(inbox-id item))
+                 ("time" . ,(inbox-time item))
+                 ("msgtime" . ,(inbox-msgtime item))
+                 ("assetid" . ,(inbox-assetid item))
+                 ("assetname" . ,(inbox-assetname item))
+                 ("amount" . ,(inbox-amount item))
+                 ("formatted-amount" . ,(inbox-formattedamount item))
+                 ,@(%json-optional "note" (inbox-note item))
+                 ,@(%json-optional "reply" (inbox-reply item))
+                 ,@(%json-optional
+                    "items"
+                    (loop for fee in (inbox-items item)
+                       when (typep fee 'inbox)
+                       collect
+                         `((:@type . "fee")
+                           (:time . ,(inbox-time fee))
+                           (:request . ,(inbox-request fee))
+                           (:assetid . ,(inbox-assetid fee))
+                           (:assetname . ,(inbox-assetname fee))
+                           (:amount . ,(inbox-amount fee))
+                           (:formatted-amount ,(inbox-formattedamount fee)))))))))
+
+(defun json-get (key alist)
+  (cdr (assoc key alist :test #'equal)))
+
+(defun json-processinbox (client args)
+  (%login-json client args)
+  (with-json-args (directions) args
+    (setf directions
+          (loop for dir in directions
+             collect (make-process-inbox
+                      :time (json-get :time dir)
+                      :request (json-get :request dir)
+                      :note (json-get :note dir)
+                      :acct (json-get :acct dir))))
+    (processinbox client directions)
+    nil))
+
+(defun json-storagefees (client args)
+  (%login-json client args)
+  (storagefees client)
+  nil)
+
+(defun json-getoutbox (client args)
+  (%login-json client args)
+  (loop for item in (getoutbox client)
+     collect `((:@type . "outbox")
+               (:time . ,(outbox-time item))
+               (:id . ,(outbox-id item))
+               (:request . ,(outbox-request item))
+               (:assetid . ,(outbox-assetid item))
+               (:assetname . ,(outbox-assetname item))
+               (:amount . ,(outbox-amount item))
+               (:formatted-amount . ,(outbox-formattedamount item))
+               ,@(%json-optional :note (outbox-note item))
+               ,@(%json-optional :items
+                                 (loop for fee in (outbox-items item)
+                                    when (typep fee 'outbox)
+                                    collect
+                                      `((:@type . "fee")
+                                        (:time . ,(outbox-time fee))
+                                        (:request . ,(outbox-request fee))
+                                        (:assetid . ,(outbox-assetid fee))
+                                        (:assetname . ,(outbox-assetname fee))
+                                        (:amount . ,(outbox-amount fee))
+                                        (:formatted-amount ,(outbox-formattedamount fee)))))
+               ,@(%json-optional :coupons
+                                 (loop for coupon in (outbox-coupons item)
+                                    collect coupon)))))
+
+(defun json-redeem (client args)
+  (%login-json client args)
+  (with-json-args (coupon) args
+    ;; Allow a coupon number or a coupon
+    (unless (coupon-number-p coupon)
+      (setf coupon
+            (handler-case (nth-value 1 (parse-coupon coupon))
+              (error ()
+                (json-error "Malformed-coupon: ~a" coupon)))))
+    (redeem client coupon)
+    nil))
+
+(defun json-getversion (client args)
+  (%login-json client args)
+  (multiple-value-bind (version time) (getversion client t)
+    `((:@type . "version")
+      (:version . ,version)
+      (:time . ,time))))
+
+(defun json-get-permissions (client args)
+  (%login-json client args)
+  (with-json-args (permission reload?) args
+    (loop for perm in (get-permissions client permission reload?)
+       collect (%json-permission-alist perm))))
+
+(defun %json-permission-alist (perm)
+  `((:@type . "permission")
+    (:id . ,(permission-id perm))
+    (:toid . ,(permission-toid perm))
+    (:permission . ,(permission-permission perm))
+    (:grant? . ,(permission-grant-p perm))
+    ,@(%json-optional :time (permission-time perm))))
+
+(defun json-get-granted-permissions (client args)
+  (%login-json client args)
+  (loop for perm in (get-granted-permissions client)
+     collect (%json-permission-alist perm)))
+
+(defun json-grant (client args)
+  (%login-json client args)
+  (with-json-args (toid permission grant?) args
+    (grant client toid permission grant?)
+    nil))
+
+(defun json-deny (client args)
+  (%login-json client args)
+  (with-json-args (toid permission) args
+    (deny client toid permission)
+    nil))
+
+(defun json-audit (client args)
+  (%login-json client args)
+  (with-json-args (assetid) args
+    (multiple-value-bind (formatted-amount fraction amount)
+        (audit client assetid)
+      `((:@type . "audit")
+        (:amount . ,amount)
+        (:formatted-amount . ,formatted-amount)
+        (:fraction . ,fraction)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

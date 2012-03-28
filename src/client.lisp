@@ -2074,6 +2074,13 @@ Error if it does not. If it does, return two values:
      (sort res (lambda (t1 t2) (< (bccomp t1 t2) 0)) :key #'inbox-time)
      msghash)))
 
+(defun maybe-decrypt-note (client note)
+  (unless (blankp note)
+    (ignore-errors
+      (setf note (decrypt-note
+                  (id client) (privkey client) note)))
+    note))
+
 (defmethod sync-inbox ((client client))
   "Synchronize the current customer inbox with the current server.
    Assumes that there IS a current user and server.

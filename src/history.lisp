@@ -28,13 +28,6 @@
   (when (cw-error cw)
     (draw-balance cw)))
 
-(defun maybe-decrypt-note (client note)
-  (unless (blankp note)
-    (ignore-errors
-      (setf note (decrypt-note
-                  (id client) (privkey client) note)))
-    note))
-
 (defun draw-history-internal (cw start count)
   (let* ((client (cw-client cw))
          (times (gethistorytimes client)))
