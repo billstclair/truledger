@@ -32,9 +32,9 @@
       ("message" . ,(apply #'format nil format-string format-args)))))
 
 (defparameter *json-commands*
-  '("newuser"
-    "getprivkey"
-    "login"
+  '(("newuser")
+    ("getprivkey")
+    ("login")
     "logout"
     "current-user"
     "getpubkey"
@@ -91,7 +91,9 @@
         (mapc
          (lambda (command)
            (setf (gethash command hash)
-                 (intern (format nil "JSON-~a" (string-upcase command))
+                 (intern (format nil "JSON-~a"
+                                 (string-upcase
+                                  (if (listp command) (car command) command)))
                          :truledger-json)))
          *json-commands*)
         (prog1
@@ -100,7 +102,10 @@
 
 (defun get-json-command-function (command)
   (or (gethash command (json-dispatch-table))
-      (json-error "Unknown command: ~a" command)))
+      (let ((res (gethash (list command) (json-dispatch-table))))
+        (if res
+            (values res t)
+            (json-error "Unknown command: ~a" command)))))
 
 (defun alistp (x)
   (loop
@@ -120,7 +125,12 @@
                  (alistp (second form))
                  (null (cddr form)))
       (json-error "Eval form must be [command,{arg:value,...}]"))
-    (funcall (get-json-command-function (first form)) client (second form))))
+    (let ((args (second form)))
+      (multiple-value-bind (fun no-login-p)
+          (get-json-command-function (first form))
+        (unless no-login-p
+          (%login-json client args))
+        (funcall fun client args)))))
 
 (defun assoc-json-value (key alist)
   (cdr (assoc key alist :test #'string-equal)))
@@ -257,19 +267,18 @@
     (initialize-client-history client)))
 
 (defun json-logout (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (logout client))
 
 (defun json-current-user (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (id client))
 
 (defun json-getpubkey (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (pubkey client))
 
 (defun json-getserver (client args)
-  (%login-json client args)
   (with-json-args (serverid) args
     (unless serverid
       (setf serverid (serverid client))
@@ -292,37 +301,32 @@
                          host (server-info-proxy-port server))))))))
 
 (defun json-getservers (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (loop for server in (getservers client)
      collect (%json-server-alist server)))
 
 (defun json-addserver (client args)
-  (%login-json client args)
   (with-json-args (coupon name proxy) args
     (addserver client coupon :name name :http-proxy (parse-proxy proxy))
     (serverid client)))
 
 (defun json-setserver (client args)
-  (%login-json client args)
   (with-json-args (serverid) args
     (setserver client serverid)))
 
 (defun json-current-server (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (serverid client))
 
 (defun json-privkey-cached? (client args)
-  (%login-json client args)
   (with-json-args (serverid) args
     (privkey-cached-p client serverid)))
 
 (defun json-cache-privkey (client args)
-  (%login-json client args)
   (with-json-args (session uncache?) args
     (cache-privkey client session uncache?)))
   
 (defun json-getcontact (client args)
-  (%login-json client args)
   (with-json-args (id) args
     (let ((contact (getcontact client id)))
       (unless contact
@@ -341,28 +345,25 @@
     ,@(%json-optional "note" (contact-note contact))))
 
 (defun json-getcontacts (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (loop for contact in (getcontacts client)
      collect (%json-contact-alist contact)))
 
 (defun json-addcontact (client args)
-  (%login-json client args)
   (with-json-args (id nickname note) args
     (addcontact client id nickname note)
     nil))
 
 (defun json-deletecontact (client args)
-  (%login-json client args)
   (with-json-args (id) args
     (deletecontact client id)))
 
 (defun json-sync-contacts (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (sync-contacts client)
   nil)
 
 (defun json-getasset (client args)
-  (%login-json client args)
   (with-json-args (assetid force-server?) args
     (let ((asset (getasset client assetid force-server?)))
       (unless asset
@@ -380,12 +381,11 @@
     ,@(%json-optional "percent" (asset-percent asset))))
 
 (defun json-getassets (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (loop for asset in (getassets client)
      collect (%json-asset-alist asset)))
 
 (defun json-addasset (client args)
-  (%login-json client args)
   (with-json-args (scale precision assetname percent) args
     (unless (and (typep scale '(integer 0))
                  (typep precision '(integer 0)))
@@ -401,7 +401,6 @@
                              assetname percent))))
 
 (defun json-getfees (client args)
-  (%login-json client args)
   (with-json-args (reload?) args
     (multiple-value-bind (tranfee regfee other-fees)
         (getfees client reload?)
@@ -417,7 +416,6 @@
     ("formatted-amount" . ,(fee-formatted-amount fee))))
 
 (defun json-getbalance (client args)
-  (%login-json client args)
   (with-json-args (assetid acct) args
     (unless acct (setf acct $MAIN))
     (let ((bal (getbalance client acct assetid)))
@@ -433,7 +431,6 @@
     ("formatted-amount" . ,(balance-formatted-amount bal))))
 
 (defun json-getbalances (client args)
-  (%login-json client args)
   (with-json-args (assetid acct) args
     (let ((bals (getbalance client (or acct t) assetid)))
       (unless (listp bals)
@@ -443,7 +440,6 @@
                   collect (%json-balance-alist bal))))))
 
 (defun json-getfraction (client args)
-  (%login-json client args)
   (with-json-args (assetid) args
     (unless (stringp assetid)
       (json-error "assetid must be a string"))
@@ -458,12 +454,11 @@
     ("sclae" . ,(fraction-scale fraction))))
 
 (defun json-getfractions (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (loop for fraction in (getfraction client)
      collect (%json-fraction-alist fraction)))
 
 (defun json-getstoragefee (client args)
-  (%login-json client args)
   (with-json-args (assetid) args
     (unless (stringp assetid)
       (json-error "assetid must be a string"))
@@ -480,12 +475,11 @@
     ("fraction" . ,(balance+fraction-fraction fee))))
 
 (defun json-getstoragefees (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (loop for fee in (getstoragefee client)
      collect (%json-storagefee-alist fee)))
 
 (defun json-spend (client args)
-  (%login-json client args)
   (with-json-args (toid assetid formatted-amount acct note) args
     (let* ((plist (spend client toid assetid formatted-amount acct note)))
       `(("@type" . "spendresult")
@@ -494,26 +488,23 @@
         ,@(%json-optional "coupon" (getcoupon client))))))
 
 (defun json-spend-reject (client args)
-  (%login-json client args)
   (with-json-args (time note) args
     (spendreject client time note)
     nil))
 
 (defun json-is-history-enabled? (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (keep-history-p client))
 
 (defun json-set-history-enabled (client args)
-  (%login-json client args)
   (with-json-args (enabled?) args
     (setf (keep-history-p client) enabled?)))
 
 (defun json-get-history-times (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (gethistorytimes client))
 
 (defun json-get-history-items (client args)
-  (%login-json client args)
   (with-json-args (time) args
     (let* ((items (or (gethistoryitems client time)
                       (return-from json-get-history-items nil)))
@@ -617,13 +608,12 @@
       (nreverse res))))
 
 (defun json-remove-history-items (client args)
-  (%login-json client args)
   (with-json-args (time) args
     (removehistoryitem client time)
     nil))
 
 (defun json-getinbox (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (let ((items (getinbox client)))
     (loop for item in items
        collect `(("@type" . "inbox")
@@ -654,7 +644,6 @@
   (cdr (assoc key alist :test #'equal)))
 
 (defun json-processinbox (client args)
-  (%login-json client args)
   (with-json-args (directions) args
     (setf directions
           (loop for dir in directions
@@ -667,12 +656,12 @@
     nil))
 
 (defun json-storagefees (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (storagefees client)
   nil)
 
 (defun json-getoutbox (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (loop for item in (getoutbox client)
      collect `((:@type . "outbox")
                (:time . ,(outbox-time item))
@@ -699,7 +688,6 @@
                                     collect coupon)))))
 
 (defun json-redeem (client args)
-  (%login-json client args)
   (with-json-args (coupon) args
     ;; Allow a coupon number or a coupon
     (unless (coupon-number-p coupon)
@@ -711,14 +699,13 @@
     nil))
 
 (defun json-getversion (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (multiple-value-bind (version time) (getversion client t)
     `((:@type . "version")
       (:version . ,version)
       (:time . ,time))))
 
 (defun json-get-permissions (client args)
-  (%login-json client args)
   (with-json-args (permission reload?) args
     (loop for perm in (get-permissions client permission reload?)
        collect (%json-permission-alist perm))))
@@ -732,24 +719,21 @@
     ,@(%json-optional :time (permission-time perm))))
 
 (defun json-get-granted-permissions (client args)
-  (%login-json client args)
+  (declare (ignore args))
   (loop for perm in (get-granted-permissions client)
      collect (%json-permission-alist perm)))
 
 (defun json-grant (client args)
-  (%login-json client args)
   (with-json-args (toid permission grant?) args
     (grant client toid permission grant?)
     nil))
 
 (defun json-deny (client args)
-  (%login-json client args)
   (with-json-args (toid permission) args
     (deny client toid permission)
     nil))
 
 (defun json-audit (client args)
-  (%login-json client args)
   (with-json-args (assetid) args
     (multiple-value-bind (formatted-amount fraction amount)
         (audit client assetid)
