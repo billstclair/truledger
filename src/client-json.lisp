@@ -185,7 +185,7 @@
         (destroy-password passphrase)))))
 
 (defun json-newuser-internal (client passphrase args)
-  (with-json-args (keysize name privkey url coupon proxy)
+  (with-json-args (keysize name privkey fetch-privkey? url coupon proxy)
       args
     (ensure-string passphrase "passphrase")
     (when (stringp keysize) (setf keysize (parse-integer keysize)))
@@ -195,18 +195,32 @@
     (ensure-string url "url" t)
     (ensure-string coupon "coupon" t)
     (ensure-string proxy "proxy" t)
-    (when (cond (keysize privkey)
-                ((not privkey)
+    
+    (when (cond (keysize (or privkey fetch-privkey?))
+                (privkey fetch-privkey?)
+                ((not fetch-privkey?)
                  (json-error
-                  "One of keysize or privkey must be included")))
+                  "One of keysize, privkey, and fetch-privkey? must be included")))
       (json-error
-       "Only one of keysize and privkey may be included"))
+       "Only one of keysize, privkey, and fetch-privkey? may be included"))
     (when (and url coupon)
       (error "Only one of url and coupon may be included"))
-    (when proxy
-      (setf proxy (parse-proxy proxy)))
     (when (passphrase-exists-p client passphrase)
       (json-error "There is already a client account for passphrase"))
+    (when proxy
+      (setf proxy (parse-proxy proxy)))
+
+    (when fetch-privkey?
+      (unless url
+        (json-error "url required to fetch private key from server"))
+      (verify-server client url nil proxy)
+      (when fetch-privkey?
+        (handler-case
+            (setf privkey (fetch-privkey client url passphrase
+                                         :http-proxy proxy))
+          (error (c)
+            (json-error "Error fetching private key from ~a: ~a"
+                        url c)))))
 
     (cond ((and privkey url)
            ;; Make sure we've got an account.
@@ -229,7 +243,9 @@
         (error (c)
           (logout client)
           (json-error "Failed to add server: ~a" c)))
-      session)))
+      (when fetch-privkey?
+        (setf (privkey-cached-p client) t))
+       session)))
 
 (defun json-getprivkey (client args)
   (with-json-args (passphrase) args

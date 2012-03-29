@@ -88,6 +88,17 @@ function newuser() {
          returnSession);
 }
 
+function useCachedPrivkey() {
+    passphrase = $('#passphrase').val();
+    url = $('#url').val();
+    proxy = $('#proxy').val();
+    send(['newuser',{'passphrase':passphrase,
+                     'fetch-privkey?':true,
+                     'url':url,
+                     'proxy':proxy}],
+         returnSession);
+}
+
   </script>
 </head>
 <body onload='$("#passphrase").focus()'>
@@ -125,6 +136,18 @@ function newuser() {
       </td>
     </tr>
     <tr class='newuser'>
+      <th>URL:</th>
+      <td><input id='url' name='url' type='text' size='40'/></td>
+    </tr>
+    <tr class='newuser'>
+      <th>Proxy:</th>
+      <td>
+        <input id='proxy' name='proxy' type='text' size='40'/>
+        <input type='submit' name='cachedprivkey' value='Use Cached Privkey'
+               onClick='useCachedPrivkey()'/>
+      </td>
+    </tr>
+    <tr class='newuser'>
       <th>Key Size:</th>
       <td>
         <select id='keysize' name='keysize'>
@@ -141,16 +164,8 @@ function newuser() {
       <td><input id='name' name='name' type='text' size='30'/></td>
     </tr>
     <tr class='newuser'>
-      <th>URL:</th>
-      <td><input id='url' name='url' type='text' size='40'/></td>
-    </tr>
-    <tr class='newuser'>
       <th>Coupon:</th>
-      <td><input id='coupon' name='coupon' type='text' size='40'/></td>
-    </tr>
-    <tr class='newuser'>
-      <th>Proxy:</th>
-      <td><input id='proxy' name='proxy' type='text' size='40'/></td>
+      <td><input id='coupon' name='coupon' type='text' size='80'/></td>
     </tr>
     <tr class='newuser'>
       <th>Privkey:</th>

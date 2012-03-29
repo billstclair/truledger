@@ -108,9 +108,10 @@
     (when (db-get db $PRIVKEY hash)
       (error "Passphrase already has an associated private key"))
 
-    (when (integerp privkey)
-      ;; privkey is size in bits for new private key
-      (setq privkey (rsa-generate-key privkey)))
+    (cond ((integerp privkey)
+           ;; privkey is size in bits for new private key
+           (setf privkey (rsa-generate-key privkey)))
+          (t (setf privkey (decode-rsa-private-key privkey passphrase))))
 
     (let* ((pubkey (encode-rsa-public-key privkey))
            (id (pubkey-id pubkey))
