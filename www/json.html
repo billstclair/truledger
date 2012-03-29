@@ -8,13 +8,13 @@
   <script>
 function send(obj, processor) {
     obj = JSON.stringify(obj);
-    $('#sent').html(obj);
+    $('#sent').val(obj);
     $.post('json/', {'eval':obj}, function(data) {
-        $('#rcvd').html(JSON.stringify(data));
+        $('#rcvd').val(JSON.stringify(data));
         if (data && typeof(data)=='object' && data['@type']=='error') {
-            $('#error').html(data['message']);
+            $('#error').text(data['message']);
         } else {
-            $('#error').html('&nbsp');
+            $('#error').html('&nbsp;');
             processor(data);
         }
     }, 'JSON');
@@ -24,19 +24,19 @@ function ignore(data) {
 }
 
 function hide(cls, obj) {
-    if ($(obj).html().trim() == 'Hide') {
+    if ($(obj).text().trim() == 'Hide') {
         $('.'+cls).hide();
-        $(obj).html('Show');
+        $(obj).text('Show');
     } else {
         $('.'+cls).show();
-        $(obj).html('Hide');
+        $(obj).text('Hide');
     }        
 }
 
 var session;
 function returnSession(data) {
     session = data;
-    $('#session').html(session);
+    $('#session').text(session);
 }
 function login() {
   passphrase = $('#passphrase').val();
@@ -44,16 +44,16 @@ function login() {
 }
 
 function notLoggedIn() {
-    $('#sent').html('');
-    $('#rcvd').html('');
-    $('#error').html('Not logged in');
+    $('#sent').val('');
+    $('#rcvd').val('');
+    $('#error').text('Not logged in');
 }
 
 function logout() {
     if (session) {
         send(['logout',{'session':session}],ignore);
         session = false;
-        $('#session').html('None');
+        $('#session').text('None');
         $('#currentuser').val('');
     } else {
         notLoggedIn();
@@ -73,7 +73,7 @@ function getuser() {
 function getpubkey() {
     if (session) {
         send(['getpubkey',{'session':session}], function(data) {
-            $('#pubkey').html(data);
+            $('#pubkey').val(data);
         });
     } else {
         notLoggedIn();
@@ -91,7 +91,7 @@ function currentserver() {
 }
 
 function returnPrivkey(data) {
-    $('#privkey').html(data);
+    $('#privkey').val(data);
 }
 
 function getprivkey() {
@@ -152,17 +152,13 @@ function getservers() {
     }
 }
 
-var lastServers;
-var lastServer;
 function showServers(servers) {
-    lastServers = servers;
     table = $('#servertable')[0];
     while (table.rows.length > 1) {
         table.deleteRow(1);
     }
     for (i=0; i<servers.length; i++) {
         server = servers[i];
-        lastServer = server;
         row = table.insertRow(-1);
         $(row.insertCell(0)).text(server.id);
         $(row.insertCell(1)).text(server.name);
