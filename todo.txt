@@ -1,4 +1,6 @@
-Webapp access to client.
+Example JSON web client.
+
+--quiet command line arg to prevent opening web serve
 
 ----------------------------------------------------------------------
 

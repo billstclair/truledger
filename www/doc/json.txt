@@ -14,7 +14,7 @@ Results vary by function and are documented with each function.
 Error results are always returned as {"@type":"error","message":<string>}
 
 ["newuser",{"passphrase":<string>,"keysize":<integer>,"name":<string>,
-          "privkey":<string>,"fetch-privkey?":<boolean>,"url":<string>,
+          "privkey":<string>:<boolean>,"url":<string>,
           "coupon":<string>,"proxy":<string>] => <session-string>
   Create a new user with the given "passphrase". Error if already there.
   All other parameters are optional
@@ -26,8 +26,6 @@ Error results are always returned as {"@type":"error","message":<string>}
     That will create a local account on a client with no running server.
     If you include a "url", will look for the account on that server.
     If you include a "coupon", will register with that coupon on its server.
-  If "fetch-privkey?" is true, then "url" must be included, and
-    the cached private key is fetched from "url".
   If "coupon" is included, it should be a coupon for
     a truledger server on which you want to create an account.
     This is not required if logging into a client with no running server,

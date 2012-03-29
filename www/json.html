@@ -1,0 +1,167 @@
+<html>
+<head>
+  <link rel='stylesheet' type='text/css' href='css/docstyle.css'>
+  <link rel='stylesheet' type='text/css' href='css/tables.css'>
+  <title>Truledger JSON Client Sandbox</title>
+  <style>th { text-align: right; }</style>
+  <script src='css/jquery-1.7.2.min.js'></script>
+  <script>
+function send(obj, processor) {
+    obj = JSON.stringify(obj);
+    $('#sent').html(obj);
+    $.post('json/', {'eval':obj}, function(data) {
+        $('#rcvd').html(JSON.stringify(data));
+        if (data && typeof(data)=='object' && data['@type']=='error') {
+            $('#error').html(data['message']);
+        } else {
+            $('#error').html('&nbsp');
+            processor(data);
+        }
+    }, 'JSON');
+}
+
+function ignore(data) {
+}
+
+function hide(cls, obj) {
+    if ($(obj).html().trim() == 'Hide') {
+        $('.'+cls).hide();
+        $(obj).html('Show');
+    } else {
+        $('.'+cls).show();
+        $(obj).html('Hide');
+    }        
+}
+
+var session;
+function returnSession(data) {
+    if (typeof(data) == 'string') {
+        session = data;
+        $('#session').html(session);
+    }
+}
+function login() {
+  passphrase = $('#passphrase').val();
+  send(['login',{'passphrase':passphrase}], returnSession);
+}
+
+function logout() {
+    if (session) {
+        send(['logout',{'session':session}],ignore);
+        session = false;
+        $('#session').html('None');
+    } else {
+        $('#sent').html('');
+        $('#rcvd').html('');
+        $('#error').html('Not logged in');
+    }
+}
+
+function returnPrivkey(data) {
+    if (typeof(data) == 'string') {
+        $('#privkey').html(data);
+    }
+}
+
+function getprivkey() {
+    passphrase = $('#passphrase').val();
+    send(['getprivkey',{'passphrase':passphrase}],
+         returnPrivkey);
+}
+
+function newuser() {
+    passphrase = $('#passphrase').val();
+    keysize = $('#keysize').val();
+    name = $('#name').val();
+    url = $('#url').val();
+    coupon = $('#coupon').val();
+    proxy = $('#proxy').val();
+    privkey = $('#privkey').val();
+    if (privkey != '') keysize = null;
+    send(['newuser',{'passphrase':passphrase,
+                     'keysize':keysize,
+                     'name':name,
+                     'url':url,
+                     'coupon':coupon,
+                     'proxy':proxy,
+                     'privkey':privkey,}],
+         returnSession);
+}
+
+  </script>
+</head>
+<body onload='$("#passphrase").focus()'>
+  <h2>JSON Sandbox</h2>
+  <p>This page is for playing with the JSON interface to the Truledger client.</p>
+  <p>
+    <textarea id='sent' name='sent' cols='80' rows='5'>JSON sent to the server goes here.</textarea>
+    <br>
+    <textarea id='rcvd' name='rcvd' cols='80' rows='10'>JSON returned by the server goes here.</textarea>
+  </p>
+  <table>
+    <tr>
+      <th>&nbsp;</th>
+      <td><span id='error' style='color: red;'>&nbsp;</span></td>
+    </tr>
+    <tr>
+      <th>Session:</th>
+      <td id='session'>None</td>
+    </tr>
+    <tr>
+      <th>Passphrase:</th>
+      <td>
+        <input id='passphrase' name='passphrase' type='password' size='40'/>
+        <input type='submit' name='login' value='Login' onClick='login();'/>
+        <input type='submit' name='logout' value='Logout' onClick='logout();'/>
+        <input type='submit' name='getprivkey' value="Get Privkey"
+               onClick='getprivkey()'/>
+      </td>
+    </tr>
+    <tr>
+      <th>&nbsp;</th>
+      <td>
+        <a href='javascript:void(0)' onClick="javascript:hide('newuser',this)">
+          Hide</a> New User fields
+      </td>
+    </tr>
+    <tr class='newuser'>
+      <th>Key Size:</th>
+      <td>
+        <select id='keysize' name='keysize'>
+          <option value='512'>512</option>
+          <option value='1024'>1024</option>
+          <option value='2048'>2048</option>
+          <option value='3072'>3072</option>
+          <option value='4096'>4096</option>
+        </select>
+      </td>
+    </tr>
+    <tr class='newuser'>
+      <th>Name:</th>
+      <td><input id='name' name='name' type='text' size='30'/></td>
+    </tr>
+    <tr class='newuser'>
+      <th>URL:</th>
+      <td><input id='url' name='url' type='text' size='40'/></td>
+    </tr>
+    <tr class='newuser'>
+      <th>Coupon:</th>
+      <td><input id='coupon' name='coupon' type='text' size='40'/></td>
+    </tr>
+    <tr class='newuser'>
+      <th>Proxy:</th>
+      <td><input id='proxy' name='proxy' type='text' size='40'/></td>
+    </tr>
+    <tr class='newuser'>
+      <th>Privkey:</th>
+      <td><textarea id='privkey' cols='65' rows='10'></textarea></td>
+    </tr>
+    <tr class='newuser'>
+      <td>&nbsp;</td>
+      <td>
+        <input type='submit' name='newuser' value='New User' onClick='newuser()'/>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

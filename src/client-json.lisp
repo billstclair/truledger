@@ -135,14 +135,18 @@
 (defun assoc-json-value (key alist)
   (cdr (assoc key alist :test #'string-equal)))
 
+(defun blank-to-nil (x)
+  (if (blankp x) nil x))
+
 (defmacro with-json-args (lambda-list args-alist &body body)
   (let ((args-var (gensym "ARGS")))
     `(let ((,args-var ,args-alist))
        (let ,(loop for var-spec in lambda-list
                 for var = (if (listp var-spec) (first var-spec) var-spec)
                 for default = (and (listp var-spec) (second var-spec))
-                for val-form = `(assoc-json-value
-                                 ,(string-downcase (string var)) ,args-var)
+                for val-form = `(blank-to-nil
+                                  (assoc-json-value
+                                   ,(string-downcase (string var)) ,args-var))
                 collect `(,var ,(if default
                                     `(or ,val-form ,default)
                                     val-form)))
@@ -181,39 +185,29 @@
         (destroy-password passphrase)))))
 
 (defun json-newuser-internal (client passphrase args)
-  (with-json-args (keysize name privkey fetch-privkey? url coupon proxy)
+  (with-json-args (keysize name privkey url coupon proxy)
       args
     (ensure-string passphrase "passphrase")
+    (when (stringp keysize) (setf keysize (parse-integer keysize)))
     (ensure-integer keysize "keysize" t)
     (ensure-string name "name" t)
     (ensure-string privkey "privkey" t)
     (ensure-string url "url" t)
     (ensure-string coupon "coupon" t)
     (ensure-string proxy "proxy" t)
-    (when (cond (keysize (or privkey fetch-privkey?))
-                (privkey fetch-privkey?)
-                ((not fetch-privkey?)
+    (when (cond (keysize privkey)
+                ((not privkey)
                  (json-error
-                  "One of keysize, privkey, and fetch-privkey? must be included")))
+                  "One of keysize or privkey must be included")))
       (json-error
-       "Only one of keysize, privkey, and fetch-privkey? may be included"))
+       "Only one of keysize and privkey may be included"))
     (when (and url coupon)
       (error "Only one of url and coupon may be included"))
-    (when (passphrase-exists-p client passphrase)
-      (json-error "There is already a client account for passphrase"))
     (when proxy
       (setf proxy (parse-proxy proxy)))
-    (when fetch-privkey?
-      (unless url
-        (json-error "url required to fetch private key from server"))
-      (verify-server client url nil proxy)
-      (when fetch-privkey?
-        (handler-case
-            (setf privkey (fetch-privkey client url passphrase
-                                         :http-proxy proxy))
-          (error (c)
-            (json-error "Error fetching private key from ~a: ~a"
-                        url c)))))
+    (when (passphrase-exists-p client passphrase)
+      (json-error "There is already a client account for passphrase"))
+
     (cond ((and privkey url)
            ;; Make sure we've got an account.
            (verify-private-key client privkey passphrase url proxy))
@@ -235,17 +229,19 @@
         (error (c)
           (logout client)
           (json-error "Failed to add server: ~a" c)))
-      (when fetch-privkey?
-        (setf (privkey-cached-p client) t))
       session)))
 
 (defun json-getprivkey (client args)
   (with-json-args (passphrase) args
+    (when (blankp passphrase)
+      (json-error "Passphrase required for getprivkey"))
     (login client passphrase)
     (encode-rsa-private-key (privkey client) passphrase)))
 
 (defun json-login (client args)
   (with-json-args (passphrase) args
+    (when (blankp passphrase)
+      (json-error "Passphrase required for login"))
     (let ((session (login-new-session client passphrase)))
       (%setserver-json client)
       session)))
