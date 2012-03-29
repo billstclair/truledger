@@ -57,6 +57,9 @@ Error results are always returned as {"@type":"error","message":<string>}
   Return the public key for "id", which defaults to the
   currently logged-in user.
 
+["current-server",{"session":<session-string>}] => <serverid>
+  Returns the ID of the current server, or null if there isn't one.
+
 ["getserver",{"session":<session-string>,"serverid":<string>}]
   => {"@type":"server","id":<string>,"name":<string>,"url":<string>,"proxy":<string>}
   Return information for the given "serverid", which defaults to
@@ -80,9 +83,6 @@ Error results are always returned as {"@type":"error","message":<string>}
 
 ["setserver",{"session":<session-string>,"serverid":<string>}] => null
   Set the current server to "serverid".
-
-["current-server",{"session":<session-string>}] => <serverid>
-  Returns the ID of the current server, or null if there isn't one.
 
 ["privkey-cached?",{"session":<session-string>,"serverid":<string>}] => <boolean>
   Return whether or not the private key for "serverid", which defaults

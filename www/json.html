@@ -35,14 +35,18 @@ function hide(cls, obj) {
 
 var session;
 function returnSession(data) {
-    if (typeof(data) == 'string') {
-        session = data;
-        $('#session').html(session);
-    }
+    session = data;
+    $('#session').html(session);
 }
 function login() {
   passphrase = $('#passphrase').val();
   send(['login',{'passphrase':passphrase}], returnSession);
+}
+
+function notLoggedIn() {
+    $('#sent').html('');
+    $('#rcvd').html('');
+    $('#error').html('Not logged in');
 }
 
 function logout() {
@@ -50,17 +54,44 @@ function logout() {
         send(['logout',{'session':session}],ignore);
         session = false;
         $('#session').html('None');
+        $('#currentuser').val('');
     } else {
-        $('#sent').html('');
-        $('#rcvd').html('');
-        $('#error').html('Not logged in');
+        notLoggedIn();
+    }
+}
+
+function getuser() {
+    if (session) {
+        send(['current-user',{'session':session}], function(data) {
+            $('#currentuser').val(data);
+        });
+    } else {
+        notLoggedIn();
+    }
+}
+
+function getpubkey() {
+    if (session) {
+        send(['getpubkey',{'session':session}], function(data) {
+            $('#pubkey').html(data);
+        });
+    } else {
+        notLoggedIn();
+    }
+}
+
+function currentserver() {
+    if (session) {
+        send(['current-server',{'session':session}], function(data) {
+            $('#server').val(data);
+        });
+    } else {
+        notLoggedIn();
     }
 }
 
 function returnPrivkey(data) {
-    if (typeof(data) == 'string') {
-        $('#privkey').html(data);
-    }
+    $('#privkey').html(data);
 }
 
 function getprivkey() {
@@ -99,17 +130,64 @@ function useCachedPrivkey() {
          returnSession);
 }
 
+function getserver() {
+    serverid = $('#server').val();
+    if (session) {
+        send(['getserver',{'session':session,
+                           'serverid':serverid}],
+             function(data) {
+                 showServers([data]);
+             });             
+    } else {
+        notLoggedIn();
+    }
+}
+
+function getservers() {
+    serverid = $('#server').val();
+    if (session) {
+        send(['getservers',{'session':session}], showServers);
+    } else {
+        notLoggedIn();
+    }
+}
+
+var lastServers;
+var lastServer;
+function showServers(servers) {
+    lastServers = servers;
+    table = $('#servertable')[0];
+    while (table.rows.length > 1) {
+        table.deleteRow(1);
+    }
+    for (i=0; i<servers.length; i++) {
+        server = servers[i];
+        lastServer = server;
+        row = table.insertRow(-1);
+        $(row.insertCell(0)).text(server.id);
+        $(row.insertCell(1)).text(server.name);
+        $(row.insertCell(2)).text(server.url);
+        $(row.insertCell(3)).text(server.proxy);
+    }
+}
   </script>
 </head>
 <body onload='$("#passphrase").focus()'>
-  <h2>JSON Sandbox</h2>
+  <h2>Truledger JSON Client Sandbox</h2>
   <p>This page is for playing with the JSON interface to the Truledger client.</p>
-  <p>
-    <textarea id='sent' name='sent' cols='80' rows='5'>JSON sent to the server goes here.</textarea>
-    <br>
-    <textarea id='rcvd' name='rcvd' cols='80' rows='10'>JSON returned by the server goes here.</textarea>
-  </p>
   <table>
+    <tr>
+      <th>Sent:</th>
+      <td>
+        <textarea id='sent' name='sent' cols='80' rows='5'>JSON sent to the server goes here.</textarea>
+      </td>
+    </tr>
+    <tr>
+      <th>Received:</th>
+      <td>
+        <textarea id='rcvd' name='rcvd' cols='80' rows='10'>JSON returned by the server goes here.</textarea>
+        </td>
+    </tr>
     <tr>
       <th>&nbsp;</th>
       <td><span id='error' style='color: red;'>&nbsp;</span></td>
@@ -117,6 +195,15 @@ function useCachedPrivkey() {
     <tr>
       <th>Session:</th>
       <td id='session'>None</td>
+    </tr>
+    <tr>
+      <th>Current User:</th>
+      <td>
+        <input type='text' name='currentuser' id='currentuser' size='60'
+               disabled='disabled'/>
+        <input type='submit' name='getuser' value='Get Current User'
+               onClick='getuser();'/>
+      </td>
     </tr>
     <tr>
       <th>Passphrase:</th>
@@ -175,6 +262,49 @@ function useCachedPrivkey() {
       <td>&nbsp;</td>
       <td>
         <input type='submit' name='newuser' value='New User' onClick='newuser()'/>
+      </td>
+    </tr>
+    <tr class='newuser'><td colspan='2'>&nbsp;</td></tr>
+    <tr>
+      <th>Pubkey:</th>
+      <td><textarea id='pubkey' cols='65' rows='10'></textarea></td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>
+        <input type='submit' name='getpubkey' value='Get Pubkey'
+               onClick='getpubkey();'/>
+      </td>
+    </tr>
+    <tr><td colspan='2'>&nbsp;</td></tr>
+    <tr>
+      <th>Server:</th>
+      <td>
+        <input type='text' name='server' id='server' size='60'/>
+        <input type='submit' name='getserver' value='Get Server Info'
+               onClick='getserver();'/>
+        <input type='submit' name='currentserver' value='Get Current Server'
+               onClick='currentserver();'/>
+      </td>
+    </tr>
+    <tr>
+      <th>Servers:</th>
+      <td>
+        <table class='prettytable' id='servertable'>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>URL</th>
+            <th>Proxy</th>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>
+        <input type='submit' name='getservers' value='Get Servers'
+               onClick='getservers()'/>
       </td>
     </tr>
   </table>
