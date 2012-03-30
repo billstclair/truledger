@@ -50,8 +50,10 @@ Error results are always returned as {"@type":"error","message":<string>}
 ["logout",{"session":<session-string>}] => null
   Release the resources associated with <session-string>.
 
-["current-user",{"session":<session-string>}] => <user-id>
-  Return the user id string of the currently logged in user.
+["getuser",{"session":<session-string>,"id":<string>}]
+  => {"@type':'user',"id",<string>,"name",<string>}
+  Return the the id and name of the user with the given "id",
+or the current user if "id" is omitted or blank.
 
 ["getpubkey",{client:<session-string>,id:<user-id>}] => <string>
   Return the public key for "id", which defaults to the
@@ -61,7 +63,8 @@ Error results are always returned as {"@type":"error","message":<string>}
   Returns the ID of the current server, or null if there isn't one.
 
 ["getserver",{"session":<session-string>,"serverid":<string>}]
-  => {"@type":"server","id":<string>,"name":<string>,"url":<string>,"proxy":<string>}
+  => {"@type":"server","id":<string>,"name":<string>,"url":<string>,
+      "proxy":<string>"privkeycached':<boolean>}
   Return information for the given "serverid", which defaults to
   the current server, when there is one.
 
@@ -88,14 +91,14 @@ Error results are always returned as {"@type":"error","message":<string>}
   Return whether or not the private key for "serverid", which defaults
     to the current server, is cached on the server.
 
-["cache-privkey",{"session":<session-string>,"uncache?":<boolean>}]
+["cache-privkey",{"session":<session-string>,"uncache?":<boolean>}] => <boolean>
   Cache the private key on the current server,
   or uncache it if "uncache?" is true.
 
 ["getcontact",{"session":<session-string>,"id":<string>}]
   => {"@type":"contact","id":<string>,"name":<string>,"nickname":<string>,
       "note":<string>}
-  Get a single contact, but its "id".
+  Get a single contact, by its "id".
 
 ["getcontacts",{"session":<session-string>}]
   => [<contact-info>,...]
@@ -117,7 +120,7 @@ Error results are always returned as {"@type":"error","message":<string>}
       "scale":<integer>,"precision":<integer>,"name":<string>,
       "issuer":<string>,"percent":<string>}
   Get information about "assetid".
-  If "force-asset?" is included and true, refresh the local
+  If "force-server?" is included and true, refresh the local
   information about the asset from the server.
 
 ["getassets",{"session":<session-string>}] => [<asset-info>,...]
@@ -277,7 +280,7 @@ Error results are always returned as {"@type":"error","message":<string>}
 ["get-permissions",{"session":<session-string>,"permission":<string>,
                     "reload?":<boolean>}]
   => [{"@type":"permission","id":<string>,"toid":<string>,"permission":<string>,
-       "grant?":<boolean>,"time":<string>},...]
+       "grant":<boolean>,"time":<string>},...]
   Get permissions.
   If "permission" is included, get only that one permission.
   If "reload?" is true, reload the permissions from the server.
@@ -290,9 +293,9 @@ Error results are always returned as {"@type":"error","message":<string>}
   Return the permissions you've directly granted.
 
 ["grant",{"session":<session-string>,"toid":<string>,"permission":<string>,
-          "grant?":<boolean>} => null
+          "grant":<boolean>} => null
   Grant "permission" to "toid". Give him permission to grant that permission
-  if "grant?" is true.
+  if "grant" is true.
 
 ["deny",{"session":<session-string>,"toid":<string>,"permission":<string>}] => null
   Deny "permission" to "toid".

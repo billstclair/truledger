@@ -36,7 +36,7 @@
     ("getprivkey")
     ("login")
     "logout"
-    "current-user"
+    "getuser"
     "getpubkey"
     "getserver"
     "getservers"
@@ -274,6 +274,8 @@
 
 (defun %login-json (client args)
   (with-json-args (session) args
+    (unless session
+      (json-error "Missing session arg"))
     (login-with-sessionid client session)
     (%setserver-json client)
     (initialize-client-history client)))
@@ -282,9 +284,15 @@
   (declare (ignore args))
   (logout client))
 
-(defun json-current-user (client args)
-  (declare (ignore args))
-  (id client))
+(defun json-getuser (client args)
+  (with-json-args (id) args
+    (unless id (setf id (id client)))
+    (multiple-value-bind (pubkeysig name) (get-id client id)
+      (unless pubkeysig
+        (json-error "There is no user with id: ~a" id))
+      `(("@type" . "user")
+        ("id" . ,id)
+        ,@(%json-optional "name" name)))))
 
 (defun json-getpubkey (client args)
   (declare (ignore args))
@@ -298,33 +306,37 @@
         (json-error "There is no current server")))
     (let ((server (or (getserver client serverid)
                       (json-error "There is no server with id: ~a" serverid))))
-      (%json-server-alist server))))
+      (%json-server-alist server client))))
 
-(defun %json-server-alist (server)
+(defun %json-server-alist (server client)
   `(("@type" . "server")
     ("id" . ,(server-info-id server))
-    ("name" . ,(server-info-name server))
-    ("url" . ,(server-info-url server))
-    ,@(let ((host (server-info-proxy-host server)))
-           (when host
-             `(("proxy"
-                .
-                ,(format nil "~s:~d"
-                         host (server-info-proxy-port server))))))))
+     ("name" . ,(server-info-name server))
+     ("url" . ,(server-info-url server))
+     ,@(let ((host (server-info-proxy-host server)))
+            (when host
+              `(("proxy"
+                 .
+                 ,(format nil "~s:~d"
+                          host (server-info-proxy-port server))))))
+    ("privkeycached" . ,(privkey-cached-p client (server-info-id server)))))
 
-(defun json-getservers (client args)
-  (declare (ignore args))
-  (loop for server in (getservers client)
-     collect (%json-server-alist server)))
+ (defun json-getservers (client args)
+   (declare (ignore args))
+   (loop for server in (getservers client)
+      collect (%json-server-alist server client)))
 
-(defun json-addserver (client args)
-  (with-json-args (coupon name proxy) args
+ (defun json-addserver (client args)
+   (with-json-args (coupon name proxy) args
+    (ensure-string coupon "coupon")
     (addserver client coupon :name name :http-proxy (parse-proxy proxy))
     (serverid client)))
 
 (defun json-setserver (client args)
   (with-json-args (serverid) args
-    (setserver client serverid)))
+    (setserver client serverid)
+    (setf (user-preference client "serverid") serverid)
+    nil))
 
 (defun json-current-server (client args)
   (declare (ignore args))
@@ -340,6 +352,8 @@
   
 (defun json-getcontact (client args)
   (with-json-args (id) args
+    (unless id
+      (json-error "Missing ID arg"))
     (let ((contact (getcontact client id)))
       (unless contact
         (json-error "There is no contact with id: ~a" id))
@@ -353,7 +367,7 @@
   `(("@type" . "contact")
     ("id" . ,(contact-id contact))
     ("name" . ,(contact-name contact))
-    ,@(%json-optional "nick" (contact-nickname contact))
+    ,@(%json-optional "nickname" (contact-nickname contact))
     ,@(%json-optional "note" (contact-note contact))))
 
 (defun json-getcontacts (client args)
@@ -727,7 +741,7 @@
     (:id . ,(permission-id perm))
     (:toid . ,(permission-toid perm))
     (:permission . ,(permission-permission perm))
-    (:grant? . ,(permission-grant-p perm))
+    (:grant . ,(permission-grant-p perm))
     ,@(%json-optional :time (permission-time perm))))
 
 (defun json-get-granted-permissions (client args)
@@ -736,8 +750,8 @@
      collect (%json-permission-alist perm)))
 
 (defun json-grant (client args)
-  (with-json-args (toid permission grant?) args
-    (grant client toid permission grant?)
+  (with-json-args (toid permission grant) args
+    (grant client toid permission grant)
     nil))
 
 (defun json-deny (client args)

@@ -363,7 +363,7 @@ Error if it does not. If it does, return two values:
     (cond (serverid
            (when (and id (not (equal id serverid)))
              (error "verifyserver: id <> serverid"))
-           (unless id (setq id serverid)))
+           serverid)
           (t
            (multiple-value-bind (serverid pubkey name)
                (serverid-for-url client url :http-proxy http-proxy)
