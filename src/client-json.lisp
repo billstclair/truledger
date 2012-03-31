@@ -347,7 +347,9 @@
     (privkey-cached-p client serverid)))
 
 (defun json-cache-privkey (client args)
-  (with-json-args (session uncache?) args
+  (with-json-args (session serverid uncache?) args
+    (unless (or (null serverid) (equal serverid (serverid client)))
+      (setserver client serverid))
     (cache-privkey client session uncache?)))
   
 (defun json-getcontact (client args)

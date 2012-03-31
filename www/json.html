@@ -19,9 +19,10 @@ function send(obj, processor, noshow) {
                if (!noshow) {
                    $('#rcvd').val(JSON.stringify(data));
                }
-               if (data && !noshow &&
-                   typeof(data)=='object' && data['@type']=='error') {
-                   $('#error').text(data['message']);
+               if (data && typeof(data)=='object' && data['@type']=='error') {
+                   if (!noshow) {
+                       $('#error').text(data['message']);
+                   }
                } else {
                    if (!noshow) {
                        $('#error').html('&nbsp;');
@@ -53,7 +54,10 @@ function returnSession(data) {
 
 function finishLogin(data) {
     returnSession(data);
-    getPrivkeyCached(null, true, true);
+    table = $('#servertable')[0];
+    while (table.rows.length > 1) {
+        table.deleteRow(1);
+    }
 }
 
 function login() {
@@ -78,7 +82,6 @@ function logout() {
     }
 }
 
-// *** Change to use 'getuser' command, and pass the ID if passid is true
 function getuser(passid) {
     id = null;
     if (passid) id = $('#userid').val();
@@ -103,11 +106,12 @@ function getpubkey() {
     }
 }
 
-function currentserver() {
+function currentserver(noshow) {
     if (session) {
         send(['current-server',{'session':session}], function(data) {
             $('#server').val(data);
-        });
+        }),
+        noshow;
     } else {
         notLoggedIn();
     }
@@ -166,9 +170,9 @@ function getserver() {
     }
 }
 
-function getservers() {
+function getservers(noshow) {
     if (session) {
-        send(['getservers',{'session':session}], showServers);
+        send(['getservers',{'session':session}], showServers, noshow);
     } else {
         notLoggedIn();
     }
@@ -190,8 +194,20 @@ function showServers(servers) {
         $(cell).attr('align', 'center');
         $(cell).html("<input type='checkbox'" +
                      (server.privkeycached ? " checked='checked'" : '') +
-                     " disabled='disabled'/>");
+                     " onClick='toggleCached(this," +
+                     '"' + server.id + '",' +
+                     server.privkeycached + ")'/>");
     }
+}
+
+function toggleCached(checkbox, serverid, cached) {
+    $(checkbox).attr('checked', cached ? 'checked' : null);
+    send(['cache-privkey',{'session':session,
+                           'serverid':serverid,
+                           'uncache?':cached}],
+         function(data) {
+             getservers(true);
+         });
 }
 
 function addserver() {
@@ -283,6 +299,7 @@ function getcontacts(noshow) {
 }
 
 function showContacts(contacts) {
+    if (!contacts) return;
     table = $('#contacttable')[0];
     while (table.rows.length > 1) {
         table.deleteRow(1);
@@ -290,15 +307,13 @@ function showContacts(contacts) {
     for (i=0; i<contacts.length; i++) {
         contact = contacts[i];
         row = table.insertRow(-1);
-        cell = row.insertCell(0);
-        $(cell).attr('id', 'contact' + i);
-        $(cell).text(contact.id);
+        $(row.insertCell(0)).text(contact.id);
         $(row.insertCell(1)).text(contact.name);
         $(row.insertCell(2)).text(contact.nickname);
         $(row.insertCell(3)).html(contact.note.replace('\n','<br/>'))
-        cell = row.insertCell(4);
-        $(cell).attr('align', 'center');
-        $(cell).html("<input type='checkbox' id='" + 'contactchecked' + i +"'/>");
+        $(row.insertCell(4)).html("<input type='submit' value='Delete'" +
+                                  " onClick='deletecontact(" +
+                                  '"' + contact.id + '")' + "'/>");
     }
 }
 
@@ -319,21 +334,11 @@ function addcontact() {
     }
 }
 
-function deletechecked() {
-    if (session) {
-        table = $('#contacttable')[0];
-        rows = table.rows;
-        for (i=0; i<(rows.length-1); i++) {
-            id = $('#contact'+i).text();
-            checked = $('#contactchecked'+i).attr('checked');
-            if (checked) {
-                send(['deletecontact',{'session':session,'id':id}], ignore);
-            }
-        }
-        getcontacts(true);
-   } else {
-        notLoggedIn();
-    }
+function deletecontact(id) {
+    send(['deletecontact',{'session':session,'id':id}],
+         function(data) {
+             getcontacts(true);
+         });
 }
 
 function synccontacts() {
@@ -391,17 +396,6 @@ function synccontacts() {
       </td>
     </tr>
     <tr>
-      <th>Privkey Cached?</th>
-      <td>
-        <input type='checkbox' name='privkeycached' id='privkeycached'
-               disabled='disabled'/>
-        <input type='submit' name='cacheprivkey' value='Cache Privkey'
-               onClick='cachePrivkey(true)';/>
-        <input type='submit' name='uncacheprivkey' value='Uncache Privkey'
-               onClick='cachePrivkey(false)';/>
-      </td>
-    </tr>
-    <tr>
       <th>Passphrase:</th>
       <td>
         <input id='passphrase' name='passphrase' type='password' size='40'/>
@@ -411,6 +405,104 @@ function synccontacts() {
                onClick='getprivkey()'/>
       </td>
     </tr>
+
+    <tr>
+      <th>&nbsp;</th>
+      <td>
+        <a href='javascript:void(0)' onClick="javascript:hide('server',this)">
+          Hide</a> Server and Contact fields
+      </td>
+    </tr>
+    <tr class='server'>
+      <th>Server:</th>
+      <td>
+        <input type='text' name='server' id='server' size='60'/>
+        <input type='submit' name='getserver' value='Get Server Info'
+               onClick='getserver();'/>
+        <input type='submit' name='setserver' value='Set Server'
+               onClick='setserver();'/>
+        <input type='submit' name='currentserver' value='Get Current Server'
+               onClick='currentserver();'/>
+      </td>
+    </tr>
+    <tr class='server'>
+      <th>Servers:</th>
+      <td>
+        <table class='prettytable' id='servertable'>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>URL</th>
+            <th>Proxy</th>
+            <th>Privkey<br/>Cached?</th>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr class='server'>
+      <td>&nbsp;</td>
+      <td>
+        <input type='submit' name='getservers' value='Get Servers'
+               onClick='getservers()'/>
+      </td>
+    </tr>
+    <tr class='server'><td colspan='2'>&nbsp;</td></tr>
+    <tr class='server'>
+      <th>Contact ID:</th>
+      <td>
+        <input type='text' name='contact' id='contact' size='60'/>
+        <input type='submit' name='getcontact' value='Get Contact Info'
+               onClick='getcontact();'/>
+      </td>
+    </tr>
+    <tr class='server'>
+      <th>Contact Name:</th>
+      <td>
+        <input type='text' name='contactname' id='contactname' size='40'
+               disabled='disabled'/>
+      </td>
+    </tr>
+    <tr class='server'>
+      <th>Nickname:</th>
+      <td>
+        <input type='text' name='nickname' id='nickname' size='40'/>
+      </td>
+    </tr>
+    <tr class='server'>
+      <th>Note:</th>
+      <td><textarea id='note' cols='65' rows='5'></textarea></td>
+    </tr>
+    <tr class='server'>
+      <td>&nbsp;</td>
+      <td>
+        <input type='submit' name='addcontact' value='Add/Change Contact'
+               onClick='addcontact()'/>
+      </td>
+    </tr>
+    <tr class='server'>
+      <th>Contacts:</th>
+      <td>
+        <table class='prettytable' id='contacttable'>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Nickname</th>
+            <th>Note</th>
+            <th>x</th>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr class='server'>
+      <td>&nbsp;</td>
+      <td>
+        <input type='submit' name='getcontacts' value='Get Contacts'
+               onClick='getcontacts()'/>
+        <input type='submit' name='synccontacts' value='Sync Contacts'
+               onClick='synccontacts()'/>
+      </td>
+    </tr>
+
     <tr>
       <th>&nbsp;</th>
       <td>
@@ -475,104 +567,6 @@ function synccontacts() {
       <td>
         <input type='submit' name='getpubkey' value='Get Pubkey'
                onClick='getpubkey();'/>
-      </td>
-    </tr>
-    <tr>
-      <th>&nbsp;</th>
-      <td>
-        <a href='javascript:void(0)' onClick="javascript:hide('server',this)">
-          Hide</a> Server and Contact fields
-      </td>
-    </tr>
-    <tr class='server'>
-      <th>Server:</th>
-      <td>
-        <input type='text' name='server' id='server' size='60'/>
-        <input type='submit' name='getserver' value='Get Server Info'
-               onClick='getserver();'/>
-        <input type='submit' name='setserver' value='Set Server'
-               onClick='setserver();'/>
-      </td>
-    </tr>
-    <tr class='server'>
-      <th>Servers:</th>
-      <td>
-        <table class='prettytable' id='servertable'>
-          <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>URL</th>
-            <th>Proxy</th>
-            <th>Privkey<br/>Cached?</th>
-          </tr>
-        </table>
-      </td>
-    </tr>
-    <tr class='server'>
-      <td>&nbsp;</td>
-      <td>
-        <input type='submit' name='getservers' value='Get Servers'
-               onClick='getservers()'/>
-        <input type='submit' name='currentserver' value='Get Current Server'
-               onClick='currentserver();'/>
-      </td>
-    </tr>
-    <tr class='server'><td colspan='2'>&nbsp;</td></tr>
-    <tr class='server'>
-      <th>Contact ID:</th>
-      <td>
-        <input type='text' name='contact' id='contact' size='60'/>
-        <input type='submit' name='getcontact' value='Get Contact Info'
-               onClick='getcontact();'/>
-      </td>
-    </tr>
-    <tr class='server'>
-      <th>Contact Name:</th>
-      <td>
-        <input type='text' name='contactname' id='contactname' size='40'
-               disabled='disabled'/>
-      </td>
-    </tr>
-    <tr class='server'>
-      <th>Nickname:</th>
-      <td>
-        <input type='text' name='nickname' id='nickname' size='40'/>
-      </td>
-    </tr>
-    <tr class='server'>
-      <th>Note:</th>
-      <td><textarea id='note' cols='65' rows='5'></textarea></td>
-    </tr>
-    <tr class='server'>
-      <td>&nbsp;</td>
-      <td>
-        <input type='submit' name='addcontact' value='Add/Change Contact'
-               onClick='addcontact()'/>
-      </td>
-    </tr>
-    <tr class='server'>
-      <th>Contacts:</th>
-      <td>
-        <table class='prettytable' id='contacttable'>
-          <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Nickname</th>
-            <th>Note</th>
-            <th>x</th>
-          </tr>
-        </table>
-      </td>
-    </tr>
-    <tr class='server'>
-      <td>&nbsp;</td>
-      <td>
-        <input type='submit' name='getcontacts' value='Get Contacts'
-               onClick='getcontacts()'/>
-        <input type='submit' name='deletechecked' value='Delete Checked'
-               onClick='deletechecked()'/>
-        <input type='submit' name='synccontacts' value='Sync Contacts'
-               onClick='synccontacts()'/>
       </td>
     </tr>
   </table>

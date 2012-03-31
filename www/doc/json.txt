@@ -91,9 +91,10 @@ or the current user if "id" is omitted or blank.
   Return whether or not the private key for "serverid", which defaults
     to the current server, is cached on the server.
 
-["cache-privkey",{"session":<session-string>,"uncache?":<boolean>}] => <boolean>
-  Cache the private key on the current server,
-  or uncache it if "uncache?" is true.
+["cache-privkey",{"session":<session-string>,"serverid":<string>,
+                  "uncache?":<boolean>}] => <boolean>
+  Cache the private key on "serverid", or the current server, if blank.
+  Uncache it if "uncache?" is true.
 
 ["getcontact",{"session":<session-string>,"id":<string>}]
   => {"@type":"contact","id":<string>,"name":<string>,"nickname":<string>,
@@ -115,7 +116,7 @@ or the current user if "id" is omitted or blank.
 ["sync-contacts",{"session":<session-string>}] => null
   Synchronize client contacts with current server.
 
-["getasset",{"session":<session-string>,"assetid":<string>,"force-server?":true}]
+["getasset",{"session":<session-string>,"assetid":<string>,"force-server?":<bolean>}]
   => {"@type":"asset","id":<string>,"assetid":<string>,
       "scale":<integer>,"precision":<integer>,"name":<string>,
       "issuer":<string>,"percent":<string>}
