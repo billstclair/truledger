@@ -55,6 +55,61 @@ Error results are always returned as {"@type":"error","message":<string>}
   Return the the id and name of the user with the given "id",
 or the current user if "id" is omitted or blank.
 
+["getinbox",{"session":<session-string>}]
+  => [{"@type","inbox","request":<string>,"id":<string>,"time":<string>,
+       "msgtime":<string>,"assetid":<string>,"assetname":<string>,
+       "amount":<string>,"formattedamount":"string","note":<string>,
+       "reply":<string>,"items":[{"@type":"fee",...}]},...]
+  Return the contents of the inbox.
+  "request" is "spend", "spend|accept", or "spend|reject".
+  "id" is the user ID of the source of the item.
+  "time" is the time on the server-signed inbox item.
+  "msgtime" is the time on the user-signed message.
+  "assetid" is the ID of the asset.
+  "assetname" is the name of the asset.
+  "amount" is the asset amount, an integer string.
+  "formattedamount" is the amount formatted with the asset's scale & precision.
+  "note" is the note on the original message.
+  "reply" is the note on the reply for "spend|accept" or "spend|reject".
+  "items" is a list of "type":"tranfee" "fee" items.
+
+["processinbox",{"session":<session-string>,
+                 "directions":[{"@type":"processinbox",...},...]}] => null
+  Process some or all of the inbox items returned by "getinbox".
+  The full form of the "directions" items is:
+    {"@type":"processinbox","time":<string>,"request":<string>,
+     "note":<string>,"acct":<string>}
+  "time" is a "time" from a "getinbox" item.
+  "request" is "spend|accept" or "spend|reject" for inbox items
+    whose "request" is "spend". Ignored for "spend|accept" and
+    "spend|reject" inbox items.
+  "note" is an optional note to send back to the spender.
+    Ignored for other than "spend" inbox items.
+  "acct" is the acct into which to deposit the assets, default "main".
+    Ignored for other than "request":"spend|accept" on "spend" inbox items
+
+["getbalance",{"session":<session-string>,"assetid":<string>,"acct":<string>}]
+  => {"@type":"balance>,"acct":<string>,"assetid":<string>,"assetname":<string>,
+      "amount":<string>,"time":<string>,"formattedamount":<string>}
+  Get a single balance.
+  "acct" defaults to "main".
+
+["getbalances",{"session":<session-string>,"assetid":<string>,"acct":<string>}]
+  => [{"@type":"balance",...},...]
+  Get a set of balances, sorted by "acct", then "assetname".
+  "assetid" and "acct" default to all.
+
+["getoutbox":{"session":<session-string>}]
+  => [{"@type":"outbox","time":<string>,"id":<string>,"request":<string>,
+       "assetid":<string>,"assetname":<string>,"amount":<string>,
+       "formattedamount":<string>,"note":<string>,
+       "items":[{"@type":"fee",...}],"coupons":[<string>]},...]
+  Return information about outstanding spends.
+  You can use the "time" for "rejectspend".
+  Other than that, it's only information, showing "spend"
+  requests that have not yet been accepted or rejected, and then
+  completed with "processinbox".
+
 ["getpubkey",{client:<session-string>,id:<user-id>}] => <string>
   Return the public key for "id", which defaults to the
   currently logged-in user.
@@ -116,7 +171,8 @@ or the current user if "id" is omitted or blank.
 ["sync-contacts",{"session":<session-string>}] => null
   Synchronize client contacts with current server.
 
-["getasset",{"session":<session-string>,"assetid":<string>,"force-server?":<bolean>}]
+["getasset",{"session":<session-string>,"assetid":<string>,
+             "force-server?":<boolean>}]
   => {"@type":"asset","id":<string>,"assetid":<string>,
       "scale":<integer>,"precision":<integer>,"name":<string>,
       "issuer":<string>,"percent":<string>}
@@ -136,24 +192,13 @@ or the current user if "id" is omitted or blank.
 
 ["getfees",{"session":<session-string>,"reload?":<boolean>}]
   => [{"@type":"fee","type":<string>,"assetid":<string>,"assetname":<string>,
-       "amount":<string>,"formatted-amount":<string>"}, ...]
+       "amount":<string>,"formattedamount":<string>"}, ...]
   Returns a list of "fee" arrays.
   There are always at least two elements in that array.
   The first element is of "type":"tranfee"
   The second element is of "type":"regfee"
   The other elements are of "type":"spend" or "type":"transfer"
   If "reload?" is included and true, reloads the fees from the server.
-
-["getbalance",{"session":<session-string>,"assetid":<string>,"acct":<string>}]
-  => {"@type":"balance>,"acct":<string>,"assetid":<string>,"assetname":<string>,
-      "amount":<string>,"time":<string>,"formatted-amount":<string>}
-  Get a single balance.
-  "acct" defaults to "main".
-
-["getbalances",{"session":<session-string>,"assetid":<string>,"acct":<string>}]
-  => [{"@type":"balance",...},...]
-  Get a set of balances, sorted by "acct", then "assetname".
-  "assetid" and "acct" default to all.
 
 ["getfraction",{"session":<session-string>,"assetid":<string>}]
   => {"@type":"fraction","assetid":<string>,"assetname":<string>,
@@ -168,7 +213,7 @@ or the current user if "id" is omitted or blank.
 
 ["getstoragefee",{"session":<session-string>,"assetid":<string>}]
   => {"@type":"storagefee","assetid":<string>,"assetname":<string>,
-      "amount":<string>,"time":<string>,"formatted-amount":<string>,
+      "amount":<string>,"time":<string>,"formattedamount":<string>,
       "fraction":<string>}
   Return the accumulated storage fees for a single assetid.
   Only relevant if logged in as the issuer of the asset.
@@ -180,10 +225,10 @@ or the current user if "id" is omitted or blank.
   Return a list of all the storage fees.
 
 ["spend",{"session":<session-string>,"toid":<string>,"assetid":<string>,
-          "formatted-amount":<string>,"acct":<string>,"note":<string>}]
+          "formattedamount":<string>,"acct":<string>,"note":<string>}]
   => {"@type":"spendresult","transaction-fee":<string>,"storage-fee":<string>,
       "coupon":<string>}
-  Spend "formatted-amount" of "assetid" to "toid".
+  Spend "formattedamount" of "assetid" to "toid".
   "acct" defaults to "main"
   "note" is optional.
   If "toid" is "coupon", mints a coupon instead of spending to another user
@@ -214,61 +259,18 @@ or the current user if "id" is omitted or blank.
 ["get-history-items",{"session":<session-string>,"time":<string>}]
   => [{"@type":"history","time":<string>,"request":<string>,
        "fromid":<string>,"toid":<string>,
-       "amount":<string>,"formatted-amount":<string>,"assetid":<string>,
+       "amount":<string>,"formattedamount":<string>,"assetid":<string>,
        "assetname":<string>,"note":<string>,"response":<string>},...]
   Returns all the history items for "time".
 
 ["remove-history-items",{"session":<session-string>,"time":<string>}] => null
   Remove all the history items for "time".
 
-["getinbox",{"session":<session-string>}]
-  => [{"@type","inbox","request":<string>,"id":<string>,"time":<string>,
-       "msgtime":<string>,"assetid":<string>,"assetname":<string>,
-       "amount":<string>,"formatted-amount":"string","note":<string>,
-       "reply":<string>,"items":[{"@type":"fee",...}]},...]
-  Return the contents of the inbox.
-  "request" is "spend", "spend|accept", or "spend|reject".
-  "id" is the user ID of the source of the item.
-  "time" is the time on the server-signed inbox item.
-  "msgtime" is the time on the user-signed message.
-  "assetid" is the ID of the asset.
-  "assetname" is the name of the asset.
-  "amount" is the asset amount, an integer string.
-  "formatted-amount" is the amount formatted with the asset's scale & precision.
-  "note" is the note on the original message.
-  "reply" is the note on the reply for "spend|accept" or "spend|reject".
-  "items" is a list of "type":"tranfee" "fee" items.
-
-["processinbox",{"session":<session-string>,
-                 "directions":[{"@type":"processinbox",...},...]}] => null
-  Process some or all of the inbox items returned by "getinbox".
-  The full form of the "directions" items is:
-    {"@type":"processinbox","time":<string>,"request":<string>,
-     "note":<string>,"acct":<string>}
-  "time" is a "time" from a "getinbox" item.
-  "request" is "spend|accept" or "spend|reject" for inbox items
-    whose "request" is "spend". Ignored for "spend|accept" and
-    "spend|reject" inbox items.
-  "note" is an optional note to send back to the spender.
-    Ignored for other than "spend" inbox items.
-  "acct" is the acct into which to deposit the assets, default "main".
-    Ignored for other than "request":"spend|accept" on "spend" inbox items
 
 ["storagefees":{"session":<session-string>}] => null
   Tell the server to move the non-fractional part of the "getstoragefees"
   fees to the inbox. You can then then see them with "getinbox" and process
   them with "processinbox".
-
-["getoutbox":{"session":<session-string>}]
-  => [{"@type":"outbox","time":<string>,"id":<string>,"request":<string>,
-       "assetid":<string>,"assetname":<string>,"amount":<string>,
-       "formatted-amount":<string>,"note":<string>,
-       "items":[{"@type":"fee",...}],"coupons":[<string>]},...]
-  Return information about outstanding spends.
-  You can use the "time" for "rejectspend".
-  Other than that, it's only information, showing "spend"
-  requests that have not yet been accepted or rejected, and then
-  completed with "processinbox".
 
 ["redeem",{"session":<session-string>,"coupon":<string>}] => null
   Redeem a coupon. If successful, add an inbox entry for the
@@ -302,7 +304,7 @@ or the current user if "id" is omitted or blank.
   Deny "permission" to "toid".
 
 ["audit",{"session":<session-string>,"assetid":<string>}]
-  => {"@type":"audit","amount":<string>,"formatted-amount":<string>,
+  => {"@type":"audit","amount":<string>,"formattedamount":<string>,
       "fraction":<string>}
   Add up all the balances for "assetid" and return the result.
   Should be all zeroes, unless the server is out of balance.

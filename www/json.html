@@ -3,7 +3,12 @@
   <link rel='stylesheet' type='text/css' href='css/docstyle.css'>
   <link rel='stylesheet' type='text/css' href='css/tables.css'>
   <title>Truledger JSON Client Sandbox</title>
-  <style>th { text-align: right; }</style>
+  <style>
+    th { text-align: right; }
+    .id { font-size: 50%; }
+    .amount { text-align: right; }
+    .center { text-align: center; }
+  </style>
   <script src='css/jquery-1.7.2.min.js'></script>
   <script>
 
@@ -66,9 +71,13 @@ function login() {
 }
 
 function notLoggedIn() {
+    errmsg('Not logged in');
+}
+
+function errmsg(msg) {
     $('#sent').val('');
     $('#rcvd').val('');
-    $('#error').text('Not logged in');
+    $('#error').text(msg);
 }
 
 function logout() {
@@ -91,6 +100,109 @@ function getuser(passid) {
             $('#userid').val(data['id']);
             $('#acctname').val(data['name']);
         });
+    } else {
+        notLoggedIn();
+    }
+}
+
+function getinbox(noshow) {
+    if (session) {
+        send(['getinbox',{'session':session}], showinbox, noshow);
+    } else {
+        notLoggedIn();
+    }
+}
+
+function showinbox(data) {
+    table = $('#inboxtable')[0];
+    while (table.rows.length > 1) {
+        table.deleteRow(1);
+    }
+    for (i=0; i<data.length; i++) {
+        item = data[i];
+        row = table.insertRow(-1);
+
+        request = item.request;
+        $(row.insertCell(0)).text(request)
+        insertIDCell(row, 1, item.id, true);
+        time = item.time;
+        $(row.insertCell(2)).html(time + '<br/>' + item.msgtime);
+        cell = row.insertCell(3);
+        $(cell).attr('class', 'amount');
+        $(cell).text(item.formattedamount);
+        cell = row.insertCell(4);
+        $(cell).text(item.assetname);
+        assetname = $(cell).html();
+        assetid = item.assetid;
+        $(cell).attr('onClick',"copyToClipboard('" + assetid + "')");
+        $(cell).html("<span title='" + assetid + "'>" +
+                     assetname + '</span>');
+        $(row.insertCell(5)).text(item.note);
+        cell = row.insertCell(6);
+        $(cell).attr('class', 'center');
+        html = (i==0) ?
+            "<input type='hidden' id='ibcount' value='"+ data.length + "'/>" :
+            '';
+        if (request == 'spend') {
+            html += "<input type='hidden' id='ibreq"+i+"' value='"+request+"'/>";
+            html += "<input type='hidden' id='ibtime"+i+"' value='"+time+"'/>";
+            html += "<select id='ibaction"+i+"'>" +
+                      "<option value='accept'>Accept</option>" +
+                      "<option value='reject'>Reject</option>" +
+                      "<option value='ignore'>Ignore</option>" +
+                    "</select><br/>" +
+                    "Acct: <input type='text' id='ibacct"+i+"' size='10'/>";
+        } else {
+            html += "<input type='checkbox' id='ibaction"+i+"' checked='checked'/> Remove";
+        }
+        $(cell).html(html);
+        cell = row.insertCell(7);
+        if (request == 'spend') {
+            $(cell).html("<textarea id='ibreply"+i+"' rows='3' cols='30'></textarea>");
+        } else {
+            $(cell).text(item.reply);
+        }
+    }
+}
+
+function processinbox() {
+    if (session) {
+        cnt = $('#ibcount').val();
+        if (!cnt) {
+            errmsg('No inbox items');
+            return;
+        }
+        directions = [];
+        idx = 0;
+        cnt = parseInt(cnt);
+        for (i=0; i<cnt; i++) {
+            request = $('#ibreq'+i).val();
+            time = $('#ibtime'+i).val();
+            if (request == 'spend') {
+                action = $('#ibaction'+i).val();
+                acct = $('#ibacct'+i).val();
+                reply = $('#ibreply'+i).val();
+                if (action != 'ignore') {
+                    action = (action=='accept') ? 'spend|accept' : 'spend|reject';
+                    directions[idx++] = {'@type':'processinbox',
+                                         'time':time,
+                                         'request':action,
+                                         'note':reply,
+                                         'acct':acct};
+                }
+            } else {
+                checked = $('#ibaction'+i).attr('checked');
+                if (checked) {
+                    directions[idx++] = {'@type':'processinbox',
+                                         'time':time};
+                }
+            }
+            send(['processinbox',{'session':session,
+                                  'directions':directions}],
+                  function(data) {
+                      getinbox(true);
+                  });
+        }
     } else {
         notLoggedIn();
     }
@@ -178,6 +290,25 @@ function getservers(noshow) {
     }
 }
 
+function copyToClipboard (text) {
+    window.prompt ("Copy to clipboard: Ctrl+C, Enter", text);
+}
+
+function insertIDCell(row, idx, id, substr) {
+    cell = row.insertCell(idx);
+    $(cell).attr('class', 'id');
+    if (id) {
+        if (substr) {
+            $(cell).attr('onClick', "copyToClipboard('" + id + "')");
+            $(cell).html("<span title='" + id + "'>" + id.substring(0, 8) +
+                         '&hellip;</span>');
+        } else {
+            $(cell).text(id);
+        }
+    }
+    return cell;
+}
+
 function showServers(servers) {
     table = $('#servertable')[0];
     while (table.rows.length > 1) {
@@ -186,7 +317,7 @@ function showServers(servers) {
     for (i=0; i<servers.length; i++) {
         server = servers[i];
         row = table.insertRow(-1);
-        $(row.insertCell(0)).text(server.id);
+        insertIDCell(row, 0, server.id);
         $(row.insertCell(1)).text(server.name);
         $(row.insertCell(2)).text(server.url);
         $(row.insertCell(3)).text(server.proxy);
@@ -197,6 +328,10 @@ function showServers(servers) {
                      " onClick='toggleCached(this," +
                      '"' + server.id + '",' +
                      server.privkeycached + ")'/>");
+        cell = row.insertCell(5);
+        $(cell).attr('align', 'center');
+        $(cell).html("<input type='submit' value='Set Server' onClick='setserver(" + 
+                     '"' + server.id + '")' + "'/>");
     }
 }
 
@@ -230,44 +365,18 @@ function addserver() {
     }
 }
 
-function setserver() {
-    if (session) {
-        server = $('#server').val();
-        send(['setserver',{'session':session,
-                           'serverid':server}],
-             ignore);
-    } else {
-        notLoggedIn();
-    }
+function setserver(serverid) {
+    send(['setserver',{'session':session,
+                       'serverid':serverid}],
+         function(data) {
+             $('#server').val(serverid);
+         });
 }
 
 function returnPrivkeyCache(data) {
     $('#privkeycached').attr('checked', data ? 'checked' : null);
     $('#cacheprivkey').attr('disabled', data ? 'disabled' : null);
     $('#uncacheprivkey').attr('disabled', data? null : 'disabled');
-}
-
-function getPrivkeyCached(serverid, displayp, noshow) {
-    if (session) {
-        send(['privkey-cached?',{'session':session,
-                                 'serverid':serverid}],
-             displayp ? returnPrivkeyCache : ignore,
-             noshow);                                 
-    } else {
-        if (!noshow) notLoggedIn();
-    }
-}
-
-function cachePrivkey(cache) {
-    if (session) {
-        send(['cache-privkey',{'session':session,
-                               'uncache?':!cache}],
-             function(data) {
-                 getPrivkeyCached(null, true, true);
-             });
-    } else {
-        notLoggedIn();
-    }
 }
 
 function returnContact(data) {
@@ -307,7 +416,7 @@ function showContacts(contacts) {
     for (i=0; i<contacts.length; i++) {
         contact = contacts[i];
         row = table.insertRow(-1);
-        $(row.insertCell(0)).text(contact.id);
+        insertIDCell(row, 0, contact.id);
         $(row.insertCell(1)).text(contact.name);
         $(row.insertCell(2)).text(contact.nickname);
         $(row.insertCell(3)).html(contact.note.replace('\n','<br/>'))
@@ -409,6 +518,41 @@ function synccontacts() {
     <tr>
       <th>&nbsp;</th>
       <td>
+        <a href='javascript:void(0)' onClick="javascript:hide('inbox',this)">
+          Hide</a> Inbox, Balance, and Outbox fields
+      </td>
+    </tr>
+    <tr class='inbox'>
+      <th>Inbox:</th>
+      <td>
+        <table class='prettytable' id='inboxtable'>
+          <tr>
+            <th>Req</th>
+            <th>ID</th>
+            <th>Times</th>
+            <th>Amount</th>
+            <th>Asset</th>
+            <th>Note</th>
+            <th>Action</th>
+            <th>Reply</th>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr class='inbox'>
+      <td>&nbsp;</td>
+      <td>
+        Click ID or Asset value to copy full ID<br/>
+        <input type='submit' name='getinbox' value='Get Inbox'
+               onClick='getinbox()'/>
+        <input type='submit' name='getinbox' value='Process Inbox'
+               onClick='processinbox()'/>
+      </td>
+    </tr>
+
+    <tr>
+      <th>&nbsp;</th>
+      <td>
         <a href='javascript:void(0)' onClick="javascript:hide('server',this)">
           Hide</a> Server and Contact fields
       </td>
@@ -419,8 +563,6 @@ function synccontacts() {
         <input type='text' name='server' id='server' size='60'/>
         <input type='submit' name='getserver' value='Get Server Info'
                onClick='getserver();'/>
-        <input type='submit' name='setserver' value='Set Server'
-               onClick='setserver();'/>
         <input type='submit' name='currentserver' value='Get Current Server'
                onClick='currentserver();'/>
       </td>
@@ -435,6 +577,7 @@ function synccontacts() {
             <th>URL</th>
             <th>Proxy</th>
             <th>Privkey<br/>Cached?</th>
+            <th>Switch</th>
           </tr>
         </table>
       </td>

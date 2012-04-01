@@ -441,7 +441,7 @@
     ("assetid" . ,(fee-assetid fee))
     ("assetname" . ,(fee-assetname fee))
     ("amount" . ,(fee-amount fee))
-    ("formatted-amount" . ,(fee-formatted-amount fee))))
+    ("formattedamount" . ,(fee-formatted-amount fee))))
 
 (defun json-getbalance (client args)
   (with-json-args (assetid acct) args
@@ -456,7 +456,7 @@
     ("assetname" . ,(balance-assetname bal))
     ("amount" . ,(balance-amount bal))
     ("time" . ,(balance-time bal))
-    ("formatted-amount" . ,(balance-formatted-amount bal))))
+    ("formattedamount" . ,(balance-formatted-amount bal))))
 
 (defun json-getbalances (client args)
   (with-json-args (assetid acct) args
@@ -499,7 +499,7 @@
     ("assetname" . ,(balance-assetname fee))
     ("amount" . ,(balance-amount fee))
     ("time" . ,(balance-time fee))
-    ("formatted-amount". ,(balance-formatted-amount fee))
+    ("formattedamount". ,(balance-formatted-amount fee))
     ("fraction" . ,(balance+fraction-fraction fee))))
 
 (defun json-getstoragefees (client args)
@@ -508,8 +508,8 @@
      collect (%json-storagefee-alist fee)))
 
 (defun json-spend (client args)
-  (with-json-args (toid assetid formatted-amount acct note) args
-    (let* ((plist (spend client toid assetid formatted-amount acct note)))
+  (with-json-args (toid assetid formattedamount acct note) args
+    (let* ((plist (spend client toid assetid formattedamount acct note)))
       `(("@type" . "spendresult")
         ,@(%json-optional "transaction-fee" (getf plist :transaction-fee))
         ,@(%json-optional "storage-fee" (getf plist :storage-fee))
@@ -543,7 +543,7 @@
              (let ((fromid (id client))
                    (toid (getarg $ID item))
                    (amount (getarg $AMOUNT item))
-                   (formatted-amount (getarg $FORMATTEDAMOUNT item))
+                   (formattedamount (getarg $FORMATTEDAMOUNT item))
                    (assetid (getarg $ASSET item))
                    (assetname (getarg $ASSETNAME item))
                    (note (maybe-decrypt-note client (getarg $NOTE item))))
@@ -553,7 +553,7 @@
                        ("fromid" . ,fromid)
                        ("toid" . ,toid)
                        ("amount" . ,amount)
-                       ("formatted-amount" . ,formatted-amount)
+                       ("formattedamount" . ,formattedamount)
                        ("assetid" . ,assetid)
                        ("assetname" . ,assetname)
                        ,@(%json-optional "note" note))
@@ -568,7 +568,7 @@
                 with coupon-redeemer-p
                 with fromid
                 with amount
-                with formatted-amount
+                with formattedamount
                 with assetid
                 with assetname
                 with note
@@ -600,7 +600,7 @@
                                          (equal toid $COUPON))
                                 (setf coupon-redeemer-p t))
                               (setf amount (getarg $AMOUNT item)
-                                    formatted-amount (getarg $FORMATTEDAMOUNT item)
+                                    formattedamount (getarg $FORMATTEDAMOUNT item)
                                     assetid (getarg $ASSET item)
                                     assetname (getarg $ASSETNAME item)
                                     note (maybe-decrypt-note
@@ -617,7 +617,7 @@
                             ("toid" . ,toid)
                             ("is-coupon?" . ,coupon-redeemer-p)
                             ("amount" . ,amount)
-                            ("formatted-amount" . ,formatted-amount)
+                            ("formattedamount" . ,formattedamount)
                             ("assetid" . ,assetid)
                             ("assetname" . ,assetname)
                             ,@(%json-optional "note" note)
@@ -628,7 +628,7 @@
                         toid nil
                         coupon-redeemer-p nil
                         amount nil
-                        formatted-amount nil
+                        formattedamount nil
                         assetid nil
                         assetname nil
                         note nil
@@ -652,7 +652,7 @@
                  ("assetid" . ,(inbox-assetid item))
                  ("assetname" . ,(inbox-assetname item))
                  ("amount" . ,(inbox-amount item))
-                 ("formatted-amount" . ,(inbox-formattedamount item))
+                 ("formattedamount" . ,(inbox-formattedamount item))
                  ,@(%json-optional "note" (inbox-note item))
                  ,@(%json-optional "reply" (inbox-reply item))
                  ,@(%json-optional
@@ -666,10 +666,13 @@
                            (:assetid . ,(inbox-assetid fee))
                            (:assetname . ,(inbox-assetname fee))
                            (:amount . ,(inbox-amount fee))
-                           (:formatted-amount ,(inbox-formattedamount fee)))))))))
+                           (:formattedamount ,(inbox-formattedamount fee)))))))))
 
 (defun json-get (key alist)
   (cdr (assoc key alist :test #'equal)))
+
+(defun nil-if-blank (x)
+  (if (blankp x) nil x))
 
 (defun json-processinbox (client args)
   (with-json-args (directions) args
@@ -678,8 +681,8 @@
              collect (make-process-inbox
                       :time (json-get :time dir)
                       :request (json-get :request dir)
-                      :note (json-get :note dir)
-                      :acct (json-get :acct dir))))
+                      :note (nil-if-blank (json-get :note dir))
+                      :acct (nil-if-blank (json-get :acct dir)))))
     (processinbox client directions)
     nil))
 
@@ -698,7 +701,7 @@
                (:assetid . ,(outbox-assetid item))
                (:assetname . ,(outbox-assetname item))
                (:amount . ,(outbox-amount item))
-               (:formatted-amount . ,(outbox-formattedamount item))
+               (:formattedamount . ,(outbox-formattedamount item))
                ,@(%json-optional :note (outbox-note item))
                ,@(%json-optional :items
                                  (loop for fee in (outbox-items item)
@@ -710,7 +713,7 @@
                                         (:assetid . ,(outbox-assetid fee))
                                         (:assetname . ,(outbox-assetname fee))
                                         (:amount . ,(outbox-amount fee))
-                                        (:formatted-amount ,(outbox-formattedamount fee)))))
+                                        (:formattedamount ,(outbox-formattedamount fee)))))
                ,@(%json-optional :coupons
                                  (loop for coupon in (outbox-coupons item)
                                     collect coupon)))))
@@ -763,11 +766,11 @@
 
 (defun json-audit (client args)
   (with-json-args (assetid) args
-    (multiple-value-bind (formatted-amount fraction amount)
+    (multiple-value-bind (formattedamount fraction amount)
         (audit client assetid)
       `((:@type . "audit")
         (:amount . ,amount)
-        (:formatted-amount . ,formatted-amount)
+        (:formattedamount . ,formattedamount)
         (:fraction . ,fraction)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
