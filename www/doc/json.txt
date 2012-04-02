@@ -14,7 +14,7 @@ Results vary by function and are documented with each function.
 Error results are always returned as {"@type":"error","message":<string>}
 
 ["newuser",{"passphrase":<string>,"keysize":<integer>,"name":<string>,
-          "privkey":<string>:<boolean>,"url":<string>,
+          "privkey":<string>,"fetchprivkey":<boolean>,"url":<string>,
           "coupon":<string>,"proxy":<string>] => <session-string>
   Create a new user with the given "passphrase". Error if already there.
   All other parameters are optional
@@ -26,6 +26,11 @@ Error results are always returned as {"@type":"error","message":<string>}
     That will create a local account on a client with no running server.
     If you include a "url", will look for the account on that server.
     If you include a "coupon", will register with that coupon on its server.
+  if "fetchprivkey" is true, "url" must be included, and the cached
+    private key will be fetched from there.
+  "url" is the address of a server on which you already have an account.
+    Private key is either in "privkey" or cached on the server if
+    "fetchprivkey" is true.
   If "coupon" is included, it should be a coupon for
     a truledger server on which you want to create an account.
     This is not required if logging into a client with no running server,
@@ -147,9 +152,9 @@ or the current user if "id" is omitted or blank.
     to the current server, is cached on the server.
 
 ["cache-privkey",{"session":<session-string>,"serverid":<string>,
-                  "uncache?":<boolean>}] => <boolean>
+                  "uncache":<boolean>}] => <boolean>
   Cache the private key on "serverid", or the current server, if blank.
-  Uncache it if "uncache?" is true.
+  Uncache it if "uncache" is true.
 
 ["getcontact",{"session":<session-string>,"id":<string>}]
   => {"@type":"contact","id":<string>,"name":<string>,"nickname":<string>,
@@ -172,12 +177,12 @@ or the current user if "id" is omitted or blank.
   Synchronize client contacts with current server.
 
 ["getasset",{"session":<session-string>,"assetid":<string>,
-             "force-server?":<boolean>}]
+             "forceserver":<boolean>}]
   => {"@type":"asset","id":<string>,"assetid":<string>,
       "scale":<integer>,"precision":<integer>,"name":<string>,
       "issuer":<string>,"percent":<string>}
   Get information about "assetid".
-  If "force-server?" is included and true, refresh the local
+  If "forceserver" is included and true, refresh the local
   information about the asset from the server.
 
 ["getassets",{"session":<session-string>}] => [<asset-info>,...]
@@ -190,7 +195,7 @@ or the current user if "id" is omitted or blank.
   "percent" is optional.
   The returned <assetid> is a string.
 
-["getfees",{"session":<session-string>,"reload?":<boolean>}]
+["getfees",{"session":<session-string>,"reload":<boolean>}]
   => [{"@type":"fee","type":<string>,"assetid":<string>,"assetname":<string>,
        "amount":<string>,"formattedamount":<string>"}, ...]
   Returns a list of "fee" arrays.
@@ -198,7 +203,7 @@ or the current user if "id" is omitted or blank.
   The first element is of "type":"tranfee"
   The second element is of "type":"regfee"
   The other elements are of "type":"spend" or "type":"transfer"
-  If "reload?" is included and true, reloads the fees from the server.
+  If "reload" is included and true, reloads the fees from the server.
 
 ["getfraction",{"session":<session-string>,"assetid":<string>}]
   => {"@type":"fraction","assetid":<string>,"assetname":<string>,
@@ -250,8 +255,8 @@ or the current user if "id" is omitted or blank.
 ["is-history-enabled?",{"client:<session-string>"}] => <boolean>
   Return true if keeping history is enabled.
 
-["set-history-enabled",{"client:<session-string>","enabled?":<boolean>}] => enabled?
-  Enable history if "enabled?" is true. Disable otherwise.
+["set-history-enabled",{"client:<session-string>","enabled":<boolean>}] => enabled
+  Enable history if "enabled" is true. Disable otherwise.
 
 ["get-history-times",{"session":<session-string>}] => [<string>,...]
   Get the times for which there are history items.
@@ -281,12 +286,12 @@ or the current user if "id" is omitted or blank.
   Get the server version and build time.
 
 ["get-permissions",{"session":<session-string>,"permission":<string>,
-                    "reload?":<boolean>}]
+                    "reload":<boolean>}]
   => [{"@type":"permission","id":<string>,"toid":<string>,"permission":<string>,
        "grant":<boolean>,"time":<string>},...]
   Get permissions.
   If "permission" is included, get only that one permission.
-  If "reload?" is true, reload the permissions from the server.
+  If "reload" is true, reload the permissions from the server.
   The currently supported "permission"s are "mint-tokens", "mint-coupons",
   and "add-asset".
   The "time" property of the return values will be missing for default permissions.

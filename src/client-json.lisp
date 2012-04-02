@@ -185,7 +185,7 @@
         (destroy-password passphrase)))))
 
 (defun json-newuser-internal (client passphrase args)
-  (with-json-args (keysize name privkey fetch-privkey? url coupon proxy)
+  (with-json-args (keysize name privkey fetchprivkey url coupon proxy)
       args
     (ensure-string passphrase "passphrase")
     (when (stringp keysize) (setf keysize (parse-integer keysize)))
@@ -196,13 +196,13 @@
     (ensure-string coupon "coupon" t)
     (ensure-string proxy "proxy" t)
     
-    (when (cond (keysize (or privkey fetch-privkey?))
-                (privkey fetch-privkey?)
-                ((not fetch-privkey?)
+    (when (cond (keysize (or privkey fetchprivkey))
+                (privkey fetchprivkey)
+                ((not fetchprivkey)
                  (json-error
-                  "One of keysize, privkey, and fetch-privkey? must be included")))
+                  "One of keysize, privkey, and fetchprivkey must be included")))
       (json-error
-       "Only one of keysize, privkey, and fetch-privkey? may be included"))
+       "Only one of keysize, privkey, and fetchprivkey may be included"))
     (when (and url coupon)
       (error "Only one of url and coupon may be included"))
     (when (passphrase-exists-p client passphrase)
@@ -210,11 +210,11 @@
     (when proxy
       (setf proxy (parse-proxy proxy)))
 
-    (when fetch-privkey?
+    (when fetchprivkey
       (unless url
         (json-error "url required to fetch private key from server"))
       (verify-server client url nil proxy)
-      (when fetch-privkey?
+      (when fetchprivkey
         (handler-case
             (setf privkey (fetch-privkey client url passphrase
                                          :http-proxy proxy))
@@ -243,7 +243,7 @@
         (error (c)
           (logout client)
           (json-error "Failed to add server: ~a" c)))
-      (when fetch-privkey?
+      (when fetchprivkey
         (setf (privkey-cached-p client) t))
        session)))
 
@@ -347,10 +347,10 @@
     (privkey-cached-p client serverid)))
 
 (defun json-cache-privkey (client args)
-  (with-json-args (session serverid uncache?) args
+  (with-json-args (session serverid uncache) args
     (unless (or (null serverid) (equal serverid (serverid client)))
       (setserver client serverid))
-    (cache-privkey client session uncache?)))
+    (cache-privkey client session uncache)))
   
 (defun json-getcontact (client args)
   (with-json-args (id) args
@@ -392,8 +392,8 @@
   nil)
 
 (defun json-getasset (client args)
-  (with-json-args (assetid force-server?) args
-    (let ((asset (getasset client assetid force-server?)))
+  (with-json-args (assetid forceserver) args
+    (let ((asset (getasset client assetid forceserver)))
       (unless asset
         (json-error "There is no asset with id: ~a" assetid))
       (%json-asset-alist asset))))
@@ -429,9 +429,9 @@
                              assetname percent))))
 
 (defun json-getfees (client args)
-  (with-json-args (reload?) args
+  (with-json-args (reload) args
     (multiple-value-bind (tranfee regfee other-fees)
-        (getfees client reload?)
+        (getfees client reload)
       (loop for fee in (list* tranfee regfee other-fees)
          collect (%json-fee-alist fee)))))
 
@@ -525,8 +525,8 @@
   (keep-history-p client))
 
 (defun json-set-history-enabled (client args)
-  (with-json-args (enabled?) args
-    (setf (keep-history-p client) enabled?)))
+  (with-json-args (enabled) args
+    (setf (keep-history-p client) enabled)))
 
 (defun json-get-history-times (client args)
   (declare (ignore args))
@@ -737,8 +737,8 @@
       (:time . ,time))))
 
 (defun json-get-permissions (client args)
-  (with-json-args (permission reload?) args
-    (loop for perm in (get-permissions client permission reload?)
+  (with-json-args (permission reload) args
+    (loop for perm in (get-permissions client permission reload)
        collect (%json-permission-alist perm))))
 
 (defun %json-permission-alist (perm)

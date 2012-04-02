@@ -19,7 +19,7 @@ function send(obj, processor, noshow) {
       $('#rcvd').val('');
     }
     $.post('json/',
-           {'eval':obj},
+           {eval:obj},
            function(data) {
                if (!noshow) {
                    $('#rcvd').val(JSON.stringify(data));
@@ -67,7 +67,7 @@ function finishLogin(data) {
 
 function login() {
   passphrase = $('#passphrase').val();
-  send(['login',{'passphrase':passphrase}], finishLogin);
+  send(['login',{passphrase:passphrase}], finishLogin);
 }
 
 function notLoggedIn() {
@@ -82,7 +82,7 @@ function errmsg(msg) {
 
 function logout() {
     if (session) {
-        send(['logout',{'session':session}],ignore);
+        send(['logout',{session:session}],ignore);
         session = false;
         $('#session').text('None');
         $('#userid').val('');
@@ -96,9 +96,9 @@ function getuser(passid) {
     if (passid) id = $('#userid').val();
     if (session) {
         $('#acctname').val('');
-        send(['getuser',{'session':session,'id':id}], function(data) {
-            $('#userid').val(data['id']);
-            $('#acctname').val(data['name']);
+        send(['getuser',{session:session,id:id}], function(data) {
+            $('#userid').val(data.id);
+            $('#acctname').val(data.name);
         });
     } else {
         notLoggedIn();
@@ -107,7 +107,7 @@ function getuser(passid) {
 
 function getinbox(noshow) {
     if (session) {
-        send(['getinbox',{'session':session}], showinbox, noshow);
+        send(['getinbox',{session:session}], showinbox, noshow);
     } else {
         notLoggedIn();
     }
@@ -118,6 +118,7 @@ function showinbox(data) {
     while (table.rows.length > 1) {
         table.deleteRow(1);
     }
+    if (!data) return;
     for (i=0; i<data.length; i++) {
         item = data[i];
         row = table.insertRow(-1);
@@ -143,9 +144,9 @@ function showinbox(data) {
         html = (i==0) ?
             "<input type='hidden' id='ibcount' value='"+ data.length + "'/>" :
             '';
+        html += "<input type='hidden' id='ibtime"+i+"' value='"+time+"'/>";
+        html += "<input type='hidden' id='ibreq"+i+"' value='"+request+"'/>";
         if (request == 'spend') {
-            html += "<input type='hidden' id='ibreq"+i+"' value='"+request+"'/>";
-            html += "<input type='hidden' id='ibtime"+i+"' value='"+time+"'/>";
             html += "<select id='ibaction"+i+"'>" +
                       "<option value='accept'>Accept</option>" +
                       "<option value='reject'>Reject</option>" +
@@ -185,20 +186,20 @@ function processinbox() {
                 if (action != 'ignore') {
                     action = (action=='accept') ? 'spend|accept' : 'spend|reject';
                     directions[idx++] = {'@type':'processinbox',
-                                         'time':time,
-                                         'request':action,
-                                         'note':reply,
-                                         'acct':acct};
+                                         time:time,
+                                         request:action,
+                                         note:reply,
+                                         acct:acct};
                 }
             } else {
                 checked = $('#ibaction'+i).attr('checked');
                 if (checked) {
                     directions[idx++] = {'@type':'processinbox',
-                                         'time':time};
+                                         time:time};
                 }
             }
-            send(['processinbox',{'session':session,
-                                  'directions':directions}],
+            send(['processinbox',{session:session,
+                                  directions:directions}],
                   function(data) {
                       getinbox(true);
                   });
@@ -208,9 +209,17 @@ function processinbox() {
     }
 }
 
+function getbalances() {
+    if (session) {
+        //send(['getbalances',{session:session,
+    } else {
+        notLoggedIn();
+    }
+}
+
 function getpubkey() {
     if (session) {
-        send(['getpubkey',{'session':session}], function(data) {
+        send(['getpubkey',{session:session}], function(data) {
             $('#pubkey').val(data);
         });
     } else {
@@ -220,7 +229,7 @@ function getpubkey() {
 
 function currentserver(noshow) {
     if (session) {
-        send(['current-server',{'session':session}], function(data) {
+        send(['current-server',{session:session}], function(data) {
             $('#server').val(data);
         }),
         noshow;
@@ -235,7 +244,7 @@ function returnPrivkey(data) {
 
 function getprivkey() {
     passphrase = $('#passphrase').val();
-    send(['getprivkey',{'passphrase':passphrase}],
+    send(['getprivkey',{passphrase:passphrase}],
          returnPrivkey);
 }
 
@@ -248,13 +257,13 @@ function newuser() {
     proxy = $('#proxy').val();
     privkey = $('#privkey').val();
     if (privkey != '') keysize = null;
-    send(['newuser',{'passphrase':passphrase,
-                     'keysize':keysize,
-                     'name':name,
-                     'url':url,
-                     'coupon':coupon,
-                     'proxy':proxy,
-                     'privkey':privkey,}],
+    send(['newuser',{passphrase:passphrase,
+                     keysize:keysize,
+                     name:name,
+                     url:url,
+                     coupon:coupon,
+                     proxy:proxy,
+                     privkey:privkey,}],
          returnSession);
 }
 
@@ -262,18 +271,18 @@ function useCachedPrivkey() {
     passphrase = $('#passphrase').val();
     url = $('#url').val();
     proxy = $('#proxy').val();
-    send(['newuser',{'passphrase':passphrase,
-                     'fetch-privkey?':true,
-                     'url':url,
-                     'proxy':proxy}],
+    send(['newuser',{passphrase:passphrase,
+                     fetchprivkey:true,
+                     url:url,
+                     proxy:proxy}],
          returnSession);
 }
 
 function getserver() {
     if (session) {
         serverid = $('#server').val();
-        send(['getserver',{'session':session,
-                           'serverid':serverid}],
+        send(['getserver',{session:session,
+                           serverid:serverid}],
              function(data) {
                  showServers([data]);
              });             
@@ -284,7 +293,7 @@ function getserver() {
 
 function getservers(noshow) {
     if (session) {
-        send(['getservers',{'session':session}], showServers, noshow);
+        send(['getservers',{session:session}], showServers, noshow);
     } else {
         notLoggedIn();
     }
@@ -337,9 +346,9 @@ function showServers(servers) {
 
 function toggleCached(checkbox, serverid, cached) {
     $(checkbox).attr('checked', cached ? 'checked' : null);
-    send(['cache-privkey',{'session':session,
-                           'serverid':serverid,
-                           'uncache?':cached}],
+    send(['cache-privkey',{session:session,
+                           serverid:serverid,
+                           uncache:cached}],
          function(data) {
              getservers(true);
          });
@@ -353,10 +362,10 @@ function addserver() {
         proxy = $('#proxy').val();
         if (coupon == '') coupon = url;
         $('#server').val('');
-        send(['addserver',{'session':session,
-                           'coupon':coupon,
-                           'name':name,
-                           'proxy':proxy}],
+        send(['addserver',{session:session,
+                           coupon:coupon,
+                           name:name,
+                           proxy:proxy}],
              function(data) {
                  $('#server').val(data);
              });
@@ -366,8 +375,8 @@ function addserver() {
 }
 
 function setserver(serverid) {
-    send(['setserver',{'session':session,
-                       'serverid':serverid}],
+    send(['setserver',{session:session,
+                       serverid:serverid}],
          function(data) {
              $('#server').val(serverid);
          });
@@ -391,8 +400,8 @@ function getcontact() {
         $('#contactname').val('');
         $('#nickname').val('');
         $('#note').val('');
-        send(['getcontact',{'session':session,
-                            'id':id}],
+        send(['getcontact',{session:session,
+                            id:id}],
              returnContact);
     } else {
         notLoggedIn();
@@ -401,7 +410,7 @@ function getcontact() {
 
 function getcontacts(noshow) {
     if (session) {
-        send(['getcontacts',{'session':session}], showContacts, noshow);
+        send(['getcontacts',{session:session}], showContacts, noshow);
     } else {
         notLoggedIn();
     }
@@ -419,7 +428,8 @@ function showContacts(contacts) {
         insertIDCell(row, 0, contact.id);
         $(row.insertCell(1)).text(contact.name);
         $(row.insertCell(2)).text(contact.nickname);
-        $(row.insertCell(3)).html(contact.note.replace('\n','<br/>'))
+        $(row.insertCell(3)).html(contact.note ? contact.note.replace('\n','<br/>')
+                                  : '')
         $(row.insertCell(4)).html("<input type='submit' value='Delete'" +
                                   " onClick='deletecontact(" +
                                   '"' + contact.id + '")' + "'/>");
@@ -431,10 +441,10 @@ function addcontact() {
         id = $('#contact').val();
         nickname = $('#nickname').val();
         note = $('#note').val();
-        send(['addcontact',{'session':session,
-                            'id':id,
-                            'nickname':nickname,
-                            'note':note}],
+        send(['addcontact',{session:session,
+                            id:id,
+                            nickname:nickname,
+                            note:note}],
              function(data) {
                  getcontacts(true);
              });
@@ -444,7 +454,7 @@ function addcontact() {
 }
 
 function deletecontact(id) {
-    send(['deletecontact',{'session':session,'id':id}],
+    send(['deletecontact',{session:session,id:id}],
          function(data) {
              getcontacts(true);
          });
@@ -452,7 +462,7 @@ function deletecontact(id) {
 
 function synccontacts() {
     if (session) {
-        send(['sync-contacts',{'session':session}],
+        send(['sync-contacts',{session:session}],
              function(data) {
                  getcontacts(true);
              });
@@ -545,8 +555,30 @@ function synccontacts() {
         Click ID or Asset value to copy full ID<br/>
         <input type='submit' name='getinbox' value='Get Inbox'
                onClick='getinbox()'/>
-        <input type='submit' name='getinbox' value='Process Inbox'
+        <input type='submit' name='processinbox' value='Process Inbox'
                onClick='processinbox()'/>
+      </td>
+    </tr>
+
+    <tr class='inbox'>
+      <th>Balance:</th>
+      <td>
+        <table class='prettytable' id='baltable'>
+          <tr>
+            <th>Acct</th>
+            <th>Asset</th>
+            <th>Amount</th>
+            <th>Time</th>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr class='inbox'>
+      <td>&nbsp;</td>
+      <td>
+        Click Asset value to copy full ID<br/>
+        <input type='submit' name='getbalances' value='Get Balances'
+               onClick='getbalances()'/>
       </td>
     </tr>
 

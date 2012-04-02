@@ -1,11 +1,15 @@
 Example JSON web client.
 
---quiet command line arg to prevent opening web serve
+processinbox is flaky for some reason.
+
+newuser needs a save-privkey? flag, just like old web client
 
 ----------------------------------------------------------------------
 
 Command line passphrase, to make server startup automatable, at
 expense of security.
+
+--quiet command line arg to prevent opening web server
 
 Negative storage fee = interest
 For investment assets, e.g. stocks
@@ -22,6 +26,12 @@ Client commands for merchant pages, so you can have a "Pay" or "Buy"
 button. Would specify the payee, amount, asset, comment. Needs to be
 carried through login. Could direct to localhost or a particular
 server that has a server-based client UI.
+
+This would be easier with an invoice command to the server. The invoice
+would appear in the inbox as a negative amount. Accepting it would
+cause a spend to the merchant. Rejecting it would keep the tokens, as
+usual. Could be done as a negative spend. Default in UI for negative spends
+would be to ignore them.
 
 Can't mint a coupon if you specify a nick.
 
