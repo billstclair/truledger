@@ -237,7 +237,7 @@ or the current user if "id" is omitted or blank.
   "acct" defaults to "main"
   "note" is optional.
   If "toid" is "coupon", mints a coupon instead of spending to another user
-  If "toid" is the logged in user's ID, then this is a transfer.
+  If "toid" is blank, then this is a transfer.
     "acct" should be a list: [<fromacct>,<toacct>].
   "transaction-fee", "storage-fee" in the result may be omitted.
   "coupon" will be present in the result only if "toid" was "coupon".

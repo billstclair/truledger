@@ -166,6 +166,14 @@ function showinbox(data) {
     }
 }
 
+function insertAssetCell(row, idx, assetid, assetname) {
+    cell = row.insertCell(idx);
+    $(cell).attr('onClick',"copyToClipboard('" + assetid + "')");
+    $(cell).html("<span title='" + assetid + "'>" +
+                 assetname + '</span>');
+    return cell;
+}
+
 function processinbox() {
     if (session) {
         cnt = $('#ibcount').val();
@@ -209,12 +217,71 @@ function processinbox() {
     }
 }
 
-function getbalances() {
+function getbalances(noshow) {
     if (session) {
-        //send(['getbalances',{session:session,
+        send(['getbalances',{session:session}], showbalances, noshow);
     } else {
         notLoggedIn();
     }
+}
+
+function showbalances(balances) {
+    if (!balances) return;
+    table = $('#baltable')[0];
+    while (table.rows.length > 1) {
+        table.deleteRow(1);
+    }
+    for (i=0; i<balances.length; i++) {
+        bal = balances[i];
+        row = table.insertRow(-1);
+        $(row.insertCell(0)).text(bal.acct);
+        cell = row.insertCell(1);
+        $(cell).attr('class', 'amount');
+        $(cell).text(bal.formattedamount)
+        insertAssetCell(row, 2, bal.assetid, bal.assetname)
+        $(row.insertCell(3)).text(bal.time);
+        cell = row.insertCell(4);
+        $(cell).text(bal.acct);
+        acct = $(cell).html();
+        $(cell).html("<input type='submit' value='Spend'" +
+                     "onclick='spend(" + '"' + bal.assetid + '", "' +
+                     acct + '")' + "'/>");
+    }
+}
+
+function spend(assetid, acct) {
+    if (session) {
+        recipient = $('#recipient').val();
+        amount = $('#spendamount').val();
+        note = $('#spendnote').val();
+        xferacct = $('#xferacct').val();
+        if (!recipient && !xferacct) {
+            return errmsg('You must specify "Recipient" or "Xfer to Acct"');
+        } else if (recipient && xferacct) {
+            return errmsg('You may only specify one of "Recipient" or "Xfer to Acct"');
+        } else if (!amount) {
+            return errmsg('Must specify amount');
+        }
+        send(['spend',{session:session,
+                       toid:recipient,
+                       assetid:assetid,
+                       formattedamount:amount,
+                       acct:(recipient ? acct : [acct,xferacct]),
+                       note:note}],
+             returnSpend);
+    } else {
+        notLoggedIn();
+    }
+}
+
+function returnSpend(data) {
+    transactionfee = data.transactionfee;
+    storagefee = data.storagefee;
+    coupon = data.coupon;
+    $('#spend-transactionfee').text(transactionfee);
+    $('#spend-storagefee').text(storagefee);
+    $('#spend-coupon').text(coupon);
+    getbalances(true);
 }
 
 function getpubkey() {
@@ -552,7 +619,7 @@ function synccontacts() {
     <tr class='inbox'>
       <td>&nbsp;</td>
       <td>
-        Click ID or Asset value to copy full ID<br/>
+        Click ID or Asset text to copy full ID<br/>
         <input type='submit' name='getinbox' value='Get Inbox'
                onClick='getinbox()'/>
         <input type='submit' name='processinbox' value='Process Inbox'
@@ -561,14 +628,49 @@ function synccontacts() {
     </tr>
 
     <tr class='inbox'>
+      <th>&nbsp;</th>
+      <td>
+        Fill in "Recipient" or "Xfer to Acct", "Amount", and "Note",
+        and press a "Spend" key in the Balance table.<br/>
+      </td>
+    </tr>
+    <tr class='inbox'>
+      <th>
+        Recipient:</th>
+      <td>
+        <input type='text' id='recipient' size='60'/> (Can be "coupon")
+      </td>
+    </tr>
+    <tr class='inbox'>
+      <th>Amount:</th>
+      <td><input type='text' id='spendamount' size='20'/></td>
+    </tr>
+    <tr class='inbox'>
+      <th>Note:</th>
+      <td><textarea id='spendnote' rows='3' cols='60'></textarea></td>
+    </tr>
+    <tr class='inbox'>
+      <th>Xfer to Acct:</th>
+      <td><input type='text' id='xferacct' size='20'/></td>
+    </tr>
+    <tr class='inbox'>
+      <th>Spend<br/>Return:</th>
+      <td>
+        Transaction Fee: <span id='spend-transactionfee'></span><br/>
+        Storage Fee: <span id='spend-storagefee'></span><br/>
+        Coupon: <span id='spend-coupon'></span>
+      </td>
+    </tr>
+    <tr class='inbox'>
       <th>Balance:</th>
       <td>
         <table class='prettytable' id='baltable'>
           <tr>
             <th>Acct</th>
-            <th>Asset</th>
             <th>Amount</th>
+            <th>Asset</th>
             <th>Time</th>
+            <th>Action</th>
           </tr>
         </table>
       </td>
@@ -576,7 +678,7 @@ function synccontacts() {
     <tr class='inbox'>
       <td>&nbsp;</td>
       <td>
-        Click Asset value to copy full ID<br/>
+        Click Asset text to copy full ID<br/>
         <input type='submit' name='getbalances' value='Get Balances'
                onClick='getbalances()'/>
       </td>
@@ -589,39 +691,6 @@ function synccontacts() {
           Hide</a> Server and Contact fields
       </td>
     </tr>
-    <tr class='server'>
-      <th>Server:</th>
-      <td>
-        <input type='text' name='server' id='server' size='60'/>
-        <input type='submit' name='getserver' value='Get Server Info'
-               onClick='getserver();'/>
-        <input type='submit' name='currentserver' value='Get Current Server'
-               onClick='currentserver();'/>
-      </td>
-    </tr>
-    <tr class='server'>
-      <th>Servers:</th>
-      <td>
-        <table class='prettytable' id='servertable'>
-          <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>URL</th>
-            <th>Proxy</th>
-            <th>Privkey<br/>Cached?</th>
-            <th>Switch</th>
-          </tr>
-        </table>
-      </td>
-    </tr>
-    <tr class='server'>
-      <td>&nbsp;</td>
-      <td>
-        <input type='submit' name='getservers' value='Get Servers'
-               onClick='getservers()'/>
-      </td>
-    </tr>
-    <tr class='server'><td colspan='2'>&nbsp;</td></tr>
     <tr class='server'>
       <th>Contact ID:</th>
       <td>
@@ -675,6 +744,39 @@ function synccontacts() {
                onClick='getcontacts()'/>
         <input type='submit' name='synccontacts' value='Sync Contacts'
                onClick='synccontacts()'/>
+      </td>
+    </tr>
+
+    <tr class='server'>
+      <th>Server:</th>
+      <td>
+        <input type='text' name='server' id='server' size='60'/>
+        <input type='submit' name='getserver' value='Get Server Info'
+               onClick='getserver();'/>
+        <input type='submit' name='currentserver' value='Get Current Server'
+               onClick='currentserver();'/>
+      </td>
+    </tr>
+    <tr class='server'>
+      <th>Servers:</th>
+      <td>
+        <table class='prettytable' id='servertable'>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>URL</th>
+            <th>Proxy</th>
+            <th>Privkey<br/>Cached?</th>
+            <th>Switch</th>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr class='server'>
+      <td>&nbsp;</td>
+      <td>
+        <input type='submit' name='getservers' value='Get Servers'
+               onClick='getservers()'/>
       </td>
     </tr>
 

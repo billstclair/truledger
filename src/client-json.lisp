@@ -509,6 +509,10 @@
 
 (defun json-spend (client args)
   (with-json-args (toid assetid formattedamount acct note) args
+    (unless toid
+      (unless (and (listp acct) (eql (length acct) 2))
+        (json-error "toid blank but acct not a list of length 2"))
+      (setf toid (id client)))
     (let* ((plist (spend client toid assetid formattedamount acct note)))
       `(("@type" . "spendresult")
         ,@(%json-optional "transaction-fee" (getf plist :transaction-fee))
