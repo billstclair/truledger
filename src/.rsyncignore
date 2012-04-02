@@ -1,0 +1,9 @@
+_darcs
+*.*fsl
+*.tar.gz
+*.exe.zip
+*.exe
+.DS_Store
+truledger-dbs
+truledger-dx86cl64
+

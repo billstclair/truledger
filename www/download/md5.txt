@@ -1,0 +1,13 @@
+c7149865b417a6ed27c42b7111ede12d truledger-1.1.4-setup32.exe
+81b1b0d01db7021878893434c8c4ef8a truledger-1.1.4-setup64.exe
+20448aa8c2117306e973eb25412a1a26 truledger_1.1.4_amd64.deb
+d4c14999b32466eba32458e1505111a4 truledger_1.1.4_i386.deb
+cccb19fdf939c3f7b6c626e508145bea truledger-1.1.4-2.i386.rpm
+a4b78eb8865e5454f4bf0852289d1465 truledger-1.1.4-2.x86_64.rpm
+d140d21d667e4b7504e78dc447943254 Truledger-1.1.4.dmg
+d70fcf0f1a22fde6d6bab29eadeb9e4e truledger-wx86cl.exe.zip
+d22f867dcdc2147c4fbe617d054e0c0c truledger-wx86cl64.exe.zip
+6517be42c223e2b318857f3174f5d307 truledger-dx86cl64.tar.gz
+c707b858817b24cbbaff94b037b7cf6d truledger-fx86cl64.tar.gz
+d5d89491efc06dbfbe0b60feff7212de truledger-lx86cl.tar.gz
+50915ac6fbe80e4230711fc6e8a21ed1 truledger-lx86cl64.tar.gz

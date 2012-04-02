@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "$HUBTB:/usr/local/www/truledger/lisp/src"
+#echo "$ZIPPY:/home/lisp/bill/lisp/truledger/src"
