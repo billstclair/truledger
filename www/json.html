@@ -13,56 +13,56 @@
   <script>
 
 function send(obj, processor, noshow) {
-    obj = JSON.stringify(obj);
-    if (!noshow) {
-      $('#sent').val(obj);
-      $('#rcvd').val('');
-    }
-    $.post('json/',
-           {eval:obj},
-           function(data) {
-               if (!noshow) {
-                   $('#rcvd').val(JSON.stringify(data));
-               }
-               if (data && typeof(data)=='object' && data['@type']=='error') {
-                   if (!noshow) {
-                       $('#error').text(data['message']);
-                   }
-               } else {
-                   if (!noshow) {
-                       $('#error').html('&nbsp;');
-                   }
-                   processor(data);
-               }
-           },
-           'JSON');
+  obj = JSON.stringify(obj);
+  if (!noshow) {
+    $('#sent').val(obj);
+    $('#rcvd').val('');
+  }
+  $.post('json/',
+         {eval:obj},
+         function(data) {
+           if (!noshow) {
+             $('#rcvd').val(JSON.stringify(data));
+           }
+           if (data && typeof(data)=='object' && data['@type']=='error') {
+             if (!noshow) {
+               $('#error').text(data['message']);
+             }
+           } else {
+             if (!noshow) {
+               $('#error').html('&nbsp;');
+             }
+             processor(data);
+           }
+         },
+         'JSON');
 }
 
 function ignore(data) {
 }
 
 function hide(cls, obj) {
-    if ($(obj).text().trim() == 'Hide') {
-        $('.'+cls).hide();
-        $(obj).text('Show');
-    } else {
-        $('.'+cls).show();
-        $(obj).text('Hide');
-    }        
+  if ($(obj).text().trim() == 'Hide') {
+    $('.'+cls).hide();
+    $(obj).text('Show');
+  } else {
+    $('.'+cls).show();
+    $(obj).text('Hide');
+  }        
 }
 
 var session;
 function returnSession(data) {
-    session = data;
-    $('#session').text(session);
+  session = data;
+  $('#session').text(session);
 }
 
 function finishLogin(data) {
-    returnSession(data);
-    table = $('#servertable')[0];
-    while (table.rows.length > 1) {
-        table.deleteRow(1);
-    }
+  returnSession(data);
+  table = $('#servertable')[0];
+  while (table.rows.length > 1) {
+    table.deleteRow(1);
+  }
 }
 
 function login() {
@@ -71,471 +71,515 @@ function login() {
 }
 
 function notLoggedIn() {
-    errmsg('Not logged in');
+  errmsg('Not logged in');
 }
 
 function errmsg(msg) {
-    $('#sent').val('');
-    $('#rcvd').val('');
-    $('#error').text(msg);
+  $('#sent').val('');
+  $('#rcvd').val('');
+  $('#error').text(msg);
 }
 
 function logout() {
-    if (session) {
-        send(['logout',{session:session}],ignore);
-        session = false;
-        $('#session').text('None');
-        $('#userid').val('');
-    } else {
-        notLoggedIn();
-    }
+  if (session) {
+    send(['logout',{session:session}],ignore);
+    session = false;
+    $('#session').text('None');
+    $('#userid').val('');
+  } else {
+    notLoggedIn();
+  }
 }
 
 function getuser(passid) {
-    id = null;
-    if (passid) id = $('#userid').val();
-    if (session) {
-        $('#acctname').val('');
-        send(['getuser',{session:session,id:id}], function(data) {
-            $('#userid').val(data.id);
-            $('#acctname').val(data.name);
-        });
-    } else {
-        notLoggedIn();
-    }
+  id = null;
+  if (passid) id = $('#userid').val();
+  if (session) {
+    $('#acctname').val('');
+    send(['getuser',{session:session,id:id}], function(data) {
+      $('#userid').val(data.id);
+      $('#acctname').val(data.name);
+    });
+  } else {
+    notLoggedIn();
+  }
 }
 
 function getinbox(noshow) {
-    if (session) {
-        send(['getinbox',{session:session}], showinbox, noshow);
-    } else {
-        notLoggedIn();
-    }
+  if (session) {
+    send(['getinbox',{session:session}], showinbox, noshow);
+  } else {
+    notLoggedIn();
+  }
 }
 
 function showinbox(data) {
-    table = $('#inboxtable')[0];
-    while (table.rows.length > 1) {
-        table.deleteRow(1);
-    }
-    if (!data) return;
-    for (i=0; i<data.length; i++) {
-        item = data[i];
-        row = table.insertRow(-1);
+  table = $('#inboxtable')[0];
+  while (table.rows.length > 1) {
+    table.deleteRow(1);
+  }
+  if (!data) return;
+  for (i=0; i<data.length; i++) {
+    item = data[i];
+    row = table.insertRow(-1);
 
-        request = item.request;
-        $(row.insertCell(0)).text(request)
-        insertIDCell(row, 1, item.id, true);
-        time = item.time;
-        $(row.insertCell(2)).html(time + '<br/>' + item.msgtime);
-        cell = row.insertCell(3);
-        $(cell).attr('class', 'amount');
-        $(cell).text(item.formattedamount);
-        cell = row.insertCell(4);
-        $(cell).text(item.assetname);
-        assetname = $(cell).html();
-        assetid = item.assetid;
-        $(cell).attr('onClick',"copyToClipboard('" + assetid + "')");
-        $(cell).html("<span title='" + assetid + "'>" +
-                     assetname + '</span>');
-        $(row.insertCell(5)).text(item.note);
-        cell = row.insertCell(6);
-        $(cell).attr('class', 'center');
-        html = (i==0) ?
-            "<input type='hidden' id='ibcount' value='"+ data.length + "'/>" :
-            '';
-        html += "<input type='hidden' id='ibtime"+i+"' value='"+time+"'/>";
-        html += "<input type='hidden' id='ibreq"+i+"' value='"+request+"'/>";
-        if (request == 'spend') {
-            html += "<select id='ibaction"+i+"'>" +
-                      "<option value='accept'>Accept</option>" +
-                      "<option value='reject'>Reject</option>" +
-                      "<option value='ignore'>Ignore</option>" +
-                    "</select><br/>" +
-                    "Acct: <input type='text' id='ibacct"+i+"' size='10'/>";
-        } else {
-            html += "<input type='checkbox' id='ibaction"+i+"' checked='checked'/> Remove";
-        }
-        $(cell).html(html);
-        cell = row.insertCell(7);
-        if (request == 'spend') {
-            $(cell).html("<textarea id='ibreply"+i+"' rows='3' cols='30'></textarea>");
-        } else {
-            $(cell).text(item.reply);
-        }
-    }
-}
-
-function insertAssetCell(row, idx, assetid, assetname) {
-    cell = row.insertCell(idx);
+    request = item.request;
+    $(row.insertCell(0)).text(request)
+    insertIDCell(row, 1, item.id, true);
+    time = item.time;
+    $(row.insertCell(2)).html(time + '<br/>' + item.msgtime);
+    cell = row.insertCell(3);
+    $(cell).attr('class', 'amount');
+    $(cell).text(item.formattedamount);
+    cell = row.insertCell(4);
+    $(cell).text(item.assetname);
+    assetname = $(cell).html();
+    assetid = item.assetid;
     $(cell).attr('onClick',"copyToClipboard('" + assetid + "')");
     $(cell).html("<span title='" + assetid + "'>" +
                  assetname + '</span>');
-    return cell;
+    $(row.insertCell(5)).text(item.note);
+    cell = row.insertCell(6);
+    $(cell).attr('class', 'center');
+    html = (i==0) ?
+      "<input type='hidden' id='ibcount' value='"+ data.length + "'/>" :
+      '';
+    html += "<input type='hidden' id='ibtime"+i+"' value='"+time+"'/>";
+    html += "<input type='hidden' id='ibreq"+i+"' value='"+request+"'/>";
+    if (request == 'spend') {
+      html += "<select id='ibaction"+i+"'>" +
+        "<option value='accept'>Accept</option>" +
+        "<option value='reject'>Reject</option>" +
+        "<option value='ignore'>Ignore</option>" +
+        "</select><br/>" +
+        "Acct: <input type='text' id='ibacct"+i+"' size='10'/>";
+    } else {
+      html += "<input type='checkbox' id='ibaction"+i+"' checked='checked'/> Remove";
+    }
+    $(cell).html(html);
+    cell = row.insertCell(7);
+    if (request == 'spend') {
+      $(cell).html("<textarea id='ibreply"+i+"' rows='3' cols='30'></textarea>");
+    } else {
+      $(cell).text(item.reply);
+    }
+  }
+}
+
+function insertAssetCell(row, idx, assetid, assetname) {
+  cell = row.insertCell(idx);
+  $(cell).attr('onClick',"copyToClipboard('" + assetid + "')");
+  $(cell).html("<span title='" + assetid + "'>" +
+               assetname + '</span>');
+  return cell;
 }
 
 function processinbox() {
-    if (session) {
-        cnt = $('#ibcount').val();
-        if (!cnt) {
-            errmsg('No inbox items');
-            return;
-        }
-        directions = [];
-        idx = 0;
-        cnt = parseInt(cnt);
-        for (i=0; i<cnt; i++) {
-            request = $('#ibreq'+i).val();
-            time = $('#ibtime'+i).val();
-            if (request == 'spend') {
-                action = $('#ibaction'+i).val();
-                acct = $('#ibacct'+i).val();
-                reply = $('#ibreply'+i).val();
-                if (action != 'ignore') {
-                    action = (action=='accept') ? 'spend|accept' : 'spend|reject';
-                    directions[idx++] = {'@type':'processinbox',
-                                         time:time,
-                                         request:action,
-                                         note:reply,
-                                         acct:acct};
-                }
-            } else {
-                checked = $('#ibaction'+i).attr('checked');
-                if (checked) {
-                    directions[idx++] = {'@type':'processinbox',
-                                         time:time};
-                }
-            }
-            send(['processinbox',{session:session,
-                                  directions:directions}],
-                  function(data) {
-                      getinbox(true);
-                  });
-        }
-    } else {
-        notLoggedIn();
+  if (session) {
+    cnt = $('#ibcount').val();
+    if (!cnt) {
+      errmsg('No inbox items');
+      return;
     }
+    directions = [];
+    idx = 0;
+    cnt = parseInt(cnt);
+    for (i=0; i<cnt; i++) {
+      request = $('#ibreq'+i).val();
+      time = $('#ibtime'+i).val();
+      if (request == 'spend') {
+        action = $('#ibaction'+i).val();
+        acct = $('#ibacct'+i).val();
+        reply = $('#ibreply'+i).val();
+        if (action != 'ignore') {
+          action = (action=='accept') ? 'spend|accept' : 'spend|reject';
+          directions[idx++] = {'@type':'processinbox',
+                               time:time,
+                               request:action,
+                               note:reply,
+                               acct:acct};
+        }
+      } else {
+        checked = $('#ibaction'+i).attr('checked');
+        if (checked) {
+          directions[idx++] = {'@type':'processinbox',
+                               time:time};
+        }
+      }
+      send(['processinbox',{session:session,
+                            directions:directions}],
+           function(data) {
+             getinbox(true);
+           });
+    }
+  } else {
+    notLoggedIn();
+  }
 }
 
 function getbalances(noshow) {
-    if (session) {
-        send(['getbalances',{session:session}], showbalances, noshow);
-    } else {
-        notLoggedIn();
-    }
+  if (session) {
+    send(['getbalances',{session:session}], showbalances, noshow);
+  } else {
+    notLoggedIn();
+  }
 }
 
 function showbalances(balances) {
-    if (!balances) return;
-    table = $('#baltable')[0];
-    while (table.rows.length > 1) {
-        table.deleteRow(1);
-    }
-    for (i=0; i<balances.length; i++) {
-        bal = balances[i];
-        row = table.insertRow(-1);
-        $(row.insertCell(0)).text(bal.acct);
-        cell = row.insertCell(1);
-        $(cell).attr('class', 'amount');
-        $(cell).text(bal.formattedamount)
-        insertAssetCell(row, 2, bal.assetid, bal.assetname)
-        $(row.insertCell(3)).text(bal.time);
-        cell = row.insertCell(4);
-        $(cell).text(bal.acct);
-        acct = $(cell).html();
-        $(cell).html("<input type='submit' value='Spend'" +
-                     "onclick='spend(" + '"' + bal.assetid + '", "' +
-                     acct + '")' + "'/>");
-    }
+  if (!balances) return;
+  table = $('#baltable')[0];
+  while (table.rows.length > 1) {
+    table.deleteRow(1);
+  }
+  for (i=0; i<balances.length; i++) {
+    bal = balances[i];
+    row = table.insertRow(-1);
+    $(row.insertCell(0)).text(bal.acct);
+    cell = row.insertCell(1);
+    $(cell).attr('class', 'amount');
+    $(cell).text(bal.formattedamount)
+    insertAssetCell(row, 2, bal.assetid, bal.assetname)
+    $(row.insertCell(3)).text(bal.time);
+    cell = row.insertCell(4);
+    $(cell).text(bal.acct);
+    acct = $(cell).html();
+    $(cell).html("<input type='submit' value='Spend'" +
+                 "onclick='spend(" + '"' + bal.assetid + '", "' +
+                 acct + '")' + "'/>");
+  }
 }
 
 function spend(assetid, acct) {
-    if (session) {
-        recipient = $('#recipient').val();
-        amount = $('#spendamount').val();
-        note = $('#spendnote').val();
-        xferacct = $('#xferacct').val();
-        if (!recipient && !xferacct) {
-            return errmsg('You must specify "Recipient" or "Xfer to Acct"');
-        } else if (recipient && xferacct) {
-            return errmsg('You may only specify one of "Recipient" or "Xfer to Acct"');
-        } else if (!amount) {
-            return errmsg('Must specify amount');
-        }
-        send(['spend',{session:session,
-                       toid:recipient,
-                       assetid:assetid,
-                       formattedamount:amount,
-                       acct:(recipient ? acct : [acct,xferacct]),
-                       note:note}],
-             returnSpend);
-    } else {
-        notLoggedIn();
+  if (session) {
+    recipient = $('#recipient').val();
+    amount = $('#spendamount').val();
+    note = $('#spendnote').val();
+    xferacct = $('#xferacct').val();
+    if (!recipient && !xferacct) {
+      return errmsg('You must specify "Recipient" or "Xfer to Acct"');
+    } else if (recipient && xferacct) {
+      return errmsg('You may only specify one of "Recipient" or "Xfer to Acct"');
+    } else if (!amount) {
+      return errmsg('Must specify amount');
     }
+    send(['spend',{session:session,
+                   toid:recipient,
+                   assetid:assetid,
+                   formattedamount:amount,
+                   acct:(recipient ? acct : [acct,xferacct]),
+                   note:note}],
+         returnSpend);
+  } else {
+    notLoggedIn();
+  }
 }
 
 function returnSpend(data) {
-    transactionfee = data.transactionfee;
-    storagefee = data.storagefee;
-    coupon = data.coupon;
-    $('#spend-transactionfee').text(transactionfee);
-    $('#spend-storagefee').text(storagefee);
-    $('#spend-coupon').text(coupon);
-    getbalances(true);
+  transactionfee = data.transactionfee;
+  storagefee = data.storagefee;
+  coupon = data.coupon;
+  $('#spend-transactionfee').text(transactionfee);
+  $('#spend-storagefee').text(storagefee);
+  $('#spend-coupon').text(coupon);
+  getbalances(true);
 }
 
-function getpubkey() {
-    if (session) {
-        send(['getpubkey',{session:session}], function(data) {
-            $('#pubkey').val(data);
-        });
+function getoutbox() {
+  if (session) {
+    send(['getoutbox',{session:session}], showOutbox);
+  } else {
+    notLoggedIn();
+  }
+}
+
+var outboxCoupons = {};
+
+function showOutbox(items) {
+  outboxCoupons = {};
+  if (!items) return;
+  table = $('#outboxtable')[0];
+  while (table.rows.length > 1) {
+    table.deleteRow(1);
+  }
+  for (i=0; i<items.length; i++) {
+    item = items[i];
+    row = table.insertRow(-1);
+    $(row.insertCell(0)).text(item.time);
+    if (item.id == 'coupon') {
+      html = "<a href='javascript:void(0)' onClick='showOutboxCoupon("+i+")'>coupon</a>";
+      $(row.insertCell(1)).html(html);
     } else {
-        notLoggedIn();
+      insertIDCell(row, 1, item.id, true);
     }
+    $(row.insertCell(2)).text(item.request);
+    cell = row.insertCell(3);
+    $(cell).attr('class', 'amount');
+    $(cell).text(item.formattedamount)
+    insertAssetCell(row, 4, item.assetid, item.assetname)
+    cell = row.insertCell(5);
+    taid = 'obta' + i;
+    $(cell).html("<textarea id='"+taid+"' cols='20' rows='3'></textarea>")
+    $('#'+taid).text(cell.note);
+    $(row.insertCell(6)).html("<input type='submit' value='Reject'" +
+                              "onclick='spendReject("+'"'+i+'"'+")'/>");
+  }
+}
+
+// *** TO DO ***
+// spendReject(), showOutboxCoupon()
+
+function getpubkey() {
+  if (session) {
+    send(['getpubkey',{session:session}], function(data) {
+      $('#pubkey').val(data);
+    });
+  } else {
+    notLoggedIn();
+  }
 }
 
 function currentserver(noshow) {
-    if (session) {
-        send(['current-server',{session:session}], function(data) {
-            $('#server').val(data);
-        }),
-        noshow;
-    } else {
-        notLoggedIn();
-    }
+  if (session) {
+    send(['current-server',{session:session}], function(data) {
+      $('#server').val(data);
+    }),
+    noshow;
+  } else {
+    notLoggedIn();
+  }
 }
 
 function returnPrivkey(data) {
-    $('#privkey').val(data);
+  $('#privkey').val(data);
 }
 
 function getprivkey() {
-    passphrase = $('#passphrase').val();
-    send(['getprivkey',{passphrase:passphrase}],
-         returnPrivkey);
+  passphrase = $('#passphrase').val();
+  send(['getprivkey',{passphrase:passphrase}],
+       returnPrivkey);
 }
 
 function newuser() {
-    passphrase = $('#passphrase').val();
-    keysize = $('#keysize').val();
-    name = $('#name').val();
-    url = $('#url').val();
-    coupon = $('#coupon').val();
-    proxy = $('#proxy').val();
-    privkey = $('#privkey').val();
-    if (privkey != '') keysize = null;
-    send(['newuser',{passphrase:passphrase,
-                     keysize:keysize,
-                     name:name,
-                     url:url,
-                     coupon:coupon,
-                     proxy:proxy,
-                     privkey:privkey,}],
-         returnSession);
+  passphrase = $('#passphrase').val();
+  keysize = $('#keysize').val();
+  name = $('#name').val();
+  url = $('#url').val();
+  coupon = $('#coupon').val();
+  proxy = $('#proxy').val();
+  privkey = $('#privkey').val();
+  if (privkey != '') keysize = null;
+  send(['newuser',{passphrase:passphrase,
+                   keysize:keysize,
+                   name:name,
+                   url:url,
+                   coupon:coupon,
+                   proxy:proxy,
+                   privkey:privkey,}],
+       returnSession);
 }
 
 function useCachedPrivkey() {
-    passphrase = $('#passphrase').val();
-    url = $('#url').val();
-    proxy = $('#proxy').val();
-    send(['newuser',{passphrase:passphrase,
-                     fetchprivkey:true,
-                     url:url,
-                     proxy:proxy}],
-         returnSession);
+  passphrase = $('#passphrase').val();
+  url = $('#url').val();
+  proxy = $('#proxy').val();
+  send(['newuser',{passphrase:passphrase,
+                   fetchprivkey:true,
+                   url:url,
+                   proxy:proxy}],
+       returnSession);
 }
 
 function getserver() {
-    if (session) {
-        serverid = $('#server').val();
-        send(['getserver',{session:session,
-                           serverid:serverid}],
-             function(data) {
-                 showServers([data]);
-             });             
-    } else {
-        notLoggedIn();
-    }
+  if (session) {
+    serverid = $('#server').val();
+    send(['getserver',{session:session,
+                       serverid:serverid}],
+         function(data) {
+           showServers([data]);
+         });             
+  } else {
+    notLoggedIn();
+  }
 }
 
 function getservers(noshow) {
-    if (session) {
-        send(['getservers',{session:session}], showServers, noshow);
-    } else {
-        notLoggedIn();
-    }
+  if (session) {
+    send(['getservers',{session:session}], showServers, noshow);
+  } else {
+    notLoggedIn();
+  }
 }
 
 function copyToClipboard (text) {
-    window.prompt ("Copy to clipboard: Ctrl+C, Enter", text);
+  window.prompt ("Copy to clipboard: Ctrl+C, Enter", text);
 }
 
 function insertIDCell(row, idx, id, substr) {
-    cell = row.insertCell(idx);
-    $(cell).attr('class', 'id');
-    if (id) {
-        if (substr) {
-            $(cell).attr('onClick', "copyToClipboard('" + id + "')");
-            $(cell).html("<span title='" + id + "'>" + id.substring(0, 8) +
-                         '&hellip;</span>');
-        } else {
-            $(cell).text(id);
-        }
+  cell = row.insertCell(idx);
+  $(cell).attr('class', 'id');
+  if (id) {
+    if (substr) {
+      $(cell).attr('onClick', "copyToClipboard('" + id + "')");
+      $(cell).html("<span title='" + id + "'>" + id.substring(0, 8) +
+                   '&hellip;</span>');
+    } else {
+      $(cell).text(id);
     }
-    return cell;
+  }
+  return cell;
 }
 
 function showServers(servers) {
-    table = $('#servertable')[0];
-    while (table.rows.length > 1) {
-        table.deleteRow(1);
-    }
-    for (i=0; i<servers.length; i++) {
-        server = servers[i];
-        row = table.insertRow(-1);
-        insertIDCell(row, 0, server.id);
-        $(row.insertCell(1)).text(server.name);
-        $(row.insertCell(2)).text(server.url);
-        $(row.insertCell(3)).text(server.proxy);
-        cell = row.insertCell(4);
-        $(cell).attr('align', 'center');
-        $(cell).html("<input type='checkbox'" +
-                     (server.privkeycached ? " checked='checked'" : '') +
-                     " onClick='toggleCached(this," +
-                     '"' + server.id + '",' +
-                     server.privkeycached + ")'/>");
-        cell = row.insertCell(5);
-        $(cell).attr('align', 'center');
-        $(cell).html("<input type='submit' value='Set Server' onClick='setserver(" + 
-                     '"' + server.id + '")' + "'/>");
-    }
+  table = $('#servertable')[0];
+  while (table.rows.length > 1) {
+    table.deleteRow(1);
+  }
+  for (i=0; i<servers.length; i++) {
+    server = servers[i];
+    row = table.insertRow(-1);
+    insertIDCell(row, 0, server.id);
+    $(row.insertCell(1)).text(server.name);
+    $(row.insertCell(2)).text(server.url);
+    $(row.insertCell(3)).text(server.proxy);
+    cell = row.insertCell(4);
+    $(cell).attr('align', 'center');
+    $(cell).html("<input type='checkbox'" +
+                 (server.privkeycached ? " checked='checked'" : '') +
+                 " onClick='toggleCached(this," +
+                 '"' + server.id + '",' +
+                 server.privkeycached + ")'/>");
+    cell = row.insertCell(5);
+    $(cell).attr('align', 'center');
+    $(cell).html("<input type='submit' value='Set Server' onClick='setserver(" + 
+                 '"' + server.id + '")' + "'/>");
+  }
 }
 
 function toggleCached(checkbox, serverid, cached) {
-    $(checkbox).attr('checked', cached ? 'checked' : null);
-    send(['cache-privkey',{session:session,
-                           serverid:serverid,
-                           uncache:cached}],
-         function(data) {
-             getservers(true);
-         });
+  $(checkbox).attr('checked', cached ? 'checked' : null);
+  send(['cache-privkey',{session:session,
+                         serverid:serverid,
+                         uncache:cached}],
+       function(data) {
+         getservers(true);
+       });
 }
 
 function addserver() {
-    if (session) {
-        url = $('#url').val();
-        coupon = $('#coupon').val();
-        name = $('#name').val();
-        proxy = $('#proxy').val();
-        if (coupon == '') coupon = url;
-        $('#server').val('');
-        send(['addserver',{session:session,
-                           coupon:coupon,
-                           name:name,
-                           proxy:proxy}],
-             function(data) {
-                 $('#server').val(data);
-             });
-    } else {
-        notLoggedIn();
-    }
+  if (session) {
+    url = $('#url').val();
+    coupon = $('#coupon').val();
+    name = $('#name').val();
+    proxy = $('#proxy').val();
+    if (coupon == '') coupon = url;
+    $('#server').val('');
+    send(['addserver',{session:session,
+                       coupon:coupon,
+                       name:name,
+                       proxy:proxy}],
+         function(data) {
+           $('#server').val(data);
+         });
+  } else {
+    notLoggedIn();
+  }
 }
 
 function setserver(serverid) {
-    send(['setserver',{session:session,
-                       serverid:serverid}],
-         function(data) {
-             $('#server').val(serverid);
-         });
+  send(['setserver',{session:session,
+                     serverid:serverid}],
+       function(data) {
+         $('#server').val(serverid);
+       });
 }
 
 function returnPrivkeyCache(data) {
-    $('#privkeycached').attr('checked', data ? 'checked' : null);
-    $('#cacheprivkey').attr('disabled', data ? 'disabled' : null);
-    $('#uncacheprivkey').attr('disabled', data? null : 'disabled');
+  $('#privkeycached').attr('checked', data ? 'checked' : null);
+  $('#cacheprivkey').attr('disabled', data ? 'disabled' : null);
+  $('#uncacheprivkey').attr('disabled', data? null : 'disabled');
 }
 
 function returnContact(data) {
-    $('#contactname').val(data.name);
-    $('#nickname').val(data.nickname);
-    $('#note').val(data.note);
+  $('#contactname').val(data.name);
+  $('#nickname').val(data.nickname);
+  $('#note').val(data.note);
 }
 
 function getcontact() {
-    if (session) {
-        id = $('#contact').val();
-        $('#contactname').val('');
-        $('#nickname').val('');
-        $('#note').val('');
-        send(['getcontact',{session:session,
-                            id:id}],
-             returnContact);
-    } else {
-        notLoggedIn();
-    }
+  if (session) {
+    id = $('#contact').val();
+    $('#contactname').val('');
+    $('#nickname').val('');
+    $('#note').val('');
+    send(['getcontact',{session:session,
+                        id:id}],
+         returnContact);
+  } else {
+    notLoggedIn();
+  }
 }
 
 function getcontacts(noshow) {
-    if (session) {
-        send(['getcontacts',{session:session}], showContacts, noshow);
-    } else {
-        notLoggedIn();
-    }
+  if (session) {
+    send(['getcontacts',{session:session}], showContacts, noshow);
+  } else {
+    notLoggedIn();
+  }
 }
 
 function showContacts(contacts) {
-    if (!contacts) return;
-    table = $('#contacttable')[0];
-    while (table.rows.length > 1) {
-        table.deleteRow(1);
-    }
-    for (i=0; i<contacts.length; i++) {
-        contact = contacts[i];
-        row = table.insertRow(-1);
-        insertIDCell(row, 0, contact.id);
-        $(row.insertCell(1)).text(contact.name);
-        $(row.insertCell(2)).text(contact.nickname);
-        $(row.insertCell(3)).html(contact.note ? contact.note.replace('\n','<br/>')
-                                  : '')
-        $(row.insertCell(4)).html("<input type='submit' value='Delete'" +
-                                  " onClick='deletecontact(" +
-                                  '"' + contact.id + '")' + "'/>");
-    }
+  if (!contacts) return;
+  table = $('#contacttable')[0];
+  while (table.rows.length > 1) {
+    table.deleteRow(1);
+  }
+  for (i=0; i<contacts.length; i++) {
+    contact = contacts[i];
+    row = table.insertRow(-1);
+    insertIDCell(row, 0, contact.id);
+    $(row.insertCell(1)).text(contact.name);
+    $(row.insertCell(2)).text(contact.nickname);
+    $(row.insertCell(3)).html(contact.note ? contact.note.replace('\n','<br/>')
+                              : '')
+    $(row.insertCell(4)).html("<input type='submit' value='Delete'" +
+                              " onClick='deletecontact(" +
+                              '"' + contact.id + '")' + "'/>");
+  }
 }
 
 function addcontact() {
-    if (session) {
-        id = $('#contact').val();
-        nickname = $('#nickname').val();
-        note = $('#note').val();
-        send(['addcontact',{session:session,
-                            id:id,
-                            nickname:nickname,
-                            note:note}],
-             function(data) {
-                 getcontacts(true);
-             });
-    } else {
-        notLoggedIn();
-    }
+  if (session) {
+    id = $('#contact').val();
+    nickname = $('#nickname').val();
+    note = $('#note').val();
+    send(['addcontact',{session:session,
+                        id:id,
+                        nickname:nickname,
+                        note:note}],
+         function(data) {
+           getcontacts(true);
+         });
+  } else {
+    notLoggedIn();
+  }
 }
 
 function deletecontact(id) {
-    send(['deletecontact',{session:session,id:id}],
-         function(data) {
-             getcontacts(true);
-         });
+  send(['deletecontact',{session:session,id:id}],
+       function(data) {
+         getcontacts(true);
+       });
 }
 
 function synccontacts() {
-    if (session) {
-        send(['sync-contacts',{session:session}],
-             function(data) {
-                 getcontacts(true);
-             });
-    } else {
-        notLoggedIn();
-    }
+  if (session) {
+    send(['sync-contacts',{session:session}],
+         function(data) {
+           getcontacts(true);
+         });
+  } else {
+    notLoggedIn();
+  }
 }
 
   </script>
@@ -681,6 +725,31 @@ function synccontacts() {
         Click Asset text to copy full ID<br/>
         <input type='submit' name='getbalances' value='Get Balances'
                onClick='getbalances()'/>
+      </td>
+    </tr>
+
+    <tr class='inbox'>
+      <th>Outbox:</th>
+      <td>
+        <table class='prettytable' id='outboxtable'>
+          <tr>
+            <th>Time</th>
+            <th>ID</th>
+            <th>Request</th>
+            <th>Amount</th>
+            <th>Asset</th>
+            <th>Note</th>
+            <th>Action</th>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr class='inbox'>
+      <td>&nbsp;</td>
+      <td>
+        Click ID or Asset text to copy full ID<br/>
+        <input type='submit' name='getoutbox' value='Get Outbox'
+               onClick='getoutbox()'/>
       </td>
     </tr>
 
