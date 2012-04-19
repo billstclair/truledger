@@ -16,6 +16,10 @@ For investment assets, e.g. stocks
 
 ----------------------------------------------------------------------
 
+Listen on a particular interface. E.g. localhost or truledger.com
+
+----------------------------------------------------------------------
+
 Change server URL/Proxy
 Delete server from client. Warn loudly if no backed-up private key.
 Delete account from server. Only works if no assets, other than usage tokens.

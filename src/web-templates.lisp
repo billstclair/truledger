@@ -18,10 +18,18 @@
 (make-template-dbs)
 (add-startup-function 'make-template-dbs)
 
+(defun validate-template-keys (key keys)
+  (flet ((pred (x) (and x (search "../" x))))
+    (when (or (funcall #'pred key)
+              (some #'pred keys))
+      (error "Parent dirs not allowed in template-get"))))
+
 (defmethod template-get ((db fsdb) key &rest keys)
+  (validate-template-keys key keys)
   (apply #'db-get db key keys))
 
 (defmethod (setf template-get) (value (db fsdb) key &rest keys)
+  (validate-template-keys key keys)
   (apply #'(setf db-get) value db key keys))
 
 ;; This is so we can put the default templates in the distributed image

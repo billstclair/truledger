@@ -264,7 +264,8 @@
          (port (hunchentoot:acceptor-port acceptor))
          (handler (get-web-script-handler port script)))
     (cond (handler (funcall handler))
-          ((search "/.." script)
+          ((or (search "/.." script)
+               (search "../" script))
            (abort-request))
           (t (do-static-file)))))
 
@@ -879,6 +880,10 @@ p.version {
              (cond ((null uri) nil)
                    (coded-file (apply (car coded-file) (cdr coded-file)))
                    (t (let ((file (merge-pathnames (strcat dir "/." uri))))
+                        (when (member :up (pathname-directory file))
+                          (setf (hunchentoot:return-code*)
+                                hunchentoot:+http-not-found+)
+                          (hunchentoot:abort-request-handler))
                         (hunchentoot:handle-static-file
                          (if (cl-fad:directory-pathname-p file)
                              (merge-pathnames "index.html" file)
