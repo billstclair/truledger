@@ -4,6 +4,18 @@ processinbox is flaky for some reason.
 
 newuser needs a save-privkey? flag, just like old web client
 
+start.lisp should install QuickLisp if it isn't already installed.
+
+----------------------------------------------------------------------
+
+http://www.cs.brown.edu/cgc/stms/papers/isc2001.pdf
+[4:38 PM] <amiller> Persistent Authenticated Dictionaries and Their Applications
+https://github.com/amiller/redblackmerkle
+
+----------------------------------------------------------------------
+
+http://www.baekdal.com/insights/we-need-to-drastically-simplify-payments-online/
+
 ----------------------------------------------------------------------
 
 Command line passphrase, to make server startup automatable, at

@@ -989,8 +989,7 @@
                        (handler-case
                            (newuser client
                                     :passphrase passphrase
-                                    :privkey (decode-rsa-private-key
-                                              privkey-str passphrase))
+                                    :privkey privkey-str)
                          (error (c)
                            (setq err
                                  (stringify
