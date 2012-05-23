@@ -99,7 +99,9 @@
   "Create a new user with the given passphrase, error if already there.
    If privkey is a string, use that as the private key.
    If it is an integer, default 3072, create a new private key with that many bits
-   User is logged in when this returns successfully."
+   User is logged in when this returns successfully.
+   Otherwise, privkey should be a decoded private key, as returned by
+   DECODE-RSA-PRIVATE-KEY."
   (let ((db (db client))
         (hash (passphrase-hash passphrase)))
 
@@ -111,7 +113,8 @@
     (cond ((integerp privkey)
            ;; privkey is size in bits for new private key
            (setf privkey (rsa-generate-key privkey)))
-          (t (setf privkey (decode-rsa-private-key privkey passphrase))))
+          ((stringp privkey)
+           (setf privkey (decode-rsa-private-key privkey passphrase))))
 
     (let* ((pubkey (encode-rsa-public-key privkey))
            (id (pubkey-id pubkey))
