@@ -274,9 +274,7 @@
                                        percent
                                        (wbp (0) (bcsub now baltime)))
                                 secs-per-year-pct)))
-               (cond ((< (bccomp fee 0) 0)
-                      (setq fee  "0"))
-                     ((> (bccomp fee balance) 0)
+               (cond ((> (bccomp fee balance) 0)
                       (setq fee balance)))
                (values fee (bcsub balance fee)))))))
 
