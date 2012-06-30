@@ -1,10 +1,14 @@
 Example JSON web client.
+  Add HTML escape of comment, user name, and asset name fields.
 
 processinbox is flaky for some reason.
 
 newuser needs a save-privkey? flag, just like old web client
 
 start.lisp should install QuickLisp if it isn't already installed.
+
+Why does KAV (Kaspersky Anti-Virus) cause:
+  Login error: Permission denied : "C:/Users/PRIVASYS/AppData/Roaming/Truledger/dbs/clientdb/account/086ed87fef7f595164b5a9cd11aef3b7283a859a/server/b077e7bfe71e193581afe7b5283cd4bac2c0a5ca/req"
 
 ----------------------------------------------------------------------
 

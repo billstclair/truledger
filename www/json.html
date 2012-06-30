@@ -319,7 +319,7 @@ function showOutbox(items) {
     cell = row.insertCell(5);
     taid = 'obta' + i;
     $(cell).html("<textarea id='"+taid+"' cols='20' rows='3'></textarea>")
-    $('#'+taid).text(cell.note);
+    $('#'+taid).text(item.note);
     $(row.insertCell(6)).html("<input type='submit' value='Reject'" +
                               "onclick='spendReject("+'"'+i+'"'+")'/>");
   }

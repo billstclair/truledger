@@ -42,6 +42,7 @@ truledger-dbs/serverdb/
         -- Note that because the assetid is unique, it can cross server boundaries.
         -- @storage fees are optional
         -- <percent> is a decimal number giving the percent charge per year
+           It may be negative to denote interest instead of storage charge
   coupon
     <couponhash>=(<serverid>,@spend,(<id>,spend,<serverid>,<time#>,coupon,<assetid>,<amount>,note:<note>))
   account/
