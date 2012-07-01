@@ -14,8 +14,8 @@
              :accessor timestamp-lasttime)))
 
 (defparameter *time-offset*
-  (- (encode-universal-time 0 0 0 1 1 1970)
-     (encode-universal-time 0 0 0 1 1 1900)))
+  (- (encode-universal-time 0 0 0 1 1 1970 0)
+     (encode-universal-time 0 0 0 1 1 1900 0)))
 
 (defun unix-to-universal-time (unix-time)
   (+ unix-time *time-offset*))
