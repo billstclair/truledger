@@ -1,3 +1,55 @@
+When an asset has interest, a user can spend to the issuer an amount more
+than the issuer's negative balance. The issuer needs to "Move to Inbox" first.
+The client should do this automatically, as part of "Process Inbox".
+
+----------------------------------------------------------------------
+
+Handle precision for assets differently.
+
+Show that number of decimal places unless the balance is all zero except below that.
+Then show as much of scale as necessary.
+
+--------------------------------------------------------------------------------
+
+Compound interest/fees intead of simple. This makes the interest/fee amount
+independent of the number of transactions.
+
+Also need fee reaper that can run periodically to collect fees from
+dormant accounts.
+
+This will make old clients incompatible with new server, so need a
+mechanism for noticing that, and informing the user that (s)he needs
+to upgrade.
+
+----------------------------------------------------------------------
+
+Web link to http://localhost:8785/ that includes spend info:
+
+recipient id
+amount
+asset id
+note
+
+----------------------------------------------------------------------
+
+Multiple keys on one account passphrase.
+Change account passphrase.
+Change key passphrase.
+
+----------------------------------------------------------------------
+
+On history page, two separate buttons, one to delete checked and one to
+add contacts.
+
+----------------------------------------------------------------------
+
+Multiple assets in one coupon.
+
+Then you could sell a bond and include both the new account tokens and the
+bond asset itself in a single coupon for the buyer.
+
+----------------------------------------------------------------------
+
 Example JSON web client.
   Add HTML escape of comment, user name, and asset name fields.
 
@@ -7,7 +59,7 @@ newuser needs a save-privkey? flag, just like old web client
 
 start.lisp should install QuickLisp if it isn't already installed.
 
-Why does KAV (Kaspersky Anti-Virus) cause:
+Why does KAV (Kaspersky Anti-Virus) on Windows cause:
   Login error: Permission denied : "C:/Users/PRIVASYS/AppData/Roaming/Truledger/dbs/clientdb/account/086ed87fef7f595164b5a9cd11aef3b7283a859a/server/b077e7bfe71e193581afe7b5283cd4bac2c0a5ca/req"
 
 ----------------------------------------------------------------------

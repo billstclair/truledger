@@ -1407,7 +1407,7 @@ Error if it does not. If it does, return two values:
    Returns a listof BALANCE+FRACTION instances, or a single BALANCE+FRACTION
    instance, if ASSETID is specified."
   (let ((db (db client)))
-    (require-current-server client "In getfraction(): Server not set")
+    (require-current-server client "In getstoragefee(): Server not set")
     (init-server-accts client)
 
     (with-db-lock (db (userreqkey client))
@@ -1430,7 +1430,8 @@ Error if it does not. If it does, return two values:
                   (normalize-balance amount fraction (fraction-digits percent)))
                 (when (not (eql 0 (bccomp amount 0)))
                   (let* ((asset (getasset client assetid))
-                         (formatted-amount (format-asset-value client amount asset))
+                         (formatted-amount
+                          (format-asset-value client amount asset nil))
                          (assetname (asset-name asset)))
                     (push (make-balance+fraction
                            :time time
@@ -2387,6 +2388,9 @@ Error if it does not. If it does, return two values:
                      (error (c)
                        (unless recursive
                          (with-verify-sigs-p (parser t)
+                           (setf directions
+                                 (move-negative-storage-fees-to-inbox
+                                  client directions))
                            ;; Force reload of balances and outbox
                            (forceinit client)
                            ;; Force reload of assets
@@ -2450,6 +2454,26 @@ Error if it does not. If it does, return two values:
         (when history
           (let ((key (userhistorykey client)))
             (setf (db-get db key trans) history)))))))
+
+;; This can be necessary if a user spends more of an asset that has
+;; interest to the issuer than the issuer's balance has spent. The
+;; rest is in unclaimed storage fees. So we move any negative storage
+;; fees to the inbox, and add accepting those spends to the
+;; directions.
+(defmethod move-negative-storage-fees-to-inbox ((client client) directions)
+  "If there are any negative storage fees, move storage fees to inbox.
+Return processinbox DIRECTIONS, possible updated with new storagefee inbox entries."
+  (dolist (fee (getstoragefee client))
+    (when (< (bccomp (balance-amount fee) 0) 0)
+      (storagefees client)
+      (dolist (inbox (getinbox client))
+        (when (and (equal $SPEND (inbox-request inbox))
+                   (< (bccomp (inbox-amount inbox) 0) 0))
+          (let ((time (inbox-time inbox)))
+            (unless (find time directions :test #'equal :key #'process-inbox-time)
+              (push (make-process-inbox :time time :request $SPENDACCEPT)
+                    directions)))))))
+  directions)
 
 (defmethod get-last-transaction ((client client) &optional forceserver)
   "Returns the signed commit message for the last two-phase transaction."

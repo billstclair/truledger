@@ -282,7 +282,11 @@
   "Add together BALANCE & FRACTION, to DIGITS precision.
    Return two values, the integer part and the fractional part."
   (wbp (digits)
-    (split-decimal (bcadd balance fraction))))
+    (multiple-value-bind (int frac)
+        (split-decimal (bcadd balance fraction))
+      (when (and (< (bccomp int 0) 0) (not (eql 0 frac)))
+        (setf frac (strcat "-" frac)))
+      (values int frac))))
 
 ;; Computing costs for the $WRITEDATA request
 (defun data-cost (data)

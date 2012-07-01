@@ -2029,7 +2029,10 @@
                      assetid (getarg $ASSET args)))
             (multiple-value-bind (amount fraction)
                 (split-decimal amount)
-              (when (> (bccomp amount 0) 0)
+              (unless (bc-zerop amount)
+                (when (and (< (bccomp amount 0) 0) (not (eql 0 fraction)))
+                  ;; split-decimal always returns fraction >= 0
+                  (setf fraction (strcat "-" fraction)))
                 (let* ((time (gettime server))
                        (storagefee (servermsg server $STORAGEFEE
                                             serverid time assetid fraction))
