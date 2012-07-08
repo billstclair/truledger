@@ -107,13 +107,18 @@
                 <th colspan='3'><!-- TMPL_VAR acct --></th>
               </tr><!-- TMPL_LOOP bals -->
               <tr>
-                <td align='right' style='border-right-width: 0;'><!-- TMPL_VAR amount --></td>
+                <td align='right' style='border-right-width: 0;'>
+                  <!-- TMPL_IF full-amount --><span title='Full amount: <!-- TMPL_VAR full-amount -->' style='color:blue;'><!-- /TMPL_IF --><!-- TMPL_VAR amount --><!-- TMPL_IF full-amount --></span><!-- /TMPL_IF  -->
+                </td>
                 <td style='border-left-width: 0;'><!-- TMPL_VAR assetname --></td>
                 <td>
                   <input type='submit' name='spentasset<!-- TMPL_VAR acctidx -->|<!-- TMPL_VAR assetidx -->' value='Spend'/>
                 </td>
               </tr><!-- /TMPL_LOOP --><!-- /TMPL_LOOP -->
-            </table>
+            </table><!-- TMPL_IF truncated-balance-p -->
+            <p><span style='color:blue;'>Blue</span> balances above were truncated to<br/>
+            asset precision. Hover the mouse over<br/>
+            them to see the full amount.</p><!-- /TMPL_IF -->
             <br/><!-- TMPL_IF fractionamt -->
             Fractional balance: <!-- TMPL_VAR fractionamt --> x 10<sup>-<!-- TMPL_VAR fractionscale --></sup>
             <br/><!-- /TMPL_IF --><!-- TMPL_IF transaction-fee -->

@@ -1292,7 +1292,8 @@ Error if it does not. If it does, return two values:
   assetname
   amount
   time
-  formatted-amount)
+  formatted-amount
+  truncated-amount)
 
 (defun balance-lessp (b1 b2)
   (< (properties-compare b1 b2 '((balance-acct . acct-compare) balance-assetname))
@@ -1337,15 +1338,17 @@ Error if it does not. If it does, return two values:
               (unless (is-numeric-p amount t)
                 (error "While gathering balances, non-numeric amount: ~s" amount))
               (let* ((asset (getasset client assetid))
-                     (formatted-amount (format-asset-value client amount asset))
                      (assetname (asset-name asset)))
-                (push (make-balance :acct acct
-                                    :assetid assetid
-                                    :assetname assetname
-                                    :amount amount
-                                    :time time
-                                    :formatted-amount formatted-amount)
-                      balances)
+                (multiple-value-bind (formatted-amount truncated-amount)
+                    (format-asset-value client amount asset)
+                  (push (make-balance :acct acct
+                                      :assetid assetid
+                                      :assetname assetname
+                                      :amount amount
+                                      :time time
+                                      :formatted-amount formatted-amount
+                                      :truncated-amount truncated-amount)
+                        balances))
                 (when includeraw
                   (setf (gethash (car balances) msghash) msg))))))
         (when balances
@@ -3353,7 +3356,10 @@ Return processinbox DIRECTIONS, possible updated with new storagefee inbox entri
   (userserverkey client $VERSION))
 
 (defmethod format-asset-value ((client client) value assetid &optional (incnegs t))
-  "Format an asset value from the asset ID or $this->getasset($assetid)"
+  "Format an asset value from the asset ID or $this->getasset($assetid).
+Returns two values:
+1) The formatted value.
+2) The formatted value, truncated to the asset's precision."
   (let ((asset (if (stringp assetid)
                    (getasset client assetid)
                    assetid)))
@@ -3371,20 +3377,22 @@ Return processinbox DIRECTIONS, possible updated with new storagefee inbox entri
   (make-string len :initial-element char))
 
 (defun format-value (value scale precision &optional (incnegs t))
-  ;; format an asset value for user printing
+  "Format an asset value for user printing. Returns two values:
+1) the formatted value.
+2) the formatted value, truncated to PRECISION."
   (let ((sign 1)
-        res)
+        res trunc)
     (when (and incnegs (< (bccomp value 0) 0))
       (setq value (bcadd value 1)
             sign -1))
+    (setf precision (parse-integer precision))
     (cond ((and (eql 0 (bccomp scale 0)) (eql 0 (bccomp precision 0)))
            (setq res value))
           ((> (bccomp scale 0) 0)
            (let ((pow (bcpow 10 scale)))
              (wbp (scale)
                (setq res (bcdiv value pow))))
-           (let ((dotpos (position #\. res))
-                 (precision (parse-integer precision)))
+           (let ((dotpos (position #\. res)))
              (cond ((null dotpos)
                     (unless (eql 0 (bccomp precision 0))
                       (dotcat res "." (fill-string precision))))
@@ -3417,9 +3425,11 @@ Return processinbox DIRECTIONS, possible updated with new storagefee inbox entri
          while (> pos start)
          do
            (setq res (strcat (subseq res 0 pos) "," (subseq res pos)))
-           (decf len 3)))
+           (decf len 3))
+      (when (setf dotpos (or (position #\. res) (1- (length res))))
+        (setf trunc (subseq res 0 (+ dotpos 1 precision)))))
 
-    res))
+    (values res trunc)))
 
 (defun unformat-value (formattedvalue scale)
   (let ((value (if (eql 0 (bccomp scale 0))

@@ -1505,6 +1505,7 @@
          balance
          accts-plists
          acctbals-plists
+         (truncated-balance-p nil)
          recipopts
          acct-select-options
          fractionamt fractionscale
@@ -1686,12 +1687,17 @@
                (unless (eql 0 (bccomp (balance-amount bal) 0))
                  (let ((assetid (hsc (balance-assetid bal)))
                        (assetname (hsc (balance-assetname bal)))
-                       (formattedamount (hsc (balance-formatted-amount bal))))
+                       (formattedamount (hsc (balance-formatted-amount bal)))
+                       (truncated-amount (hsc (balance-truncated-amount bal))))
                    (push (list :acctidx acctidx
                                :assetidx assetidx
                                :assetid assetid)
                          assets-plists)
-                   (push (list :amount formattedamount
+                   (push (list :amount truncated-amount
+                               :full-amount (unless (equal truncated-amount
+                                                           formattedamount)
+                                              (setf truncated-balance-p t)
+                                              formattedamount)
                                :assetname (highlight-assetname assetid assetname)
                                :acctidx acctidx
                                :assetidx assetidx)
@@ -1749,6 +1755,7 @@
                   :non-spends ,non-spends
                   :accts ,accts-plists
                   :acctbals ,acctbals-plists
+                  :truncated-balance-p ,truncated-balance-p
                   :spend-amount ,(hsc spend-amount)
                   :recipient ,(hsc recipient)
                   :recipopts ,recipopts

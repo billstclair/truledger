@@ -566,6 +566,7 @@
    #:balance-amount
    #:balance-time
    #:balance-formatted-amount
+   #:balance-truncated-amount
    #:getreq
    #:gettime
    #:getbalance

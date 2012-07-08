@@ -1,25 +1,12 @@
-When an asset has interest, a user can spend to the issuer an amount more
-than the issuer's negative balance. The issuer needs to "Move to Inbox" first.
-The client should do this automatically, as part of "Process Inbox".
-
-----------------------------------------------------------------------
-
-Handle precision for assets differently.
-
-Show that number of decimal places unless the balance is all zero except below that.
-Then show as much of scale as necessary.
-
---------------------------------------------------------------------------------
-
 Compound interest/fees intead of simple. This makes the interest/fee amount
 independent of the number of transactions.
-
-Also need fee reaper that can run periodically to collect fees from
-dormant accounts.
 
 This will make old clients incompatible with new server, so need a
 mechanism for noticing that, and informing the user that (s)he needs
 to upgrade.
+
+Also need fee reaper that can run periodically to collect fees from
+dormant accounts.
 
 ----------------------------------------------------------------------
 
