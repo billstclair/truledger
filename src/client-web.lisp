@@ -429,7 +429,8 @@
                      (setf (truledger-server:backup-mode-p server) t)))
               (setf (port-server (get-current-port)) server)
               (when errmsg
-                (error errmsg)))
+                (error errmsg))
+              server)
           (error (c)
             (error "While starting server: ~a" c)))))))
 

@@ -438,6 +438,7 @@
    #:truledger-web-server
    #:web-server-active-p
    #:stop-web-server
+   #:port-acceptor
    #:port-server
    #:map-port-servers
    #:do-port-servers
@@ -705,7 +706,8 @@
   (:use :cl :cffi :cl-base64 :truledger :truledger-tokens :truledger-client)
   (:export
    #:web-server
-   #:loom-web-server))
+   #:loom-web-server
+   #:maybe-start-server-web))
 
 (cl:defpackage :truledger-json
   (:use :cl :cffi :cl-base64 :truledger :truledger-tokens :truledger-client)

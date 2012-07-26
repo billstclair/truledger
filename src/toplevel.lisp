@@ -36,6 +36,7 @@
     ("--uid" :uid . t)
     ("--gid" :gid . t)
     ("--url-prefix" :url-prefix . t)
+    ("--passphrase" :passphrase . t)
     #+loadswank
     ("--slimeport" :slimeport . t)))
 
@@ -45,16 +46,21 @@
 (defun usage-error (app)
   (error 'usage-error
          :format-control
-         "Usage is: ~a [-p port] [--dbdir dbdir] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid] [--url-prefix url-prefix]~a
+         "Usage is: ~a [-p port] [--dbdir dbdir] [--key keyfile --cert certfile] [--nonsslport nonsslport] [--uid uid --gid gid] [--url-prefix url-prefix] [--passphrase passphrase]~a
 port defaults to 8785, unless keyfile & certfile are included, then 8786.
-If port defaults to 8786, then nonsslport defaults to 8785,
-otherwise the application doesn't listen on a non-ssl port.
+  If port defaults to 8786, then nonsslport defaults to 8785,
+  otherwise the application doesn't listen on a non-ssl port.
 dbdir is where the 'database' files are stored.
   default: ~a
 keyfile is the path to an SSL private key file.
 certfile is the path to an SSL certificate file.
 uid & gid are the user id and group id to change to after listening on the port.
-url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
+  Use these to start as root, listen on port 80, then change to a non-root account.
+url-prefix is a prefix of the URL to ignore; useful for reverse proxies.
+passphrase is the passphrase with which to start the server.
+  You will usually want to enter the passphrase through a text-mode web browser
+  running on the server via an SSH connection; use this if you want the
+  server to be able to restart unattended.~a
 "
          :format-arguments
          (list app
@@ -90,7 +96,7 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
 
 (defun toplevel-function-internal ()
   (run-startup-functions)
-  (let (port dbdir keyfile certfile nonsslport uid gid slimeport)
+  (let (port dbdir keyfile certfile nonsslport uid gid passphrase slimeport)
     (multiple-value-bind (args app) (parse-args)
       (handler-case
           (setq keyfile (cdr (assoc :key args))
@@ -108,6 +114,7 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
                 gid (cdr (assoc :gid args))
                 truledger:*url-prefix* (or (cdr (assoc :http-port args))
                                             (asdf:getenv "TRULEDGER_URL_PREFIX"))
+                passphrase (cdr (assoc :passphrase args))
                 slimeport (let ((str (cdr (assoc :slimeport args))))
                             (and str (parse-integer str))))
         (error () (usage-error app))))
@@ -134,7 +141,8 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
 		    (quit -1)))))
       (let* ((dispport (or nonsslport port))
 	     (url (format nil "http://localhost~@[:~a~]/"
-			  (unless (eql dispport 80) dispport))))
+			  (unless (eql dispport 80) dispport)))
+             (server nil))
 	(truledger-web-server
 	 nil
 	 :port port
@@ -146,7 +154,15 @@ url-prefix is a prefix of the URL to ignore; useful for reverse proxies.~a
 	(format t "Client web server started on port ~a.~%"
 		(or nonsslport port))
 	(format t "Web address: ~a~%" url)
-	(when (server-db-exists-p)
+        (when passphrase
+          (progn ;;ignore-errors
+            (let ((client (make-client (client-db-dir)))
+                  (hunchentoot:*acceptor* (port-acceptor (or nonsslport port))))
+              (login client passphrase)
+              (setf server (truledger-client-web:maybe-start-server-web
+                            client passphrase)))
+            (format t "Truledger server started.~%")))
+	(when (and (not server) (server-db-exists-p))
 	  (format t "REMEMBER TO LOG IN AS THE SERVER TO START THE SERVER!!~%"))
 	(finish-output)
 	(browse-url url))))
