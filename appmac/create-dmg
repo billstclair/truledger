@@ -17,7 +17,7 @@ BITS=$2
 IMAGE=truledger-dx86cl64
 SUFFIX="-$VERSION"
 
-if [[ $BiTS != 32 && $BITS != 64 ]]; then
+if [[ $BITS != 32 && $BITS != 64 ]]; then
     echo "usage is create-dmg VERSION BITS"
     exit 0
 fi
