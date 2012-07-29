@@ -1171,9 +1171,9 @@
                                 recipient amount acct2 note)))))
                (return)))
         (unless err
-          (if (blankp mintcoupon)
-            (draw-balance cw :fee-plist fee-plist)
-            (draw-coupon cw (last-spend-time client)))))
+          (if (equal $COUPON recipient)
+            (draw-coupon cw (last-spend-time client))
+            (draw-balance cw :fee-plist fee-plist))))
       (when err
         (setf (cw-error cw) err)
         (draw-balance
@@ -1669,6 +1669,12 @@
                               :selected-p selected-p
                               :name namestr)
                         recipopts))))
+            (push (list :recipid '-' :disabled t :name "--------")
+                  recipopts)
+            (push (list :recipid $COUPON
+                        :selected-p (equal recipient $COUPON)
+                        :name "Mint Coupon")
+                  recipopts)
             (setf recipopts (nreverse recipopts))))
         (when accts
           (dolist (acct accts)

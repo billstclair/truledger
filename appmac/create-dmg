@@ -15,6 +15,7 @@
 VERSION=$1
 BITS=$2
 IMAGE=truledger-dx86cl64
+EXE=$IMAGE
 SUFFIX="-$VERSION"
 
 if [[ $BITS != 32 && $BITS != 64 ]]; then
@@ -24,6 +25,7 @@ fi
 
 if [[ $BITS == 32 ]]; then
     IMAGE=truledger-dx86cl
+    EXE=truledger-dx86cl32
     SUFFIX="-$VERSION-32"
 fi
 
@@ -42,7 +44,7 @@ hdiutil attach Truledger-copy.sparseimage
 APPDIR=/Volumes/Truledger/Truledger.app
 RESOURCEDIR=$APPDIR/Contents/Resources/
 sed -e s/VERSION/$VERSION/ <InfoPlist.strings >$RESOURCEDIR/English.lproj/InfoPlist.strings
-cp ../$IMAGE $RESOURCEDIR
+cp ../$IMAGE $RESOURCEDIR/$EXE
 touch $APPDIR
 
 hdiutil detach /Volumes/Truledger

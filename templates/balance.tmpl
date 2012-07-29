@@ -98,9 +98,30 @@
       <input type='hidden' name='postmsg' value='<!-- TMPL_VAR postmsg -->'/><!-- TMPL_LOOP accts -->
       <input type='hidden' name='acct<!-- TMPL_VAR acctidx -->' value='<!-- TMPL_VAR acct -->'/><!-- TMPL_LOOP assets -->
       <input type='hidden' name='assetid<!-- TMPL_VAR acctidx -->|<!-- TMPL_VAR assetidx -->' value='<!-- TMPL_VAR assetid -->'/><!-- /TMPL_LOOP --><!-- /TMPL_LOOP -->
-      <table>
-        <tr>
-          <td valign='top'>
+            <table>
+              <tr>
+                <td><b>Spend amount:</b></td>
+                <td>
+                  <input type='text' name='amount' size='20' value='<!-- TMPL_VAR spend-amount -->' style='text-align: right;' id='spendamount'/>
+                </td>
+              </tr>
+              <tr>
+                <td><b>Recipient:</b></td>
+                <td>
+                  <select name='recipient'>
+                    <option value=''>Choose contact...</option><!-- TMPL_LOOP recipopts -->
+                    <option value='<!-- TMPL_VAR recipid -->'<!-- TMPL_IF selected-p --> selected='selected'<!-- /TMPL_IF --><!-- TMPL_IF disabled --> disabled='disabled'<!-- /TMPL_IF -->><!-- TMPL_VAR name --></option><!-- /TMPL_LOOP -->
+                  </select>
+                </td>
+              </tr>
+              <tr>
+                <td><b>Note:</b></td>
+                <td>
+                  <textarea name='note' cols='40' rows='5'><!-- TMPL_VAR note --></textarea>
+                </td>
+              </tr>
+            </table>
+            <br/>
             <table class='prettytable'>
               <caption><b>Balances</b></caption><!-- TMPL_LOOP acctbals -->
               <tr>
@@ -119,58 +140,7 @@
             <p><span style='color:blue;'>Blue</span> balances above were truncated to<br/>
             asset precision. Hover the mouse over<br/>
             them to see the full amount.</p><!-- /TMPL_IF -->
-            <br/><!-- TMPL_IF fractionamt -->
-            Fractional balance: <!-- TMPL_VAR fractionamt --> x 10<sup>-<!-- TMPL_VAR fractionscale --></sup>
-            <br/><!-- /TMPL_IF --><!-- TMPL_IF transaction-fee -->
-            Transaction Fee: <!-- TMPL_VAR transaction-fee -->
-            <br/><!-- /TMPL_IF --><!-- TMPL_IF storage-fee -->
-            Storage Fee: <!-- TMPL_VAR storage-fee -->
-            <br/><!-- /TMPL_IF -->
-            <a href='./?cmd=history'>Show History</a> (<!-- TMPL_IF history-enabled-p -->enabled<!-- TMPL_ELSE -->disabled<!-- /TMPL_IF -->)
-            <br/>
-            <a href='./?cmd=rawbalance'>Show raw balance</a>
-            <br/>
-          </td><!-- TMPL_IF iphone-p -->
-        </tr>
-        <tr><!-- /TMPL_IF -->
-          <td valign='top'>
             <table>
-              <tr>
-                <td><b>Spend amount:</b></td>
-                <td>
-                  <input type='text' name='amount' size='20' value='<!-- TMPL_VAR spend-amount -->' style='text-align: right;' id='spendamount'/>
-                </td>
-              </tr>
-              <tr>
-                <td><b>Recipient:</b></td>
-                <td>
-                  <select name='recipient'>
-                    <option value=''>Choose contact...</option><!-- TMPL_LOOP recipopts -->
-                    <option value='<!-- TMPL_VAR recipid -->'<!-- TMPL_IF selected-p --> selected='selected'<!-- /TMPL_IF -->><!-- TMPL_VAR name --></option><!-- /TMPL_LOOP -->
-                  </select>
-                  <input type='checkbox' name='mintcoupon'<!-- TMPL_IF mintcoupon-p --> checked='checked'<!-- /TMPL_IF --><!-- TMPL_IF disablemint-p --> disabled='disabled'<!-- /TMPL_IF -->/> Mint coupon
-                </td>
-              </tr>
-              <tr>
-                <td><b>Note:</b></td>
-                <td>
-                  <textarea name='note' cols='40' rows='5'><!-- TMPL_VAR note --></textarea>
-                </td>
-              </tr>
-              <tr>
-                <td><b>Recipient ID:</b></td>
-                <td>
-                  <input type='text' name='recipientid' size='40' value='<!-- TMPL_VAR recipientid -->'/>
-                  <br/>
-                  <input type='checkbox' name='allowunregistered'<!-- TMPL_IF cannot-mint-token-p -->disabled='disabled'<!-- /TMPL_IF --><!-- TMPL_IF allowunregistered --> checked='checked'<!-- /TMPL_IF -->/> Allow unregistered
-                </td>
-              </tr>
-              <tr>
-                <td><b>Nickname:</b></td>
-                <td>
-                  <input type='text' name='nickname' size='30' value='<!-- TMPL_VAR nickname -->'/>
-                </td>
-              </tr>
               <tr>
                 <td><b>Transfer to:</b></td><!-- TMPL_IF acct-select-options -->
                 <td>
@@ -187,9 +157,17 @@
                 </td>
               </tr>
             </table>
-          </td>
-        </tr>
-      </table>
+            <br/><!-- TMPL_IF fractionamt -->
+            Fractional balance: <!-- TMPL_VAR fractionamt --> x 10<sup>-<!-- TMPL_VAR fractionscale --></sup>
+            <br/><!-- /TMPL_IF --><!-- TMPL_IF transaction-fee -->
+            Transaction Fee: <!-- TMPL_VAR transaction-fee -->
+            <br/><!-- /TMPL_IF --><!-- TMPL_IF storage-fee -->
+            Storage Fee: <!-- TMPL_VAR storage-fee -->
+            <br/><!-- /TMPL_IF -->
+            <a href='./?cmd=history'>Show History</a> (<!-- TMPL_IF history-enabled-p -->enabled<!-- TMPL_ELSE -->disabled<!-- /TMPL_IF -->)
+            <br/>
+            <a href='./?cmd=rawbalance'>Show raw balance</a>
+            <br/>
     </form>
 <!-- /TMPL_IF --><!-- TMPL_IF outbox-items --><!-- TMPL_IF cancelcount -->
     <form method='post' action='./' autocomplete='off'>
@@ -257,14 +235,11 @@
       </form>
     </p><!-- TMPL_IF instructions-enabled-p -->
     <p>
-      To make a spend, fill in the Spend amount", choose a "Recipient" or enter a "Recipient ID", enter (optionally) a "Note", and click the "Spend" button next to the asset you wish to spend.
+      To make a spend, fill in the Spend amount", choose a "Recipient", enter (optionally) a "Note", and click the "Spend" button next to the asset you wish to spend.
     </p>
     <p>
       To transfer balances, enter the "Spend Amount", select or fill-in the "Transfer to" name (letters, numbers, and spaces only), and click the"Spend" button next to the asset you want to transfer from. Each storage location costs one usage token, and there is currently no way to recover an unused location. 0 balances will show only on the raw balance screen.
     </p>
     <p>
-      To mint a coupon, enter the "Spend Amount", check the "Mint coupon" box, and click the "Spend" button next to the asset you want to transfer to the coupon. You can redeem a coupon on the "Servers" page."
-    </p>
-    <p>
-      Entering a "Nickname" will add the "Recipient ID" to your contacts list with that nickname, or change the nickname of the selected "Recipient"
+      To mint a coupon, enter the "Spend Amount", choose "Mint coupon" as "Recipient" (last option), and click the "Spend" button next to the asset you want to transfer to the coupon. You can redeem a coupon on the "Servers" page."
     </p><!-- /TMPL_IF -->

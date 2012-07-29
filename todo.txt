@@ -1,3 +1,12 @@
+In history, deleting older doesn't work.
+Add nickname to contacts should be a separate button.
+
+Do compound storage fees. This makes the storage fees independent of
+how often they're computed, but causes the new client to be
+incompatible with the old server, and vice-versa.
+
+----------------------------------------------------------------------
+
 Compound interest/fees intead of simple. This makes the interest/fee amount
 independent of the number of transactions.
 
