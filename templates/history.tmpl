@@ -45,8 +45,9 @@
             <input type='checkbox' name='chk<!-- TMPL_VAR idx -->'/>
           </td><!-- /TMPL_UNLESS -->
         </tr><!-- /TMPL_LOOP -->
-      </table>
-      <input type='submit' name='delete' value='Delete checked<!-- TMPL_IF add-nicknames-p --> &amp; Add Nicknames<!-- /TMPL_IF -->'/>
+      </table><!-- TMPL_IF add-nicknames-p -->
+      <input type='submit' name='addnicks' value='Add Nicknames'/><!-- /TMPL_IF -->
+      <input type='submit' name='delete' value='Delete checked'/>
       <input type='submit' name='deleteolder' value='Delete Checked &amp; Older'/>
     </form>
 <!-- TMPL_VAR scroller-html --><!-- TMPL_UNLESS hide-instructions-p -->

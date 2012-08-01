@@ -239,18 +239,18 @@
 
 (defun do-history-internal (cw)
   (let ((client (cw-client cw)))
-    (bind-parameters (delete deleteolder chkcnt nickcnt
+    (bind-parameters (addnicks delete deleteolder chkcnt nickcnt
                       top pageup pagedown bottom
                       start count cnt)
       (when nickcnt (setq nickcnt (parse-integer nickcnt)))
       (when chkcnt (setq chkcnt (parse-integer chkcnt)))
-      (cond ((or delete deleteolder)
+      (cond (addnicks
              (dotimes (i nickcnt)
                (let ((nick (parm (stringify i "nick~d"))))
                  (unless (blankp nick)
                    (let ((id (parm (stringify i "nickid~d"))))
-                     (addcontact client id nick)))))
-
+                     (addcontact client id nick))))))
+            ((or delete deleteolder)
              (dotimes (i chkcnt)
                (let ((chk (parm (stringify i "chk~d"))))
                  (when chk
