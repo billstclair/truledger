@@ -5,15 +5,17 @@
 (pushnew :openssl-cffi *features*)
 
 (asdf:defsystem :truledger
-  :description "An anoymous digitally-signed general ledger and trading system"
+  :description "An anonymous digitally-signed general ledger and trading system"
   :author "Bill St. Clair <bill@billstclair.com>"
-  :version "1.0.0"
+  :version "1.1.6"
   :license "Apache"
   :depends-on (cffi cl-base64 hunchentoot drakma cl-smtp split-sequence
                html-template cl-json
+               ;; My libraries are in Quicklisp now. Cool.
+               cl-crypto fsdb limited-thread-taskmaster cl-loom
                ;; Systems above here come from quicklisp
                ;; System below here are in systems/ dir
-               cl-crypto fsdb cybertiggyr-time limited-thread-taskmaster cl-loom)
+               cybertiggyr-time)
   :components
   ((:module src
     :serial t
@@ -47,33 +49,9 @@
      (:file "tests")
      ))))
 
-#-windows
-(unless (or (find-package :cl-autorepo)
-            (ignore-errors (ql:quickload "cl-autorepo")))
-  (let* ((dir "~/.local/share/common-lisp/source/")
-         (autorepo-asd (merge-pathnames "cl-autorepo/cl-autorepo.asd" dir))
-         (url "https://github.com/billstclair/cl-autorepo"))
-    (asdf:run-shell-command "mkdir -p ~a;cd ~a;git clone ~a" dir dir url)
-    (load autorepo-asd)
-    (ql:quickload "cl-autorepo")))
-
-#-windows
-(progn
-(cl-autorepo:add-system
- "cl-crypto" "git://github.com/billstclair/cl-crypto.git" :git)
-(cl-autorepo:add-system
- "fsdb" "git://github.com/billstclair/fsdb.git" :git)
-(cl-autorepo:add-system
- "limited-thread-taskmaster"
- "git://github.com/billstclair/limited-thread-taskmaster.git"
- :git)
-(cl-autorepo:add-system
- "cl-loom" "git://github.com/billstclair/cl-loom.git" :git)
-)
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
-;;; Copyright 2009-2011 Bill St. Clair
+;;; Copyright 2009-2012 Bill St. Clair
 ;;;
 ;;; Licensed under the Apache License, Version 2.0 (the "License");
 ;;; you may not use this file except in compliance with the License.

@@ -1,11 +1,11 @@
 (in-package :cl-user)
 
-;; One-time only
-;(load "http://beta.quicklisp.org/quicklisp.lisp")
-;(quicklisp-quickstart:install)
-
 (unless (find-package "QUICKLISP")
-  (load "~/quicklisp/setup"))
+  (cond ((probe-file "~/quicklisp/setup.lisp")
+         (load "~/quicklisp/setup"))
+        (t (format t "Installing Quicklisp...")
+           (load "http://beta.quicklisp.org/quicklisp.lisp")
+           (funcall (find-symbol "INSTALL" :quicklisp-quickstart)))))
 
 (defun update-registry ()
   (asdf:initialize-source-registry

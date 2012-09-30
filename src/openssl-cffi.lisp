@@ -61,6 +61,13 @@
   (:darwin (:or "libcrypto.dylib"))
   (:unix (:or "libcrypto.so.0.9.8" "libcrypto.so" "libcrypto.so.4")))
 
+;; Work around a CFFI bug. (close-foreign-library 'libcrypto)
+;; causes the lisp to crash. It is called by (open-foreign-library 'libcrypto)
+(let ((sym (find-symbol "CLOSE-FOREIGN-LIBRARY" "CFFI")))
+  (when sym
+    (setf (symbol-function sym)
+          (lambda (&rest rest) (declare (ignore rest))))))
+
 ;; This is necessary to successfully start a saved application built
 ;; with a version of OpenSSL that has libcrypto on a machine whose
 ;; OpenSSL doesn't have libcrypto, or vice-versa.

@@ -1,9 +1,3 @@
-Do compound storage fees. This makes the storage fees independent of
-how often they're computed, but causes the new client to be
-incompatible with the old server, and vice-versa.
-
-----------------------------------------------------------------------
-
 Compound interest/fees intead of simple. This makes the interest/fee amount
 independent of the number of transactions.
 
@@ -15,6 +9,18 @@ Also need fee reaper that can run periodically to collect fees from
 dormant accounts.
 
 ----------------------------------------------------------------------
+
+When pulling a private key from a server to create a new account on
+a client, it would be nice to be smart enough to pull the private
+key when the user enters both "Passphrase" and "Verify", not just
+"Verify". If that's hard, at least HIGHLIGHT IT in the help strings.
+
+----------------------------------------------------------------------
+
+Make the startup code auto-download Quicklisp and continue.
+
+----------------------------------------------------------------------
+
 
 Web link to http://localhost:8785/ that includes spend info:
 
@@ -28,11 +34,6 @@ note
 Multiple keys on one account passphrase.
 Change account passphrase.
 Change key passphrase.
-
-----------------------------------------------------------------------
-
-On history page, two separate buttons, one to delete checked and one to
-add contacts.
 
 ----------------------------------------------------------------------
 
