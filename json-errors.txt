@@ -1,0 +1,68 @@
+Hi! Bill how are you?, I hope you are well in your beautiful city.
+
+I have been working this days with the JSON interface on Truledger, the result is nice,
+but I have two issues unresolved:
+
+1) with spendreject like this:
+
+http://localhost:8785/json/?eval=["spendreject",{"session":"07de57952657c362ae4002a34d61ed4216383486","time":"1338030773","note":"Spend+cancelled"}]
+http://localhost:8785/json/?eval=["spendreject",{"session":"07de57952657c362ae4002a34d61ed4216383486","time":"1338030773","note":""}]
+http://localhost:8785/json/?eval=["spendreject",{"session":"07de57952657c362ae4002a34d61ed4216383486","time":"1338030773"}]
+
+I receive:
+
+stdClass Object
+(
+    [@type] => error
+    [message] => Error reporting error
+)
+
+With the field note correctly encoded, or simply with blank note (It does not
+appears to be the same problem of spaces in notes solved with urlencode).
+
+-------------------------------------------------------
+
+2) In newuser, after active proxy and reinstall truledger working with .i2p domain:
+
+http://localhost:8785/json/?eval=["newuser",{"passphrase":"tres","keysize":4096,"name":"tres","coupon":"[http://f7txxmwwsusc655vsrjnw7yb5is2xehkpzjwwnxfs3i4d63qmq6q.b32.i2p/,53c6da6b955e3d2f0c2cf69482f075cf]","proxy":"127.0.0.1:4444"}]
+
+stdClass Object
+(
+    [@type] => error
+    [message] => Coupon didn't verify: The condition No address associated with hostname (error #-5) during socket creation or nameserver operation in gethostbyname occurred.
+)
+
+
+Appears not to solve hostname using proxy (this coupon is returned by system in outbox, and hostname is valid and browsable):
+
+[http://f7txxmwwsusc655vsrjnw7yb5is2xehkpzjwwnxfs3i4d63qmq6q.b32.i2p/,53c6da6b955e3d2f0c2cf69482f075cf]
+
+If I replace manually to localhost:8785 then all works fine. 
+
+If I remove the proxy field form json:
+
+http://localhost:8785/json/?eval=["newuser",{"passphrase":"test","keysize":4096,"name":"test","coupon":"[http://f7txxmwwsusc655vsrjnw7yb5is2xehkpzjwwnxfs3i4d63qmq6qb32i2p/,53c6da6b955e3d2f0c2cf69482f075cf]"}]
+
+I receive the same error. I can solve this problem, also I must parse incoming coupons and replace if have the .onion host 
+by the .i2p host, then I can replace all to localhost without problems.
+
+-------------------------------------------------------
+
+On the other hand, I'm trying run Truledger with ssl certificates. All looks
+like it works, certs works fine but I cannot see client's webpage, 
+
+./truledger-lx86cl --key key.pem --cert cert.pem -p 4000 --nonsslport 3000
+
+In port localhost:3000 I'm redirected to https://localhost:4000, and this shows this message:
+
+"Welcome When you're reading this message, Hunchentoot has been properly installed"
+
+
+And url /client/ :
+
+"Resource /client/ not found. "
+
+
+I'm not sure if I'm doing something wrong, but I'm stuck with these details, any feedback is appreciated.
+
+Best regards.

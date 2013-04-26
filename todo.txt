@@ -1,3 +1,7 @@
+json-errors.txt
+
+----------------------------------------------------------------------
+
 Compound interest/fees intead of simple. This makes the interest/fee amount
 independent of the number of transactions.
 
