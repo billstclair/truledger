@@ -864,6 +864,8 @@
          for was = (and msg (unwrap-fraction msg asset))
          for sb = (storage-info-fraction info)
          do
+           (when (bc-zerop was) (setf was nil))
+           (when (bc-zerop sb) (setf sb nil))
            (unless (equal sb was)
              (error "Fraction mismatch, asset: ~s, SB: ~s, Was: ~s"
                     asset sb was)))
