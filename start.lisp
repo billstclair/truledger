@@ -8,6 +8,10 @@
            (funcall (find-symbol "INSTALL" :quicklisp-quickstart)))))
 
 (defun update-registry ()
+  ;; Adapt for new asdf package structure
+  (when (eq :inherited (nth-value 1 (find-symbol "GETENV" :asdf)))
+    (export 'asdf::getenv :asdf))
+  (load "truledger.asd")
   (asdf:initialize-source-registry
    (asdf:system-relative-pathname "truledger" "truledger-asd.conf")))
 

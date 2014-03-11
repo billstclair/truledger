@@ -20,14 +20,14 @@
 (defun urandom-stream ()
   (and *use-urandom*
        (or (ignore-errors
-	     #-windows (open "/dev/urandom")
+	     #-windows (open "/dev/urandom" :external-format :ISO-8859-1)
 	     #+windows *windows-random-stream*)
            (setq *use-urandom* nil))))
 
 (defun random-stream ()
   (and *use-random*
        (or (ignore-errors
-	     #-windows (open "/dev/random")
+	     #-windows (open "/dev/random" :external-format :ISO-8859-1)
 	     #+windows *windows-random-stream*)
            (setq *use-random* nil))))
 
