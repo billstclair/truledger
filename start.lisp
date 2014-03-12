@@ -12,8 +12,7 @@
   (when (eq :inherited (nth-value 1 (find-symbol "GETENV" :asdf)))
     (export 'asdf::getenv :asdf))
   (load "truledger.asd")
-  (asdf:initialize-source-registry
-   (asdf:system-relative-pathname "truledger" "truledger-asd.conf")))
+  (load "systems/cybertiggyr-time/cybertiggyr-time.asd"))
 
 (update-registry)
 

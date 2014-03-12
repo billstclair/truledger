@@ -5,6 +5,8 @@
 ;;; Copyright (c) 2008 Gene Michael Stover.  All rights reserved.
 ;;;
 
+(in-package :asdf)
+
 (defsystem "cybertiggyr-time"
   :description "Parse & print times"
   :version "1"

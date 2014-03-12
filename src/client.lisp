@@ -4790,7 +4790,7 @@ Returns two values:
     (let ((files (directory
                   (fsdb:append-db-keys (ssl-certificates-dir) "*.pem"))))
       (when files
-        (cl+ssl:ssl-verify-init :verify-locations files)))
+        (cl+ssl::ssl-verify-init :verify-locations files)))
     (setf *ssl-certificates-initialized-p* t)))
 
 (defun make-loom-uri-server (db uri-string)
