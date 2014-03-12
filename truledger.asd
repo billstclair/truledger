@@ -11,10 +11,9 @@
   :license "Apache"
   :depends-on (cffi cl-base64 hunchentoot drakma cl-smtp split-sequence
                html-template cl-json
-               ;; My libraries are in Quicklisp now. Cool.
+               ;; Loaded below with cl-autorepo
                cl-crypto fsdb limited-thread-taskmaster cl-loom
-               ;; Systems above here come from quicklisp
-               ;; System below here are in systems/ dir
+               ;; In systems/ dir
                cybertiggyr-time)
   :components
   ((:module src
@@ -48,6 +47,26 @@
      (:file "history")
      (:file "tests")
      ))))
+
+#-windows
+(let* ((dir "~/.local/share/common-lisp/source/"))
+  (asdf:run-shell-command "mkdir -p ~a" dir)
+  (unless (or (find-package :cl-autorepo)
+              (ignore-errors (ql:quickload "cl-autorepo")))
+    (let ((autorepo-asd (merge-pathnames "cl-autorepo/cl-autorepo.asd" dir))
+          (url "https://github.com/billstclair/cl-autorepo"))
+    (asdf:run-shell-command "cd ~a;git clone ~a" dir url)
+    (load autorepo-asd)
+    (ql:quickload "cl-autorepo"))))
+
+#-windows
+(flet ((addit (name)
+         (cl-autorepo:add-system
+          name (format nil "git://github.com/billstclair/~a.git" name) :git)))
+  (addit "fsdb")
+  (addit "limited-thread-taskmaster")
+  (addit "cl-crypto")
+  (addit "cl-loom"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
