@@ -50,12 +50,12 @@
 
 #-windows
 (let* ((dir "~/.local/share/common-lisp/source/"))
-  (asdf:run-shell-command "mkdir -p ~a" dir)
+  (uiop:run-program "mkdir -p ~a" dir)
   (unless (or (find-package :cl-autorepo)
               (ignore-errors (ql:quickload "cl-autorepo")))
     (let ((autorepo-asd (merge-pathnames "cl-autorepo/cl-autorepo.asd" dir))
           (url "https://github.com/billstclair/cl-autorepo"))
-    (asdf:run-shell-command "cd ~a;git clone ~a" dir url)
+    (uiop:run-program "cd ~a;git clone ~a" dir url)
     (load autorepo-asd)
     (ql:quickload "cl-autorepo"))))
 
